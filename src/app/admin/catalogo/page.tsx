@@ -1,13 +1,54 @@
+'use client'
+
+import { useState } from 'react'
+import { ConePageHeader } from '@/components/admin/ConeComponents'
+import CategoriasTab from './tabs/CategoriasTab'
+import ProductosTab from './tabs/ProductosTab'
+import PresentacionesTab from './tabs/PresentacionesTab'
+import SaboresTab from './tabs/SaboresTab'
+import DisponibilidadTab from './tabs/DisponibilidadTab'
+
+const TABS = [
+  { id: 'categorias',    label: 'Categorías' },
+  { id: 'productos',     label: 'Productos' },
+  { id: 'presentaciones',label: 'Presentaciones' },
+  { id: 'sabores',       label: 'Sabores' },
+  { id: 'disponibilidad',label: 'Disponibilidad' },
+]
+
 export default function CatalogoPage() {
+  const [tab, setTab] = useState('categorias')
+
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-medium text-neutral-900">Catálogo</h1>
-        <p className="text-sm text-neutral-500 mt-1">Categorías, productos, presentaciones y sabores</p>
+      <ConePageHeader
+        title="Catálogo"
+        description="Categorías, productos, presentaciones y sabores"
+      />
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-neutral-200 mb-6">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              tab === t.id
+                ? 'border-neutral-900 text-neutral-900'
+                : 'border-transparent text-neutral-500 hover:text-neutral-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-      <div className="p-6 bg-white rounded-xl border border-neutral-200">
-        <p className="text-sm text-neutral-400">En construcción — Sprint 2</p>
-      </div>
+
+      {/* Contenido */}
+      {tab === 'categorias'     && <CategoriasTab />}
+      {tab === 'productos'      && <ProductosTab />}
+      {tab === 'presentaciones' && <PresentacionesTab />}
+      {tab === 'sabores'        && <SaboresTab />}
+      {tab === 'disponibilidad' && <DisponibilidadTab />}
     </div>
   )
 }
