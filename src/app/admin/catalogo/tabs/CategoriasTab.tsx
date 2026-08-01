@@ -16,14 +16,20 @@ interface Categoria {
   [key: string]: unknown
 }
 
-const empty = (): Partial<Categoria> => ({ nombre: '', orden: 0, activo: true })
+interface CategoriaForm {
+  nombre: string
+  orden: number
+  activo: boolean
+}
+
+const empty = (): CategoriaForm => ({ nombre: '', orden: 0, activo: true })
 
 export default function CategoriasTab() {
   const { ctx } = useEmpresa()
   const [data, setData] = useState<Categoria[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState<Partial<Categoria>>(empty())
+  const [form, setForm] = useState<CategoriaForm>(empty())
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
 
@@ -43,13 +49,23 @@ export default function CategoriasTab() {
   useEffect(() => { load() }, [ctx])
 
   function openNew() { setForm(empty()); setEditId(null); setModal(true) }
-  function openEdit(row: Categoria) { setForm(row); setEditId(row.id); setModal(true) }
+  function openEdit(row: Categoria) {
+    setForm({ nombre: row.nombre, orden: row.orden, activo: row.activo })
+    setEditId(row.id)
+    setModal(true)
+  }
 
   async function handleSave() {
     if (!ctx || !form.nombre) return
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: form.nombre, orden: form.orden ?? 0, activo: form.activo ?? true, empresa_id: ctx.empresaId }
+
+    const payload = {
+      nombre: form.nombre,
+      orden: form.orden,
+      activo: form.activo,
+      empresa_id: ctx.empresaId,
+    }
 
     if (editId) {
       await supabase.from('categorias').update(payload).eq('id', editId)
@@ -103,14 +119,14 @@ export default function CategoriasTab() {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label>Nombre *</Label>
-            <Input value={form.nombre ?? ''} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="Helados" autoFocus />
+            <Input value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="Helados" autoFocus />
           </div>
           <div className="space-y-1.5">
             <Label>Orden</Label>
-            <Input type="number" value={form.orden ?? 0} onChange={e => setForm({ ...form, orden: Number(e.target.value) })} className="w-24" />
+            <Input type="number" value={form.orden} onChange={e => setForm({ ...form, orden: Number(e.target.value) })} className="w-24" />
           </div>
           <div className="flex items-center gap-2">
-            <input type="checkbox" id="activo" checked={form.activo ?? true} onChange={e => setForm({ ...form, activo: e.target.checked })} className="w-4 h-4 rounded" />
+            <input type="checkbox" id="activo" checked={form.activo} onChange={e => setForm({ ...form, activo: e.target.checked })} className="w-4 h-4 rounded" />
             <Label htmlFor="activo" className="cursor-pointer">Activa</Label>
           </div>
         </div>
