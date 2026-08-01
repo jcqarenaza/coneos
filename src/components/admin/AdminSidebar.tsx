@@ -4,16 +4,15 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  LayoutDashboard, Layers, Store, Users, Monitor, Settings, LogOut, IceCream2
+  LayoutDashboard, Layers, Store, Users, Settings, LogOut, IceCream2
 } from 'lucide-react'
 
 const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/admin/catalogo', label: 'Catálogo', icon: Layers },
-  { href: '/admin/sucursales', label: 'Sucursales', icon: Store },
-  { href: '/admin/usuarios', label: 'Usuarios', icon: Users },
-  { href: '/admin/dispositivos', label: 'Dispositivos', icon: Monitor },
-  { href: '/admin/config', label: 'Configuración', icon: Settings },
+  { href: '/admin',            label: 'Dashboard',     icon: LayoutDashboard, exact: true },
+  { href: '/admin/catalogo',   label: 'Catálogo',      icon: Layers },
+  { href: '/admin/sucursales', label: 'Sucursales',    icon: Store },
+  { href: '/admin/operacion',  label: 'Operación',     icon: Users },
+  { href: '/admin/config',     label: 'Configuración', icon: Settings },
 ]
 
 interface Props {
@@ -28,6 +27,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre }: Props) {
   async function handleLogout() {
     const supabase = createClient()
     await supabase.auth.signOut()
+    localStorage.removeItem('coneos-auth')
     router.push('/login')
     router.refresh()
   }
@@ -39,7 +39,6 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre }: Props) {
 
   return (
     <aside className="w-60 min-h-screen bg-white border-r border-neutral-200 flex flex-col">
-      {/* Logo */}
       <div className="p-6 border-b border-neutral-100">
         <div className="flex items-center gap-2">
           <IceCream2 className="h-5 w-5 text-neutral-700" />
@@ -48,7 +47,6 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre }: Props) {
         <p className="text-xs text-neutral-400 mt-1 truncate">{empresaNombre}</p>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map(({ href, label, icon: Icon, exact }) => (
           <Link
@@ -66,7 +64,6 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre }: Props) {
         ))}
       </nav>
 
-      {/* Usuario */}
       <div className="p-4 border-t border-neutral-100">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
