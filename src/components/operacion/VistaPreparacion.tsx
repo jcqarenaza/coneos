@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Loader2, ChefHat, CheckCircle } from 'lucide-react'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
-interface SesionOperador { session_id: string; operador: { id: string } }
+interface SesionOperador { session_id: string; operador: { id: string; sucursal_id: string | null } }
 
 interface Pedido {
   id: string
@@ -13,6 +13,7 @@ interface Pedido {
   codigo_retiro: string
   estado: string
   notas: string | null
+  sucursales?: { nombre: string }
   pedido_items: {
     id: string
     nombre_producto_snap: string
@@ -26,23 +27,31 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [procesando, setProcesando] = useState<string | null>(null)
+  const verTodas = sesion.operador.sucursal_id === null
 
   const cargarPedidos = useCallback(async () => {
     const supabase = createClient()
-    const hoy = new Date().toISOString().split('T')[0]
-    const { data } = await supabase
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+
+    let query = supabase
       .from('pedidos')
       .select(`id, numero_pedido, codigo_retiro, estado, notas,
+        sucursales(nombre),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
       .eq('empresa_id', dispositivo.empresa_id)
-      .eq('sucursal_id', dispositivo.sucursal_id)
       .eq('fecha_pedido', hoy)
       .in('estado', ['PAID', 'PREPARING'])
       .order('numero_pedido', { ascending: true })
+
+    if (!verTodas) {
+      query = query.eq('sucursal_id', dispositivo.sucursal_id)
+    }
+
+    const { data } = await query
     setPedidos((data ?? []) as Pedido[])
     setLoading(false)
-  }, [dispositivo])
+  }, [dispositivo, verTodas])
 
   useEffect(() => {
     cargarPedidos()
@@ -83,7 +92,12 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                   <div key={pedido.id} className="bg-white rounded-xl border-2 border-blue-200 shadow-sm overflow-hidden">
                     <div className="bg-blue-50 px-4 py-2.5 flex items-center justify-between border-b border-blue-200">
                       <span className="text-blue-700 font-bold text-lg">#{pedido.numero_pedido}</span>
-                      <span className="text-blue-500 text-sm">Código: {pedido.codigo_retiro}</span>
+                      <div className="flex items-center gap-2">
+                        {verTodas && pedido.sucursales?.nombre && (
+                          <span className="text-xs bg-white px-2 py-0.5 rounded-full text-neutral-500">{pedido.sucursales.nombre}</span>
+                        )}
+                        <span className="text-blue-500 text-sm">{pedido.codigo_retiro}</span>
+                      </div>
                     </div>
                     <div className="p-4 space-y-2">
                       {pedido.pedido_items.map(item => (
@@ -92,9 +106,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                           {item.pedido_item_opciones.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1">
                               {item.pedido_item_opciones.map((op, i) => (
-                                <span key={i} className="text-xs bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded">
-                                  {op.emoji_snap} {op.nombre_snap}
-                                </span>
+                                <span key={i} className="text-xs bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded">{op.emoji_snap} {op.nombre_snap}</span>
                               ))}
                             </div>
                           )}
@@ -103,11 +115,8 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                       {pedido.notas && <p className="text-amber-600 text-xs">📝 {pedido.notas}</p>}
                     </div>
                     <div className="px-4 pb-4">
-                      <button
-                        onClick={() => cambiarEstado(pedido.id, 'PREPARING')}
-                        disabled={procesando === pedido.id}
-                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                      >
+                      <button onClick={() => cambiarEstado(pedido.id, 'PREPARING')} disabled={procesando === pedido.id}
+                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
                         {procesando === pedido.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '🍦 Tomar pedido'}
                       </button>
                     </div>
@@ -125,7 +134,12 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                   <div key={pedido.id} className="bg-white rounded-xl border-2 border-amber-200 shadow-sm overflow-hidden">
                     <div className="bg-amber-50 px-4 py-2.5 flex items-center justify-between border-b border-amber-200">
                       <span className="text-amber-700 font-bold text-lg">#{pedido.numero_pedido}</span>
-                      <span className="text-amber-500 text-sm">Código: {pedido.codigo_retiro}</span>
+                      <div className="flex items-center gap-2">
+                        {verTodas && pedido.sucursales?.nombre && (
+                          <span className="text-xs bg-white px-2 py-0.5 rounded-full text-neutral-500">{pedido.sucursales.nombre}</span>
+                        )}
+                        <span className="text-amber-500 text-sm">{pedido.codigo_retiro}</span>
+                      </div>
                     </div>
                     <div className="p-4 space-y-2">
                       {pedido.pedido_items.map(item => (
@@ -134,9 +148,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                           {item.pedido_item_opciones.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1">
                               {item.pedido_item_opciones.map((op, i) => (
-                                <span key={i} className="text-xs bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded">
-                                  {op.emoji_snap} {op.nombre_snap}
-                                </span>
+                                <span key={i} className="text-xs bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded">{op.emoji_snap} {op.nombre_snap}</span>
                               ))}
                             </div>
                           )}
@@ -145,11 +157,8 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                       {pedido.notas && <p className="text-amber-600 text-xs">📝 {pedido.notas}</p>}
                     </div>
                     <div className="px-4 pb-4">
-                      <button
-                        onClick={() => cambiarEstado(pedido.id, 'READY')}
-                        disabled={procesando === pedido.id}
-                        className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                      >
+                      <button onClick={() => cambiarEstado(pedido.id, 'READY')} disabled={procesando === pedido.id}
+                        className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
                         {procesando === pedido.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-4 w-4" /> Marcar listo</>}
                       </button>
                     </div>
