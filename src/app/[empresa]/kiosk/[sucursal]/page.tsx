@@ -24,7 +24,7 @@ export interface DispositivoKiosk {
 }
 
 export interface ItemCarrito {
-  id: string // uuid local
+  id: string
   presentacion_id: string
   nombre_producto: string
   nombre_presentacion: string
@@ -46,10 +46,10 @@ export default function KioskPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
+  const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     if (!token) { setError('Dispositivo no configurado'); setLoading(false); return }
-
     fetch('/api/device/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,8 +59,6 @@ export default function KioskPage() {
       .then(async data => {
         if (data.error) { setError(data.error); return }
         setDispositivo(data.dispositivo)
-
-        // Cargar config de empresa
         const res = await fetch(`/api/kiosk/config?empresa_id=${data.dispositivo.empresa_id}`)
         const cfg = await res.json()
         setConfig(cfg)
@@ -69,7 +67,6 @@ export default function KioskPage() {
       .finally(() => setLoading(false))
   }, [token])
 
-  // Aplicar colores de marca como CSS vars
   useEffect(() => {
     if (!config) return
     document.documentElement.style.setProperty('--brand-primary', config.primary_color)
@@ -87,7 +84,13 @@ export default function KioskPage() {
   function limpiarCarrito() {
     setCarrito([])
     setPedidoCreado(null)
+    setCategoriaInicial(undefined)
     setPaso('inicio')
+  }
+
+  function handleComenzar(categoriaId?: string) {
+    setCategoriaInicial(categoriaId)
+    setPaso('catalogo')
   }
 
   if (loading) return (
@@ -98,29 +101,25 @@ export default function KioskPage() {
 
   if (error || !dispositivo || !config) return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-100">
-      <div className="text-center">
-        <p className="text-neutral-600 text-lg">{error ?? 'Error de configuración'}</p>
-      </div>
+      <p className="text-neutral-600 text-lg">{error ?? 'Error de configuración'}</p>
     </div>
   )
 
   return (
     <div className="min-h-screen bg-[#fdf8f4] flex flex-col select-none">
       {paso === 'inicio' && (
-        <KioskInicio
-          config={config}
-          dispositivo={dispositivo}
-          onComenzar={() => setPaso('catalogo')}
-        />
+        <KioskInicio config={config} dispositivo={dispositivo} onComenzar={handleComenzar} />
       )}
       {paso === 'catalogo' && (
         <KioskCatalogo
+          key={categoriaInicial ?? 'all'}
           dispositivo={dispositivo}
           config={config}
           carrito={carrito}
+          categoriaIdInicial={categoriaInicial}
           onAgregar={agregarItem}
           onVerCarrito={() => setPaso('carrito')}
-          onVolver={() => setPaso('inicio')}
+          onVolver={() => { setCategoriaInicial(undefined); setPaso('inicio') }}
         />
       )}
       {paso === 'carrito' && (
@@ -138,10 +137,7 @@ export default function KioskPage() {
           config={config}
           dispositivo={dispositivo}
           carrito={carrito}
-          onPedidoCreado={(numero, codigo) => {
-            setPedidoCreado({ numero, codigo })
-            setCarrito([])
-          }}
+          onPedidoCreado={(numero, codigo) => { setPedidoCreado({ numero, codigo }); setCarrito([]) }}
           pedidoCreado={pedidoCreado}
           onNuevoPedido={limpiarCarrito}
         />
