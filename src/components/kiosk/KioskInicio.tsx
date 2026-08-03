@@ -4,11 +4,7 @@ import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import type { EmpresaConfig, DispositivoKiosk } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
-interface Categoria {
-  id: string
-  nombre: string
-  icono_url: string | null
-}
+interface Categoria { id: string; nombre: string; icono_url: string | null }
 
 interface Props {
   config: EmpresaConfig
@@ -47,21 +43,24 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#fdf8f4' }}>
       {/* Header */}
       <div className="w-full py-4 px-8 flex items-center justify-between" style={{ backgroundColor: config.primary_color }}>
-        <div />
-        <div className="text-center">
+        <div className="w-24" />
+        <div className="flex items-center justify-center">
           {config.logo_url ? (
-            <Image
-              src={config.logo_url}
-              alt="Logo"
-              width={180}
-              height={70}
-              className="object-contain bg-white rounded-lg px-3 py-1"
-            />
+            <div className="bg-white rounded-xl px-5 py-2 flex items-center justify-center" style={{ minWidth: 160, maxWidth: 220 }}>
+              <Image
+                src={config.logo_url}
+                alt={dispositivo.empresas?.nombre ?? 'Logo'}
+                width={180}
+                height={65}
+                className="object-contain w-auto"
+                style={{ maxHeight: 56 }}
+              />
+            </div>
           ) : (
             <span className="text-white text-2xl font-bold">{dispositivo.empresas?.nombre}</span>
           )}
         </div>
-        <div className="text-right">
+        <div className="text-right w-24">
           <p className="text-white/60 text-sm">{dispositivo.sucursales?.nombre}</p>
           <p className="text-white text-lg font-medium">{hora}</p>
         </div>
@@ -89,13 +88,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
           ))}
         </div>
 
-        <button
-          onClick={() => onComenzar()}
-          className="px-12 py-5 rounded-2xl text-white text-xl font-bold shadow-lg active:scale-95 transition-all"
-          style={{ backgroundColor: config.primary_color }}
-        >
-          Ver todo el catálogo
-        </button>
+
       </div>
 
       <div className="py-4 text-center">
