@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
-import { ShoppingCart, ArrowLeft, Check } from 'lucide-react'
+import { ShoppingCart, ArrowLeft, Check, Plus, Minus } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; color: string | null; grupo_id: string }
+interface GrupoOpciones { id: string; nombre: string; orden: number }
 
 type Paso = 'categorias' | 'productos' | 'presentacion' | 'opciones'
 
@@ -27,9 +28,12 @@ function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}
 function emojiCategoria(nombre: string): string {
   const n = nombre.toLowerCase()
   if (n.includes('helado') || n.includes('kilo')) return '🍦'
-  if (n.includes('bombon') || n.includes('bombón') || n.includes('envasa')) return '🍫'
-  if (n.includes('torta')) return '🎂'
   if (n.includes('balde')) return '🪣'
+  if (n.includes('cono') || n.includes('bocha')) return '🍦'
+  if (n.includes('bombon') || n.includes('envasa')) return '🍫'
+  if (n.includes('torta')) return '🎂'
+  if (n.includes('palito')) return '🍡'
+  if (n.includes('copa')) return '🍨'
   return '🍨'
 }
 
@@ -38,6 +42,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [productos, setProductos] = useState<Producto[]>([])
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
   const [opciones, setOpciones] = useState<Opcion[]>([])
+  const [grupos, setGrupos] = useState<GrupoOpciones[]>([])
   const [loading, setLoading] = useState(true)
 
   const [paso, setPaso] = useState<Paso>('categorias')
@@ -45,7 +50,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [productoActivo, setProductoActivo] = useState<Producto | null>(null)
   const [presentacionActiva, setPresentacionActiva] = useState<Presentacion | null>(null)
   const [opcionesSeleccionadas, setOpcionesSeleccionadas] = useState<Opcion[]>([])
+  const [cantidad, setCantidad] = useState(1)
   const [agregado, setAgregado] = useState(false)
+  const [grupoActivo, setGrupoActivo] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
@@ -56,14 +63,21 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         setProductos(data.productos ?? [])
         setPresentaciones(data.presentaciones ?? [])
         setOpciones(data.opciones ?? [])
+        setGrupos(data.grupos ?? [])
         setLoading(false)
 
-        // Si viene con categoría inicial, ir directo a productos
         if (categoriaIdInicial) {
           const cat = cats.find((c: Categoria) => c.id === categoriaIdInicial)
           if (cat) {
+            const prodsDeCategoria = (data.productos ?? []).filter((p: Producto) => p.categoria_id === categoriaIdInicial)
             setCategoriaActiva(cat)
-            setPaso('productos')
+            // Si hay un solo producto → ir directo a presentaciones
+            if (prodsDeCategoria.length === 1) {
+              setProductoActivo(prodsDeCategoria[0])
+              setPaso('presentacion')
+            } else {
+              setPaso('productos')
+            }
           }
         }
       })
@@ -71,7 +85,13 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
   function seleccionarCategoria(cat: Categoria) {
     setCategoriaActiva(cat)
-    setPaso('productos')
+    const prodsDeCategoria = productos.filter(p => p.categoria_id === cat.id)
+    if (prodsDeCategoria.length === 1) {
+      setProductoActivo(prodsDeCategoria[0])
+      setPaso('presentacion')
+    } else {
+      setPaso('productos')
+    }
   }
 
   function seleccionarProducto(prod: Producto) {
@@ -80,6 +100,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     if (pres.length === 1) {
       setPresentacionActiva(pres[0])
       setOpcionesSeleccionadas([])
+      setCantidad(1)
       setPaso('opciones')
     } else {
       setPaso('presentacion')
@@ -89,6 +110,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   function seleccionarPresentacion(pres: Presentacion) {
     setPresentacionActiva(pres)
     setOpcionesSeleccionadas([])
+    setCantidad(1)
     setPaso('opciones')
   }
 
@@ -107,39 +129,55 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     if (!presentacionActiva || !productoActivo) return
     if (presentacionActiva.permite_opciones && opcionesSeleccionadas.length < presentacionActiva.opciones_min) return
 
-    onAgregar({
-      presentacion_id: presentacionActiva.id,
-      nombre_producto: productoActivo.nombre,
-      nombre_presentacion: presentacionActiva.nombre,
-      precio: presentacionActiva.precio,
-      cantidad: 1,
-      opciones: opcionesSeleccionadas.map(op => ({
-        opcion_id: op.id,
-        nombre: op.nombre,
-        emoji: op.emoji,
-        color: op.color,
-      })),
-    })
+    // Agregar una entrada por unidad (para que cada una pueda tener sus propios sabores)
+    // O agregar con cantidad si todos los sabores son iguales
+    for (let i = 0; i < cantidad; i++) {
+      onAgregar({
+        presentacion_id: presentacionActiva.id,
+        nombre_producto: productoActivo.nombre,
+        nombre_presentacion: presentacionActiva.nombre,
+        precio: presentacionActiva.precio,
+        cantidad: 1,
+        opciones: opcionesSeleccionadas.map(op => ({
+          opcion_id: op.id,
+          nombre: op.nombre,
+          emoji: op.emoji,
+          color: op.color,
+        })),
+      })
+    }
 
     setAgregado(true)
     setTimeout(() => {
       setAgregado(false)
       setOpcionesSeleccionadas([])
+      setCantidad(1)
       setPresentacionActiva(null)
-      setProductoActivo(null)
-      // Volver a productos de la misma categoría
-      setPaso('productos')
+      setPaso('presentacion')
     }, 900)
   }
 
   function volverPaso() {
-    if (paso === 'opciones' && presentaciones.filter(p => p.producto_id === productoActivo?.id).length > 1) {
-      setPaso('presentacion')
-    } else if (paso === 'opciones' || paso === 'presentacion') {
-      setPaso('productos')
-      setProductoActivo(null)
+    if (paso === 'opciones') {
+      const pres = presentaciones.filter(p => p.producto_id === productoActivo?.id)
+      if (pres.length > 1) {
+        setPaso('presentacion')
+      } else {
+        setPaso('productos')
+        setProductoActivo(null)
+      }
       setPresentacionActiva(null)
       setOpcionesSeleccionadas([])
+      setCantidad(1)
+    } else if (paso === 'presentacion') {
+      const prods = productos.filter(p => p.categoria_id === categoriaActiva?.id)
+      if (prods.length > 1) {
+        setPaso('productos')
+      } else {
+        setPaso('categorias')
+        setCategoriaActiva(null)
+      }
+      setProductoActivo(null)
     } else if (paso === 'productos') {
       setPaso('categorias')
       setCategoriaActiva(null)
@@ -151,6 +189,15 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const productosFiltrados = productos.filter(p => p.categoria_id === categoriaActiva?.id)
   const presentacionesFiltradas = presentaciones.filter(p => p.producto_id === productoActivo?.id)
   const totalCarrito = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
+
+  // Grupos con opciones disponibles para esta presentación
+  const gruposConOpciones = grupos.filter(g =>
+    opciones.some(op => op.grupo_id === g.id)
+  ).sort((a, b) => a.orden - b.orden)
+
+  const opcionesFiltradas = grupoActivo
+    ? opciones.filter(op => op.grupo_id === grupoActivo)
+    : opciones
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#fdf8f4]">
@@ -169,11 +216,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           <ArrowLeft className="h-5 w-5" />
           <span className="text-sm font-medium">Volver</span>
         </button>
-
         {config.logo_url
           ? <Image src={config.logo_url} alt="Logo" width={120} height={50} className="object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
           : <span className="text-white font-bold">{dispositivo.empresas?.nombre}</span>}
-
         <button onClick={onVerCarrito} className="relative flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl transition-colors">
           <ShoppingCart className="h-5 w-5 text-white" />
           {carrito.length > 0 && <span className="text-white font-bold text-sm">{formatPrecio(totalCarrito)}</span>}
@@ -186,15 +231,17 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
       </div>
 
       {/* Breadcrumb */}
-      <div className="px-6 py-3 flex items-center gap-2 text-sm text-neutral-400">
-        <span className={paso === 'categorias' ? 'font-medium text-neutral-700' : 'cursor-pointer hover:text-neutral-600'} onClick={() => paso !== 'categorias' && setPaso('categorias')}>Categorías</span>
-        {categoriaActiva && <><span>›</span><span className={paso === 'productos' ? 'font-medium text-neutral-700' : 'cursor-pointer hover:text-neutral-600'} onClick={() => paso !== 'productos' && setPaso('productos')}>{categoriaActiva.nombre}</span></>}
-        {productoActivo && paso !== 'productos' && <><span>›</span><span className="font-medium text-neutral-700">{productoActivo.nombre}</span></>}
+      <div className="px-6 py-3 flex items-center gap-2 text-sm text-neutral-400 flex-wrap">
+        <span className="cursor-pointer hover:text-neutral-600" onClick={() => { setPaso('categorias'); setCategoriaActiva(null); setProductoActivo(null); setPresentacionActiva(null) }}>Categorías</span>
+        {categoriaActiva && <><span>›</span><span className="text-neutral-600">{categoriaActiva.nombre}</span></>}
+        {productoActivo && paso !== 'productos' && <><span>›</span><span className="text-neutral-600">{productoActivo.nombre}</span></>}
+        {presentacionActiva && paso === 'opciones' && <><span>›</span><span className="font-medium text-neutral-700">{presentacionActiva.nombre}</span></>}
       </div>
 
       {/* Contenido */}
-      <div className="flex-1 px-6 pb-24">
+      <div className={`flex-1 px-6 ${paso === 'opciones' ? 'pb-36' : 'pb-8'}`}>
 
+        {/* Categorías */}
         {paso === 'categorias' && (
           <div>
             <h2 className="text-2xl font-bold text-neutral-800 mb-6">¿Qué querés pedir?</h2>
@@ -212,6 +259,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           </div>
         )}
 
+        {/* Productos */}
         {paso === 'productos' && (
           <div>
             <h2 className="text-2xl font-bold text-neutral-800 mb-6">{categoriaActiva?.nombre}</h2>
@@ -241,6 +289,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           </div>
         )}
 
+        {/* Presentaciones */}
         {paso === 'presentacion' && productoActivo && (
           <div>
             <h2 className="text-2xl font-bold text-neutral-800 mb-2">{productoActivo.nombre}</h2>
@@ -263,79 +312,130 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           </div>
         )}
 
+        {/* Opciones / Sabores */}
         {paso === 'opciones' && presentacionActiva && productoActivo && (
           <div>
-            <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start justify-between mb-3">
               <div>
-                <h2 className="text-2xl font-bold text-neutral-800">{productoActivo.nombre} — {presentacionActiva.nombre}</h2>
+                <h2 className="text-xl font-bold text-neutral-800">{productoActivo.nombre} — {presentacionActiva.nombre}</h2>
                 {presentacionActiva.permite_opciones && (
-                  <p className="text-neutral-500 mt-1">
-                    Elegí {presentacionActiva.opciones_min === presentacionActiva.opciones_max
-                      ? `${presentacionActiva.opciones_min} sabores`
-                      : `entre ${presentacionActiva.opciones_min} y ${presentacionActiva.opciones_max} sabores`}
+                  <p className="text-neutral-500 text-sm mt-0.5">
+                    Elegí entre {presentacionActiva.opciones_min} y {presentacionActiva.opciones_max} sabores
                     {' '}<span className="font-medium" style={{ color: config.primary_color }}>({opcionesSeleccionadas.length}/{presentacionActiva.opciones_max})</span>
                   </p>
                 )}
               </div>
-              <p className="text-2xl font-bold" style={{ color: config.primary_color }}>{formatPrecio(presentacionActiva.precio)}</p>
+              <p className="text-xl font-bold" style={{ color: config.primary_color }}>{formatPrecio(presentacionActiva.precio)}</p>
             </div>
 
+            {/* Barra de progreso */}
             {presentacionActiva.permite_opciones && (
-              <div className="flex gap-2 mb-6">
+              <div className="flex gap-1.5 mb-4">
                 {Array.from({ length: presentacionActiva.opciones_max }).map((_, i) => (
-                  <div key={i} className="h-2 flex-1 rounded-full transition-colors"
+                  <div key={i} className="h-1.5 flex-1 rounded-full transition-colors"
                     style={{ backgroundColor: i < opcionesSeleccionadas.length ? config.primary_color : '#e5e7eb' }} />
                 ))}
               </div>
             )}
 
-            {presentacionActiva.permite_opciones ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
-                {opciones.map(op => {
-                  const sel = opcionesSeleccionadas.find(o => o.id === op.id)
-                  const maxAlcanzado = opcionesSeleccionadas.length >= presentacionActiva.opciones_max
-                  return (
-                    <button key={op.id} onClick={() => toggleOpcion(op)}
-                      disabled={!sel && maxAlcanzado}
-                      className={`relative flex flex-col items-center p-4 rounded-2xl border-2 transition-all active:scale-95 gap-2 ${
-                        sel ? 'bg-white shadow-md' : 'border-neutral-100 bg-white hover:border-neutral-300'
-                      } disabled:opacity-40`}
-                      style={sel ? { borderColor: config.primary_color } : {}}>
-                      {sel && (
-                        <div className="absolute top-2 right-2 rounded-full w-5 h-5 flex items-center justify-center" style={{ backgroundColor: config.primary_color }}>
-                          <Check className="h-3 w-3 text-white" />
-                        </div>
-                      )}
-                      <span className="text-4xl">{op.emoji ?? '🍦'}</span>
-                      <p className="text-neutral-800 font-medium text-sm text-center">{op.nombre}</p>
-                      {op.descripcion && <p className="text-neutral-400 text-xs text-center line-clamp-2">{op.descripcion}</p>}
-                    </button>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="py-8 text-center text-neutral-400">
-                <span className="text-5xl block mb-3">🍦</span>
-                <p>Este producto no requiere selección de sabores</p>
+            {/* Seleccionados */}
+            {opcionesSeleccionadas.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {opcionesSeleccionadas.map(op => (
+                  <button key={op.id} onClick={() => toggleOpcion(op)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white transition-colors"
+                    style={{ backgroundColor: config.primary_color }}>
+                    {op.emoji} {op.nombre} <span className="opacity-70">✕</span>
+                  </button>
+                ))}
               </div>
             )}
+
+            {/* Tabs de grupos */}
+            {gruposConOpciones.length > 1 && (
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+                <button
+                  onClick={() => setGrupoActivo(null)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                    !grupoActivo ? 'text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                  }`}
+                  style={!grupoActivo ? { backgroundColor: config.primary_color } : {}}>
+                  Todos
+                </button>
+                {gruposConOpciones.map(g => (
+                  <button key={g.id}
+                    onClick={() => setGrupoActivo(grupoActivo === g.id ? null : g.id)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                      grupoActivo === g.id ? 'text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                    }`}
+                    style={grupoActivo === g.id ? { backgroundColor: config.primary_color } : {}}>
+                    {g.nombre}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Grid de sabores */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {opcionesFiltradas.map(op => {
+                const sel = opcionesSeleccionadas.find(o => o.id === op.id)
+                const maxAlcanzado = opcionesSeleccionadas.length >= presentacionActiva.opciones_max
+                return (
+                  <button key={op.id} onClick={() => toggleOpcion(op)}
+                    disabled={!sel && maxAlcanzado}
+                    className={`relative flex flex-col items-center p-3 rounded-2xl border-2 transition-all active:scale-95 gap-1.5 ${
+                      sel ? 'bg-white shadow-md' : 'border-neutral-100 bg-white hover:border-neutral-300'
+                    } disabled:opacity-30`}
+                    style={sel ? { borderColor: config.primary_color } : {}}>
+                    {sel && (
+                      <div className="absolute top-2 right-2 rounded-full w-5 h-5 flex items-center justify-center" style={{ backgroundColor: config.primary_color }}>
+                        <Check className="h-3 w-3 text-white" />
+                      </div>
+                    )}
+                    <span className="text-3xl">{op.emoji ?? '🍦'}</span>
+                    <p className="text-neutral-800 font-medium text-xs text-center leading-tight">{op.nombre}</p>
+                    {op.descripcion && <p className="text-neutral-400 text-xs text-center line-clamp-1 hidden md:block">{op.descripcion}</p>}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Botón agregar fijo abajo */}
+      {/* Botón agregar fijo — con selector de cantidad */}
       {paso === 'opciones' && presentacionActiva && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#fdf8f4] border-t border-neutral-100">
-          <button
-            onClick={agregarAlCarrito}
-            disabled={(presentacionActiva.permite_opciones && opcionesSeleccionadas.length < presentacionActiva.opciones_min) || agregado}
-            className="w-full max-w-md mx-auto flex items-center justify-center gap-3 py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-40"
-            style={{ backgroundColor: config.primary_color }}
-          >
-            {agregado
-              ? <><Check className="h-5 w-5" /> ¡Agregado!</>
-              : <><ShoppingCart className="h-5 w-5" /> Agregar — {formatPrecio(presentacionActiva.precio)}</>}
-          </button>
+        <div className="fixed bottom-0 left-0 right-0 bg-[#fdf8f4] border-t border-neutral-100 p-4">
+          <div className="max-w-lg mx-auto flex items-center gap-3">
+            {/* Selector cantidad */}
+            <div className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-3 py-2">
+              <button
+                onClick={() => setCantidad(c => Math.max(1, c - 1))}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-neutral-100 transition-colors"
+              >
+                <Minus className="h-4 w-4 text-neutral-600" />
+              </button>
+              <span className="text-neutral-900 font-bold text-lg w-6 text-center">{cantidad}</span>
+              <button
+                onClick={() => setCantidad(c => c + 1)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-neutral-100 transition-colors"
+              >
+                <Plus className="h-4 w-4 text-neutral-600" />
+              </button>
+            </div>
+
+            {/* Botón agregar */}
+            <button
+              onClick={agregarAlCarrito}
+              disabled={(presentacionActiva.permite_opciones && opcionesSeleccionadas.length < presentacionActiva.opciones_min) || agregado}
+              className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-white font-bold text-base shadow-lg active:scale-95 transition-all disabled:opacity-40"
+              style={{ backgroundColor: config.primary_color }}
+            >
+              {agregado
+                ? <><Check className="h-5 w-5" /> ¡Agregado!</>
+                : <><ShoppingCart className="h-5 w-5" /> Agregar {cantidad > 1 ? `${cantidad}x` : ''} — {formatPrecio(presentacionActiva.precio * cantidad)}</>}
+            </button>
+          </div>
         </div>
       )}
     </div>

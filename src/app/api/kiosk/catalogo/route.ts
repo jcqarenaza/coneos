@@ -22,10 +22,9 @@ export async function GET(request: Request) {
       supabase.from('inventario_opciones').select('opcion_id, disponible').eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id),
     ])
 
-  // Filtrar opciones por disponibilidad en sucursal
   const inventarioMap: Record<string, boolean> = {}
-  ;(inventario ?? []).forEach(i => { inventarioMap[i.opcion_id] = i.disponible })
-  const opcionesFiltradas = (opciones ?? []).filter(op => inventarioMap[op.id] !== false)
+  ;(inventario ?? []).forEach((i: { opcion_id: string; disponible: boolean }) => { inventarioMap[i.opcion_id] = i.disponible })
+  const opcionesFiltradas = (opciones ?? []).filter((op: { id: string }) => inventarioMap[op.id] !== false)
 
   return NextResponse.json({ categorias, productos, presentaciones, grupos, opciones: opcionesFiltradas })
 }
