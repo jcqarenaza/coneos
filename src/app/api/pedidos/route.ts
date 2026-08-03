@@ -15,8 +15,14 @@ export async function POST(request: Request) {
   const { data: numeroData, error: numError } = await supabase
     .rpc('siguiente_numero_pedido', { p_empresa_id: empresa_id })
 
-  if (numError || !numeroData) {
-    return NextResponse.json({ error: 'Error generando número de pedido' }, { status: 500 })
+  if (numError) {
+    console.error('RPC error:', JSON.stringify(numError))
+    return NextResponse.json({ error: 'Error RPC', detail: numError.message }, { status: 500 })
+  }
+
+  if (!numeroData) {
+    console.error('RPC returned null for empresa_id:', empresa_id)
+    return NextResponse.json({ error: 'RPC sin resultado' }, { status: 500 })
   }
 
   const numero_pedido = numeroData
@@ -24,7 +30,6 @@ export async function POST(request: Request) {
   const total = items.reduce((acc: number, item: { precio_snap: number; cantidad: number }) => acc + item.precio_snap * item.cantidad, 0)
   const fecha_pedido = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
 
-  // Crear pedido
   const { data: pedido, error: pedidoError } = await supabase
     .from('pedidos')
     .insert({
@@ -44,13 +49,17 @@ export async function POST(request: Request) {
     .select('id, numero_pedido, codigo_retiro')
     .single()
 
-  if (pedidoError || !pedido) {
-    return NextResponse.json({ error: 'Error creando pedido' }, { status: 500 })
+  if (pedidoError) {
+    console.error('Insert pedido error:', JSON.stringify(pedidoError))
+    return NextResponse.json({ error: 'Error creando pedido', detail: pedidoError.message }, { status: 500 })
   }
 
-  // Crear items
+  if (!pedido) {
+    return NextResponse.json({ error: 'Pedido no creado' }, { status: 500 })
+  }
+
   for (const item of items) {
-    const { data: pedidoItem } = await supabase
+    const { data: pedidoItem, error: itemError } = await supabase
       .from('pedido_items')
       .insert({
         pedido_id: pedido.id,
@@ -63,8 +72,10 @@ export async function POST(request: Request) {
       .select('id')
       .single()
 
+    if (itemError) console.error('Item error:', JSON.stringify(itemError))
+
     if (pedidoItem && item.opciones?.length) {
-      await supabase.from('pedido_item_opciones').insert(
+      const { error: opError } = await supabase.from('pedido_item_opciones').insert(
         item.opciones.map((op: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }) => ({
           pedido_item_id: pedidoItem.id,
           opcion_id: op.opcion_id,
@@ -73,10 +84,10 @@ export async function POST(request: Request) {
           color_snap: op.color_snap ?? null,
         }))
       )
+      if (opError) console.error('Opcion error:', JSON.stringify(opError))
     }
   }
 
-  // Log estado inicial
   await supabase.from('pedido_estados_log').insert({
     pedido_id: pedido.id,
     estado_nuevo: 'PENDING_PAYMENT',
