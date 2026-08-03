@@ -29,7 +29,7 @@ function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}
 function emojiCategoria(nombre: string): string {
   const n = nombre.toLowerCase()
   if (n.includes('helado') || n.includes('kilo')) return '🍦'
-  if (n.includes('balde')) return '🪣'
+  if (n.includes('balde')) return '🧊'
   if (n.includes('cono') || n.includes('bocha')) return '🍦'
   if (n.includes('bombon') || n.includes('envasa')) return '🍫'
   if (n.includes('torta')) return '🎂'
@@ -81,7 +81,10 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         setLoading(false)
         if (categoriaIdInicial) {
           const cat = cats.find((c: Categoria) => c.id === categoriaIdInicial)
-          if (cat) { setCategoriaActiva(cat); setPaso('productos') }
+          if (cat) {
+            setCategoriaActiva(cat)
+            setPaso('productos')
+          }
         }
       })
   }, [dispositivo, categoriaIdInicial])
