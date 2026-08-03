@@ -10,6 +10,7 @@ interface Producto { id: string; nombre: string; descripcion: string | null; ima
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; color: string | null; grupo_id: string }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
+interface PresGrupo { presentacion_id: string; grupo_id: string }
 interface PendienteSabores { presentacion: Presentacion; numero: number; total: number }
 type Paso = 'categorias' | 'productos' | 'presentacion' | 'opciones'
 
@@ -52,6 +53,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
   const [opciones, setOpciones] = useState<Opcion[]>([])
   const [grupos, setGrupos] = useState<GrupoOpciones[]>([])
+  const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
   const [loading, setLoading] = useState(true)
   const [paso, setPaso] = useState<Paso>('categorias')
   const [categoriaActiva, setCategoriaActiva] = useState<Categoria | null>(null)
@@ -73,6 +75,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         setPresentaciones(data.presentaciones ?? [])
         setOpciones(data.opciones ?? [])
         setGrupos(data.grupos ?? [])
+        setPresGrupos(data.presentacion_grupos ?? [])
         setLoading(false)
         if (categoriaIdInicial) {
           const cat = cats.find((c: Categoria) => c.id === categoriaIdInicial)
@@ -121,7 +124,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     })
     if (nuevaCola.length === 0) {
       setAgregado(true)
-      setTimeout(() => { setAgregado(false); setCantidad({}); }, 900)
+      setTimeout(() => { setAgregado(false); setCantidad({}) }, 900)
       return
     }
     setCola(nuevaCola); setColaIndex(0); setOpcionesSeleccionadas([]); setGrupoActivo(null)
@@ -173,9 +176,21 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const presentacionesFiltradas = presentaciones.filter(p => p.producto_id === productoActivo?.id)
   const totalCarrito = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const actualCola = cola[colaIndex]
-  const gruposDeActual = actualCola ? grupos.filter(g => opciones.some(op => op.grupo_id === g.id)).sort((a, b) => a.orden - b.orden) : []
-  const opcionesFiltradas = grupoActivo ? opciones.filter(op => op.grupo_id === grupoActivo) : actualCola ? opciones.filter(op => gruposDeActual.some(g => g.id === op.grupo_id)) : []
   const haySeleccion = presentacionesFiltradas.some(p => getCantidad(p.id) > 0)
+
+  // Grupos SOLO de la presentación actual — usando presentacion_grupos
+  const gruposDeActual = actualCola
+    ? grupos.filter(g => presGrupos.some(pg => pg.presentacion_id === actualCola.presentacion.id && pg.grupo_id === g.id)).sort((a, b) => a.orden - b.orden)
+    : []
+
+  // Opciones SOLO de los grupos vinculados a la presentación actual
+  const opcionesDeActual = actualCola
+    ? opciones.filter(op => presGrupos.some(pg => pg.presentacion_id === actualCola.presentacion.id && pg.grupo_id === op.grupo_id))
+    : []
+
+  const opcionesFiltradas = grupoActivo
+    ? opcionesDeActual.filter(op => op.grupo_id === grupoActivo)
+    : opcionesDeActual
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#fdf8f4]">
@@ -281,7 +296,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
             <button onClick={confirmarCantidades} disabled={!haySeleccion && !agregado}
               className="mt-8 w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-30"
               style={{ backgroundColor: config.primary_color }}>
-              {agregado ? '✓ Agregado' : presentacionesFiltradas.some(p => p.permite_opciones && getCantidad(p.id) > 0) ? 'Elegir sabores →' : 'Agregar al pedido'}
+              {agregado ? '✓ Agregado' : presentacionesFiltradas.some(p => p.permite_opciones && getCantidad(p.id) > 0) ? 'Elegir sabores / variedad →' : 'Agregar al pedido'}
             </button>
           </div>
         )}
