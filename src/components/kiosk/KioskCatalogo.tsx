@@ -49,8 +49,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [categoriaActiva, setCategoriaActiva] = useState<Categoria | null>(null)
   const [productoActivo, setProductoActivo] = useState<Producto | null>(null)
   const [presentacionActiva, setPresentacionActiva] = useState<Presentacion | null>(null)
+  const [cantidad, setCantidad] = useState<Record<string, number>>({})
   const [opcionesSeleccionadas, setOpcionesSeleccionadas] = useState<Opcion[]>([])
-  const [cantidad, setCantidad] = useState(1)
   const [agregado, setAgregado] = useState(false)
   const [grupoActivo, setGrupoActivo] = useState<string | null>(null)
 
@@ -71,7 +71,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           if (cat) {
             const prodsDeCategoria = (data.productos ?? []).filter((p: Producto) => p.categoria_id === categoriaIdInicial)
             setCategoriaActiva(cat)
-            // Si hay un solo producto → ir directo a presentaciones
             if (prodsDeCategoria.length === 1) {
               setProductoActivo(prodsDeCategoria[0])
               setPaso('presentacion')
@@ -83,41 +82,46 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
       })
   }, [dispositivo, categoriaIdInicial])
 
+  function getCantidad(presId: string) { return cantidad[presId] ?? 0 }
+  function setCantidadPres(presId: string, val: number) {
+    setCantidad(prev => ({ ...prev, [presId]: Math.max(0, val) }))
+  }
+
   function seleccionarCategoria(cat: Categoria) {
     setCategoriaActiva(cat)
-    const prodsDeCategoria = productos.filter(p => p.categoria_id === cat.id)
-    if (prodsDeCategoria.length === 1) {
-      setProductoActivo(prodsDeCategoria[0])
-      setPaso('presentacion')
-    } else {
-      setPaso('productos')
-    }
+    const prods = productos.filter(p => p.categoria_id === cat.id)
+    if (prods.length === 1) { setProductoActivo(prods[0]); setPaso('presentacion') }
+    else setPaso('productos')
   }
 
   function seleccionarProducto(prod: Producto) {
-    const pres = presentaciones.filter(p => p.producto_id === prod.id)
     setProductoActivo(prod)
+    setCantidad({})
+    const pres = presentaciones.filter(p => p.producto_id === prod.id)
     if (pres.length === 1) {
       setPresentacionActiva(pres[0])
       setOpcionesSeleccionadas([])
-      setCantidad(1)
       setPaso('opciones')
     } else {
       setPaso('presentacion')
     }
   }
 
-  function seleccionarPresentacion(pres: Presentacion) {
-    setPresentacionActiva(pres)
+  function confirmarPresentacion() {
+    // Buscar la presentación con cantidad > 0
+    const pres = presentaciones.filter(p => p.producto_id === productoActivo?.id)
+    const seleccionada = pres.find(p => getCantidad(p.id) > 0)
+    if (!seleccionada) return
+    setPresentacionActiva(seleccionada)
     setOpcionesSeleccionadas([])
-    setCantidad(1)
+    setGrupoActivo(null)
     setPaso('opciones')
   }
 
   function toggleOpcion(op: Opcion) {
     if (!presentacionActiva) return
-    const yaSeleccionada = opcionesSeleccionadas.find(o => o.id === op.id)
-    if (yaSeleccionada) {
+    const ya = opcionesSeleccionadas.find(o => o.id === op.id)
+    if (ya) {
       setOpcionesSeleccionadas(prev => prev.filter(o => o.id !== op.id))
     } else {
       if (opcionesSeleccionadas.length >= presentacionActiva.opciones_max) return
@@ -129,9 +133,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     if (!presentacionActiva || !productoActivo) return
     if (presentacionActiva.permite_opciones && opcionesSeleccionadas.length < presentacionActiva.opciones_min) return
 
-    // Agregar una entrada por unidad (para que cada una pueda tener sus propios sabores)
-    // O agregar con cantidad si todos los sabores son iguales
-    for (let i = 0; i < cantidad; i++) {
+    const cant = getCantidad(presentacionActiva.id) || 1
+    for (let i = 0; i < cant; i++) {
       onAgregar({
         presentacion_id: presentacionActiva.id,
         nombre_producto: productoActivo.nombre,
@@ -151,7 +154,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     setTimeout(() => {
       setAgregado(false)
       setOpcionesSeleccionadas([])
-      setCantidad(1)
+      setCantidad({})
       setPresentacionActiva(null)
       setPaso('presentacion')
     }, 900)
@@ -160,27 +163,18 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   function volverPaso() {
     if (paso === 'opciones') {
       const pres = presentaciones.filter(p => p.producto_id === productoActivo?.id)
-      if (pres.length > 1) {
-        setPaso('presentacion')
-      } else {
-        setPaso('productos')
-        setProductoActivo(null)
-      }
+      if (pres.length > 1) { setPaso('presentacion') }
+      else { setPaso('productos'); setProductoActivo(null) }
       setPresentacionActiva(null)
       setOpcionesSeleccionadas([])
-      setCantidad(1)
     } else if (paso === 'presentacion') {
       const prods = productos.filter(p => p.categoria_id === categoriaActiva?.id)
-      if (prods.length > 1) {
-        setPaso('productos')
-      } else {
-        setPaso('categorias')
-        setCategoriaActiva(null)
-      }
+      if (prods.length > 1) { setPaso('productos') }
+      else { setPaso('categorias'); setCategoriaActiva(null) }
       setProductoActivo(null)
+      setCantidad({})
     } else if (paso === 'productos') {
-      setPaso('categorias')
-      setCategoriaActiva(null)
+      setPaso('categorias'); setCategoriaActiva(null)
     } else {
       onVolver()
     }
@@ -189,15 +183,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const productosFiltrados = productos.filter(p => p.categoria_id === categoriaActiva?.id)
   const presentacionesFiltradas = presentaciones.filter(p => p.producto_id === productoActivo?.id)
   const totalCarrito = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
-
-  // Grupos con opciones disponibles para esta presentación
-  const gruposConOpciones = grupos.filter(g =>
-    opciones.some(op => op.grupo_id === g.id)
-  ).sort((a, b) => a.orden - b.orden)
-
-  const opcionesFiltradas = grupoActivo
-    ? opciones.filter(op => op.grupo_id === grupoActivo)
-    : opciones
+  const gruposConOpciones = grupos.filter(g => opciones.some(op => op.grupo_id === g.id)).sort((a, b) => a.orden - b.orden)
+  const opcionesFiltradas = grupoActivo ? opciones.filter(op => op.grupo_id === grupoActivo) : opciones
+  const haySeleccion = presentacionesFiltradas.some(p => getCantidad(p.id) > 0)
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#fdf8f4]">
@@ -211,14 +199,16 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   return (
     <div className="min-h-screen flex flex-col bg-[#fdf8f4]">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4" style={{ backgroundColor: config.primary_color }}>
+      <div className="flex items-center justify-between px-6 py-3" style={{ backgroundColor: config.primary_color }}>
         <button onClick={volverPaso} className="flex items-center gap-2 text-white/80 hover:text-white transition-colors">
           <ArrowLeft className="h-5 w-5" />
           <span className="text-sm font-medium">Volver</span>
         </button>
-        {config.logo_url
-          ? <Image src={config.logo_url} alt="Logo" width={120} height={50} className="object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
-          : <span className="text-white font-bold">{dispositivo.empresas?.nombre}</span>}
+        {config.logo_url ? (
+          <Image src={config.logo_url} alt="Logo" width={140} height={55} className="object-contain bg-white rounded-lg px-3 py-1" />
+        ) : (
+          <span className="text-white font-bold">{dispositivo.empresas?.nombre}</span>
+        )}
         <button onClick={onVerCarrito} className="relative flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl transition-colors">
           <ShoppingCart className="h-5 w-5 text-white" />
           {carrito.length > 0 && <span className="text-white font-bold text-sm">{formatPrecio(totalCarrito)}</span>}
@@ -231,7 +221,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
       </div>
 
       {/* Breadcrumb */}
-      <div className="px-6 py-3 flex items-center gap-2 text-sm text-neutral-400 flex-wrap">
+      <div className="px-6 py-3 flex items-center justify-center gap-2 text-sm text-neutral-400 flex-wrap">
         <span className="cursor-pointer hover:text-neutral-600" onClick={() => { setPaso('categorias'); setCategoriaActiva(null); setProductoActivo(null); setPresentacionActiva(null) }}>Categorías</span>
         {categoriaActiva && <><span>›</span><span className="text-neutral-600">{categoriaActiva.nombre}</span></>}
         {productoActivo && paso !== 'productos' && <><span>›</span><span className="text-neutral-600">{productoActivo.nombre}</span></>}
@@ -239,13 +229,13 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
       </div>
 
       {/* Contenido */}
-      <div className={`flex-1 px-6 ${paso === 'opciones' ? 'pb-36' : 'pb-8'}`}>
+      <div className={`flex-1 px-6 flex flex-col items-center ${paso === 'opciones' ? 'pb-36' : 'pb-8'}`}>
 
         {/* Categorías */}
         {paso === 'categorias' && (
-          <div>
-            <h2 className="text-2xl font-bold text-neutral-800 mb-6">¿Qué querés pedir?</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="w-full max-w-2xl">
+            <h2 className="text-2xl font-bold text-neutral-800 mb-6 text-center">¿Qué querés pedir?</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {categorias.map(cat => (
                 <button key={cat.id} onClick={() => seleccionarCategoria(cat)}
                   className="flex flex-col items-center justify-center p-6 bg-white rounded-2xl shadow-sm border border-neutral-100 hover:shadow-md active:scale-95 transition-all gap-3 min-h-[140px]">
@@ -261,9 +251,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
         {/* Productos */}
         {paso === 'productos' && (
-          <div>
-            <h2 className="text-2xl font-bold text-neutral-800 mb-6">{categoriaActiva?.nombre}</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="w-full max-w-2xl">
+            <h2 className="text-2xl font-bold text-neutral-800 mb-6 text-center">{categoriaActiva?.nombre}</h2>
+            <div className="grid grid-cols-2 gap-4">
               {productosFiltrados.map(prod => (
                 <button key={prod.id} onClick={() => seleccionarProducto(prod)}
                   className="flex flex-col bg-white rounded-2xl shadow-sm border border-neutral-100 hover:shadow-md active:scale-95 transition-all overflow-hidden text-left">
@@ -274,7 +264,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                   </div>
                   <div className="p-4">
                     <p className="text-neutral-800 font-semibold">{prod.nombre}</p>
-                    {prod.descripcion && <p className="text-neutral-400 text-sm mt-1 line-clamp-2">{prod.descripcion}</p>}
                     <div className="mt-2 flex flex-wrap gap-1">
                       {presentaciones.filter(p => p.producto_id === prod.id).map(p => (
                         <span key={p.id} className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: config.secondary_color, color: '#5a3a1a' }}>
@@ -289,48 +278,90 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           </div>
         )}
 
-        {/* Presentaciones */}
+        {/* Presentaciones con selector de cantidad */}
         {paso === 'presentacion' && productoActivo && (
-          <div>
-            <h2 className="text-2xl font-bold text-neutral-800 mb-2">{productoActivo.nombre}</h2>
-            <p className="text-neutral-400 mb-6">Elegí el tamaño</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl">
-              {presentacionesFiltradas.map(pres => (
-                <button key={pres.id} onClick={() => seleccionarPresentacion(pres)}
-                  className="flex flex-col items-center p-6 bg-white rounded-2xl shadow-sm border-2 border-neutral-100 hover:shadow-md active:scale-95 transition-all gap-2">
-                  <span className="text-4xl">🍦</span>
-                  <p className="text-neutral-800 font-bold text-lg">{pres.nombre}</p>
-                  <p className="font-bold text-xl" style={{ color: config.primary_color }}>{formatPrecio(pres.precio)}</p>
-                  {pres.permite_opciones && (
-                    <p className="text-neutral-400 text-xs">
-                      {pres.opciones_min === pres.opciones_max ? `${pres.opciones_min} sabores` : `${pres.opciones_min}–${pres.opciones_max} sabores`}
-                    </p>
-                  )}
-                </button>
-              ))}
+          <div className="w-full max-w-lg">
+            <h2 className="text-2xl font-bold text-neutral-800 mb-1 text-center">{productoActivo.nombre}</h2>
+            <p className="text-neutral-400 mb-8 text-center">Elegí el tamaño y la cantidad</p>
+            <div className="flex flex-col gap-4">
+              {presentacionesFiltradas.map(pres => {
+                const cant = getCantidad(pres.id)
+                return (
+                  <div key={pres.id}
+                    className={`flex flex-col items-center p-6 bg-white rounded-2xl shadow-sm border-2 transition-all gap-4 ${cant > 0 ? 'shadow-md' : 'border-neutral-100'}`}
+                    style={cant > 0 ? { borderColor: config.primary_color } : {}}>
+                    {/* Info presentación */}
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl">🍦</span>
+                        <div>
+                          <p className="text-neutral-800 font-bold text-lg">{pres.nombre}</p>
+                          <p className="text-xs text-neutral-400">
+                            {pres.permite_opciones
+                              ? `${pres.opciones_min}–${pres.opciones_max} sabores`
+                              : 'Sin selección de sabores'}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="font-bold text-xl" style={{ color: config.primary_color }}>{formatPrecio(pres.precio)}</p>
+                    </div>
+
+                    {/* Selector cantidad */}
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => setCantidadPres(pres.id, cant - 1)}
+                        className="w-11 h-11 flex items-center justify-center rounded-xl border-2 border-neutral-200 hover:border-neutral-400 transition-colors bg-white"
+                      >
+                        <Minus className="h-5 w-5 text-neutral-600" />
+                      </button>
+                      <span className="text-2xl font-bold text-neutral-900 w-8 text-center">{cant}</span>
+                      <button
+                        onClick={() => setCantidadPres(pres.id, cant + 1)}
+                        className="w-11 h-11 flex items-center justify-center rounded-xl border-2 text-white transition-colors"
+                        style={{ backgroundColor: config.primary_color, borderColor: config.primary_color }}
+                      >
+                        <Plus className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    {cant > 0 && (
+                      <p className="text-sm font-medium" style={{ color: config.primary_color }}>
+                        Subtotal: {formatPrecio(pres.precio * cant)}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
             </div>
+
+            {/* Botón continuar */}
+            <button
+              onClick={confirmarPresentacion}
+              disabled={!haySeleccion}
+              className="mt-8 w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-30"
+              style={{ backgroundColor: config.primary_color }}
+            >
+              Elegir sabores →
+            </button>
           </div>
         )}
 
         {/* Opciones / Sabores */}
         {paso === 'opciones' && presentacionActiva && productoActivo && (
-          <div>
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <h2 className="text-xl font-bold text-neutral-800">{productoActivo.nombre} — {presentacionActiva.nombre}</h2>
-                {presentacionActiva.permite_opciones && (
-                  <p className="text-neutral-500 text-sm mt-0.5">
-                    Elegí entre {presentacionActiva.opciones_min} y {presentacionActiva.opciones_max} sabores
-                    {' '}<span className="font-medium" style={{ color: config.primary_color }}>({opcionesSeleccionadas.length}/{presentacionActiva.opciones_max})</span>
-                  </p>
-                )}
-              </div>
-              <p className="text-xl font-bold" style={{ color: config.primary_color }}>{formatPrecio(presentacionActiva.precio)}</p>
+          <div className="w-full max-w-2xl">
+            <div className="text-center mb-3">
+              <h2 className="text-xl font-bold text-neutral-800">{productoActivo.nombre} — {presentacionActiva.nombre}</h2>
+              {presentacionActiva.permite_opciones && (
+                <p className="text-neutral-500 text-sm mt-1">
+                  Elegí entre {presentacionActiva.opciones_min} y {presentacionActiva.opciones_max} sabores
+                  {' '}<span className="font-medium" style={{ color: config.primary_color }}>({opcionesSeleccionadas.length}/{presentacionActiva.opciones_max})</span>
+                </p>
+              )}
             </div>
 
-            {/* Barra de progreso */}
+            {/* Barra progreso */}
             {presentacionActiva.permite_opciones && (
-              <div className="flex gap-1.5 mb-4">
+              <div className="flex gap-1.5 mb-4 max-w-xs mx-auto">
                 {Array.from({ length: presentacionActiva.opciones_max }).map((_, i) => (
                   <div key={i} className="h-1.5 flex-1 rounded-full transition-colors"
                     style={{ backgroundColor: i < opcionesSeleccionadas.length ? config.primary_color : '#e5e7eb' }} />
@@ -340,10 +371,10 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
             {/* Seleccionados */}
             {opcionesSeleccionadas.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap justify-center gap-2 mb-4">
                 {opcionesSeleccionadas.map(op => (
                   <button key={op.id} onClick={() => toggleOpcion(op)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white"
                     style={{ backgroundColor: config.primary_color }}>
                     {op.emoji} {op.nombre} <span className="opacity-70">✕</span>
                   </button>
@@ -351,23 +382,17 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               </div>
             )}
 
-            {/* Tabs de grupos */}
+            {/* Tabs grupos */}
             {gruposConOpciones.length > 1 && (
-              <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-                <button
-                  onClick={() => setGrupoActivo(null)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                    !grupoActivo ? 'text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
-                  }`}
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-1 justify-center">
+                <button onClick={() => setGrupoActivo(null)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${!grupoActivo ? 'text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}
                   style={!grupoActivo ? { backgroundColor: config.primary_color } : {}}>
                   Todos
                 </button>
                 {gruposConOpciones.map(g => (
-                  <button key={g.id}
-                    onClick={() => setGrupoActivo(grupoActivo === g.id ? null : g.id)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                      grupoActivo === g.id ? 'text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
-                    }`}
+                  <button key={g.id} onClick={() => setGrupoActivo(grupoActivo === g.id ? null : g.id)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${grupoActivo === g.id ? 'text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}
                     style={grupoActivo === g.id ? { backgroundColor: config.primary_color } : {}}>
                     {g.nombre}
                   </button>
@@ -375,7 +400,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               </div>
             )}
 
-            {/* Grid de sabores */}
+            {/* Grid sabores */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {opcionesFiltradas.map(op => {
                 const sel = opcionesSeleccionadas.find(o => o.id === op.id)
@@ -383,9 +408,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 return (
                   <button key={op.id} onClick={() => toggleOpcion(op)}
                     disabled={!sel && maxAlcanzado}
-                    className={`relative flex flex-col items-center p-3 rounded-2xl border-2 transition-all active:scale-95 gap-1.5 ${
-                      sel ? 'bg-white shadow-md' : 'border-neutral-100 bg-white hover:border-neutral-300'
-                    } disabled:opacity-30`}
+                    className={`relative flex flex-col items-center p-3 rounded-2xl border-2 transition-all active:scale-95 gap-1.5 bg-white ${sel ? 'shadow-md' : 'border-neutral-100 hover:border-neutral-300'} disabled:opacity-30`}
                     style={sel ? { borderColor: config.primary_color } : {}}>
                     {sel && (
                       <div className="absolute top-2 right-2 rounded-full w-5 h-5 flex items-center justify-center" style={{ backgroundColor: config.primary_color }}>
@@ -403,37 +426,19 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         )}
       </div>
 
-      {/* Botón agregar fijo — con selector de cantidad */}
+      {/* Botón agregar fijo */}
       {paso === 'opciones' && presentacionActiva && (
         <div className="fixed bottom-0 left-0 right-0 bg-[#fdf8f4] border-t border-neutral-100 p-4">
-          <div className="max-w-lg mx-auto flex items-center gap-3">
-            {/* Selector cantidad */}
-            <div className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-3 py-2">
-              <button
-                onClick={() => setCantidad(c => Math.max(1, c - 1))}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-neutral-100 transition-colors"
-              >
-                <Minus className="h-4 w-4 text-neutral-600" />
-              </button>
-              <span className="text-neutral-900 font-bold text-lg w-6 text-center">{cantidad}</span>
-              <button
-                onClick={() => setCantidad(c => c + 1)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-neutral-100 transition-colors"
-              >
-                <Plus className="h-4 w-4 text-neutral-600" />
-              </button>
-            </div>
-
-            {/* Botón agregar */}
+          <div className="max-w-md mx-auto">
             <button
               onClick={agregarAlCarrito}
               disabled={(presentacionActiva.permite_opciones && opcionesSeleccionadas.length < presentacionActiva.opciones_min) || agregado}
-              className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-white font-bold text-base shadow-lg active:scale-95 transition-all disabled:opacity-40"
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-40"
               style={{ backgroundColor: config.primary_color }}
             >
               {agregado
-                ? <><Check className="h-5 w-5" /> ¡Agregado!</>
-                : <><ShoppingCart className="h-5 w-5" /> Agregar {cantidad > 1 ? `${cantidad}x` : ''} — {formatPrecio(presentacionActiva.precio * cantidad)}</>}
+                ? <><Check className="h-5 w-5" /> ¡Agregado al pedido!</>
+                : <><ShoppingCart className="h-5 w-5" /> Agregar al pedido — {formatPrecio(presentacionActiva.precio * (getCantidad(presentacionActiva.id) || 1))}</>}
             </button>
           </div>
         </div>

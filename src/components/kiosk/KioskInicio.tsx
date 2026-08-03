@@ -19,10 +19,12 @@ interface Props {
 function emojiCategoria(nombre: string): string {
   const n = nombre.toLowerCase()
   if (n.includes('helado') || n.includes('kilo')) return '🍦'
-  if (n.includes('bombon') || n.includes('bombón') || n.includes('envasa')) return '🍫'
+  if (n.includes('balde')) return '🪣'
+  if (n.includes('cono') || n.includes('bocha')) return '🍦'
+  if (n.includes('bombon') || n.includes('envasa')) return '🍫'
   if (n.includes('torta')) return '🎂'
-  if (n.includes('balde') || n.includes('compart')) return '🪣'
-  if (n.includes('palito') || n.includes('polo')) return '🍡'
+  if (n.includes('palito')) return '🍡'
+  if (n.includes('copa')) return '🍨'
   return '🍨'
 }
 
@@ -44,11 +46,17 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#fdf8f4' }}>
       {/* Header */}
-      <div className="w-full py-6 px-8 flex items-center justify-between" style={{ backgroundColor: config.primary_color }}>
+      <div className="w-full py-4 px-8 flex items-center justify-between" style={{ backgroundColor: config.primary_color }}>
         <div />
         <div className="text-center">
           {config.logo_url ? (
-            <Image src={config.logo_url} alt="Logo" width={180} height={80} className="object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
+            <Image
+              src={config.logo_url}
+              alt="Logo"
+              width={180}
+              height={70}
+              className="object-contain bg-white rounded-lg px-3 py-1"
+            />
           ) : (
             <span className="text-white text-2xl font-bold">{dispositivo.empresas?.nombre}</span>
           )}
@@ -64,7 +72,6 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
         <h1 className="text-4xl font-bold text-neutral-800 mb-2 text-center">¿Qué querés pedir?</h1>
         <p className="text-neutral-400 mb-10 text-center">Tocá una categoría para comenzar</p>
 
-        {/* Grid de categorías — cada una va directo a productos */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-3xl mb-12">
           {categorias.map(cat => (
             <button
@@ -82,7 +89,6 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
           ))}
         </div>
 
-        {/* Botón ver todo */}
         <button
           onClick={() => onComenzar()}
           className="px-12 py-5 rounded-2xl text-white text-xl font-bold shadow-lg active:scale-95 transition-all"
