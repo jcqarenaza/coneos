@@ -17,21 +17,19 @@ export function useEmpresa() {
     async function load() {
       const supabase = createClient()
 
-      // Intentar recuperar sesión del storage
       const { data: { session } } = await supabase.auth.getSession()
 
       if (!session) {
-        // Si no hay sesión, intentar recuperar del localStorage manualmente
         const stored = localStorage.getItem('coneos-auth')
         if (!stored) { setLoading(false); return }
 
         try {
           const parsed = JSON.parse(stored)
-          const { data, error } = await supabase.auth.setSession({
+          const { error } = await supabase.auth.setSession({
             access_token: parsed.access_token,
             refresh_token: parsed.refresh_token,
           })
-          if (error || !data.session) { setLoading(false); return }
+          if (error) { setLoading(false); return }
         } catch {
           setLoading(false)
           return
@@ -43,18 +41,24 @@ export function useEmpresa() {
 
       const { data } = await supabase
         .from('usuarios_admin')
-        .select('empresa_id, empresas(slug)')
+        .select('empresa_id')
         .eq('id', finalSession.user.id)
         .single()
 
-      if (data) {
-        const empresa = data.empresas as { slug: string } | null
-        setCtx({
-          empresaId: data.empresa_id!,
-          empresaSlug: empresa?.slug ?? '',
-          userId: finalSession.user.id,
-        })
-      }
+      if (!data?.empresa_id) { setLoading(false); return }
+
+      // Query separada para obtener el slug de la empresa
+      const { data: empresa } = await supabase
+        .from('empresas')
+        .select('slug')
+        .eq('id', data.empresa_id)
+        .single()
+
+      setCtx({
+        empresaId: data.empresa_id,
+        empresaSlug: empresa?.slug ?? '',
+        userId: finalSession.user.id,
+      })
       setLoading(false)
     }
     load()
