@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
-import { ShoppingCart, ArrowLeft, Check, X } from 'lucide-react'
+import { ShoppingCart, ArrowLeft, Check } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
@@ -16,14 +16,13 @@ interface Props {
   dispositivo: DispositivoKiosk
   config: EmpresaConfig
   carrito: ItemCarrito[]
+  categoriaIdInicial?: string
   onAgregar: (item: Omit<ItemCarrito, 'id'>) => void
   onVerCarrito: () => void
   onVolver: () => void
 }
 
-function formatPrecio(n: number) {
-  return `$${Number(n).toLocaleString('es-AR')}`
-}
+function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 
 function emojiCategoria(nombre: string): string {
   const n = nombre.toLowerCase()
@@ -34,7 +33,7 @@ function emojiCategoria(nombre: string): string {
   return '🍨'
 }
 
-export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar, onVerCarrito, onVolver }: Props) {
+export default function KioskCatalogo({ dispositivo, config, carrito, categoriaIdInicial, onAgregar, onVerCarrito, onVolver }: Props) {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
@@ -52,13 +51,23 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
     fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
       .then(r => r.json())
       .then(data => {
-        setCategorias(data.categorias ?? [])
+        const cats = data.categorias ?? []
+        setCategorias(cats)
         setProductos(data.productos ?? [])
         setPresentaciones(data.presentaciones ?? [])
         setOpciones(data.opciones ?? [])
         setLoading(false)
+
+        // Si viene con categoría inicial, ir directo a productos
+        if (categoriaIdInicial) {
+          const cat = cats.find((c: Categoria) => c.id === categoriaIdInicial)
+          if (cat) {
+            setCategoriaActiva(cat)
+            setPaso('productos')
+          }
+        }
       })
-  }, [dispositivo])
+  }, [dispositivo, categoriaIdInicial])
 
   function seleccionarCategoria(cat: Categoria) {
     setCategoriaActiva(cat)
@@ -70,7 +79,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
     setProductoActivo(prod)
     if (pres.length === 1) {
       setPresentacionActiva(pres[0])
-      setPaso(pres[0].permite_opciones ? 'opciones' : 'opciones')
+      setOpcionesSeleccionadas([])
+      setPaso('opciones')
     } else {
       setPaso('presentacion')
     }
@@ -117,8 +127,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
       setOpcionesSeleccionadas([])
       setPresentacionActiva(null)
       setProductoActivo(null)
-      setPaso('categorias')
-    }, 1000)
+      // Volver a productos de la misma categoría
+      setPaso('productos')
+    }, 900)
   }
 
   function volverPaso() {
@@ -159,17 +170,13 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
           <span className="text-sm font-medium">Volver</span>
         </button>
 
-        {config.logo_url ? (
-          <Image src={config.logo_url} alt="Logo" width={120} height={50} className="object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
-        ) : (
-          <span className="text-white font-bold">{dispositivo.empresas?.nombre}</span>
-        )}
+        {config.logo_url
+          ? <Image src={config.logo_url} alt="Logo" width={120} height={50} className="object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
+          : <span className="text-white font-bold">{dispositivo.empresas?.nombre}</span>}
 
         <button onClick={onVerCarrito} className="relative flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl transition-colors">
           <ShoppingCart className="h-5 w-5 text-white" />
-          {carrito.length > 0 && (
-            <span className="text-white font-bold text-sm">{formatPrecio(totalCarrito)}</span>
-          )}
+          {carrito.length > 0 && <span className="text-white font-bold text-sm">{formatPrecio(totalCarrito)}</span>}
           {carrito.length > 0 && (
             <span className="absolute -top-1.5 -right-1.5 bg-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center" style={{ color: config.primary_color }}>
               {carrito.length}
@@ -180,16 +187,14 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
 
       {/* Breadcrumb */}
       <div className="px-6 py-3 flex items-center gap-2 text-sm text-neutral-400">
-        <span className={paso === 'categorias' ? 'font-medium text-neutral-700' : ''}>Categorías</span>
-        {categoriaActiva && <><span>›</span><span className={paso === 'productos' ? 'font-medium text-neutral-700' : ''}>{categoriaActiva.nombre}</span></>}
-        {productoActivo && <><span>›</span><span className={paso === 'presentacion' || paso === 'opciones' ? 'font-medium text-neutral-700' : ''}>{productoActivo.nombre}</span></>}
-        {presentacionActiva && paso === 'opciones' && <><span>›</span><span className="font-medium text-neutral-700">{presentacionActiva.nombre}</span></>}
+        <span className={paso === 'categorias' ? 'font-medium text-neutral-700' : 'cursor-pointer hover:text-neutral-600'} onClick={() => paso !== 'categorias' && setPaso('categorias')}>Categorías</span>
+        {categoriaActiva && <><span>›</span><span className={paso === 'productos' ? 'font-medium text-neutral-700' : 'cursor-pointer hover:text-neutral-600'} onClick={() => paso !== 'productos' && setPaso('productos')}>{categoriaActiva.nombre}</span></>}
+        {productoActivo && paso !== 'productos' && <><span>›</span><span className="font-medium text-neutral-700">{productoActivo.nombre}</span></>}
       </div>
 
       {/* Contenido */}
-      <div className="flex-1 px-6 pb-8">
+      <div className="flex-1 px-6 pb-24">
 
-        {/* PASO: Categorías */}
         {paso === 'categorias' && (
           <div>
             <h2 className="text-2xl font-bold text-neutral-800 mb-6">¿Qué querés pedir?</h2>
@@ -207,7 +212,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
           </div>
         )}
 
-        {/* PASO: Productos */}
         {paso === 'productos' && (
           <div>
             <h2 className="text-2xl font-bold text-neutral-800 mb-6">{categoriaActiva?.nombre}</h2>
@@ -215,7 +219,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
               {productosFiltrados.map(prod => (
                 <button key={prod.id} onClick={() => seleccionarProducto(prod)}
                   className="flex flex-col bg-white rounded-2xl shadow-sm border border-neutral-100 hover:shadow-md active:scale-95 transition-all overflow-hidden text-left">
-                  {/* Imagen o placeholder */}
                   <div className="w-full h-40 bg-neutral-50 flex items-center justify-center overflow-hidden">
                     {prod.imagen_url
                       ? <Image src={prod.imagen_url} alt={prod.nombre} width={200} height={160} className="object-cover w-full h-full" />
@@ -238,7 +241,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
           </div>
         )}
 
-        {/* PASO: Presentación */}
         {paso === 'presentacion' && productoActivo && (
           <div>
             <h2 className="text-2xl font-bold text-neutral-800 mb-2">{productoActivo.nombre}</h2>
@@ -261,7 +263,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
           </div>
         )}
 
-        {/* PASO: Opciones/Sabores */}
         {paso === 'opciones' && presentacionActiva && productoActivo && (
           <div>
             <div className="flex items-start justify-between mb-4">
@@ -279,7 +280,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
               <p className="text-2xl font-bold" style={{ color: config.primary_color }}>{formatPrecio(presentacionActiva.precio)}</p>
             </div>
 
-            {/* Indicador de progreso */}
             {presentacionActiva.permite_opciones && (
               <div className="flex gap-2 mb-6">
                 {Array.from({ length: presentacionActiva.opciones_max }).map((_, i) => (
@@ -298,7 +298,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
                     <button key={op.id} onClick={() => toggleOpcion(op)}
                       disabled={!sel && maxAlcanzado}
                       className={`relative flex flex-col items-center p-4 rounded-2xl border-2 transition-all active:scale-95 gap-2 ${
-                        sel ? 'border-2 bg-white shadow-md' : 'border-neutral-100 bg-white hover:border-neutral-300'
+                        sel ? 'bg-white shadow-md' : 'border-neutral-100 bg-white hover:border-neutral-300'
                       } disabled:opacity-40`}
                       style={sel ? { borderColor: config.primary_color } : {}}>
                       {sel && (
@@ -319,23 +319,25 @@ export default function KioskCatalogo({ dispositivo, config, carrito, onAgregar,
                 <p>Este producto no requiere selección de sabores</p>
               </div>
             )}
-
-            {/* Botón agregar */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#fdf8f4] border-t border-neutral-100">
-              <button
-                onClick={agregarAlCarrito}
-                disabled={presentacionActiva.permite_opciones && opcionesSeleccionadas.length < presentacionActiva.opciones_min || agregado}
-                className="w-full max-w-md mx-auto flex items-center justify-center gap-3 py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-40"
-                style={{ backgroundColor: config.primary_color }}
-              >
-                {agregado
-                  ? <><Check className="h-5 w-5" /> ¡Agregado!</>
-                  : <><ShoppingCart className="h-5 w-5" /> Agregar — {formatPrecio(presentacionActiva.precio)}</>}
-              </button>
-            </div>
           </div>
         )}
       </div>
+
+      {/* Botón agregar fijo abajo */}
+      {paso === 'opciones' && presentacionActiva && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#fdf8f4] border-t border-neutral-100">
+          <button
+            onClick={agregarAlCarrito}
+            disabled={(presentacionActiva.permite_opciones && opcionesSeleccionadas.length < presentacionActiva.opciones_min) || agregado}
+            className="w-full max-w-md mx-auto flex items-center justify-center gap-3 py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-40"
+            style={{ backgroundColor: config.primary_color }}
+          >
+            {agregado
+              ? <><Check className="h-5 w-5" /> ¡Agregado!</>
+              : <><ShoppingCart className="h-5 w-5" /> Agregar — {formatPrecio(presentacionActiva.precio)}</>}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

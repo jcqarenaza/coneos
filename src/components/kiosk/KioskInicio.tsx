@@ -13,10 +13,9 @@ interface Categoria {
 interface Props {
   config: EmpresaConfig
   dispositivo: DispositivoKiosk
-  onComenzar: () => void
+  onComenzar: (categoriaId?: string) => void
 }
 
-// Emojis de fallback por nombre de categoría
 function emojiCategoria(nombre: string): string {
   const n = nombre.toLowerCase()
   if (n.includes('helado') || n.includes('kilo')) return '🍦'
@@ -43,26 +42,13 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   }, [dispositivo])
 
   return (
-    <div
-      className="min-h-screen flex flex-col"
-      style={{ backgroundColor: '#fdf8f4' }}
-    >
-      {/* Header con color de marca */}
-      <div
-        className="w-full py-6 px-8 flex items-center justify-between"
-        style={{ backgroundColor: config.primary_color }}
-      >
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#fdf8f4' }}>
+      {/* Header */}
+      <div className="w-full py-6 px-8 flex items-center justify-between" style={{ backgroundColor: config.primary_color }}>
         <div />
         <div className="text-center">
           {config.logo_url ? (
-            <Image
-              src={config.logo_url}
-              alt="Logo"
-              width={180}
-              height={80}
-              className="object-contain"
-              style={{ filter: 'brightness(0) invert(1)' }}
-            />
+            <Image src={config.logo_url} alt="Logo" width={180} height={80} className="object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
           ) : (
             <span className="text-white text-2xl font-bold">{dispositivo.empresas?.nombre}</span>
           )}
@@ -73,22 +59,18 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
         </div>
       </div>
 
-      {/* Contenido principal */}
+      {/* Contenido */}
       <div className="flex-1 flex flex-col items-center justify-center px-8 py-10">
-        <h1 className="text-4xl font-bold text-neutral-800 mb-2 text-center">
-          ¿Qué querés pedir?
-        </h1>
-        <p className="text-neutral-400 mb-10 text-center">
-          {config.texto_bienvenida}
-        </p>
+        <h1 className="text-4xl font-bold text-neutral-800 mb-2 text-center">¿Qué querés pedir?</h1>
+        <p className="text-neutral-400 mb-10 text-center">Tocá una categoría para comenzar</p>
 
-        {/* Grid de categorías */}
+        {/* Grid de categorías — cada una va directo a productos */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-3xl mb-12">
           {categorias.map(cat => (
             <button
               key={cat.id}
-              onClick={onComenzar}
-              className="flex flex-col items-center justify-center p-6 bg-white rounded-2xl shadow-sm border border-neutral-100 hover:shadow-md active:scale-95 transition-all gap-3"
+              onClick={() => onComenzar(cat.id)}
+              className="flex flex-col items-center justify-center p-6 bg-white rounded-2xl shadow-sm border border-neutral-100 hover:shadow-md active:scale-95 transition-all gap-3 min-h-[140px]"
             >
               {cat.icono_url ? (
                 <Image src={cat.icono_url} alt={cat.nombre} width={64} height={64} className="object-contain" />
@@ -100,19 +82,16 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
           ))}
         </div>
 
-        {/* Botón principal */}
+        {/* Botón ver todo */}
         <button
-          onClick={onComenzar}
+          onClick={() => onComenzar()}
           className="px-12 py-5 rounded-2xl text-white text-xl font-bold shadow-lg active:scale-95 transition-all"
           style={{ backgroundColor: config.primary_color }}
         >
-          Comenzar pedido
+          Ver todo el catálogo
         </button>
-
-        <p className="text-neutral-400 text-sm mt-6">Tocá una categoría para comenzar</p>
       </div>
 
-      {/* Footer */}
       <div className="py-4 text-center">
         <p className="text-neutral-300 text-xs">ConeOS · Sistema de pedidos</p>
       </div>
