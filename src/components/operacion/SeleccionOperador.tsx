@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, Delete } from 'lucide-react'
+import { Loader2, Delete, IceCream2 } from 'lucide-react'
 
 interface Dispositivo {
   id: string
@@ -12,19 +12,11 @@ interface Dispositivo {
   empresas: { nombre: string }
 }
 
-interface Operador {
-  id: string
-  nombre: string
-}
+interface Operador { id: string; nombre: string }
 
 interface SesionOperador {
   session_id: string
-  operador: {
-    id: string
-    nombre: string
-    puede_cobrar: boolean
-    puede_preparar: boolean
-  }
+  operador: { id: string; nombre: string; puede_cobrar: boolean; puede_preparar: boolean }
 }
 
 interface Props {
@@ -57,17 +49,16 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
 
   function handlePin(digit: string) {
     if (pin.length >= 4) return
-    setPin(p => p + digit)
+    const nuevo = pin + digit
+    setPin(nuevo)
     setError('')
+    if (nuevo.length === 4) submitPin(nuevo)
   }
 
-  function handleDelete() {
-    setPin(p => p.slice(0, -1))
-    setError('')
-  }
+  function handleDelete() { setPin(p => p.slice(0, -1)); setError('') }
 
-  async function handleLogin() {
-    if (!seleccionado || pin.length !== 4) return
+  async function submitPin(pinValue: string) {
+    if (!seleccionado) return
     setLoading(true)
     setError('')
 
@@ -76,7 +67,7 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         operador_id: seleccionado.id,
-        pin,
+        pin: pinValue,
         dispositivo_id: dispositivo.id,
         sucursal_id: dispositivo.sucursal_id,
         empresa_id: dispositivo.empresa_id,
@@ -87,7 +78,7 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
     setLoading(false)
 
     if (!res.ok) {
-      setError(data.error ?? 'PIN incorrecto')
+      setError('PIN incorrecto')
       setPin('')
       return
     }
@@ -95,31 +86,26 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
     onLogin(data)
   }
 
-  // Auto-submit cuando PIN tiene 4 dígitos
-  useEffect(() => {
-    if (pin.length === 4 && seleccionado) {
-      handleLogin()
-    }
-  }, [pin])
-
   const digits = ['1','2','3','4','5','6','7','8','9','','0','⌫']
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-sm">
         {/* Header */}
         <div className="text-center mb-8">
-          <p className="text-neutral-400 text-sm">{dispositivo.empresas?.nombre}</p>
-          <h1 className="text-white text-2xl font-medium mt-1">{dispositivo.sucursales?.nombre}</h1>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <IceCream2 className="h-6 w-6 text-neutral-400" />
+            <span className="text-neutral-500 text-sm font-medium">{dispositivo.empresas?.nombre}</span>
+          </div>
+          <h1 className="text-neutral-800 text-2xl font-bold">{dispositivo.sucursales?.nombre}</h1>
         </div>
 
         {!seleccionado ? (
-          /* Lista de operadores */
           <div>
-            <p className="text-neutral-400 text-sm text-center mb-4">Seleccioná tu usuario</p>
+            <p className="text-neutral-500 text-sm text-center mb-4 font-medium">Seleccioná tu usuario</p>
             {loadingOps ? (
               <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
+                <Loader2 className="h-6 w-6 animate-spin text-neutral-300" />
               </div>
             ) : (
               <div className="space-y-2">
@@ -127,50 +113,45 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
                   <button
                     key={op.id}
                     onClick={() => setSeleccionado(op)}
-                    className="w-full py-4 px-5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 rounded-xl text-white text-lg font-medium text-left transition-colors"
+                    className="w-full py-4 px-5 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-300 rounded-xl text-neutral-800 text-lg font-medium text-left transition-colors shadow-sm"
                   >
                     {op.nombre}
                   </button>
                 ))}
                 {operadores.length === 0 && (
-                  <p className="text-center text-neutral-500 py-8">No hay operadores configurados para esta sucursal</p>
+                  <p className="text-center text-neutral-400 py-8 text-sm">No hay operadores configurados</p>
                 )}
               </div>
             )}
           </div>
         ) : (
-          /* Teclado PIN */
           <div>
             <div className="text-center mb-6">
               <button
                 onClick={() => { setSeleccionado(null); setPin(''); setError('') }}
-                className="text-neutral-400 text-sm hover:text-white transition-colors mb-2"
+                className="text-neutral-400 text-sm hover:text-neutral-600 transition-colors mb-3"
               >
                 ← Volver
               </button>
-              <p className="text-white text-xl font-medium">{seleccionado.nombre}</p>
+              <div className="w-12 h-12 rounded-full bg-neutral-200 flex items-center justify-center text-xl font-bold text-neutral-600 mx-auto mb-2">
+                {seleccionado.nombre[0]}
+              </div>
+              <p className="text-neutral-800 text-xl font-semibold">{seleccionado.nombre}</p>
               <p className="text-neutral-400 text-sm mt-1">Ingresá tu PIN</p>
             </div>
 
             {/* Indicador PIN */}
-            <div className="flex justify-center gap-3 mb-6">
+            <div className="flex justify-center gap-3 mb-4">
               {[0,1,2,3].map(i => (
-                <div
-                  key={i}
-                  className={`w-4 h-4 rounded-full border-2 transition-colors ${
-                    i < pin.length
-                      ? 'bg-white border-white'
-                      : 'bg-transparent border-neutral-600'
-                  }`}
-                />
+                <div key={i} className={`w-3.5 h-3.5 rounded-full border-2 transition-colors ${
+                  i < pin.length ? 'bg-neutral-800 border-neutral-800' : 'bg-transparent border-neutral-300'
+                }`} />
               ))}
             </div>
 
-            {error && (
-              <p className="text-red-400 text-sm text-center mb-4">{error}</p>
-            )}
+            {error && <p className="text-red-500 text-sm text-center mb-3">{error}</p>}
 
-            {/* Teclado numérico */}
+            {/* Teclado */}
             <div className="grid grid-cols-3 gap-3">
               {digits.map((d, i) => (
                 <button
@@ -180,15 +161,17 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
                     else if (d !== '') handlePin(d)
                   }}
                   disabled={loading || d === ''}
-                  className={`py-5 rounded-xl text-xl font-medium transition-colors ${
-                    d === ''
-                      ? 'invisible'
-                      : d === '⌫'
-                      ? 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700 active:bg-neutral-600'
-                      : 'bg-neutral-800 text-white hover:bg-neutral-700 active:bg-neutral-600'
+                  className={`py-4 rounded-xl text-xl font-semibold transition-colors ${
+                    d === '' ? 'invisible' :
+                    d === '⌫' ? 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 active:bg-neutral-300' :
+                    'bg-white border border-neutral-200 text-neutral-800 hover:bg-neutral-50 active:bg-neutral-100 shadow-sm'
                   } disabled:opacity-50`}
                 >
-                  {loading && d === '0' ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : d === '⌫' ? <Delete className="h-5 w-5 mx-auto" /> : d}
+                  {loading && d === '0'
+                    ? <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                    : d === '⌫'
+                    ? <Delete className="h-5 w-5 mx-auto" />
+                    : d}
                 </button>
               ))}
             </div>

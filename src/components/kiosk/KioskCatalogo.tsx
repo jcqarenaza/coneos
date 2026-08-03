@@ -10,13 +10,7 @@ interface Producto { id: string; nombre: string; descripcion: string | null; ima
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; color: string | null; grupo_id: string }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
-
-interface PendienteSabores {
-  presentacion: Presentacion
-  numero: number
-  total: number
-}
-
+interface PendienteSabores { presentacion: Presentacion; numero: number; total: number }
 type Paso = 'categorias' | 'productos' | 'presentacion' | 'opciones'
 
 interface Props {
@@ -47,14 +41,7 @@ function LogoHeader({ config, dispositivo }: { config: EmpresaConfig; dispositiv
   if (!config.logo_url) return <span className="text-white font-bold text-lg">{dispositivo.empresas?.nombre}</span>
   return (
     <div className="bg-white rounded-xl px-4 py-1.5 flex items-center justify-center" style={{ minWidth: 140, maxWidth: 180 }}>
-      <Image
-        src={config.logo_url}
-        alt={dispositivo.empresas?.nombre ?? 'Logo'}
-        width={160}
-        height={55}
-        className="object-contain w-auto"
-        style={{ maxHeight: 48 }}
-      />
+      <Image src={config.logo_url} alt={dispositivo.empresas?.nombre ?? 'Logo'} width={160} height={55} className="object-contain w-auto" style={{ maxHeight: 48 }} />
     </div>
   )
 }
@@ -66,12 +53,10 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [opciones, setOpciones] = useState<Opcion[]>([])
   const [grupos, setGrupos] = useState<GrupoOpciones[]>([])
   const [loading, setLoading] = useState(true)
-
   const [paso, setPaso] = useState<Paso>('categorias')
   const [categoriaActiva, setCategoriaActiva] = useState<Categoria | null>(null)
   const [productoActivo, setProductoActivo] = useState<Producto | null>(null)
   const [cantidad, setCantidad] = useState<Record<string, number>>({})
-
   const [cola, setCola] = useState<PendienteSabores[]>([])
   const [colaIndex, setColaIndex] = useState(0)
   const [opcionesSeleccionadas, setOpcionesSeleccionadas] = useState<Opcion[]>([])
@@ -89,7 +74,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         setOpciones(data.opciones ?? [])
         setGrupos(data.grupos ?? [])
         setLoading(false)
-
         if (categoriaIdInicial) {
           const cat = cats.find((c: Categoria) => c.id === categoriaIdInicial)
           if (cat) {
@@ -103,9 +87,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   }, [dispositivo, categoriaIdInicial])
 
   function getCantidad(presId: string) { return cantidad[presId] ?? 0 }
-  function setCantidadPres(presId: string, val: number) {
-    setCantidad(prev => ({ ...prev, [presId]: Math.max(0, val) }))
-  }
+  function setCantidadPres(presId: string, val: number) { setCantidad(prev => ({ ...prev, [presId]: Math.max(0, val) })) }
 
   function seleccionarCategoria(cat: Categoria) {
     setCategoriaActiva(cat)
@@ -114,51 +96,35 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     else setPaso('productos')
   }
 
-  function agregarSinOpciones(prod: Producto, pres: Presentacion, cant: number) {
-    for (let i = 0; i < cant; i++) {
-      onAgregar({
-        presentacion_id: pres.id,
-        nombre_producto: prod.nombre,
-        nombre_presentacion: pres.nombre,
-        precio: pres.precio,
-        cantidad: 1,
-        opciones: [],
-      })
-    }
-  }
-
   function seleccionarProducto(prod: Producto) {
     setProductoActivo(prod)
     setCantidad({})
-    // Siempre ir a presentaciones para elegir cantidad
     setPaso('presentacion')
+  }
+
+  function agregarSinOpciones(prod: Producto, pres: Presentacion, cant: number) {
+    for (let i = 0; i < cant; i++) {
+      onAgregar({ presentacion_id: pres.id, nombre_producto: prod.nombre, nombre_presentacion: pres.nombre, precio: pres.precio, cantidad: 1, opciones: [] })
+    }
   }
 
   function confirmarCantidades() {
     const pres = presentaciones.filter(p => p.producto_id === productoActivo?.id)
     const nuevaCola: PendienteSabores[] = []
-
     pres.forEach(p => {
       const cant = getCantidad(p.id)
       if (!p.permite_opciones) {
-        // Sin opciones → agregar directo sin pasar por sabores
         if (cant > 0 && productoActivo) agregarSinOpciones(productoActivo, p, cant)
       } else {
-        for (let i = 0; i < cant; i++) {
-          nuevaCola.push({ presentacion: p, numero: i + 1, total: cant })
-        }
+        for (let i = 0; i < cant; i++) nuevaCola.push({ presentacion: p, numero: i + 1, total: cant })
       }
     })
-
     if (nuevaCola.length === 0) {
-      // Todo sin opciones, ya se agregó directo
       setAgregado(true)
-      setTimeout(() => { setAgregado(false); setCantidad({}); setPaso('presentacion') }, 900)
+      setTimeout(() => { setAgregado(false); setCantidad({}); }, 900)
       return
     }
-
-    setCola(nuevaCola)
-    setColaIndex(0); setOpcionesSeleccionadas([]); setGrupoActivo(null)
+    setCola(nuevaCola); setColaIndex(0); setOpcionesSeleccionadas([]); setGrupoActivo(null)
     setPaso('opciones')
   }
 
@@ -166,9 +132,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     const actual = cola[colaIndex]
     if (!actual) return
     const ya = opcionesSeleccionadas.find(o => o.id === op.id)
-    if (ya) {
-      setOpcionesSeleccionadas(prev => prev.filter(o => o.id !== op.id))
-    } else {
+    if (ya) { setOpcionesSeleccionadas(prev => prev.filter(o => o.id !== op.id)) }
+    else {
       if (opcionesSeleccionadas.length >= actual.presentacion.opciones_max) return
       setOpcionesSeleccionadas(prev => [...prev, op])
     }
@@ -178,27 +143,16 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     const actual = cola[colaIndex]
     if (!actual || !productoActivo) return
     if (actual.presentacion.permite_opciones && opcionesSeleccionadas.length < actual.presentacion.opciones_min) return
-
     onAgregar({
-      presentacion_id: actual.presentacion.id,
-      nombre_producto: productoActivo.nombre,
-      nombre_presentacion: actual.presentacion.nombre,
-      precio: actual.presentacion.precio,
-      cantidad: 1,
-      opciones: opcionesSeleccionadas.map(op => ({
-        opcion_id: op.id, nombre: op.nombre, emoji: op.emoji, color: op.color,
-      })),
+      presentacion_id: actual.presentacion.id, nombre_producto: productoActivo.nombre,
+      nombre_presentacion: actual.presentacion.nombre, precio: actual.presentacion.precio,
+      cantidad: 1, opciones: opcionesSeleccionadas.map(op => ({ opcion_id: op.id, nombre: op.nombre, emoji: op.emoji, color: op.color })),
     })
-
     const siguiente = colaIndex + 1
-    if (siguiente < cola.length) {
-      setColaIndex(siguiente); setOpcionesSeleccionadas([]); setGrupoActivo(null)
-    } else {
+    if (siguiente < cola.length) { setColaIndex(siguiente); setOpcionesSeleccionadas([]); setGrupoActivo(null) }
+    else {
       setAgregado(true)
-      setTimeout(() => {
-        setAgregado(false); setCola([]); setColaIndex(0)
-        setOpcionesSeleccionadas([]); setCantidad({}); setPaso('presentacion')
-      }, 900)
+      setTimeout(() => { setAgregado(false); setCola([]); setColaIndex(0); setOpcionesSeleccionadas([]); setCantidad({}); setPaso('presentacion') }, 900)
     }
   }
 
@@ -211,73 +165,47 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
       if (prods.length > 1) setPaso('productos')
       else { setPaso('categorias'); setCategoriaActiva(null) }
       setProductoActivo(null); setCantidad({})
-    } else if (paso === 'productos') {
-      setPaso('categorias'); setCategoriaActiva(null)
-    } else {
-      onVolver()
-    }
+    } else if (paso === 'productos') { setPaso('categorias'); setCategoriaActiva(null) }
+    else onVolver()
   }
 
   const productosFiltrados = productos.filter(p => p.categoria_id === categoriaActiva?.id)
   const presentacionesFiltradas = presentaciones.filter(p => p.producto_id === productoActivo?.id)
   const totalCarrito = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const actualCola = cola[colaIndex]
-
-  // Solo mostrar grupos que corresponden a la presentación actual
-  const gruposDeActual = actualCola
-    ? grupos.filter(g => opciones.some(op => op.grupo_id === g.id)).sort((a, b) => a.orden - b.orden)
-    : []
-  const opcionesFiltradas = grupoActivo
-    ? opciones.filter(op => op.grupo_id === grupoActivo)
-    : actualCola
-      ? opciones.filter(op => gruposDeActual.some(g => g.id === op.grupo_id))
-      : []
-
+  const gruposDeActual = actualCola ? grupos.filter(g => opciones.some(op => op.grupo_id === g.id)).sort((a, b) => a.orden - b.orden) : []
+  const opcionesFiltradas = grupoActivo ? opciones.filter(op => op.grupo_id === grupoActivo) : actualCola ? opciones.filter(op => gruposDeActual.some(g => g.id === op.grupo_id)) : []
   const haySeleccion = presentacionesFiltradas.some(p => getCantidad(p.id) > 0)
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#fdf8f4]">
-      <div className="text-center">
-        <span className="text-5xl animate-bounce block mb-4">🍦</span>
-        <p className="text-neutral-400">Cargando catálogo...</p>
-      </div>
+      <div className="text-center"><span className="text-5xl animate-bounce block mb-4">🍦</span><p className="text-neutral-400">Cargando...</p></div>
     </div>
   )
 
   return (
     <div className="min-h-screen flex flex-col bg-[#fdf8f4]">
-      {/* Header */}
       <div className="flex items-center justify-between px-6 py-3" style={{ backgroundColor: config.primary_color }}>
         <button onClick={volverPaso} className="flex items-center gap-2 text-white/80 hover:text-white transition-colors">
-          <ArrowLeft className="h-5 w-5" />
-          <span className="text-sm font-medium">Volver</span>
+          <ArrowLeft className="h-5 w-5" /><span className="text-sm font-medium">Volver</span>
         </button>
         <LogoHeader config={config} dispositivo={dispositivo} />
         <button onClick={onVerCarrito} className="relative flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl transition-colors">
           <ShoppingCart className="h-5 w-5 text-white" />
           {carrito.length > 0 && <span className="text-white font-bold text-sm">{formatPrecio(totalCarrito)}</span>}
-          {carrito.length > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 bg-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center" style={{ color: config.primary_color }}>
-              {carrito.length}
-            </span>
-          )}
+          {carrito.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center" style={{ color: config.primary_color }}>{carrito.length}</span>}
         </button>
       </div>
 
-      {/* Breadcrumb */}
       <div className="px-6 py-3 flex items-center justify-center gap-2 text-sm text-neutral-400 flex-wrap">
         <span className="cursor-pointer hover:text-neutral-600" onClick={() => { setPaso('categorias'); setCategoriaActiva(null); setProductoActivo(null); setCola([]); setCantidad({}) }}>Categorías</span>
         {categoriaActiva && <><span>›</span><span className="text-neutral-600">{categoriaActiva.nombre}</span></>}
         {productoActivo && paso !== 'productos' && <><span>›</span><span className="text-neutral-600">{productoActivo.nombre}</span></>}
-        {paso === 'opciones' && actualCola && (
-          <><span>›</span><span className="font-medium text-neutral-700">{actualCola.presentacion.nombre}{actualCola.total > 1 ? ` #${actualCola.numero}` : ''}</span></>
-        )}
+        {paso === 'opciones' && actualCola && <><span>›</span><span className="font-medium text-neutral-700">{actualCola.presentacion.nombre}{actualCola.total > 1 ? ` #${actualCola.numero}` : ''}</span></>}
       </div>
 
-      {/* Contenido */}
       <div className={`flex-1 px-6 flex flex-col items-center ${paso === 'opciones' ? 'pb-36' : 'pb-8'}`}>
 
-        {/* Categorías */}
         {paso === 'categorias' && (
           <div className="w-full max-w-2xl">
             <h2 className="text-2xl font-bold text-neutral-800 mb-6 text-center">¿Qué querés pedir?</h2>
@@ -285,9 +213,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               {categorias.map(cat => (
                 <button key={cat.id} onClick={() => seleccionarCategoria(cat)}
                   className="flex flex-col items-center justify-center p-6 bg-white rounded-2xl shadow-sm border border-neutral-100 hover:shadow-md active:scale-95 transition-all gap-3 min-h-[140px]">
-                  {cat.icono_url
-                    ? <Image src={cat.icono_url} alt={cat.nombre} width={64} height={64} className="object-contain" />
-                    : <span className="text-5xl">{emojiCategoria(cat.nombre)}</span>}
+                  {cat.icono_url ? <Image src={cat.icono_url} alt={cat.nombre} width={64} height={64} className="object-contain" /> : <span className="text-5xl">{emojiCategoria(cat.nombre)}</span>}
                   <span className="text-neutral-700 font-semibold text-center">{cat.nombre}</span>
                 </button>
               ))}
@@ -295,7 +221,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           </div>
         )}
 
-        {/* Productos */}
         {paso === 'productos' && (
           <div className="w-full max-w-2xl">
             <h2 className="text-2xl font-bold text-neutral-800 mb-6 text-center">{categoriaActiva?.nombre}</h2>
@@ -304,9 +229,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 <button key={prod.id} onClick={() => seleccionarProducto(prod)}
                   className="flex flex-col bg-white rounded-2xl shadow-sm border border-neutral-100 hover:shadow-md active:scale-95 transition-all overflow-hidden text-left">
                   <div className="w-full h-40 bg-neutral-50 flex items-center justify-center overflow-hidden">
-                    {prod.imagen_url
-                      ? <Image src={prod.imagen_url} alt={prod.nombre} width={200} height={160} className="object-cover w-full h-full" />
-                      : <span className="text-6xl">{emojiCategoria(categoriaActiva?.nombre ?? '')}</span>}
+                    {prod.imagen_url ? <Image src={prod.imagen_url} alt={prod.nombre} width={200} height={160} className="object-cover w-full h-full" /> : <span className="text-6xl">{emojiCategoria(categoriaActiva?.nombre ?? '')}</span>}
                   </div>
                   <div className="p-4">
                     <p className="text-neutral-800 font-semibold">{prod.nombre}</p>
@@ -325,155 +248,100 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           </div>
         )}
 
-        {/* Presentaciones con selector cantidad */}
         {paso === 'presentacion' && productoActivo && (
           <div className="w-full max-w-lg">
             <h2 className="text-2xl font-bold text-neutral-800 mb-1 text-center">{productoActivo.nombre}</h2>
-            {productoActivo.descripcion && (
-              <p className="text-neutral-500 text-center mb-4">{productoActivo.descripcion}</p>
-            )}
+            {productoActivo.descripcion && <p className="text-neutral-500 text-center mb-2 text-sm">{productoActivo.descripcion}</p>}
             <p className="text-neutral-400 mb-6 text-center text-sm">Elegí el tamaño y la cantidad</p>
             <div className="flex flex-col gap-4">
               {presentacionesFiltradas.map(pres => {
                 const cant = getCantidad(pres.id)
                 return (
-                  <div key={pres.id}
-                    className={`flex flex-col items-center p-6 bg-white rounded-2xl shadow-sm border-2 transition-all gap-4 ${cant > 0 ? 'shadow-md' : 'border-neutral-100'}`}
-                    style={cant > 0 ? { borderColor: config.primary_color } : {}}>
+                  <div key={pres.id} className={`flex flex-col items-center p-6 bg-white rounded-2xl shadow-sm border-2 transition-all gap-4 ${cant > 0 ? 'shadow-md' : 'border-neutral-100'}`} style={cant > 0 ? { borderColor: config.primary_color } : {}}>
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-3">
                         <span className="text-3xl">{emojiCategoria(categoriaActiva?.nombre ?? '')}</span>
                         <div>
                           <p className="text-neutral-800 font-bold text-lg">{pres.nombre}</p>
-                          <p className="text-xs text-neutral-400">
-                            {pres.permite_opciones
-                              ? pres.opciones_max === 1 ? 'Elegís la variedad' : `${pres.opciones_min}–${pres.opciones_max} sabores`
-                              : 'Sin selección adicional'}
-                          </p>
+                          <p className="text-xs text-neutral-400">{pres.permite_opciones ? pres.opciones_max === 1 ? 'Elegís la variedad' : `${pres.opciones_min}–${pres.opciones_max} sabores` : 'Sin selección adicional'}</p>
                         </div>
                       </div>
                       <p className="font-bold text-xl" style={{ color: config.primary_color }}>{formatPrecio(pres.precio)}</p>
                     </div>
                     <div className="flex items-center gap-4">
-                      <button onClick={() => setCantidadPres(pres.id, cant - 1)}
-                        className="w-11 h-11 flex items-center justify-center rounded-xl border-2 border-neutral-200 hover:border-neutral-400 transition-colors bg-white">
-                        <Minus className="h-5 w-5 text-neutral-600" />
-                      </button>
+                      <button onClick={() => setCantidadPres(pres.id, cant - 1)} className="w-11 h-11 flex items-center justify-center rounded-xl border-2 border-neutral-200 hover:border-neutral-400 bg-white"><Minus className="h-5 w-5 text-neutral-600" /></button>
                       <span className="text-2xl font-bold text-neutral-900 w-8 text-center">{cant}</span>
-                      <button onClick={() => setCantidadPres(pres.id, cant + 1)}
-                        className="w-11 h-11 flex items-center justify-center rounded-xl border-2 text-white transition-colors"
-                        style={{ backgroundColor: config.primary_color, borderColor: config.primary_color }}>
-                        <Plus className="h-5 w-5" />
-                      </button>
+                      <button onClick={() => setCantidadPres(pres.id, cant + 1)} className="w-11 h-11 flex items-center justify-center rounded-xl border-2 text-white" style={{ backgroundColor: config.primary_color, borderColor: config.primary_color }}><Plus className="h-5 w-5" /></button>
                     </div>
-                    {cant > 0 && (
-                      <p className="text-sm font-medium" style={{ color: config.primary_color }}>
-                        Subtotal: {formatPrecio(pres.precio * cant)}
-                      </p>
-                    )}
+                    {cant > 0 && <p className="text-sm font-medium" style={{ color: config.primary_color }}>Subtotal: {formatPrecio(pres.precio * cant)}</p>}
                   </div>
                 )
               })}
             </div>
-            <button onClick={confirmarCantidades} disabled={!haySeleccion}
+            <button onClick={confirmarCantidades} disabled={!haySeleccion && !agregado}
               className="mt-8 w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-30"
               style={{ backgroundColor: config.primary_color }}>
-              {presentacionesFiltradas.every(p => !p.permite_opciones || getCantidad(p.id) === 0)
-                ? 'Agregar al pedido'
-                : 'Elegir variedad / sabores →'}
+              {agregado ? '✓ Agregado' : presentacionesFiltradas.some(p => p.permite_opciones && getCantidad(p.id) > 0) ? 'Elegir sabores →' : 'Agregar al pedido'}
             </button>
           </div>
         )}
 
-        {/* Opciones / Sabores / Variedades */}
         {paso === 'opciones' && actualCola && productoActivo && (
           <div className="w-full max-w-2xl">
             {cola.length > 1 && (
               <div className="flex justify-center gap-1.5 mb-4">
-                {cola.map((_, i) => (
-                  <div key={i} className="h-2 w-8 rounded-full transition-colors"
-                    style={{ backgroundColor: i <= colaIndex ? config.primary_color : '#e5e7eb' }} />
-                ))}
+                {cola.map((_, i) => <div key={i} className="h-2 w-8 rounded-full transition-colors" style={{ backgroundColor: i <= colaIndex ? config.primary_color : '#e5e7eb' }} />)}
               </div>
             )}
-
             <div className="text-center mb-4">
               <p className="text-sm font-medium mb-1" style={{ color: config.primary_color }}>
-                {cola.length > 1
-                  ? `${colaIndex + 1} de ${cola.length} — ${actualCola.presentacion.nombre}${actualCola.total > 1 ? ` #${actualCola.numero}` : ''}`
-                  : actualCola.presentacion.nombre}
+                {cola.length > 1 ? `${colaIndex + 1} de ${cola.length} — ${actualCola.presentacion.nombre}${actualCola.total > 1 ? ` #${actualCola.numero}` : ''}` : actualCola.presentacion.nombre}
               </p>
               <h2 className="text-xl font-bold text-neutral-800">{productoActivo.nombre}</h2>
               <p className="text-neutral-500 text-sm mt-1">
-                {actualCola.presentacion.opciones_max === 1
-                  ? 'Elegí una variedad'
-                  : `Elegí entre ${actualCola.presentacion.opciones_min} y ${actualCola.presentacion.opciones_max} sabores`}
+                {actualCola.presentacion.opciones_max === 1 ? 'Elegí una variedad' : `Elegí entre ${actualCola.presentacion.opciones_min} y ${actualCola.presentacion.opciones_max} sabores`}
                 {' '}<span className="font-medium" style={{ color: config.primary_color }}>({opcionesSeleccionadas.length}/{actualCola.presentacion.opciones_max})</span>
               </p>
             </div>
 
-            {/* Barra progreso */}
             {actualCola.presentacion.opciones_max > 1 && (
               <div className="flex gap-1.5 mb-4 max-w-xs mx-auto">
-                {Array.from({ length: actualCola.presentacion.opciones_max }).map((_, i) => (
-                  <div key={i} className="h-1.5 flex-1 rounded-full transition-colors"
-                    style={{ backgroundColor: i < opcionesSeleccionadas.length ? config.primary_color : '#e5e7eb' }} />
-                ))}
+                {Array.from({ length: actualCola.presentacion.opciones_max }).map((_, i) => <div key={i} className="h-1.5 flex-1 rounded-full transition-colors" style={{ backgroundColor: i < opcionesSeleccionadas.length ? config.primary_color : '#e5e7eb' }} />)}
               </div>
             )}
 
-            {/* Seleccionados */}
             {opcionesSeleccionadas.length > 0 && (
               <div className="flex flex-wrap justify-center gap-2 mb-4">
                 {opcionesSeleccionadas.map(op => (
-                  <button key={op.id} onClick={() => toggleOpcion(op)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white"
-                    style={{ backgroundColor: config.primary_color }}>
+                  <button key={op.id} onClick={() => toggleOpcion(op)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white" style={{ backgroundColor: config.primary_color }}>
                     {op.emoji} {op.nombre} <span className="opacity-70">✕</span>
                   </button>
                 ))}
               </div>
             )}
 
-            {/* Tabs grupos — solo si hay más de uno */}
             {gruposDeActual.length > 1 && (
               <div className="flex gap-2 mb-4 overflow-x-auto pb-1 justify-center">
-                <button onClick={() => setGrupoActivo(null)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${!grupoActivo ? 'text-white' : 'bg-neutral-100 text-neutral-500'}`}
-                  style={!grupoActivo ? { backgroundColor: config.primary_color } : {}}>
-                  Todos
-                </button>
+                <button onClick={() => setGrupoActivo(null)} className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${!grupoActivo ? 'text-white' : 'bg-neutral-100 text-neutral-500'}`} style={!grupoActivo ? { backgroundColor: config.primary_color } : {}}>Todos</button>
                 {gruposDeActual.map(g => (
-                  <button key={g.id} onClick={() => setGrupoActivo(grupoActivo === g.id ? null : g.id)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${grupoActivo === g.id ? 'text-white' : 'bg-neutral-100 text-neutral-500'}`}
-                    style={grupoActivo === g.id ? { backgroundColor: config.primary_color } : {}}>
-                    {g.nombre}
-                  </button>
+                  <button key={g.id} onClick={() => setGrupoActivo(grupoActivo === g.id ? null : g.id)} className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${grupoActivo === g.id ? 'text-white' : 'bg-neutral-100 text-neutral-500'}`} style={grupoActivo === g.id ? { backgroundColor: config.primary_color } : {}}>{g.nombre}</button>
                 ))}
               </div>
             )}
 
-            {/* Grid opciones */}
             <div className={`grid gap-3 ${actualCola.presentacion.opciones_max === 1 ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
               {opcionesFiltradas.map(op => {
                 const sel = opcionesSeleccionadas.find(o => o.id === op.id)
                 const maxAlcanzado = opcionesSeleccionadas.length >= actualCola.presentacion.opciones_max
                 return (
-                  <button key={op.id} onClick={() => toggleOpcion(op)}
-                    disabled={!sel && maxAlcanzado}
-                    className={`relative flex items-center gap-3 p-4 rounded-2xl border-2 transition-all active:scale-95 bg-white ${
-                      actualCola.presentacion.opciones_max === 1 ? 'text-left' : 'flex-col text-center'
-                    } ${sel ? 'shadow-md' : 'border-neutral-100 hover:border-neutral-300'} disabled:opacity-30`}
+                  <button key={op.id} onClick={() => toggleOpcion(op)} disabled={!sel && maxAlcanzado}
+                    className={`relative flex ${actualCola.presentacion.opciones_max === 1 ? 'flex-row items-center gap-3 text-left' : 'flex-col items-center text-center'} p-4 rounded-2xl border-2 transition-all active:scale-95 bg-white ${sel ? 'shadow-md' : 'border-neutral-100 hover:border-neutral-300'} disabled:opacity-30`}
                     style={sel ? { borderColor: config.primary_color } : {}}>
-                    {sel && (
-                      <div className="absolute top-2 right-2 rounded-full w-5 h-5 flex items-center justify-center" style={{ backgroundColor: config.primary_color }}>
-                        <Check className="h-3 w-3 text-white" />
-                      </div>
-                    )}
+                    {sel && <div className="absolute top-2 right-2 rounded-full w-5 h-5 flex items-center justify-center" style={{ backgroundColor: config.primary_color }}><Check className="h-3 w-3 text-white" /></div>}
                     <span className={actualCola.presentacion.opciones_max === 1 ? 'text-2xl' : 'text-3xl'}>{op.emoji ?? '🍦'}</span>
                     <div>
                       <p className="text-neutral-800 font-medium text-sm leading-tight">{op.nombre}</p>
-                      {op.descripcion && <p className="text-neutral-400 text-xs mt-0.5">{op.descripcion}</p>}
+                      {op.descripcion && <p className="text-neutral-400 text-xs mt-0.5 line-clamp-2">{op.descripcion}</p>}
                     </div>
                   </button>
                 )
@@ -483,21 +351,14 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         )}
       </div>
 
-      {/* Botón confirmar */}
       {paso === 'opciones' && actualCola && (
         <div className="fixed bottom-0 left-0 right-0 bg-[#fdf8f4] border-t border-neutral-100 p-4">
           <div className="max-w-md mx-auto">
-            <button
-              onClick={confirmarSabores}
+            <button onClick={confirmarSabores}
               disabled={(actualCola.presentacion.permite_opciones && opcionesSeleccionadas.length < actualCola.presentacion.opciones_min) || agregado}
               className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-40"
-              style={{ backgroundColor: config.primary_color }}
-            >
-              {agregado
-                ? <><Check className="h-5 w-5" /> ¡Agregado!</>
-                : colaIndex < cola.length - 1
-                  ? <>Confirmar y siguiente →</>
-                  : <><ShoppingCart className="h-5 w-5" /> Agregar al pedido</>}
+              style={{ backgroundColor: config.primary_color }}>
+              {agregado ? <><Check className="h-5 w-5" /> ¡Agregado!</> : colaIndex < cola.length - 1 ? <>Confirmar y siguiente →</> : <><ShoppingCart className="h-5 w-5" /> Agregar al pedido</>}
             </button>
           </div>
         </div>

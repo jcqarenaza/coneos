@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
-import { Loader2, LogOut } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { Loader2, LogOut, IceCream2 } from 'lucide-react'
 import SeleccionOperador from '@/components/operacion/SeleccionOperador'
 import VistaCaja from '@/components/operacion/VistaCaja'
 import VistaPreparacion from '@/components/operacion/VistaPreparacion'
@@ -30,7 +30,6 @@ interface SesionOperador {
 type Vista = 'caja' | 'preparacion'
 
 export default function OperacionPage() {
-  const params = useParams()
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
 
@@ -59,7 +58,6 @@ export default function OperacionPage() {
 
   const handleLogin = useCallback((s: SesionOperador) => {
     setSesion(s)
-    // Determinar vista inicial según permisos
     if (s.operador.puede_cobrar) setVistaActiva('caja')
     else if (s.operador.puede_preparar) setVistaActiva('preparacion')
   }, [])
@@ -75,15 +73,16 @@ export default function OperacionPage() {
   }, [sesion])
 
   if (loading) return (
-    <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-white" />
+    <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-neutral-400" />
     </div>
   )
 
   if (error) return (
-    <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
+    <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
       <div className="text-center">
-        <p className="text-white text-lg font-medium mb-2">Error de dispositivo</p>
+        <IceCream2 className="h-10 w-10 text-neutral-300 mx-auto mb-3" />
+        <p className="text-neutral-600 font-medium mb-1">Error de dispositivo</p>
         <p className="text-neutral-400 text-sm">{error}</p>
       </div>
     </div>
@@ -91,38 +90,34 @@ export default function OperacionPage() {
 
   if (!dispositivo) return null
 
-  // Pantalla de selección de operador
   if (!sesion) return (
-    <SeleccionOperador
-      dispositivo={dispositivo}
-      onLogin={handleLogin}
-    />
+    <SeleccionOperador dispositivo={dispositivo} onLogin={handleLogin} />
   )
 
   const { puede_cobrar, puede_preparar } = sesion.operador
   const tieneAmbos = puede_cobrar && puede_preparar
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col">
+    <div className="min-h-screen bg-neutral-50 flex flex-col">
       {/* Header */}
-      <header className="bg-neutral-900 border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
+      <header className="bg-white border-b border-neutral-200 px-5 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
+          <IceCream2 className="h-5 w-5 text-neutral-400" />
           <div>
-            <p className="text-white text-sm font-medium">{dispositivo.sucursales?.nombre}</p>
+            <p className="text-neutral-800 text-sm font-semibold">{dispositivo.sucursales?.nombre}</p>
             <p className="text-neutral-400 text-xs">{dispositivo.nombre}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Tabs si tiene ambos permisos */}
           {tieneAmbos && (
-            <div className="flex bg-neutral-800 rounded-lg p-1">
+            <div className="flex bg-neutral-100 rounded-lg p-1">
               <button
                 onClick={() => setVistaActiva('caja')}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   vistaActiva === 'caja'
-                    ? 'bg-white text-neutral-900'
-                    : 'text-neutral-400 hover:text-white'
+                    ? 'bg-white text-neutral-900 shadow-sm'
+                    : 'text-neutral-500 hover:text-neutral-700'
                 }`}
               >
                 Caja
@@ -131,8 +126,8 @@ export default function OperacionPage() {
                 onClick={() => setVistaActiva('preparacion')}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   vistaActiva === 'preparacion'
-                    ? 'bg-white text-neutral-900'
-                    : 'text-neutral-400 hover:text-white'
+                    ? 'bg-white text-neutral-900 shadow-sm'
+                    : 'text-neutral-500 hover:text-neutral-700'
                 }`}
               >
                 Preparación
@@ -140,11 +135,14 @@ export default function OperacionPage() {
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <span className="text-neutral-400 text-sm">{sesion.operador.nombre}</span>
+          <div className="flex items-center gap-2 pl-2 border-l border-neutral-200">
+            <div className="w-7 h-7 rounded-full bg-neutral-200 flex items-center justify-center text-xs font-bold text-neutral-600">
+              {sesion.operador.nombre[0]}
+            </div>
+            <span className="text-neutral-600 text-sm font-medium">{sesion.operador.nombre}</span>
             <button
               onClick={handleLogout}
-              className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+              className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors ml-1"
               title="Cerrar sesión"
             >
               <LogOut className="h-4 w-4" />
@@ -153,19 +151,12 @@ export default function OperacionPage() {
         </div>
       </header>
 
-      {/* Contenido */}
       <main className="flex-1 overflow-hidden">
         {vistaActiva === 'caja' && puede_cobrar && (
-          <VistaCaja
-            dispositivo={dispositivo}
-            sesion={sesion}
-          />
+          <VistaCaja dispositivo={dispositivo} sesion={sesion} />
         )}
         {vistaActiva === 'preparacion' && puede_preparar && (
-          <VistaPreparacion
-            dispositivo={dispositivo}
-            sesion={sesion}
-          />
+          <VistaPreparacion dispositivo={dispositivo} sesion={sesion} />
         )}
       </main>
     </div>
