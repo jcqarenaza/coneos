@@ -11,6 +11,13 @@ interface Presentacion { id: string; nombre: string; precio: number; permite_opc
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; color: string | null; grupo_id: string }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
 
+// Una entrada pendiente de elegir sabores
+interface PendienteSabores {
+  presentacion: Presentacion
+  numero: number // ej: 1 de 2
+  total: number  // ej: 2
+}
+
 type Paso = 'categorias' | 'productos' | 'presentacion' | 'opciones'
 
 interface Props {
@@ -48,11 +55,14 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [paso, setPaso] = useState<Paso>('categorias')
   const [categoriaActiva, setCategoriaActiva] = useState<Categoria | null>(null)
   const [productoActivo, setProductoActivo] = useState<Producto | null>(null)
-  const [presentacionActiva, setPresentacionActiva] = useState<Presentacion | null>(null)
   const [cantidad, setCantidad] = useState<Record<string, number>>({})
+
+  // Cola de pendientes para elegir sabores
+  const [cola, setCola] = useState<PendienteSabores[]>([])
+  const [colaIndex, setColaIndex] = useState(0)
   const [opcionesSeleccionadas, setOpcionesSeleccionadas] = useState<Opcion[]>([])
-  const [agregado, setAgregado] = useState(false)
   const [grupoActivo, setGrupoActivo] = useState<string | null>(null)
+  const [agregado, setAgregado] = useState(false)
 
   useEffect(() => {
     fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
@@ -69,14 +79,10 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         if (categoriaIdInicial) {
           const cat = cats.find((c: Categoria) => c.id === categoriaIdInicial)
           if (cat) {
-            const prodsDeCategoria = (data.productos ?? []).filter((p: Producto) => p.categoria_id === categoriaIdInicial)
+            const prods = (data.productos ?? []).filter((p: Producto) => p.categoria_id === categoriaIdInicial)
             setCategoriaActiva(cat)
-            if (prodsDeCategoria.length === 1) {
-              setProductoActivo(prodsDeCategoria[0])
-              setPaso('presentacion')
-            } else {
-              setPaso('productos')
-            }
+            if (prods.length === 1) { setProductoActivo(prods[0]); setPaso('presentacion') }
+            else setPaso('productos')
           }
         }
       })
@@ -99,74 +105,104 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     setCantidad({})
     const pres = presentaciones.filter(p => p.producto_id === prod.id)
     if (pres.length === 1) {
-      setPresentacionActiva(pres[0])
+      // Si no necesita opciones, agregar directo
+      if (!pres[0].permite_opciones) {
+        onAgregar({ presentacion_id: pres[0].id, nombre_producto: prod.nombre, nombre_presentacion: pres[0].nombre, precio: pres[0].precio, cantidad: 1, opciones: [] })
+        setPaso('categorias'); setCategoriaActiva(null); setProductoActivo(null)
+        return
+      }
+      // Cola de 1
+      setCola([{ presentacion: pres[0], numero: 1, total: 1 }])
+      setColaIndex(0)
       setOpcionesSeleccionadas([])
+      setGrupoActivo(null)
       setPaso('opciones')
     } else {
       setPaso('presentacion')
     }
   }
 
-  function confirmarPresentacion() {
-    // Buscar la presentación con cantidad > 0
+  function confirmarCantidades() {
     const pres = presentaciones.filter(p => p.producto_id === productoActivo?.id)
-    const seleccionada = pres.find(p => getCantidad(p.id) > 0)
-    if (!seleccionada) return
-    setPresentacionActiva(seleccionada)
+    // Generar cola: una entrada por cada unidad de cada presentación
+    const nuevaCola: PendienteSabores[] = []
+    pres.forEach(p => {
+      const cant = getCantidad(p.id)
+      for (let i = 0; i < cant; i++) {
+        nuevaCola.push({ presentacion: p, numero: i + 1, total: cant })
+      }
+    })
+    if (nuevaCola.length === 0) return
+    setCola(nuevaCola)
+    setColaIndex(0)
     setOpcionesSeleccionadas([])
     setGrupoActivo(null)
     setPaso('opciones')
   }
 
   function toggleOpcion(op: Opcion) {
-    if (!presentacionActiva) return
+    const actual = cola[colaIndex]
+    if (!actual) return
     const ya = opcionesSeleccionadas.find(o => o.id === op.id)
     if (ya) {
       setOpcionesSeleccionadas(prev => prev.filter(o => o.id !== op.id))
     } else {
-      if (opcionesSeleccionadas.length >= presentacionActiva.opciones_max) return
+      if (opcionesSeleccionadas.length >= actual.presentacion.opciones_max) return
       setOpcionesSeleccionadas(prev => [...prev, op])
     }
   }
 
-  function agregarAlCarrito() {
-    if (!presentacionActiva || !productoActivo) return
-    if (presentacionActiva.permite_opciones && opcionesSeleccionadas.length < presentacionActiva.opciones_min) return
+  function confirmarSabores() {
+    const actual = cola[colaIndex]
+    if (!actual || !productoActivo) return
+    if (actual.presentacion.permite_opciones && opcionesSeleccionadas.length < actual.presentacion.opciones_min) return
 
-    const cant = getCantidad(presentacionActiva.id) || 1
-    for (let i = 0; i < cant; i++) {
-      onAgregar({
-        presentacion_id: presentacionActiva.id,
-        nombre_producto: productoActivo.nombre,
-        nombre_presentacion: presentacionActiva.nombre,
-        precio: presentacionActiva.precio,
-        cantidad: 1,
-        opciones: opcionesSeleccionadas.map(op => ({
-          opcion_id: op.id,
-          nombre: op.nombre,
-          emoji: op.emoji,
-          color: op.color,
-        })),
-      })
-    }
+    onAgregar({
+      presentacion_id: actual.presentacion.id,
+      nombre_producto: productoActivo.nombre,
+      nombre_presentacion: actual.presentacion.nombre,
+      precio: actual.presentacion.precio,
+      cantidad: 1,
+      opciones: opcionesSeleccionadas.map(op => ({
+        opcion_id: op.id,
+        nombre: op.nombre,
+        emoji: op.emoji,
+        color: op.color,
+      })),
+    })
 
-    setAgregado(true)
-    setTimeout(() => {
-      setAgregado(false)
+    const siguiente = colaIndex + 1
+    if (siguiente < cola.length) {
+      // Hay más en la cola
+      setColaIndex(siguiente)
       setOpcionesSeleccionadas([])
-      setCantidad({})
-      setPresentacionActiva(null)
-      setPaso('presentacion')
-    }, 900)
+      setGrupoActivo(null)
+    } else {
+      // Terminó la cola
+      setAgregado(true)
+      setTimeout(() => {
+        setAgregado(false)
+        setCola([])
+        setColaIndex(0)
+        setOpcionesSeleccionadas([])
+        setCantidad({})
+        setPaso('presentacion')
+      }, 900)
+    }
   }
 
   function volverPaso() {
     if (paso === 'opciones') {
-      const pres = presentaciones.filter(p => p.producto_id === productoActivo?.id)
-      if (pres.length > 1) { setPaso('presentacion') }
-      else { setPaso('productos'); setProductoActivo(null) }
-      setPresentacionActiva(null)
-      setOpcionesSeleccionadas([])
+      if (colaIndex > 0) {
+        // Volver al anterior en la cola
+        setColaIndex(colaIndex - 1)
+        setOpcionesSeleccionadas([])
+      } else {
+        setPaso('presentacion')
+        setCola([])
+        setColaIndex(0)
+        setOpcionesSeleccionadas([])
+      }
     } else if (paso === 'presentacion') {
       const prods = productos.filter(p => p.categoria_id === categoriaActiva?.id)
       if (prods.length > 1) { setPaso('productos') }
@@ -186,6 +222,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const gruposConOpciones = grupos.filter(g => opciones.some(op => op.grupo_id === g.id)).sort((a, b) => a.orden - b.orden)
   const opcionesFiltradas = grupoActivo ? opciones.filter(op => op.grupo_id === grupoActivo) : opciones
   const haySeleccion = presentacionesFiltradas.some(p => getCantidad(p.id) > 0)
+  const actualCola = cola[colaIndex]
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#fdf8f4]">
@@ -222,10 +259,12 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
       {/* Breadcrumb */}
       <div className="px-6 py-3 flex items-center justify-center gap-2 text-sm text-neutral-400 flex-wrap">
-        <span className="cursor-pointer hover:text-neutral-600" onClick={() => { setPaso('categorias'); setCategoriaActiva(null); setProductoActivo(null); setPresentacionActiva(null) }}>Categorías</span>
+        <span className="cursor-pointer hover:text-neutral-600" onClick={() => { setPaso('categorias'); setCategoriaActiva(null); setProductoActivo(null); setCola([]); setCantidad({}) }}>Categorías</span>
         {categoriaActiva && <><span>›</span><span className="text-neutral-600">{categoriaActiva.nombre}</span></>}
         {productoActivo && paso !== 'productos' && <><span>›</span><span className="text-neutral-600">{productoActivo.nombre}</span></>}
-        {presentacionActiva && paso === 'opciones' && <><span>›</span><span className="font-medium text-neutral-700">{presentacionActiva.nombre}</span></>}
+        {paso === 'opciones' && actualCola && (
+          <><span>›</span><span className="font-medium text-neutral-700">{actualCola.presentacion.nombre} #{actualCola.numero}</span></>
+        )}
       </div>
 
       {/* Contenido */}
@@ -278,7 +317,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           </div>
         )}
 
-        {/* Presentaciones con selector de cantidad */}
+        {/* Presentaciones con selector cantidad */}
         {paso === 'presentacion' && productoActivo && (
           <div className="w-full max-w-lg">
             <h2 className="text-2xl font-bold text-neutral-800 mb-1 text-center">{productoActivo.nombre}</h2>
@@ -290,40 +329,30 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                   <div key={pres.id}
                     className={`flex flex-col items-center p-6 bg-white rounded-2xl shadow-sm border-2 transition-all gap-4 ${cant > 0 ? 'shadow-md' : 'border-neutral-100'}`}
                     style={cant > 0 ? { borderColor: config.primary_color } : {}}>
-                    {/* Info presentación */}
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-3">
                         <span className="text-3xl">🍦</span>
                         <div>
                           <p className="text-neutral-800 font-bold text-lg">{pres.nombre}</p>
                           <p className="text-xs text-neutral-400">
-                            {pres.permite_opciones
-                              ? `${pres.opciones_min}–${pres.opciones_max} sabores`
-                              : 'Sin selección de sabores'}
+                            {pres.permite_opciones ? `${pres.opciones_min}–${pres.opciones_max} sabores` : 'Sin selección de sabores'}
                           </p>
                         </div>
                       </div>
                       <p className="font-bold text-xl" style={{ color: config.primary_color }}>{formatPrecio(pres.precio)}</p>
                     </div>
-
-                    {/* Selector cantidad */}
                     <div className="flex items-center gap-4">
-                      <button
-                        onClick={() => setCantidadPres(pres.id, cant - 1)}
-                        className="w-11 h-11 flex items-center justify-center rounded-xl border-2 border-neutral-200 hover:border-neutral-400 transition-colors bg-white"
-                      >
+                      <button onClick={() => setCantidadPres(pres.id, cant - 1)}
+                        className="w-11 h-11 flex items-center justify-center rounded-xl border-2 border-neutral-200 hover:border-neutral-400 transition-colors bg-white">
                         <Minus className="h-5 w-5 text-neutral-600" />
                       </button>
                       <span className="text-2xl font-bold text-neutral-900 w-8 text-center">{cant}</span>
-                      <button
-                        onClick={() => setCantidadPres(pres.id, cant + 1)}
+                      <button onClick={() => setCantidadPres(pres.id, cant + 1)}
                         className="w-11 h-11 flex items-center justify-center rounded-xl border-2 text-white transition-colors"
-                        style={{ backgroundColor: config.primary_color, borderColor: config.primary_color }}
-                      >
+                        style={{ backgroundColor: config.primary_color, borderColor: config.primary_color }}>
                         <Plus className="h-5 w-5" />
                       </button>
                     </div>
-
                     {cant > 0 && (
                       <p className="text-sm font-medium" style={{ color: config.primary_color }}>
                         Subtotal: {formatPrecio(pres.precio * cant)}
@@ -333,36 +362,46 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 )
               })}
             </div>
-
-            {/* Botón continuar */}
-            <button
-              onClick={confirmarPresentacion}
-              disabled={!haySeleccion}
+            <button onClick={confirmarCantidades} disabled={!haySeleccion}
               className="mt-8 w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-30"
-              style={{ backgroundColor: config.primary_color }}
-            >
+              style={{ backgroundColor: config.primary_color }}>
               Elegir sabores →
             </button>
           </div>
         )}
 
-        {/* Opciones / Sabores */}
-        {paso === 'opciones' && presentacionActiva && productoActivo && (
+        {/* Opciones — una por una según la cola */}
+        {paso === 'opciones' && actualCola && productoActivo && (
           <div className="w-full max-w-2xl">
+            {/* Indicador de progreso en la cola */}
+            {cola.length > 1 && (
+              <div className="flex justify-center gap-1.5 mb-4">
+                {cola.map((_, i) => (
+                  <div key={i} className="h-2 w-8 rounded-full transition-colors"
+                    style={{ backgroundColor: i <= colaIndex ? config.primary_color : '#e5e7eb' }} />
+                ))}
+              </div>
+            )}
+
             <div className="text-center mb-3">
-              <h2 className="text-xl font-bold text-neutral-800">{productoActivo.nombre} — {presentacionActiva.nombre}</h2>
-              {presentacionActiva.permite_opciones && (
+              <p className="text-sm font-medium mb-1" style={{ color: config.primary_color }}>
+                {cola.length > 1
+                  ? `${colaIndex + 1} de ${cola.length} — ${actualCola.presentacion.nombre}${actualCola.total > 1 ? ` #${actualCola.numero}` : ''}`
+                  : actualCola.presentacion.nombre}
+              </p>
+              <h2 className="text-xl font-bold text-neutral-800">{productoActivo.nombre}</h2>
+              {actualCola.presentacion.permite_opciones && (
                 <p className="text-neutral-500 text-sm mt-1">
-                  Elegí entre {presentacionActiva.opciones_min} y {presentacionActiva.opciones_max} sabores
-                  {' '}<span className="font-medium" style={{ color: config.primary_color }}>({opcionesSeleccionadas.length}/{presentacionActiva.opciones_max})</span>
+                  Elegí entre {actualCola.presentacion.opciones_min} y {actualCola.presentacion.opciones_max} sabores
+                  {' '}<span className="font-medium" style={{ color: config.primary_color }}>({opcionesSeleccionadas.length}/{actualCola.presentacion.opciones_max})</span>
                 </p>
               )}
             </div>
 
-            {/* Barra progreso */}
-            {presentacionActiva.permite_opciones && (
+            {/* Barra progreso sabores */}
+            {actualCola.presentacion.permite_opciones && (
               <div className="flex gap-1.5 mb-4 max-w-xs mx-auto">
-                {Array.from({ length: presentacionActiva.opciones_max }).map((_, i) => (
+                {Array.from({ length: actualCola.presentacion.opciones_max }).map((_, i) => (
                   <div key={i} className="h-1.5 flex-1 rounded-full transition-colors"
                     style={{ backgroundColor: i < opcionesSeleccionadas.length ? config.primary_color : '#e5e7eb' }} />
                 ))}
@@ -386,13 +425,13 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
             {gruposConOpciones.length > 1 && (
               <div className="flex gap-2 mb-4 overflow-x-auto pb-1 justify-center">
                 <button onClick={() => setGrupoActivo(null)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${!grupoActivo ? 'text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}
+                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${!grupoActivo ? 'text-white' : 'bg-neutral-100 text-neutral-500'}`}
                   style={!grupoActivo ? { backgroundColor: config.primary_color } : {}}>
                   Todos
                 </button>
                 {gruposConOpciones.map(g => (
                   <button key={g.id} onClick={() => setGrupoActivo(grupoActivo === g.id ? null : g.id)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${grupoActivo === g.id ? 'text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}
+                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${grupoActivo === g.id ? 'text-white' : 'bg-neutral-100 text-neutral-500'}`}
                     style={grupoActivo === g.id ? { backgroundColor: config.primary_color } : {}}>
                     {g.nombre}
                   </button>
@@ -404,7 +443,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {opcionesFiltradas.map(op => {
                 const sel = opcionesSeleccionadas.find(o => o.id === op.id)
-                const maxAlcanzado = opcionesSeleccionadas.length >= presentacionActiva.opciones_max
+                const maxAlcanzado = opcionesSeleccionadas.length >= actualCola.presentacion.opciones_max
                 return (
                   <button key={op.id} onClick={() => toggleOpcion(op)}
                     disabled={!sel && maxAlcanzado}
@@ -417,7 +456,6 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                     )}
                     <span className="text-3xl">{op.emoji ?? '🍦'}</span>
                     <p className="text-neutral-800 font-medium text-xs text-center leading-tight">{op.nombre}</p>
-                    {op.descripcion && <p className="text-neutral-400 text-xs text-center line-clamp-1 hidden md:block">{op.descripcion}</p>}
                   </button>
                 )
               })}
@@ -426,19 +464,21 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         )}
       </div>
 
-      {/* Botón agregar fijo */}
-      {paso === 'opciones' && presentacionActiva && (
+      {/* Botón confirmar sabores */}
+      {paso === 'opciones' && actualCola && (
         <div className="fixed bottom-0 left-0 right-0 bg-[#fdf8f4] border-t border-neutral-100 p-4">
           <div className="max-w-md mx-auto">
             <button
-              onClick={agregarAlCarrito}
-              disabled={(presentacionActiva.permite_opciones && opcionesSeleccionadas.length < presentacionActiva.opciones_min) || agregado}
+              onClick={confirmarSabores}
+              disabled={(actualCola.presentacion.permite_opciones && opcionesSeleccionadas.length < actualCola.presentacion.opciones_min) || agregado}
               className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-95 transition-all disabled:opacity-40"
               style={{ backgroundColor: config.primary_color }}
             >
               {agregado
                 ? <><Check className="h-5 w-5" /> ¡Agregado al pedido!</>
-                : <><ShoppingCart className="h-5 w-5" /> Agregar al pedido — {formatPrecio(presentacionActiva.precio * (getCantidad(presentacionActiva.id) || 1))}</>}
+                : colaIndex < cola.length - 1
+                  ? <>Confirmar y siguiente →</>
+                  : <><ShoppingCart className="h-5 w-5" /> Agregar al pedido</>}
             </button>
           </div>
         </div>
