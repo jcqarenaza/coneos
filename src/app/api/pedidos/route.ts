@@ -2,45 +2,50 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
-  const { empresa_id, sucursal_id, dispositivo_id, session_id, items, metodo_pago, notas } = await request.json()
+  const body = await request.json()
+  const { empresa_id, sucursal_id, dispositivo_id, session_id, items, metodo_pago, notas, origen } = body
 
   if (!empresa_id || !sucursal_id || !items?.length) {
-    return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
+    return NextResponse.json({ error: 'Datos requeridos' }, { status: 400 })
   }
 
   const supabase = createAdminClient()
 
-  // Obtener número de pedido
-  const hoy = new Date().toISOString().split('T')[0]
-  const { data: numData } = await supabase.rpc('get_next_pedido_numero', {
-    p_sucursal_id: sucursal_id,
-    p_fecha: hoy,
-  })
+  // Obtener siguiente número correlativo por empresa
+  const { data: numeroData, error: numError } = await supabase
+    .rpc('siguiente_numero_pedido', { p_empresa_id: empresa_id })
 
-  const total = items.reduce((acc: number, item: { precio_snap: number; cantidad: number }) =>
-    acc + item.precio_snap * item.cantidad, 0)
+  if (numError || !numeroData) {
+    return NextResponse.json({ error: 'Error generando número de pedido' }, { status: 500 })
+  }
+
+  const numero_pedido = numeroData
+  const codigo_retiro = String(Math.floor(1000 + Math.random() * 9000))
+  const total = items.reduce((acc: number, item: { precio_snap: number; cantidad: number }) => acc + item.precio_snap * item.cantidad, 0)
+  const fecha_pedido = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
 
   // Crear pedido
-  const { data: pedido, error } = await supabase
+  const { data: pedido, error: pedidoError } = await supabase
     .from('pedidos')
     .insert({
       empresa_id,
       sucursal_id,
-      dispositivo_id: dispositivo_id || null,
-      operator_session_id: session_id || null,
-      numero_pedido: numData,
-      fecha_pedido: hoy,
-      origen: 'CAJA',
-      estado: metodo_pago ? 'PAID' : 'PENDING_PAYMENT',
-      metodo_pago: metodo_pago || null,
+      dispositivo_id,
+      session_id: session_id ?? null,
+      numero_pedido,
+      codigo_retiro,
       total,
-      notas: notas || null,
+      metodo_pago: metodo_pago ?? 'efectivo',
+      notas: notas ?? null,
+      origen: origen ?? 'CAJA',
+      estado: 'PENDING_PAYMENT',
+      fecha_pedido,
     })
     .select('id, numero_pedido, codigo_retiro')
     .single()
 
-  if (error || !pedido) {
-    return NextResponse.json({ error: 'Error al crear pedido' }, { status: 500 })
+  if (pedidoError || !pedido) {
+    return NextResponse.json({ error: 'Error creando pedido' }, { status: 500 })
   }
 
   // Crear items
@@ -54,19 +59,18 @@ export async function POST(request: Request) {
         nombre_presentacion_snap: item.nombre_presentacion_snap,
         precio_snap: item.precio_snap,
         cantidad: item.cantidad,
-        notas: item.notas || null,
       })
       .select('id')
       .single()
 
     if (pedidoItem && item.opciones?.length) {
       await supabase.from('pedido_item_opciones').insert(
-        item.opciones.map((op: { opcion_id: string; nombre_snap: string; color_snap?: string; emoji_snap?: string }) => ({
+        item.opciones.map((op: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }) => ({
           pedido_item_id: pedidoItem.id,
           opcion_id: op.opcion_id,
           nombre_snap: op.nombre_snap,
-          color_snap: op.color_snap || null,
-          emoji_snap: op.emoji_snap || null,
+          emoji_snap: op.emoji_snap ?? null,
+          color_snap: op.color_snap ?? null,
         }))
       )
     }
@@ -75,8 +79,9 @@ export async function POST(request: Request) {
   // Log estado inicial
   await supabase.from('pedido_estados_log').insert({
     pedido_id: pedido.id,
+    estado_nuevo: 'PENDING_PAYMENT',
     estado_anterior: null,
-    estado_nuevo: metodo_pago ? 'PAID' : 'PENDING_PAYMENT',
+    operador_id: null,
   })
 
   return NextResponse.json({ pedido })
