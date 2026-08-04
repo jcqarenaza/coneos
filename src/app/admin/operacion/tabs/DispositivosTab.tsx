@@ -99,7 +99,13 @@ export default function DispositivosTab() {
   async function handleDelete(row: Dispositivo) {
     if (!confirm(`¿Eliminar el dispositivo "${row.nombre}"?`)) return
     const supabase = createClient()
-    await supabase.from('dispositivos').delete().eq('id', row.id)
+    // Usar RPC para borrar sesiones primero y luego el dispositivo
+    const { error } = await supabase.rpc('delete_dispositivo', { p_id: row.id })
+    if (error) {
+      // Fallback: intentar borrar directo
+      await supabase.from('operator_sessions').delete().eq('dispositivo_id', row.id)
+      await supabase.from('dispositivos').delete().eq('id', row.id)
+    }
     load()
   }
 
@@ -135,7 +141,6 @@ export default function DispositivosTab() {
         ))}
       </div>
 
-      {/* Modal nuevo/editar */}
       <ConeModal open={modal} onClose={() => setModal(false)} title={editId ? 'Editar dispositivo' : 'Nuevo dispositivo'}
         footer={<><ConeButton variant="outline" onClick={() => setModal(false)}>Cancelar</ConeButton><ConeButton onClick={handleSave} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
@@ -162,7 +167,6 @@ export default function DispositivosTab() {
         </div>
       </ConeModal>
 
-      {/* Modal token */}
       <ConeModal open={tokenModal} onClose={() => setTokenModal(false)} title={`Token — ${selectedNombre}`}
         footer={<ConeButton onClick={() => setTokenModal(false)} variant="outline">Cerrar</ConeButton>}>
         <div className="space-y-4">
