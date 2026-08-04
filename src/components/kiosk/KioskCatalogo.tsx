@@ -8,7 +8,7 @@ import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empres
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string }
-interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; color: string | null; grupo_id: string }
+interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 interface PendienteSabores { presentacion: Presentacion; producto: Producto; numero: number; total: number }
@@ -30,7 +30,6 @@ function getEmoji(nombre: string): string {
   const n = nombre.toLowerCase()
   if (n.includes('helado') || n.includes('kilo')) return '🍦'
   if (n.includes('balde')) return '🧊'
-  if (n.includes('cono') || n.includes('bocha')) return '🍦'
   if (n.includes('bombon') || n.includes('envasa')) return '🍫'
   if (n.includes('torta')) return '🎂'
   if (n.includes('palito')) return '🍡'
@@ -164,10 +163,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
-      <div className="text-center">
-        <span className="text-6xl block mb-4 animate-bounce">🍦</span>
-        <p className="text-neutral-400">Cargando catálogo...</p>
-      </div>
+      <div className="text-center"><span className="text-6xl block mb-4 animate-bounce">🍦</span><p className="text-neutral-400">Cargando catálogo...</p></div>
     </div>
   )
 
@@ -176,26 +172,17 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-neutral-100 shadow-sm">
         <button onClick={volverPaso} className="flex items-center gap-2 px-4 py-2 rounded-xl text-neutral-500 hover:bg-neutral-50 active:bg-neutral-100 transition-colors">
-          <ArrowLeft className="h-5 w-5" />
-          <span className="text-sm font-medium">Volver</span>
+          <ArrowLeft className="h-5 w-5" /><span className="text-sm font-medium">Volver</span>
         </button>
-
         {config.logo_url
           ? <Image src={config.logo_url} alt="Logo" width={120} height={48} className="object-contain" style={{ maxHeight: 44 }} />
           : <span className="font-bold text-lg" style={{ color: config.primary_color }}>{dispositivo.empresas?.nombre}</span>}
-
-        <button onClick={onVerCarrito} className="relative flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium transition-all active:scale-95"
-          style={{ backgroundColor: config.primary_color }}>
+        <button onClick={onVerCarrito} className="relative flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium transition-all active:scale-95" style={{ backgroundColor: config.primary_color }}>
           <ShoppingCart className="h-5 w-5" />
-          {carrito.length > 0 && (
-            <>
-              <span className="text-sm">{formatPrecio(totalCarrito)}</span>
-              <span className="absolute -top-1.5 -right-1.5 bg-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow" style={{ color: config.primary_color }}>
-                {carrito.length}
-              </span>
-            </>
-          )}
-          {carrito.length === 0 && <span className="text-sm text-white/70">Carrito</span>}
+          {carrito.length > 0 ? (
+            <><span className="text-sm">{formatPrecio(totalCarrito)}</span>
+            <span className="absolute -top-1.5 -right-1.5 bg-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow" style={{ color: config.primary_color }}>{carrito.length}</span></>
+          ) : <span className="text-sm text-white/70">Carrito</span>}
         </button>
       </div>
 
@@ -203,13 +190,11 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
       {categoriaActiva && (
         <div className="px-6 py-2 flex items-center gap-2 text-sm text-neutral-400">
           <button onClick={() => { setPaso('categorias'); setCategoriaActiva(null); setCantidad({}) }} className="hover:text-neutral-600">Categorías</button>
-          <span>›</span>
-          <span className="text-neutral-600 font-medium">{categoriaActiva.nombre}</span>
+          <span>›</span><span className="text-neutral-600 font-medium">{categoriaActiva.nombre}</span>
           {paso === 'opciones' && actualCola && <><span>›</span><span className="font-medium" style={{ color: config.primary_color }}>{actualCola.presentacion.nombre}{actualCola.total > 1 ? ` #${actualCola.numero}` : ''}</span></>}
         </div>
       )}
 
-      {/* Contenido */}
       <div className={`flex-1 px-6 ${paso === 'opciones' || haySeleccion ? 'pb-36' : 'pb-8'}`}>
 
         {/* Categorías */}
@@ -259,13 +244,11 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                               {p.permite_opciones && <p className="text-xs text-neutral-400">{p.opciones_max === 1 ? 'Elegís variedad' : `${p.opciones_min}–${p.opciones_max} sabores`}</p>}
                             </div>
                             <div className="flex items-center gap-3">
-                              <button onClick={() => setCant(prod.id, p.id, cant - 1)}
-                                className="w-10 h-10 flex items-center justify-center rounded-xl border-2 border-neutral-200 bg-white active:bg-neutral-50 transition-colors">
+                              <button onClick={() => setCant(prod.id, p.id, cant - 1)} className="w-10 h-10 flex items-center justify-center rounded-xl border-2 border-neutral-200 bg-white active:bg-neutral-50 transition-colors">
                                 <Minus className="h-4 w-4 text-neutral-600" />
                               </button>
                               <span className="text-xl font-bold text-neutral-900 w-7 text-center">{cant}</span>
-                              <button onClick={() => setCant(prod.id, p.id, cant + 1)}
-                                className="w-10 h-10 flex items-center justify-center rounded-xl border-2 text-white transition-colors active:opacity-80"
+                              <button onClick={() => setCant(prod.id, p.id, cant + 1)} className="w-10 h-10 flex items-center justify-center rounded-xl border-2 text-white transition-colors active:opacity-80"
                                 style={{ backgroundColor: config.primary_color, borderColor: config.primary_color }}>
                                 <Plus className="h-4 w-4" />
                               </button>
@@ -284,16 +267,13 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         {/* Opciones / Sabores */}
         {paso === 'opciones' && actualCola && (
           <div className="max-w-2xl mx-auto pt-4">
-            {/* Progreso cola */}
             {cola.length > 1 && (
               <div className="flex justify-center gap-2 mb-5">
                 {cola.map((_, i) => (
-                  <div key={i} className="h-2 rounded-full transition-all"
-                    style={{ width: i === colaIndex ? 32 : 12, backgroundColor: i <= colaIndex ? config.primary_color : '#e5e7eb' }} />
+                  <div key={i} className="h-2 rounded-full transition-all" style={{ width: i === colaIndex ? 32 : 12, backgroundColor: i <= colaIndex ? config.primary_color : '#e5e7eb' }} />
                 ))}
               </div>
             )}
-
             <div className="text-center mb-5">
               <p className="text-sm font-semibold tracking-wide uppercase mb-1" style={{ color: config.secondary_color }}>
                 {cola.length > 1 ? `${colaIndex + 1} de ${cola.length}` : actualCola.presentacion.nombre}
@@ -308,38 +288,34 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               </p>
             </div>
 
-            {/* Barra progreso sabores */}
             {actualCola.presentacion.opciones_max > 1 && (
               <div className="flex gap-2 mb-5 max-w-xs mx-auto">
                 {Array.from({ length: actualCola.presentacion.opciones_max }).map((_, i) => (
-                  <div key={i} className="h-2 flex-1 rounded-full transition-colors"
-                    style={{ backgroundColor: i < opcionesSeleccionadas.length ? config.primary_color : '#e5e7eb' }} />
+                  <div key={i} className="h-2 flex-1 rounded-full transition-colors" style={{ backgroundColor: i < opcionesSeleccionadas.length ? config.primary_color : '#e5e7eb' }} />
                 ))}
               </div>
             )}
 
-            {/* Chips seleccionados */}
             {opcionesSeleccionadas.length > 0 && (
               <div className="flex flex-wrap justify-center gap-2 mb-5">
                 {opcionesSeleccionadas.map(op => (
                   <button key={op.id} onClick={() => toggleOpcion(op)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-full text-white text-sm font-medium shadow-sm active:opacity-80 transition-opacity"
                     style={{ backgroundColor: config.primary_color }}>
-                    {op.emoji} {op.nombre}
-                    <X className="h-3.5 w-3.5 opacity-70" />
+                    {op.imagen_url
+                      ? <Image src={op.imagen_url} alt={op.nombre} width={18} height={18} className="rounded-full object-cover" />
+                      : op.emoji}
+                    {op.nombre}<X className="h-3.5 w-3.5 opacity-70" />
                   </button>
                 ))}
               </div>
             )}
 
-            {/* Tabs de grupos */}
             {gruposDeActual.length > 1 && (
               <div className="flex gap-2 mb-5 overflow-x-auto pb-1 justify-center">
                 <button onClick={() => setGrupoActivo(null)}
                   className={`px-5 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${!grupoActivo ? 'text-white shadow-sm' : 'bg-white text-neutral-400 border border-neutral-200'}`}
-                  style={!grupoActivo ? { backgroundColor: config.primary_color } : {}}>
-                  Todos
-                </button>
+                  style={!grupoActivo ? { backgroundColor: config.primary_color } : {}}>Todos</button>
                 {gruposDeActual.map(g => (
                   <button key={g.id} onClick={() => setGrupoActivo(grupoActivo === g.id ? null : g.id)}
                     className={`px-5 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${grupoActivo === g.id ? 'text-white shadow-sm' : 'bg-white text-neutral-400 border border-neutral-200'}`}
@@ -350,24 +326,40 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               </div>
             )}
 
-            {/* Grid sabores */}
+            {/* Grid sabores — con imagen si existe */}
             <div className={`grid gap-3 ${actualCola.presentacion.opciones_max === 1 ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
               {opcionesFiltradas.map(op => {
                 const sel = opcionesSeleccionadas.find(o => o.id === op.id)
                 const maxAlcanzado = opcionesSeleccionadas.length >= actualCola.presentacion.opciones_max
+                const tieneImagen = !!op.imagen_url
+
                 return (
                   <button key={op.id} onClick={() => toggleOpcion(op)} disabled={!sel && maxAlcanzado}
-                    className={`relative flex ${actualCola.presentacion.opciones_max === 1 ? 'flex-row items-center gap-4' : 'flex-col items-center'} p-4 rounded-2xl border-2 bg-white transition-all active:scale-95 gap-2 ${sel ? 'shadow-md' : 'border-neutral-100 hover:border-neutral-200'} disabled:opacity-30`}
-                    style={sel ? { borderColor: config.primary_color, backgroundColor: `${config.primary_color}08` } : {}}>
-                    {sel && (
-                      <div className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center shadow-sm" style={{ backgroundColor: config.primary_color }}>
-                        <Check className="h-3.5 w-3.5 text-white" />
+                    className={`relative flex flex-col rounded-2xl border-2 bg-white transition-all active:scale-95 overflow-hidden ${sel ? 'shadow-md' : 'border-neutral-100 hover:border-neutral-200'} disabled:opacity-30`}
+                    style={sel ? { borderColor: config.primary_color } : {}}>
+
+                    {/* Imagen del sabor */}
+                    {tieneImagen ? (
+                      <div className="w-full aspect-square overflow-hidden bg-neutral-50">
+                        <Image src={op.imagen_url!} alt={op.nombre} width={200} height={200} className="object-cover w-full h-full" />
+                      </div>
+                    ) : (
+                      <div className="w-full aspect-square flex items-center justify-center bg-neutral-50">
+                        <span className={actualCola.presentacion.opciones_max === 1 ? 'text-4xl' : 'text-5xl'}>{op.emoji ?? '🍦'}</span>
                       </div>
                     )}
-                    <span className={actualCola.presentacion.opciones_max === 1 ? 'text-3xl flex-shrink-0' : 'text-4xl'}>{op.emoji ?? '🍦'}</span>
-                    <div className={actualCola.presentacion.opciones_max === 1 ? 'text-left' : 'text-center'}>
+
+                    {/* Check overlay */}
+                    {sel && (
+                      <div className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center shadow-md" style={{ backgroundColor: config.primary_color }}>
+                        <Check className="h-4 w-4 text-white" />
+                      </div>
+                    )}
+
+                    {/* Nombre */}
+                    <div className="p-2 text-center">
                       <p className="text-neutral-800 font-semibold text-sm leading-tight">{op.nombre}</p>
-                      {op.descripcion && <p className="text-neutral-400 text-xs mt-0.5 line-clamp-2">{op.descripcion}</p>}
+                      {op.descripcion && <p className="text-neutral-400 text-xs mt-0.5 line-clamp-1">{op.descripcion}</p>}
                     </div>
                   </button>
                 )
@@ -384,8 +376,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
             <button onClick={confirmarSeleccion}
               className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all"
               style={{ backgroundColor: config.primary_color }}>
-              {agregado
-                ? <><Check className="h-5 w-5" /> ¡Agregado!</>
+              {agregado ? <><Check className="h-5 w-5" /> ¡Agregado!</>
                 : productos.filter(p => p.categoria_id === categoriaActiva?.id).some(prod =>
                     presentaciones.filter(p => p.producto_id === prod.id).some(p => p.permite_opciones && getCant(prod.id, p.id) > 0)
                   )
@@ -404,8 +395,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               disabled={(actualCola.presentacion.permite_opciones && opcionesSeleccionadas.length < actualCola.presentacion.opciones_min) || agregado}
               className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all disabled:opacity-40"
               style={{ backgroundColor: config.primary_color }}>
-              {agregado
-                ? <><Check className="h-5 w-5" /> ¡Agregado!</>
+              {agregado ? <><Check className="h-5 w-5" /> ¡Agregado!</>
                 : colaIndex < cola.length - 1
                   ? <>Confirmar y siguiente →</>
                   : <><ShoppingCart className="h-5 w-5" /> Agregar — {formatPrecio(actualCola.presentacion.precio)}</>}

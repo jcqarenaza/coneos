@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       supabase.from('productos').select('id, nombre, descripcion, imagen_url, categoria_id, orden').eq('empresa_id', empresa_id).eq('activo', true).eq('visible_kiosk', true).is('deleted_at', null).order('orden'),
       supabase.from('presentaciones').select('id, nombre, precio, permite_opciones, opciones_min, opciones_max, orden, producto_id').eq('empresa_id', empresa_id).eq('activo', true).order('orden'),
       supabase.from('grupos_opciones').select('id, nombre, orden').eq('empresa_id', empresa_id).eq('activo', true).order('orden'),
-      supabase.from('opciones').select('id, nombre, descripcion, emoji, color, grupo_id, orden').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null).order('orden'),
+      supabase.from('opciones').select('id, nombre, descripcion, emoji, color, imagen_url, grupo_id, orden').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null).order('orden'),
       supabase.from('inventario_opciones').select('opcion_id, disponible').eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id),
       supabase.from('presentacion_grupos').select('presentacion_id, grupo_id'),
     ])
