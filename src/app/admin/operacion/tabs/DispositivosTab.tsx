@@ -3,24 +3,23 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
-import { ConeTable, ConeModal, ConeButton, ConeBadge } from '@/components/admin/ConeComponents'
+import { ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Loader2, Copy, Check, Monitor, Tablet, Smartphone } from 'lucide-react'
+import { Plus, Loader2, Copy, Check, Monitor, Tablet, Smartphone, Pencil, Trash2 } from 'lucide-react'
 
 interface Sucursal { id: string; nombre: string; slug: string }
 interface Dispositivo {
   id: string; nombre: string; tipo: 'KIOSK' | 'CAJA' | 'PREPARACION' | 'DISPLAY'
   sucursal_id: string; sucursal_nombre?: string; sucursal_slug?: string; device_token: string; activo: boolean
-  [key: string]: unknown
 }
 
 const TIPOS = [
-  { value: 'KIOSK',       label: 'Kiosk',       desc: 'Pantalla táctil para clientes' },
-  { value: 'CAJA',        label: 'Caja',        desc: 'Gestión de pagos y pedidos' },
+  { value: 'KIOSK', label: 'Kiosk', desc: 'Pantalla táctil para clientes' },
+  { value: 'CAJA', label: 'Caja', desc: 'Gestión de pagos y pedidos' },
   { value: 'PREPARACION', label: 'Preparación', desc: 'Pantalla de preparación' },
-  { value: 'DISPLAY',     label: 'Display',     desc: 'Pantalla pública de pedidos listos' },
+  { value: 'DISPLAY', label: 'Display', desc: 'Pantalla pública de pedidos listos' },
 ]
 
 const tipoIcon = (tipo: string) => {
@@ -29,7 +28,7 @@ const tipoIcon = (tipo: string) => {
   return <Smartphone className="h-4 w-4" />
 }
 
-const tipoColor = (tipo: string) => {
+const tipoBadge = (tipo: string) => {
   if (tipo === 'KIOSK') return 'bg-purple-50 text-purple-700'
   if (tipo === 'CAJA') return 'bg-blue-50 text-blue-700'
   if (tipo === 'PREPARACION') return 'bg-amber-50 text-amber-700'
@@ -73,30 +72,6 @@ export default function DispositivosTab() {
   function openEdit(row: Dispositivo) { setForm({ nombre: row.nombre, tipo: row.tipo, sucursal_id: row.sucursal_id }); setEditId(row.id); setModal(true) }
   function showToken(row: Dispositivo) { setSelectedToken(row.device_token); setSelectedNombre(row.nombre); setSelectedDispositivo(row); setTokenModal(true) }
 
-  async function copyToken() {
-    await navigator.clipboard.writeText(selectedToken)
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
-  }
-
-  async function handleSave() {
-    if (!ctx || !form.nombre || !form.sucursal_id) return
-    setSaving(true)
-    const supabase = createClient()
-    if (editId) {
-      await supabase.from('dispositivos').update({ nombre: form.nombre, tipo: form.tipo, sucursal_id: form.sucursal_id }).eq('id', editId)
-    } else {
-      await supabase.from('dispositivos').insert({ nombre: form.nombre, tipo: form.tipo, sucursal_id: form.sucursal_id, empresa_id: ctx.empresaId })
-    }
-    setSaving(false); setModal(false); load()
-  }
-
-  async function handleDelete(row: Dispositivo) {
-    if (!confirm(`¿Eliminar el dispositivo "${row.nombre}"? Esta acción no se puede deshacer.`)) return
-    const supabase = createClient()
-    await supabase.from('dispositivos').delete().eq('id', row.id)
-    load()
-  }
-
   function getUrl(row: Dispositivo) {
     const base = window.location.origin
     const empresaSlug = ctx?.empresaSlug ?? ''
@@ -107,7 +82,28 @@ export default function DispositivosTab() {
     return `${base}/${empresaSlug}/operacion/${sucSlug}?token=${row.device_token}`
   }
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-neutral-400" /></div>
+  async function copyToken() {
+    await navigator.clipboard.writeText(selectedToken)
+    setCopied(true); setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function handleSave() {
+    if (!ctx || !form.nombre || !form.sucursal_id) return
+    setSaving(true)
+    const supabase = createClient()
+    if (editId) { await supabase.from('dispositivos').update({ nombre: form.nombre, tipo: form.tipo, sucursal_id: form.sucursal_id }).eq('id', editId) }
+    else { await supabase.from('dispositivos').insert({ nombre: form.nombre, tipo: form.tipo, sucursal_id: form.sucursal_id, empresa_id: ctx.empresaId }) }
+    setSaving(false); setModal(false); load()
+  }
+
+  async function handleDelete(row: Dispositivo) {
+    if (!confirm(`¿Eliminar el dispositivo "${row.nombre}"?`)) return
+    const supabase = createClient()
+    await supabase.from('dispositivos').delete().eq('id', row.id)
+    load()
+  }
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
 
   return (
     <div>
@@ -115,57 +111,58 @@ export default function DispositivosTab() {
         <ConeButton onClick={openNew} icon={<Plus className="h-4 w-4" />}>Nuevo dispositivo</ConeButton>
       </div>
 
-      <ConeTable
-        data={data}
-        columns={[
-          { key: 'tipo', label: 'Tipo', render: row => (
-            <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${tipoColor(row.tipo as string)}`}>
-              {tipoIcon(row.tipo as string)}{TIPOS.find(t => t.value === row.tipo)?.label}
-            </span>
-          )},
-          { key: 'nombre', label: 'Nombre' },
-          { key: 'sucursal_nombre', label: 'Sucursal' },
-          { key: 'token', label: 'Token', render: row => (
-            <button onClick={() => showToken(row as Dispositivo)} className="text-xs font-mono text-neutral-400 hover:text-neutral-700 underline underline-offset-2">
-              Ver token
-            </button>
-          )},
-          { key: 'activo', label: 'Estado', render: row => <ConeBadge active={row.activo as boolean} /> },
-        ]}
-        onEdit={openEdit}
-        onDelete={handleDelete}
-        emptyMessage="Sin dispositivos — registrá el primero"
-      />
+      <div className="space-y-2">
+        {data.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin dispositivos</div>}
+        {data.map(row => (
+          <div key={row.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-500">{tipoIcon(row.tipo)}</div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-neutral-900">{row.nombre}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${tipoBadge(row.tipo)}`}>{TIPOS.find(t => t.value === row.tipo)?.label}</span>
+                  <ConeBadge active={row.activo} />
+                </div>
+                <p className="text-xs text-neutral-400 mt-0.5">{row.sucursal_nombre}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => showToken(row)} className="px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors">Ver token</button>
+              <button onClick={() => openEdit(row)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
+              <button onClick={() => handleDelete(row)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
 
+      {/* Modal nuevo/editar */}
       <ConeModal open={modal} onClose={() => setModal(false)} title={editId ? 'Editar dispositivo' : 'Nuevo dispositivo'}
         footer={<><ConeButton variant="outline" onClick={() => setModal(false)}>Cancelar</ConeButton><ConeButton onClick={handleSave} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Tipo de dispositivo *</Label>
+            <Label>Tipo *</Label>
             <div className="grid grid-cols-2 gap-2">
               {TIPOS.map(t => (
                 <button key={t.value} type="button" onClick={() => setForm({ ...form, tipo: t.value })}
-                  className={`flex flex-col items-start p-3 rounded-lg border text-left transition-colors ${form.tipo === t.value ? 'border-neutral-900 bg-neutral-50' : 'border-neutral-200 hover:border-neutral-300'}`}>
-                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded mb-1 ${tipoColor(t.value)}`}>{t.label}</span>
+                  className={`flex flex-col items-start p-3 rounded-xl border text-left transition-colors ${form.tipo === t.value ? 'border-neutral-800 bg-neutral-50' : 'border-neutral-200 hover:border-neutral-300'}`}>
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded mb-1 ${tipoBadge(t.value)}`}>{t.label}</span>
                   <span className="text-xs text-neutral-400">{t.desc}</span>
                 </button>
               ))}
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Nombre *</Label>
-            <Input value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="Kiosk Federal 01" autoFocus />
-          </div>
+          <div className="space-y-1.5"><Label>Nombre *</Label><Input value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="Kiosk Federal 01" autoFocus /></div>
           <div className="space-y-1.5">
             <Label>Sucursal *</Label>
             <Select value={form.sucursal_id} onValueChange={v => setForm({ ...form, sucursal_id: v })}>
-              <SelectTrigger><SelectValue placeholder="Seleccioná una sucursal" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Seleccioná" /></SelectTrigger>
               <SelectContent>{sucursales.map(s => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}</SelectContent>
             </Select>
           </div>
         </div>
       </ConeModal>
 
+      {/* Modal token */}
       <ConeModal open={tokenModal} onClose={() => setTokenModal(false)} title={`Token — ${selectedNombre}`}
         footer={<ConeButton onClick={() => setTokenModal(false)} variant="outline">Cerrar</ConeButton>}>
         <div className="space-y-4">
@@ -180,12 +177,10 @@ export default function DispositivosTab() {
           </div>
           <div className="space-y-1.5">
             <Label>URL de vinculación</Label>
-            <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200">
-              <p className="text-xs font-mono text-neutral-600 break-all">
-                {selectedDispositivo ? getUrl(selectedDispositivo) : ''}
-              </p>
+            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+              <p className="text-xs font-mono text-neutral-600 break-all">{selectedDispositivo ? getUrl(selectedDispositivo) : ''}</p>
             </div>
-            <p className="text-xs text-neutral-400">Abrí esta URL en el dispositivo para vincularlo automáticamente</p>
+            <p className="text-xs text-neutral-400">Abrí esta URL en el dispositivo para vincularlo</p>
           </div>
         </div>
       </ConeModal>

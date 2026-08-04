@@ -3,33 +3,17 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
-import { ConeTable, ConeModal, ConeButton, ConeBadge } from '@/components/admin/ConeComponents'
+import { ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Loader2, Eye, EyeOff } from 'lucide-react'
+import { Plus, Loader2, Pencil, Trash2 } from 'lucide-react'
 
 interface Sucursal { id: string; nombre: string }
 interface Operador {
-  id: string
-  nombre: string
-  sucursal_id: string | null
-  sucursal_nombre?: string
-  puede_cobrar: boolean
-  puede_preparar: boolean
-  activo: boolean
-  [key: string]: unknown
+  id: string; nombre: string; sucursal_id: string | null; sucursal_nombre?: string
+  puede_cobrar: boolean; puede_preparar: boolean; activo: boolean
 }
-
-const emptyForm = () => ({
-  nombre: '',
-  sucursal_id: '' as string | null,
-  puede_cobrar: true,
-  puede_preparar: true,
-  activo: true,
-  pin: '',
-  pin_confirm: '',
-})
 
 export default function OperadoresTab() {
   const { ctx } = useEmpresa()
@@ -37,104 +21,62 @@ export default function OperadoresTab() {
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState(emptyForm())
+  const [form, setForm] = useState({ nombre: '', sucursal_id: 'todas', pin: '', puede_cobrar: true, puede_preparar: true })
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [showPin, setShowPin] = useState(false)
-  const [pinError, setPinError] = useState('')
 
   async function load() {
     if (!ctx) return
     const supabase = createClient()
     const [{ data: ops }, { data: suc }] = await Promise.all([
-      supabase.from('operadores')
-        .select('id, nombre, sucursal_id, puede_cobrar, puede_preparar, activo, sucursales(nombre)')
-        .eq('empresa_id', ctx.empresaId)
-        .order('nombre'),
-      supabase.from('sucursales')
-        .select('id, nombre')
-        .eq('empresa_id', ctx.empresaId)
-        .eq('activo', true)
-        .order('nombre'),
+      supabase.from('operadores').select('id, nombre, sucursal_id, puede_cobrar, puede_preparar, activo, sucursales(nombre)').eq('empresa_id', ctx.empresaId).order('nombre'),
+      supabase.from('sucursales').select('id, nombre').eq('empresa_id', ctx.empresaId).eq('activo', true).order('nombre'),
     ])
-    setData((ops ?? []).map((o: Record<string, unknown>) => ({
-      ...o,
-      sucursal_nombre: (o.sucursales as { nombre: string } | null)?.nombre ?? 'Todas',
-    })) as Operador[])
+    setData((ops ?? []).map((o: Record<string, unknown>) => ({ ...o, sucursal_nombre: (o.sucursales as { nombre: string } | null)?.nombre ?? 'Todas' })) as Operador[])
     setSucursales((suc ?? []) as Sucursal[])
     setLoading(false)
   }
 
   useEffect(() => { load() }, [ctx])
 
-  function openNew() { setForm(emptyForm()); setEditId(null); setPinError(''); setModal(true) }
-  function openEdit(row: Operador) {
-    setForm({ ...emptyForm(), nombre: row.nombre, sucursal_id: row.sucursal_id, puede_cobrar: row.puede_cobrar, puede_preparar: row.puede_preparar, activo: row.activo })
-    setEditId(row.id)
-    setPinError('')
-    setModal(true)
-  }
+  function openNew() { setForm({ nombre: '', sucursal_id: 'todas', pin: '', puede_cobrar: true, puede_preparar: true }); setEditId(null); setModal(true) }
+  function openEdit(op: Operador) { setForm({ nombre: op.nombre, sucursal_id: op.sucursal_id ?? 'todas', pin: '', puede_cobrar: op.puede_cobrar, puede_preparar: op.puede_preparar }); setEditId(op.id); setModal(true) }
 
   async function handleSave() {
     if (!ctx || !form.nombre) return
-    setPinError('')
-
-    // Validar PIN solo en creación o si se ingresó uno nuevo
-    if (!editId || form.pin) {
-      if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) {
-        setPinError('El PIN debe ser exactamente 4 dígitos numéricos')
-        return
-      }
-      if (form.pin !== form.pin_confirm) {
-        setPinError('Los PINs no coinciden')
-        return
-      }
-    }
-
     setSaving(true)
     const supabase = createClient()
-
-    // Hashear PIN via API route
-    let pin_hash = 'PENDIENTE'
-    if (!editId || form.pin) {
-      const res = await fetch('/api/operador/hash-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: form.pin }),
-      })
-      const json = await res.json()
-      pin_hash = json.hash
+    let pin_hash = undefined
+    if (form.pin) {
+      const res = await fetch('/api/operador/hash-pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: form.pin }) })
+      const data = await res.json()
+      pin_hash = data.hash
     }
-
     const payload: Record<string, unknown> = {
       nombre: form.nombre,
-      sucursal_id: form.sucursal_id || null,
-      puede_cobrar: form.puede_cobrar,
-      puede_preparar: form.puede_preparar,
-      activo: form.activo,
-      empresa_id: ctx.empresaId,
+      sucursal_id: form.sucursal_id === 'todas' ? null : form.sucursal_id,
+      puede_cobrar: form.puede_cobrar, puede_preparar: form.puede_preparar,
     }
-    if (!editId || form.pin) payload.pin_hash = pin_hash
-
-    if (editId) {
-      await supabase.from('operadores').update(payload).eq('id', editId)
-    } else {
-      await supabase.from('operadores').insert(payload)
-    }
-
-    setSaving(false)
-    setModal(false)
-    load()
+    if (pin_hash) payload.pin_hash = pin_hash
+    if (editId) { await supabase.from('operadores').update(payload).eq('id', editId) }
+    else { await supabase.from('operadores').insert({ ...payload, empresa_id: ctx.empresaId, activo: true }) }
+    setSaving(false); setModal(false); load()
   }
 
-  async function handleDelete(row: Operador) {
-    if (!confirm(`¿Desactivar a "${row.nombre}"?`)) return
+  async function toggleActivo(op: Operador) {
     const supabase = createClient()
-    await supabase.from('operadores').update({ activo: false }).eq('id', row.id)
+    await supabase.from('operadores').update({ activo: !op.activo }).eq('id', op.id)
     load()
   }
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-neutral-400" /></div>
+  async function handleDelete(op: Operador) {
+    if (!confirm(`¿Eliminar al operador "${op.nombre}"?`)) return
+    const supabase = createClient()
+    await supabase.from('operadores').delete().eq('id', op.id)
+    load()
+  }
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
 
   return (
     <div>
@@ -142,113 +84,65 @@ export default function OperadoresTab() {
         <ConeButton onClick={openNew} icon={<Plus className="h-4 w-4" />}>Nuevo operador</ConeButton>
       </div>
 
-      <ConeTable
-        data={data}
-        columns={[
-          { key: 'nombre', label: 'Nombre' },
-          { key: 'sucursal_nombre', label: 'Sucursal' },
-          {
-            key: 'roles', label: 'Permisos',
-            render: row => (
-              <div className="flex gap-1">
-                {row.puede_cobrar && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">Caja</span>}
-                {row.puede_preparar && <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded">Preparación</span>}
+      <div className="space-y-2">
+        {data.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin operadores</div>}
+        {data.map(op => (
+          <div key={op.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-neutral-800 flex items-center justify-center text-white font-bold">{op.nombre[0].toUpperCase()}</div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-neutral-900">{op.nombre}</span>
+                  <ConeBadge active={op.activo} />
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-neutral-400">{op.sucursal_nombre ?? 'Todas'}</span>
+                  {op.puede_cobrar && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">Caja</span>}
+                  {op.puede_preparar && <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Preparación</span>}
+                </div>
               </div>
-            )
-          },
-          { key: 'activo', label: 'Estado', render: row => <ConeBadge active={row.activo as boolean} /> },
-        ]}
-        onEdit={openEdit}
-        onDelete={handleDelete}
-        emptyMessage="Sin operadores — creá el primero"
-      />
-
-      <ConeModal
-        open={modal}
-        onClose={() => setModal(false)}
-        title={editId ? 'Editar operador' : 'Nuevo operador'}
-        footer={
-          <>
-            <ConeButton variant="outline" onClick={() => setModal(false)}>Cancelar</ConeButton>
-            <ConeButton onClick={handleSave} loading={saving}>Guardar</ConeButton>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Nombre *</Label>
-            <Input value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="María" autoFocus />
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => toggleActivo(op)} className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${op.activo ? 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
+                {op.activo ? 'Desactivar' : 'Activar'}
+              </button>
+              <button onClick={() => openEdit(op)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
+              <button onClick={() => handleDelete(op)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
+            </div>
           </div>
+        ))}
+      </div>
 
+      <ConeModal open={modal} onClose={() => setModal(false)} title={editId ? 'Editar operador' : 'Nuevo operador'}
+        footer={<><ConeButton variant="outline" onClick={() => setModal(false)}>Cancelar</ConeButton><ConeButton onClick={handleSave} loading={saving}>Guardar</ConeButton></>}>
+        <div className="space-y-4">
+          <div className="space-y-1.5"><Label>Nombre *</Label><Input value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="María" autoFocus /></div>
           <div className="space-y-1.5">
             <Label>Sucursal</Label>
-            <Select value={form.sucursal_id ?? 'todas'} onValueChange={v => setForm({ ...form, sucursal_id: v === 'todas' ? null : v })}>
-              <SelectTrigger><SelectValue placeholder="Todas las sucursales" /></SelectTrigger>
+            <Select value={form.sucursal_id} onValueChange={v => setForm({ ...form, sucursal_id: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="todas">Todas las sucursales</SelectItem>
                 {sucursales.map(s => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
               </SelectContent>
             </Select>
-            <p className="text-xs text-neutral-400">Dejá vacío para que pueda operar en cualquier sucursal</p>
           </div>
-
-          {/* Permisos */}
+          <div className="space-y-1.5">
+            <Label>{editId ? 'Nuevo PIN (dejá vacío para no cambiar)' : 'PIN *'}</Label>
+            <Input value={form.pin} onChange={e => setForm({ ...form, pin: e.target.value })} type="password" maxLength={4} placeholder="4 dígitos" />
+          </div>
           <div className="space-y-2">
             <Label>Permisos</Label>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="cobrar" checked={form.puede_cobrar} onChange={e => setForm({ ...form, puede_cobrar: e.target.checked })} className="w-4 h-4 rounded" />
-                <Label htmlFor="cobrar" className="cursor-pointer font-normal">
-                  <span className="text-blue-700 font-medium">Caja</span> — puede gestionar pagos y confirmar pedidos
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="preparar" checked={form.puede_preparar} onChange={e => setForm({ ...form, puede_preparar: e.target.checked })} className="w-4 h-4 rounded" />
-                <Label htmlFor="preparar" className="cursor-pointer font-normal">
-                  <span className="text-amber-700 font-medium">Preparación</span> — puede ver y preparar pedidos
-                </Label>
-              </div>
+            <div className="flex gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.puede_cobrar} onChange={e => setForm({ ...form, puede_cobrar: e.target.checked })} className="w-4 h-4 rounded" />
+                <span className="text-sm text-neutral-700">Caja</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.puede_preparar} onChange={e => setForm({ ...form, puede_preparar: e.target.checked })} className="w-4 h-4 rounded" />
+                <span className="text-sm text-neutral-700">Preparación</span>
+              </label>
             </div>
-          </div>
-
-          {/* PIN */}
-          <div className="space-y-2 pt-2 border-t border-neutral-100">
-            <Label>{editId ? 'Cambiar PIN (dejá vacío para mantener el actual)' : 'PIN de acceso *'}</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-neutral-400">PIN (4 dígitos)</Label>
-                <div className="relative">
-                  <Input
-                    type={showPin ? 'text' : 'password'}
-                    value={form.pin}
-                    onChange={e => setForm({ ...form, pin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                    placeholder="••••"
-                    maxLength={4}
-                    className="font-mono tracking-widest pr-8"
-                  />
-                  <button type="button" onClick={() => setShowPin(!showPin)} className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400">
-                    {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-neutral-400">Confirmar PIN</Label>
-                <Input
-                  type={showPin ? 'text' : 'password'}
-                  value={form.pin_confirm}
-                  onChange={e => setForm({ ...form, pin_confirm: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                  placeholder="••••"
-                  maxLength={4}
-                  className="font-mono tracking-widest"
-                />
-              </div>
-            </div>
-            {pinError && <p className="text-xs text-red-500">{pinError}</p>}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input type="checkbox" id="activoOp" checked={form.activo} onChange={e => setForm({ ...form, activo: e.target.checked })} className="w-4 h-4 rounded" />
-            <Label htmlFor="activoOp" className="cursor-pointer">Operador activo</Label>
           </div>
         </div>
       </ConeModal>
