@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Image from 'next/image'
-import { Loader2, CheckCircle } from 'lucide-react'
+import { Loader2, CheckCircle, RefreshCw, ArrowRight } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
 interface Props {
@@ -16,6 +16,8 @@ interface Props {
 
 interface MetodoPago { id: string; label: string; emoji: string; descripcion: string }
 
+type EstadoMP = 'idle' | 'creando' | 'esperando' | 'aprobado' | 'rechazado'
+
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 
 export default function KioskConfirmacion({ config, dispositivo, carrito, pedidoCreado, onPedidoCreado, onNuevoPedido }: Props) {
@@ -23,6 +25,12 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   const [metodoPago, setMetodoPago] = useState<string>('')
   const [creando, setCreando] = useState(false)
   const [countdown, setCountdown] = useState(15)
+
+  // MP state
+  const [estadoMP, setEstadoMP] = useState<EstadoMP>('idle')
+  const [mpInitPoint, setMpInitPoint] = useState<string | null>(null)
+  const [pedidoIdPendiente, setPedidoIdPendiente] = useState<string | null>(null)
+  const [pollingCount, setPollingCount] = useState(0)
 
   const total = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
 
@@ -33,7 +41,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
         const metodos: MetodoPago[] = []
         if (data.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo', emoji: '💵', descripcion: 'Pagás en caja al retirar' })
         if (data.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia', emoji: '📱', descripcion: 'Transferencia bancaria' })
-        if (data.acepta_mp) metodos.push({ id: 'mp', label: 'Mercado Pago', emoji: '💳', descripcion: 'Pago con QR' })
+        if (data.acepta_mp) metodos.push({ id: 'mp', label: 'Mercado Pago', emoji: '💳', descripcion: 'Pagá con QR' })
         setMetodosDisponibles(metodos)
         if (metodos.length > 0) setMetodoPago(metodos[0].id)
       })
@@ -43,19 +51,44 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
       })
   }, [dispositivo])
 
+  // Countdown para volver al inicio
   useEffect(() => {
     if (!pedidoCreado) return
     const interval = setInterval(() => {
-      setCountdown(c => {
-        if (c <= 1) { onNuevoPedido(); return 15 }
-        return c - 1
-      })
+      setCountdown(c => { if (c <= 1) { onNuevoPedido(); return 15 } return c - 1 })
     }, 1000)
     return () => clearInterval(interval)
   }, [pedidoCreado, onNuevoPedido])
 
-  async function confirmarPedido() {
-    if (!metodoPago) return
+  // Polling para verificar pago MP
+  const verificarPagoMP = useCallback(async (pedidoId: string) => {
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('pedidos')
+        .select('estado, numero_pedido, codigo_retiro')
+        .eq('id', pedidoId)
+        .single()
+
+      if (data?.estado === 'PAID') {
+        setEstadoMP('aprobado')
+        onPedidoCreado(data.numero_pedido, data.codigo_retiro)
+      }
+    } catch { /* ignorar */ }
+  }, [onPedidoCreado])
+
+  useEffect(() => {
+    if (estadoMP !== 'esperando' || !pedidoIdPendiente) return
+    if (pollingCount > 60) { setEstadoMP('rechazado'); return } // timeout 60 intentos = 1 min
+    const timeout = setTimeout(async () => {
+      await verificarPagoMP(pedidoIdPendiente)
+      setPollingCount(c => c + 1)
+    }, 2000)
+    return () => clearTimeout(timeout)
+  }, [estadoMP, pedidoIdPendiente, pollingCount, verificarPagoMP])
+
+  async function crearPedido(metodo: string) {
     setCreando(true)
     const items = carrito.map(item => ({
       presentacion_id: item.presentacion_id,
@@ -65,14 +98,58 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
       cantidad: item.cantidad,
       opciones: item.opciones.map(op => ({ opcion_id: op.opcion_id, nombre_snap: op.nombre, emoji_snap: op.emoji, color_snap: op.color })),
     }))
+
     const res = await fetch('/api/pedidos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: dispositivo.id, items, metodo_pago: metodoPago, origen: 'KIOSK' }),
+      body: JSON.stringify({
+        empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
+        dispositivo_id: dispositivo.id, items, metodo_pago: metodo, origen: 'KIOSK',
+      }),
     })
+
     const data = await res.json()
     setCreando(false)
-    if (res.ok && data.pedido) onPedidoCreado(data.pedido.numero_pedido, data.pedido.codigo_retiro)
+
+    if (!res.ok || !data.pedido) return
+
+    if (metodo === 'mp') {
+      // Crear preferencia MP
+      setPedidoIdPendiente(data.pedido.id)
+      setEstadoMP('creando')
+
+      const mpRes = await fetch('/api/mp/crear-preferencia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pedido_id: data.pedido.id,
+          sucursal_id: dispositivo.sucursal_id,
+          empresa_id: dispositivo.empresa_id,
+          items, total,
+        }),
+      })
+
+      if (mpRes.ok) {
+        const mpData = await mpRes.json()
+        setMpInitPoint(mpData.sandbox_init_point ?? mpData.init_point)
+        setEstadoMP('esperando')
+        setPollingCount(0)
+      } else {
+        setEstadoMP('rechazado')
+      }
+    } else {
+      onPedidoCreado(data.pedido.numero_pedido, data.pedido.codigo_retiro)
+    }
+  }
+
+  function pagarEnCaja() {
+    if (!pedidoIdPendiente) return
+    // El pedido ya está creado, solo mandamos al cliente a caja
+    setEstadoMP('idle')
+    setMpInitPoint(null)
+    // Crear pedido de nuevo pero en efectivo — no, el pedido ya existe
+    // Solo mostramos confirmación con el número existente
+    onNuevoPedido()
   }
 
   // Pantalla de éxito
@@ -80,44 +157,93 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
         <div className="text-center max-w-sm w-full">
-          {config.logo_url && (
-            <Image src={config.logo_url} alt="Logo" width={160} height={64} className="object-contain mx-auto mb-8" />
-          )}
-
+          {config.logo_url && <Image src={config.logo_url} alt="Logo" width={160} height={64} className="object-contain mx-auto mb-8" />}
           <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg" style={{ backgroundColor: config.primary_color }}>
             <CheckCircle className="h-10 w-10 text-white" />
           </div>
-
           <h1 className="text-3xl font-black mb-2" style={{ color: config.primary_color }}>¡Pedido recibido!</h1>
           <p className="text-neutral-500 mb-8">Presentá tu código al retirar</p>
-
           <div className="bg-white rounded-3xl p-8 shadow-md mb-8 border border-neutral-100">
             <p className="text-neutral-400 text-sm mb-1 uppercase tracking-wide font-medium">Número de pedido</p>
-            <p className="font-black mb-5" style={{ fontSize: '6rem', lineHeight: 1, color: config.primary_color }}>
-              #{pedidoCreado.numero}
-            </p>
+            <p className="font-black mb-5" style={{ fontSize: '6rem', lineHeight: 1, color: config.primary_color }}>#{pedidoCreado.numero}</p>
             <div className="h-px bg-neutral-100 mb-5" />
             <p className="text-neutral-400 text-sm mb-2 uppercase tracking-wide font-medium">Código de retiro</p>
-            <p className="text-4xl font-black tracking-[0.3em] font-mono" style={{ color: config.primary_color }}>
-              {pedidoCreado.codigo}
-            </p>
+            <p className="text-4xl font-black tracking-[0.3em] font-mono" style={{ color: config.primary_color }}>{pedidoCreado.codigo}</p>
           </div>
-
           <p className="text-neutral-300 text-sm mb-4">Volviendo al inicio en {countdown}s...</p>
-          <button onClick={onNuevoPedido}
-            className="px-8 py-3 rounded-2xl text-white font-semibold active:scale-95 transition-all"
-            style={{ backgroundColor: config.primary_color }}>
+          <button onClick={onNuevoPedido} className="px-8 py-3 rounded-2xl text-white font-semibold active:scale-95 transition-all" style={{ backgroundColor: config.primary_color }}>
             Volver al inicio
           </button>
-
-          {/* Gracias */}
           <p className="mt-8 text-neutral-300 text-sm italic">¡Gracias por tu pedido! 🍦</p>
         </div>
       </div>
     )
   }
 
-  // Pantalla de pago
+  // Pantalla MP — esperando pago
+  if (estadoMP === 'esperando' && mpInitPoint) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
+        <div className="text-center max-w-sm w-full">
+          {config.logo_url && <Image src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
+          <div className="bg-white rounded-3xl p-8 shadow-md border border-neutral-100 mb-6">
+            <p className="text-2xl font-black mb-2" style={{ color: config.primary_color }}>Mercado Pago</p>
+            <p className="text-neutral-400 text-sm mb-6">Escaneá el QR o tocá el botón para pagar</p>
+            <div className="flex justify-center mb-6">
+              <Loader2 className="h-8 w-8 animate-spin text-neutral-300" />
+            </div>
+            <p className="text-neutral-400 text-sm mb-1">Total a pagar</p>
+            <p className="font-black text-3xl mb-6" style={{ color: config.primary_color }}>{formatPrecio(total)}</p>
+            <a href={mpInitPoint} target="_blank" rel="noopener noreferrer"
+              className="w-full py-4 rounded-2xl text-white font-bold text-lg flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all"
+              style={{ backgroundColor: '#009EE3' }}>
+              💳 Pagar con Mercado Pago
+              <ArrowRight className="h-5 w-5" />
+            </a>
+          </div>
+          <p className="text-neutral-300 text-xs mb-4">Esperando confirmación del pago...</p>
+          <div className="space-y-3">
+            <button onClick={() => verificarPagoMP(pedidoIdPendiente!)}
+              className="w-full py-3 rounded-2xl border-2 border-neutral-200 text-neutral-500 font-semibold flex items-center justify-center gap-2 hover:bg-neutral-50 transition-colors">
+              <RefreshCw className="h-4 w-4" /> Verificar pago
+            </button>
+            <button onClick={pagarEnCaja}
+              className="w-full py-3 rounded-2xl text-neutral-400 text-sm font-medium hover:text-neutral-600 transition-colors">
+              👩‍💼 Pagar en caja
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Pantalla MP — error/rechazado
+  if (estadoMP === 'rechazado') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
+        <div className="text-center max-w-sm w-full">
+          <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-6">
+            <span className="text-4xl">❌</span>
+          </div>
+          <h2 className="text-2xl font-black text-neutral-800 mb-2">No pudimos completar el pago</h2>
+          <p className="text-neutral-400 mb-8">Tu pedido está guardado. Podés intentar de nuevo o pagar en caja.</p>
+          <div className="space-y-3">
+            <button onClick={() => { setEstadoMP('idle'); setMpInitPoint(null) }}
+              className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg"
+              style={{ backgroundColor: config.primary_color }}>
+              🔄 Intentar nuevamente
+            </button>
+            <button onClick={pagarEnCaja}
+              className="w-full py-4 rounded-2xl border-2 border-neutral-200 text-neutral-600 font-bold text-lg hover:bg-neutral-50 transition-colors">
+              👩‍💼 Pagar en caja
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Pantalla principal — selección de método de pago
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
       <div className="flex items-center justify-center px-6 py-5 bg-white border-b border-neutral-100">
@@ -141,9 +267,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="text-neutral-700 text-sm font-semibold">{item.nombre_producto} — {item.nombre_presentacion}</p>
-                    {item.opciones.length > 0 && (
-                      <p className="text-neutral-400 text-xs mt-0.5">{item.opciones.map(o => o.nombre).join(', ')}</p>
-                    )}
+                    {item.opciones.length > 0 && <p className="text-neutral-400 text-xs mt-0.5">{item.opciones.map(o => o.nombre).join(', ')}</p>}
                   </div>
                   <p className="text-neutral-700 font-bold text-sm ml-4">{formatPrecio(item.precio)}</p>
                 </div>
@@ -175,10 +299,10 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
             ))}
           </div>
 
-          <button onClick={confirmarPedido} disabled={!metodoPago || creando}
+          <button onClick={() => crearPedido(metodoPago)} disabled={!metodoPago || creando || estadoMP === 'creando'}
             className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all disabled:opacity-40 flex items-center justify-center gap-3"
             style={{ backgroundColor: config.primary_color }}>
-            {creando ? <><Loader2 className="h-5 w-5 animate-spin" /> Creando pedido...</> : 'Confirmar pedido →'}
+            {(creando || estadoMP === 'creando') ? <><Loader2 className="h-5 w-5 animate-spin" /> Procesando...</> : 'Confirmar pedido →'}
           </button>
         </div>
       </div>
