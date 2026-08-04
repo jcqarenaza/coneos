@@ -7,10 +7,8 @@ import Image from 'next/image'
 import { Loader2 } from 'lucide-react'
 
 interface Dispositivo {
-  id: string
-  empresa_id: string
-  sucursal_id: string
-  empresas: { nombre: string; slug: string }
+  id: string; empresa_id: string; sucursal_id: string
+  empresas: { nombre: string }
   sucursales: { nombre: string }
 }
 
@@ -24,7 +22,6 @@ interface Pedido {
   id: string
   numero_pedido: number
   codigo_retiro: string
-  estado: string
 }
 
 export default function DisplayPage() {
@@ -47,7 +44,6 @@ export default function DisplayPage() {
 
   useEffect(() => {
     if (!token) { setError('Token no válido'); setLoading(false); return }
-
     fetch('/api/device/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -57,7 +53,6 @@ export default function DisplayPage() {
       .then(async data => {
         if (data.error) { setError(data.error); return }
         setDispositivo(data.dispositivo)
-
         const res = await fetch(`/api/kiosk/config?empresa_id=${data.dispositivo.empresa_id}`)
         const cfg = await res.json()
         setConfig(cfg)
@@ -66,13 +61,12 @@ export default function DisplayPage() {
       .catch(() => { setError('Error de conexión'); setLoading(false) })
   }, [token])
 
-  // Cargar pedidos listos
   const cargarPedidos = async (disp: Dispositivo) => {
     const supabase = createClient()
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
     const { data } = await supabase
       .from('pedidos')
-      .select('id, numero_pedido, codigo_retiro, estado')
+      .select('id, numero_pedido, codigo_retiro')
       .eq('empresa_id', disp.empresa_id)
       .eq('sucursal_id', disp.sucursal_id)
       .eq('fecha_pedido', hoy)
@@ -81,7 +75,6 @@ export default function DisplayPage() {
     setPedidos((data ?? []) as Pedido[])
   }
 
-  // Realtime
   useEffect(() => {
     if (!dispositivo) return
     cargarPedidos(dispositivo)
@@ -89,9 +82,7 @@ export default function DisplayPage() {
     const channel = supabase
       .channel(`display-${dispositivo.sucursal_id}`)
       .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'pedidos',
+        event: '*', schema: 'public', table: 'pedidos',
         filter: `empresa_id=eq.${dispositivo.empresa_id}`,
       }, () => cargarPedidos(dispositivo))
       .subscribe()
@@ -99,82 +90,88 @@ export default function DisplayPage() {
   }, [dispositivo])
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-900">
-      <Loader2 className="h-12 w-12 animate-spin text-white" />
+    <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+      <Loader2 className="h-10 w-10 animate-spin text-neutral-200" />
     </div>
   )
 
   if (error || !dispositivo || !config) return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-900">
-      <p className="text-white/60">{error ?? 'Error de configuración'}</p>
+    <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+      <p className="text-neutral-400">{error ?? 'Error de configuración'}</p>
     </div>
   )
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: config.primary_color }}>
+    <div className="min-h-screen flex flex-col bg-neutral-50">
       {/* Header */}
-      <div className="flex items-center justify-between px-12 py-6 border-b border-white/10">
+      <div className="bg-white border-b border-neutral-100 shadow-sm px-10 py-5 flex items-center justify-between">
         <div>
           {config.logo_url ? (
-            <div className="bg-white rounded-xl px-5 py-2">
-              <Image src={config.logo_url} alt="Logo" width={180} height={65} className="object-contain w-auto" style={{ maxHeight: 52 }} />
-            </div>
+            <Image src={config.logo_url} alt="Logo" width={200} height={72} className="object-contain" style={{ maxHeight: 68 }} />
           ) : (
-            <span className="text-white text-2xl font-bold">{dispositivo.empresas?.nombre}</span>
+            <span className="text-2xl font-bold text-neutral-800">{dispositivo.empresas?.nombre}</span>
           )}
         </div>
+
         <div className="text-center">
-          <p className="text-white/60 text-sm mb-1">{dispositivo.sucursales?.nombre}</p>
-          <p className="text-white text-5xl font-bold tracking-tight">{hora}</p>
+          <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl" style={{ backgroundColor: `${config.primary_color}10` }}>
+            <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: config.primary_color }} />
+            <span className="text-sm font-bold tracking-widest uppercase" style={{ color: config.primary_color }}>
+              Pedidos listos
+            </span>
+          </div>
         </div>
+
         <div className="text-right">
-          <p className="text-white/40 text-sm">Sistema de pedidos</p>
-          <p className="text-white/40 text-xs mt-1">ConeOS</p>
+          <p className="text-4xl font-black text-neutral-300 tabular-nums">{hora}</p>
+          <p className="text-neutral-300 text-xs mt-1">{dispositivo.sucursales?.nombre}</p>
         </div>
       </div>
 
-      {/* Contenido principal */}
-      <div className="flex-1 flex flex-col items-center justify-center px-12 py-10">
-        {/* Título */}
-        <div className="text-center mb-16">
-          <h1 className="text-white/80 text-3xl font-medium tracking-widest uppercase mb-3">Pedidos listos</h1>
-          <div className="h-1 w-24 mx-auto rounded-full opacity-40" style={{ backgroundColor: config.secondary_color }} />
-        </div>
-
+      {/* Contenido */}
+      <div className="flex-1 flex flex-col items-center justify-center px-10 py-12">
         {pedidos.length === 0 ? (
           <div className="text-center">
-            <p className="text-white/30 text-4xl font-light">— Sin pedidos listos —</p>
-            <p className="text-white/20 text-xl mt-4">Los pedidos aparecerán aquí cuando estén listos</p>
+            <div className="w-24 h-24 rounded-3xl bg-neutral-100 flex items-center justify-center mx-auto mb-6">
+              <span className="text-5xl">🍦</span>
+            </div>
+            <p className="text-neutral-300 text-2xl font-medium">Sin pedidos listos</p>
+            <p className="text-neutral-200 text-base mt-2">Los pedidos aparecerán aquí cuando estén listos</p>
           </div>
         ) : (
-          <div className="flex flex-wrap justify-center gap-8 max-w-5xl">
-            {pedidos.map(pedido => (
-              <div
-                key={pedido.id}
-                className="flex flex-col items-center justify-center rounded-3xl shadow-2xl"
-                style={{
-                  backgroundColor: config.secondary_color,
-                  minWidth: 200,
-                  minHeight: 200,
-                  padding: '2rem',
-                }}
-              >
-                <p className="font-black text-8xl leading-none" style={{ color: config.primary_color }}>
-                  #{pedido.numero_pedido}
-                </p>
-                <p className="font-mono font-bold text-2xl mt-4 opacity-60" style={{ color: config.primary_color }}>
-                  {pedido.codigo_retiro}
-                </p>
-              </div>
-            ))}
+          <div className="w-full max-w-5xl">
+            <div className="flex flex-wrap justify-center gap-6">
+              {pedidos.map(pedido => (
+                <div
+                  key={pedido.id}
+                  className="flex flex-col items-center justify-center bg-white rounded-3xl shadow-md border border-neutral-100"
+                  style={{ minWidth: 220, minHeight: 220, padding: '2.5rem' }}
+                >
+                  <p className="font-black text-neutral-200 text-lg mb-1 tracking-wide">PEDIDO</p>
+                  <p className="font-black leading-none mb-4" style={{ fontSize: '7rem', color: config.primary_color }}>
+                    #{pedido.numero_pedido}
+                  </p>
+                  <div className="h-px w-16 rounded mb-4 bg-neutral-100" />
+                  <p className="text-xs font-semibold tracking-widest uppercase text-neutral-300 mb-1">Código</p>
+                  <p className="font-black text-3xl tracking-[0.25em] font-mono" style={{ color: config.secondary_color }}>
+                    {pedido.codigo_retiro}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="px-12 py-4 border-t border-white/10 flex items-center justify-between">
-        <p className="text-white/30 text-sm">Presentá tu código al retirar el pedido</p>
-        <p className="text-white/20 text-xs">{pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''} listo{pedidos.length !== 1 ? 's' : ''}</p>
+      <div className="bg-white border-t border-neutral-100 px-10 py-4 flex items-center justify-between">
+        <p className="text-neutral-300 text-sm">Presentá tu código al retirar tu pedido</p>
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          <p className="text-neutral-300 text-xs">
+            {pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''} listo{pedidos.length !== 1 ? 's' : ''}
+          </p>
+        </div>
       </div>
     </div>
   )
