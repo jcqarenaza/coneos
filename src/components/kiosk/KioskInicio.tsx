@@ -12,15 +12,36 @@ interface Props {
   onComenzar: (categoriaId?: string) => void
 }
 
-function emojiCategoria(nombre: string): string {
+const CATEGORIA_GRADIENTS: Record<string, string> = {
+  'helado': 'from-rose-50 to-pink-100',
+  'kilo': 'from-rose-50 to-pink-100',
+  'balde': 'from-blue-50 to-cyan-100',
+  'bombon': 'from-amber-50 to-orange-100',
+  'envasa': 'from-amber-50 to-orange-100',
+  'torta': 'from-purple-50 to-violet-100',
+  'palito': 'from-emerald-50 to-teal-100',
+  'copa': 'from-yellow-50 to-amber-100',
+}
+
+const CATEGORIA_EMOJI: Record<string, string> = {
+  'helado': '🍦', 'kilo': '🍦', 'balde': '🧊',
+  'bombon': '🍫', 'envasa': '🍫', 'torta': '🎂',
+  'palito': '🍡', 'copa': '🍨',
+}
+
+function getGradient(nombre: string): string {
   const n = nombre.toLowerCase()
-  if (n.includes('helado') || n.includes('kilo')) return '🍦'
-  if (n.includes('balde')) return '🧊'
-  if (n.includes('cono') || n.includes('bocha')) return '🍦'
-  if (n.includes('bombon') || n.includes('envasa')) return '🍫'
-  if (n.includes('torta')) return '🎂'
-  if (n.includes('palito')) return '🍡'
-  if (n.includes('copa')) return '🍨'
+  for (const [key, val] of Object.entries(CATEGORIA_GRADIENTS)) {
+    if (n.includes(key)) return val
+  }
+  return 'from-neutral-50 to-neutral-100'
+}
+
+function getEmoji(nombre: string): string {
+  const n = nombre.toLowerCase()
+  for (const [key, val] of Object.entries(CATEGORIA_EMOJI)) {
+    if (n.includes(key)) return val
+  }
   return '🍨'
 }
 
@@ -32,7 +53,6 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
     fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
       .then(r => r.json())
       .then(data => setCategorias(data.categorias ?? []))
-
     const tick = () => setHora(new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }))
     tick()
     const interval = setInterval(tick, 30000)
@@ -40,59 +60,63 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   }, [dispositivo])
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#fdf8f4' }}>
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
       {/* Header */}
-      <div className="w-full py-4 px-8 flex items-center justify-between" style={{ backgroundColor: config.primary_color }}>
-        <div className="w-24" />
-        <div className="flex items-center justify-center">
+      <div className="flex items-center justify-between px-8 py-5">
+        <div className="w-20 text-left">
+          <span className="text-neutral-300 text-sm">{hora}</span>
+        </div>
+        <div className="flex-1 flex justify-center">
           {config.logo_url ? (
-            <div className="bg-white rounded-xl px-5 py-2 flex items-center justify-center" style={{ minWidth: 160, maxWidth: 220 }}>
-              <Image
-                src={config.logo_url}
-                alt={dispositivo.empresas?.nombre ?? 'Logo'}
-                width={180}
-                height={65}
-                className="object-contain w-auto"
-                style={{ maxHeight: 56 }}
-              />
-            </div>
+            <Image src={config.logo_url} alt="Logo" width={200} height={80} className="object-contain" style={{ maxHeight: 72 }} />
           ) : (
-            <span className="text-white text-2xl font-bold">{dispositivo.empresas?.nombre}</span>
+            <span className="text-2xl font-bold" style={{ color: config.primary_color }}>{dispositivo.empresas?.nombre}</span>
           )}
         </div>
-        <div className="text-right w-24">
-          <p className="text-white/60 text-sm">{dispositivo.sucursales?.nombre}</p>
-          <p className="text-white text-lg font-medium">{hora}</p>
-        </div>
+        <div className="w-20" />
       </div>
 
-      {/* Contenido */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8 py-10">
-        <h1 className="text-4xl font-bold text-neutral-800 mb-2 text-center">¿Qué querés pedir?</h1>
-        <p className="text-neutral-400 mb-10 text-center">Tocá una categoría para comenzar</p>
+      {/* Hero */}
+      <div className="text-center px-8 pt-2 pb-10">
+        <div className="flex items-center justify-center gap-2 mb-3">
+          <div className="h-px w-8 rounded" style={{ backgroundColor: config.secondary_color }} />
+          <span className="text-sm font-medium tracking-widest uppercase" style={{ color: config.secondary_color }}>Bienvenido</span>
+          <div className="h-px w-8 rounded" style={{ backgroundColor: config.secondary_color }} />
+        </div>
+        <h1 className="text-5xl font-bold mb-3" style={{ color: config.primary_color }}>
+          ¿Qué querés<br />disfrutar hoy?
+        </h1>
+        <p className="text-neutral-400 text-lg">Tocá una categoría para comenzar</p>
+      </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-3xl mb-12">
+      {/* Categorías */}
+      <div className="flex-1 px-6 pb-10">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
           {categorias.map(cat => (
             <button
               key={cat.id}
               onClick={() => onComenzar(cat.id)}
-              className="flex flex-col items-center justify-center p-6 bg-white rounded-2xl shadow-sm border border-neutral-100 hover:shadow-md active:scale-95 transition-all gap-3 min-h-[140px]"
+              className={`group relative flex flex-col items-center justify-end p-5 rounded-3xl bg-gradient-to-br ${getGradient(cat.nombre)} border border-white/80 shadow-sm hover:shadow-lg active:scale-95 transition-all duration-200 min-h-[180px] overflow-hidden`}
             >
-              {cat.icono_url ? (
-                <Image src={cat.icono_url} alt={cat.nombre} width={64} height={64} className="object-contain" />
-              ) : (
-                <span className="text-5xl">{emojiCategoria(cat.nombre)}</span>
+              {/* Emoji grande de fondo */}
+              <span className="absolute top-4 left-1/2 -translate-x-1/2 text-7xl opacity-90 group-hover:scale-110 transition-transform duration-200 pointer-events-none select-none">
+                {cat.icono_url ? '' : getEmoji(cat.nombre)}
+              </span>
+              {cat.icono_url && (
+                <Image src={cat.icono_url} alt={cat.nombre} width={80} height={80} className="absolute top-4 object-contain opacity-90" />
               )}
-              <span className="text-neutral-700 font-medium text-sm text-center">{cat.nombre}</span>
+              {/* Nombre */}
+              <div className="relative z-10 text-center mt-auto pt-14">
+                <span className="text-base font-bold text-neutral-700">{cat.nombre}</span>
+              </div>
             </button>
           ))}
         </div>
-
-
       </div>
 
-      <div className="py-4 text-center">
-        <p className="text-neutral-300 text-xs">ConeOS · Sistema de pedidos</p>
+      {/* Footer */}
+      <div className="text-center py-4">
+        <p className="text-neutral-300 text-xs tracking-wide">ConeOS · Sistema de pedidos</p>
       </div>
     </div>
   )

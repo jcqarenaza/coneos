@@ -94,19 +94,26 @@ export default function KioskPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#D42B2B' }}>
-      <Loader2 className="h-10 w-10 animate-spin text-white" />
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1a2744 0%, #2d3f6b 100%)' }}>
+      <div className="text-center">
+        <Loader2 className="h-10 w-10 animate-spin text-white/60 mx-auto mb-3" />
+        <p className="text-white/40 text-sm">Cargando...</p>
+      </div>
     </div>
   )
 
   if (error || !dispositivo || !config) return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-100">
-      <p className="text-neutral-600 text-lg">{error ?? 'Error de configuración'}</p>
+    <div className="min-h-screen flex items-center justify-center bg-neutral-50">
+      <div className="text-center bg-white rounded-2xl p-8 shadow-sm max-w-sm mx-4">
+        <p className="text-2xl mb-3">😔</p>
+        <p className="text-neutral-700 font-medium mb-1">No pudimos conectar</p>
+        <p className="text-neutral-400 text-sm">{error ?? 'Error de configuración'}</p>
+      </div>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-[#fdf8f4] flex flex-col select-none">
+    <div className="min-h-screen select-none" style={{ backgroundColor: '#faf8f5' }}>
       {paso === 'inicio' && (
         <KioskInicio config={config} dispositivo={dispositivo} onComenzar={handleComenzar} />
       )}
