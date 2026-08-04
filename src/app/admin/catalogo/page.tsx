@@ -10,30 +10,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Loader2, Pencil, Trash2, Upload, X, ImageIcon } from 'lucide-react'
 import Image from 'next/image'
 
-// ─── Tipos ───────────────────────────────────────────────────────────────────
 interface Categoria { id: string; nombre: string; orden: number; activo: boolean; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
-interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; grupo_id: string; orden: number; activo: boolean }
+interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean }
 
 type Tab = 'categorias' | 'productos' | 'presentaciones' | 'sabores'
 
-// ─── ImageUpload ─────────────────────────────────────────────────────────────
-function ImageUpload({ value, onChange, bucket = 'productos', folder = 'productos' }: {
-  value: string | null; onChange: (url: string | null) => void; bucket?: string; folder?: string
+function ImageUpload({ value, onChange, folder = 'productos' }: {
+  value: string | null; onChange: (url: string | null) => void; folder?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
-  const supabase = createClient()
 
   async function handleFile(file: File) {
     setUploading(true)
+    const supabase = createClient()
     const ext = file.name.split('.').pop()
     const path = `${folder}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true })
+    const { error } = await supabase.storage.from('productos').upload(path, file, { upsert: true })
     if (!error) {
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path)
+      const { data } = supabase.storage.from('productos').getPublicUrl(path)
       onChange(data.publicUrl)
     }
     setUploading(false)
@@ -45,25 +43,24 @@ function ImageUpload({ value, onChange, bucket = 'productos', folder = 'producto
         <div className="relative w-full h-40 rounded-xl overflow-hidden border border-neutral-200 bg-neutral-50 group">
           <Image src={value} alt="Preview" fill className="object-cover" />
           <button onClick={() => onChange(null)}
-            className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
             <X className="h-4 w-4" />
           </button>
         </div>
       ) : (
         <button onClick={() => inputRef.current?.click()} disabled={uploading}
-          className="w-full h-40 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:border-neutral-300 transition-colors flex flex-col items-center justify-center gap-2 text-neutral-400 disabled:opacity-50">
-          {uploading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-6 w-6" />}
-          <span className="text-sm">{uploading ? 'Subiendo...' : 'Subir imagen'}</span>
+          className="w-full h-32 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:border-neutral-300 transition-colors flex flex-col items-center justify-center gap-2 text-neutral-400 disabled:opacity-50">
+          {uploading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-5 w-5" />}
+          <span className="text-sm font-medium">{uploading ? 'Subiendo...' : 'Subir imagen'}</span>
           <span className="text-xs text-neutral-300">JPG, PNG, WEBP</span>
         </button>
       )}
       <input ref={inputRef} type="file" accept="image/*" className="hidden"
-        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} />
     </div>
   )
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function CatalogoPage() {
   const { ctx } = useEmpresa()
   const [tab, setTab] = useState<Tab>('productos')
@@ -75,22 +72,19 @@ export default function CatalogoPage() {
   const [grupos, setGrupos] = useState<GrupoOpciones[]>([])
   const [opciones, setOpciones] = useState<Opcion[]>([])
 
-  // Modales
   const [modalCat, setModalCat] = useState(false)
   const [modalProd, setModalProd] = useState(false)
   const [modalPres, setModalPres] = useState(false)
   const [modalGrupo, setModalGrupo] = useState(false)
   const [modalOp, setModalOp] = useState(false)
-
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  // Forms
   const [formCat, setFormCat] = useState({ nombre: '', orden: 1, activo: true, icono_url: null as string | null })
   const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true })
   const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '' })
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
-  const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', grupo_id: '', orden: 1, activo: true })
+  const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true })
 
   async function load() {
     if (!ctx) return
@@ -112,7 +106,7 @@ export default function CatalogoPage() {
 
   useEffect(() => { load() }, [ctx])
 
-  // ── Categorías ──
+  // Categorías
   function openNewCat() { setFormCat({ nombre: '', orden: categorias.length + 1, activo: true, icono_url: null }); setEditId(null); setModalCat(true) }
   function openEditCat(c: Categoria) { setFormCat({ nombre: c.nombre, orden: c.orden, activo: c.activo, icono_url: c.icono_url }); setEditId(c.id); setModalCat(true) }
   async function saveCat() {
@@ -131,7 +125,7 @@ export default function CatalogoPage() {
     load()
   }
 
-  // ── Productos ──
+  // Productos
   function openNewProd() { setFormProd({ nombre: '', descripcion: '', imagen_url: null, categoria_id: categorias[0]?.id ?? '', codigo: '', orden: productos.length + 1, activo: true, visible_kiosk: true }); setEditId(null); setModalProd(true) }
   function openEditProd(p: Producto) { setFormProd({ nombre: p.nombre, descripcion: p.descripcion ?? '', imagen_url: p.imagen_url, categoria_id: p.categoria_id, codigo: p.codigo ?? '', orden: p.orden, activo: p.activo, visible_kiosk: p.visible_kiosk }); setEditId(p.id); setModalProd(true) }
   async function saveProd() {
@@ -150,7 +144,7 @@ export default function CatalogoPage() {
     load()
   }
 
-  // ── Presentaciones ──
+  // Presentaciones
   function openNewPres() { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: productos[0]?.id ?? '' }); setEditId(null); setModalPres(true) }
   function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id }); setEditId(p.id); setModalPres(true) }
   async function savePres() {
@@ -169,7 +163,7 @@ export default function CatalogoPage() {
     load()
   }
 
-  // ── Grupos ──
+  // Grupos
   function openNewGrupo() { setFormGrupo({ nombre: '', orden: grupos.length + 1, activo: true }); setEditId(null); setModalGrupo(true) }
   function openEditGrupo(g: GrupoOpciones) { setFormGrupo({ nombre: g.nombre, orden: g.orden, activo: g.activo }); setEditId(g.id); setModalGrupo(true) }
   async function saveGrupo() {
@@ -181,14 +175,14 @@ export default function CatalogoPage() {
     setSaving(false); setModalGrupo(false); load()
   }
 
-  // ── Opciones/Sabores ──
-  function openNewOp() { setFormOp({ nombre: '', descripcion: '', emoji: '', grupo_id: grupos[0]?.id ?? '', orden: 1, activo: true }); setEditId(null); setModalOp(true) }
-  function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', grupo_id: o.grupo_id, orden: o.orden, activo: o.activo }); setEditId(o.id); setModalOp(true) }
+  // Sabores
+  function openNewOp() { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupos[0]?.id ?? '', orden: 1, activo: true }); setEditId(null); setModalOp(true) }
+  function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo }); setEditId(o.id); setModalOp(true) }
   async function saveOp() {
     if (!ctx || !formOp.nombre || !formOp.grupo_id) return
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo }
+    const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo }
     if (editId) await supabase.from('opciones').update(payload).eq('id', editId)
     else await supabase.from('opciones').insert({ ...payload, empresa_id: ctx.empresaId })
     setSaving(false); setModalOp(false); load()
@@ -213,7 +207,6 @@ export default function CatalogoPage() {
     <div>
       <ConePageHeader title="Catálogo" description="Productos, categorías, presentaciones y sabores" />
 
-      {/* Tabs */}
       <div className="flex gap-1 bg-neutral-100 p-1 rounded-xl mb-6 w-fit">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -223,7 +216,7 @@ export default function CatalogoPage() {
         ))}
       </div>
 
-      {/* ── Productos ── */}
+      {/* Productos */}
       {tab === 'productos' && (
         <div>
           <div className="flex justify-end mb-4">
@@ -238,23 +231,21 @@ export default function CatalogoPage() {
                 <div key={prod.id} className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
                   <div className="flex items-center gap-4 p-4">
                     <div className="w-16 h-16 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {prod.imagen_url
-                        ? <Image src={prod.imagen_url} alt={prod.nombre} width={64} height={64} className="object-cover w-full h-full" />
-                        : <ImageIcon className="h-6 w-6 text-neutral-300" />}
+                      {prod.imagen_url ? <Image src={prod.imagen_url} alt={prod.nombre} width={64} height={64} className="object-cover w-full h-full" /> : <ImageIcon className="h-6 w-6 text-neutral-300" />}
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-neutral-900">{prod.nombre}</span>
                         <ConeBadge active={prod.activo} />
                         {!prod.visible_kiosk && <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Oculto en kiosk</span>}
                       </div>
-                      {prod.descripcion && <p className="text-neutral-400 text-xs mt-0.5">{prod.descripcion}</p>}
-                      <div className="flex items-center gap-2 mt-1.5">
+                      {prod.descripcion && <p className="text-neutral-400 text-xs mt-0.5 truncate">{prod.descripcion}</p>}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         {cat && <span className="text-xs bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">{cat.nombre}</span>}
                         {pres.map(p => <span key={p.id} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{p.nombre} ${Number(p.precio).toLocaleString('es-AR')}</span>)}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
                       <button onClick={() => openEditProd(prod)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
                       <button onClick={() => deleteProd(prod.id)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -266,7 +257,7 @@ export default function CatalogoPage() {
         </div>
       )}
 
-      {/* ── Categorías ── */}
+      {/* Categorías */}
       {tab === 'categorias' && (
         <div>
           <div className="flex justify-end mb-4">
@@ -277,7 +268,7 @@ export default function CatalogoPage() {
             {categorias.map(cat => (
               <div key={cat.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-center overflow-hidden">
+                  <div className="w-10 h-10 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                     {cat.icono_url ? <Image src={cat.icono_url} alt={cat.nombre} width={40} height={40} className="object-cover w-full h-full" /> : <ImageIcon className="h-4 w-4 text-neutral-300" />}
                   </div>
                   <div>
@@ -298,7 +289,7 @@ export default function CatalogoPage() {
         </div>
       )}
 
-      {/* ── Presentaciones ── */}
+      {/* Presentaciones */}
       {tab === 'presentaciones' && (
         <div>
           <div className="flex justify-end mb-4">
@@ -333,7 +324,7 @@ export default function CatalogoPage() {
         </div>
       )}
 
-      {/* ── Sabores ── */}
+      {/* Sabores */}
       {tab === 'sabores' && (
         <div>
           <div className="flex justify-between items-center mb-4">
@@ -345,8 +336,8 @@ export default function CatalogoPage() {
           {grupos.map(grupo => {
             const ops = opciones.filter(o => o.grupo_id === grupo.id)
             return (
-              <div key={grupo.id} className="mb-4">
-                <div className="flex items-center justify-between mb-2">
+              <div key={grupo.id} className="mb-6">
+                <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold text-neutral-700">{grupo.nombre}</h3>
                     <span className="text-xs text-neutral-400">{ops.length} sabores</span>
@@ -355,17 +346,25 @@ export default function CatalogoPage() {
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                   {ops.map(op => (
-                    <div key={op.id} className="bg-white rounded-xl border border-neutral-100 p-3 flex items-center justify-between shadow-sm">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xl flex-shrink-0">{op.emoji || '🍦'}</span>
-                        <div className="min-w-0">
-                          <p className="text-neutral-800 text-sm font-semibold truncate">{op.nombre}</p>
-                          {op.descripcion && <p className="text-neutral-400 text-xs truncate">{op.descripcion}</p>}
+                    <div key={op.id} className="bg-white rounded-xl border border-neutral-100 overflow-hidden shadow-sm group">
+                      {/* Imagen si existe */}
+                      {op.imagen_url && (
+                        <div className="w-full h-24 overflow-hidden bg-neutral-50">
+                          <Image src={op.imagen_url} alt={op.nombre} width={200} height={96} className="object-cover w-full h-full" />
                         </div>
-                      </div>
-                      <div className="flex items-center gap-0.5 flex-shrink-0 ml-2">
-                        <button onClick={() => openEditOp(op)} className="p-1 text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3 w-3" /></button>
-                        <button onClick={() => deleteOp(op.id)} className="p-1 text-neutral-200 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3 w-3" /></button>
+                      )}
+                      <div className="p-2.5 flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {!op.imagen_url && <span className="text-xl flex-shrink-0">{op.emoji || '🍦'}</span>}
+                          <div className="min-w-0">
+                            <p className="text-neutral-800 text-xs font-semibold truncate">{op.nombre}</p>
+                            {op.descripcion && <p className="text-neutral-400 text-xs truncate hidden group-hover:block">{op.descripcion}</p>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-0.5 flex-shrink-0">
+                          <button onClick={() => openEditOp(op)} className="p-1 text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3 w-3" /></button>
+                          <button onClick={() => deleteOp(op.id)} className="p-1 text-neutral-200 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3 w-3" /></button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -382,7 +381,7 @@ export default function CatalogoPage() {
         <div className="space-y-4">
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formCat.nombre} onChange={e => setFormCat({ ...formCat, nombre: e.target.value })} placeholder="Helados por Kilo" autoFocus /></div>
           <div className="space-y-1.5"><Label>Orden</Label><Input type="number" value={formCat.orden} onChange={e => setFormCat({ ...formCat, orden: Number(e.target.value) })} className="w-24" /></div>
-          <div className="space-y-1.5"><Label>Ícono (imagen)</Label><ImageUpload value={formCat.icono_url} onChange={url => setFormCat({ ...formCat, icono_url: url })} folder="categorias" /></div>
+          <div className="space-y-1.5"><Label>Ícono</Label><ImageUpload value={formCat.icono_url} onChange={url => setFormCat({ ...formCat, icono_url: url })} folder="categorias" /></div>
           <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formCat.activo} onChange={e => setFormCat({ ...formCat, activo: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Activo</span></label>
         </div>
       </ConeModal>
@@ -456,7 +455,10 @@ export default function CatalogoPage() {
             </Select>
           </div>
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formOp.nombre} onChange={e => setFormOp({ ...formOp, nombre: e.target.value })} placeholder="Chocolate" autoFocus /></div>
-          <div className="space-y-1.5"><Label>Emoji</Label><Input value={formOp.emoji} onChange={e => setFormOp({ ...formOp, emoji: e.target.value })} placeholder="🍫" className="text-xl w-24" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label>Emoji</Label><Input value={formOp.emoji} onChange={e => setFormOp({ ...formOp, emoji: e.target.value })} placeholder="🍫" className="text-xl" /></div>
+          </div>
+          <div className="space-y-1.5"><Label>Imagen del sabor</Label><ImageUpload value={formOp.imagen_url} onChange={url => setFormOp({ ...formOp, imagen_url: url })} folder="sabores" /></div>
           <div className="space-y-1.5"><Label>Descripción</Label><Input value={formOp.descripcion} onChange={e => setFormOp({ ...formOp, descripcion: e.target.value })} placeholder="Descripción corta del sabor" /></div>
         </div>
       </ConeModal>
