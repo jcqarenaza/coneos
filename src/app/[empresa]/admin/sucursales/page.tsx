@@ -70,8 +70,11 @@ export default function SucursalesPage() {
   async function handleDelete(s: Sucursal) {
     if (!confirm(`¿Eliminar la sucursal "${s.nombre}"? Esta acción no se puede deshacer.`)) return
     const supabase = createClient()
-    await supabase.from('sucursal_pagos').delete().eq('sucursal_id', s.id)
-    await supabase.from('sucursales').delete().eq('id', s.id)
+    const { error } = await supabase.rpc('delete_sucursal', { p_id: s.id })
+    if (error) {
+      alert('No se pudo eliminar: ' + error.message)
+      return
+    }
     load()
   }
 
@@ -138,7 +141,7 @@ export default function SucursalesPage() {
             <div className="flex items-center gap-2"><input type="checkbox" id="ef" checked={pagos.acepta_efectivo} onChange={e => setPagos({ ...pagos, acepta_efectivo: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef" className="cursor-pointer flex items-center gap-1.5"><Banknote className="h-4 w-4 text-neutral-400" /> Efectivo</Label></div>
             <div className="space-y-2">
               <div className="flex items-center gap-2"><input type="checkbox" id="tr" checked={pagos.acepta_transferencia} onChange={e => setPagos({ ...pagos, acepta_transferencia: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr" className="cursor-pointer flex items-center gap-1.5"><CreditCard className="h-4 w-4 text-neutral-400" /> Transferencia</Label></div>
-              {pagos.acepta_transferencia && <div className="ml-6"><Label>CBU / Alias</Label><Input value={pagos.cbu_transferencia ?? ''} onChange={e => setPagos({ ...pagos, cbu_transferencia: e.target.value })} placeholder="cecchetto.helados" className="font-mono text-sm mt-1" /></div>}
+              {pagos.acepta_transferencia && <div className="ml-6"><Label>CBU / Alias</Label><Input value={pagos.cbu_transferencia ?? ''} onChange={e => setPagos({ ...pagos, cbu_transferencia: e.target.value })} placeholder="tu.alias" className="font-mono text-sm mt-1" /></div>}
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-2"><input type="checkbox" id="mp" checked={pagos.acepta_mp} onChange={e => setPagos({ ...pagos, acepta_mp: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="mp" className="cursor-pointer flex items-center gap-1.5"><Smartphone className="h-4 w-4 text-neutral-400" /> Mercado Pago</Label></div>
