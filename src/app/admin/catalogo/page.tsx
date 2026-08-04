@@ -12,7 +12,7 @@ import Image from 'next/image'
 
 interface Categoria { id: string; nombre: string; orden: number; activo: boolean; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean }
-interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string }
+interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean }
 
@@ -40,7 +40,7 @@ function ImageUpload({ value, onChange, folder = 'productos' }: {
   return (
     <div className="space-y-2">
       {value ? (
-        <div className="relative w-full h-40 rounded-xl overflow-hidden border border-neutral-200 bg-neutral-50 group">
+        <div className="relative w-full h-32 rounded-xl overflow-hidden border border-neutral-200 bg-neutral-50 group">
           <Image src={value} alt="Preview" fill className="object-cover" />
           <button onClick={() => onChange(null)}
             className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
@@ -82,7 +82,7 @@ export default function CatalogoPage() {
 
   const [formCat, setFormCat] = useState({ nombre: '', orden: 1, activo: true, icono_url: null as string | null })
   const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true })
-  const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '' })
+  const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null })
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
   const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true })
 
@@ -145,13 +145,13 @@ export default function CatalogoPage() {
   }
 
   // Presentaciones
-  function openNewPres() { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: productos[0]?.id ?? '' }); setEditId(null); setModalPres(true) }
-  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id }); setEditId(p.id); setModalPres(true) }
+  function openNewPres() { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: productos[0]?.id ?? '', imagen_url: null }); setEditId(null); setModalPres(true) }
+  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url }); setEditId(p.id); setModalPres(true) }
   async function savePres() {
     if (!ctx || !formPres.nombre || !formPres.producto_id) return
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id }
+    const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id, imagen_url: formPres.imagen_url }
     if (editId) await supabase.from('presentaciones').update(payload).eq('id', editId)
     else await supabase.from('presentaciones').insert({ ...payload, empresa_id: ctx.empresaId })
     setSaving(false); setModalPres(false); load()
@@ -300,22 +300,29 @@ export default function CatalogoPage() {
             {presentaciones.map(pres => {
               const prod = productos.find(p => p.id === pres.producto_id)
               return (
-                <div key={pres.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-neutral-900">{prod?.nombre ?? '?'}</span>
-                      <span className="text-neutral-400">→</span>
-                      <span className="font-semibold text-neutral-700">{pres.nombre}</span>
-                      <ConeBadge active={pres.activo} />
+                <div key={pres.id} className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-4 p-4">
+                    <div className="w-14 h-14 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      {pres.imagen_url
+                        ? <Image src={pres.imagen_url} alt={pres.nombre} width={56} height={56} className="object-cover w-full h-full" />
+                        : <ImageIcon className="h-5 w-5 text-neutral-300" />}
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-neutral-700 font-bold">${Number(pres.precio).toLocaleString('es-AR')}</span>
-                      {pres.permite_opciones && <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{pres.opciones_min}–{pres.opciones_max} sabores</span>}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-neutral-900">{prod?.nombre ?? '?'}</span>
+                        <span className="text-neutral-400">→</span>
+                        <span className="font-semibold text-neutral-700">{pres.nombre}</span>
+                        <ConeBadge active={pres.activo} />
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-neutral-700 font-bold">${Number(pres.precio).toLocaleString('es-AR')}</span>
+                        {pres.permite_opciones && <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{pres.opciones_min}–{pres.opciones_max} sabores</span>}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={() => openEditPres(pres)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
-                    <button onClick={() => deletePres(pres.id)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => openEditPres(pres)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
+                      <button onClick={() => deletePres(pres.id)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
+                    </div>
                   </div>
                 </div>
               )
@@ -347,19 +354,15 @@ export default function CatalogoPage() {
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                   {ops.map(op => (
                     <div key={op.id} className="bg-white rounded-xl border border-neutral-100 overflow-hidden shadow-sm group">
-                      {/* Imagen si existe */}
                       {op.imagen_url && (
-                        <div className="w-full h-24 overflow-hidden bg-neutral-50">
-                          <Image src={op.imagen_url} alt={op.nombre} width={200} height={96} className="object-cover w-full h-full" />
+                        <div className="w-full h-20 overflow-hidden bg-neutral-50">
+                          <Image src={op.imagen_url} alt={op.nombre} width={200} height={80} className="object-cover w-full h-full" />
                         </div>
                       )}
                       <div className="p-2.5 flex items-center justify-between gap-1">
                         <div className="flex items-center gap-1.5 min-w-0">
                           {!op.imagen_url && <span className="text-xl flex-shrink-0">{op.emoji || '🍦'}</span>}
-                          <div className="min-w-0">
-                            <p className="text-neutral-800 text-xs font-semibold truncate">{op.nombre}</p>
-                            {op.descripcion && <p className="text-neutral-400 text-xs truncate hidden group-hover:block">{op.descripcion}</p>}
-                          </div>
+                          <p className="text-neutral-800 text-xs font-semibold truncate">{op.nombre}</p>
                         </div>
                         <div className="flex items-center gap-0.5 flex-shrink-0">
                           <button onClick={() => openEditOp(op)} className="p-1 text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3 w-3" /></button>
@@ -398,8 +401,8 @@ export default function CatalogoPage() {
               <SelectContent>{categorias.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5"><Label>Descripción</Label><Input value={formProd.descripcion} onChange={e => setFormProd({ ...formProd, descripcion: e.target.value })} placeholder="Descripción opcional" /></div>
-          <div className="space-y-1.5"><Label>Código</Label><Input value={formProd.codigo} onChange={e => setFormProd({ ...formProd, codigo: e.target.value })} placeholder="00061" className="font-mono" /></div>
+          <div className="space-y-1.5"><Label>Descripción</Label><Input value={formProd.descripcion} onChange={e => setFormProd({ ...formProd, descripcion: e.target.value })} /></div>
+          <div className="space-y-1.5"><Label>Código</Label><Input value={formProd.codigo} onChange={e => setFormProd({ ...formProd, codigo: e.target.value })} className="font-mono" /></div>
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formProd.imagen_url} onChange={url => setFormProd({ ...formProd, imagen_url: url })} /></div>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formProd.activo} onChange={e => setFormProd({ ...formProd, activo: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Activo</span></label>
@@ -421,6 +424,7 @@ export default function CatalogoPage() {
           </div>
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formPres.nombre} onChange={e => setFormPres({ ...formPres, nombre: e.target.value })} placeholder="1/4 Kg" autoFocus /></div>
           <div className="space-y-1.5"><Label>Precio *</Label><Input type="number" value={formPres.precio} onChange={e => setFormPres({ ...formPres, precio: Number(e.target.value) })} /></div>
+          <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formPres.imagen_url} onChange={url => setFormPres({ ...formPres, imagen_url: url })} folder="presentaciones" /></div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.permite_opciones} onChange={e => setFormPres({ ...formPres, permite_opciones: e.target.checked, opciones_min: e.target.checked ? 1 : 0, opciones_max: e.target.checked ? 1 : 0 })} className="w-4 h-4 rounded" />
             <span className="text-sm text-neutral-700">Permite selección de sabores</span>
@@ -455,11 +459,9 @@ export default function CatalogoPage() {
             </Select>
           </div>
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formOp.nombre} onChange={e => setFormOp({ ...formOp, nombre: e.target.value })} placeholder="Chocolate" autoFocus /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label>Emoji</Label><Input value={formOp.emoji} onChange={e => setFormOp({ ...formOp, emoji: e.target.value })} placeholder="🍫" className="text-xl" /></div>
-          </div>
-          <div className="space-y-1.5"><Label>Imagen del sabor</Label><ImageUpload value={formOp.imagen_url} onChange={url => setFormOp({ ...formOp, imagen_url: url })} folder="sabores" /></div>
-          <div className="space-y-1.5"><Label>Descripción</Label><Input value={formOp.descripcion} onChange={e => setFormOp({ ...formOp, descripcion: e.target.value })} placeholder="Descripción corta del sabor" /></div>
+          <div className="space-y-1.5"><Label>Emoji</Label><Input value={formOp.emoji} onChange={e => setFormOp({ ...formOp, emoji: e.target.value })} placeholder="🍫" className="text-xl w-24" /></div>
+          <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formOp.imagen_url} onChange={url => setFormOp({ ...formOp, imagen_url: url })} folder="sabores" /></div>
+          <div className="space-y-1.5"><Label>Descripción</Label><Input value={formOp.descripcion} onChange={e => setFormOp({ ...formOp, descripcion: e.target.value })} placeholder="Descripción corta" /></div>
         </div>
       </ConeModal>
     </div>
