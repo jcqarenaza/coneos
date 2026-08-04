@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import AdminSidebar from './AdminSidebar'
 
 export default function AdminSidebarWrapper() {
+  const params = useParams()
+  const slug = params?.empresa as string
   const router = useRouter()
   const [usuarioNombre, setUsuarioNombre] = useState('')
   const [empresaNombre, setEmpresaNombre] = useState('')
@@ -15,40 +17,38 @@ export default function AdminSidebarWrapper() {
     async function init() {
       const supabase = createClient()
 
-      // Intentar restaurar sesión desde localStorage
       const stored = localStorage.getItem('coneos-auth')
       if (stored) {
         try {
           const parsed = JSON.parse(stored)
-          await supabase.auth.setSession({
-            access_token: parsed.access_token,
-            refresh_token: parsed.refresh_token,
-          })
+          await supabase.auth.setSession({ access_token: parsed.access_token, refresh_token: parsed.refresh_token })
         } catch { /* ignorar */ }
       }
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
+      if (!session) { router.replace(`/${slug}/login`); return }
 
       const { data: ua } = await supabase
         .from('usuarios_admin')
-        .select('nombre, empresa_id')
+        .select('nombre, empresa_id, empresas(nombre, slug)')
         .eq('id', session.user.id)
         .single()
 
-      if (ua?.nombre) setUsuarioNombre(ua.nombre)
-      if (ua?.empresa_id) {
-        const { data: emp } = await supabase
-          .from('empresas')
-          .select('nombre')
-          .eq('id', ua.empresa_id)
-          .single()
-        if (emp?.nombre) setEmpresaNombre(emp.nombre)
+      if (!ua) { router.replace(`/${slug}/login`); return }
+
+      const empresaSlug = (ua.empresas as { nombre: string; slug: string } | null)?.slug
+      if (empresaSlug && empresaSlug !== slug) {
+        router.replace(`/${empresaSlug}/admin`)
+        return
       }
+
+      if (ua.nombre) setUsuarioNombre(ua.nombre)
+      const empNombre = (ua.empresas as { nombre: string; slug: string } | null)?.nombre
+      if (empNombre) setEmpresaNombre(empNombre)
       setReady(true)
     }
     init()
-  }, [router])
+  }, [slug, router])
 
   if (!ready) return (
     <div className="w-56 bg-white border-r border-neutral-100 flex items-center justify-center">
@@ -56,5 +56,5 @@ export default function AdminSidebarWrapper() {
     </div>
   )
 
-  return <AdminSidebar usuarioNombre={usuarioNombre} empresaNombre={empresaNombre} />
+  return <AdminSidebar usuarioNombre={usuarioNombre} empresaNombre={empresaNombre} slug={slug} />
 }
