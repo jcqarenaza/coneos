@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Image from 'next/image'
@@ -13,15 +13,11 @@ interface Dispositivo {
 }
 
 interface EmpresaConfig {
-  primary_color: string
-  secondary_color: string
-  logo_url: string | null
+  primary_color: string; secondary_color: string; logo_url: string | null
 }
 
 interface Pedido {
-  id: string
-  numero_pedido: number
-  codigo_retiro: string
+  id: string; numero_pedido: number; codigo_retiro: string
 }
 
 export default function DisplayPage() {
@@ -34,6 +30,8 @@ export default function DisplayPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hora, setHora] = useState('')
+  const [empresaId, setEmpresaId] = useState<string | null>(null)
+  const [sucursalId, setSucursalId] = useState<string | null>(null)
 
   useEffect(() => {
     const tick = () => setHora(new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }))
@@ -53,6 +51,8 @@ export default function DisplayPage() {
       .then(async data => {
         if (data.error) { setError(data.error); return }
         setDispositivo(data.dispositivo)
+        setEmpresaId(data.dispositivo.empresa_id)
+        setSucursalId(data.dispositivo.sucursal_id)
         const res = await fetch(`/api/kiosk/config?empresa_id=${data.dispositivo.empresa_id}`)
         const cfg = await res.json()
         setConfig(cfg)
@@ -61,33 +61,39 @@ export default function DisplayPage() {
       .catch(() => { setError('Error de conexión'); setLoading(false) })
   }, [token])
 
-  const cargarPedidos = async (disp: Dispositivo) => {
+  const cargarPedidos = useCallback(async () => {
+    if (!empresaId || !sucursalId) return
     const supabase = createClient()
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
     const { data } = await supabase
       .from('pedidos')
       .select('id, numero_pedido, codigo_retiro')
-      .eq('empresa_id', disp.empresa_id)
-      .eq('sucursal_id', disp.sucursal_id)
+      .eq('empresa_id', empresaId)
+      .eq('sucursal_id', sucursalId)
       .eq('fecha_pedido', hoy)
       .eq('estado', 'READY')
       .order('numero_pedido', { ascending: true })
     setPedidos((data ?? []) as Pedido[])
-  }
+  }, [empresaId, sucursalId])
 
+  // Cargar pedidos cuando tengamos los IDs
   useEffect(() => {
-    if (!dispositivo) return
-    cargarPedidos(dispositivo)
+    if (empresaId && sucursalId) cargarPedidos()
+  }, [empresaId, sucursalId, cargarPedidos])
+
+  // Realtime — se reconecta cuando cambia cargarPedidos
+  useEffect(() => {
+    if (!empresaId || !sucursalId) return
     const supabase = createClient()
     const channel = supabase
-      .channel(`display-${dispositivo.sucursal_id}`)
+      .channel(`display-${sucursalId}-${Date.now()}`)
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'pedidos',
-        filter: `empresa_id=eq.${dispositivo.empresa_id}`,
-      }, () => cargarPedidos(dispositivo))
+        filter: `empresa_id=eq.${empresaId}`,
+      }, () => cargarPedidos())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [dispositivo])
+  }, [empresaId, sucursalId, cargarPedidos])
 
   if (loading) return (
     <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
@@ -106,13 +112,10 @@ export default function DisplayPage() {
       {/* Header */}
       <div className="bg-white border-b border-neutral-100 shadow-sm px-10 py-5 flex items-center justify-between">
         <div>
-          {config.logo_url ? (
-            <Image src={config.logo_url} alt="Logo" width={200} height={72} className="object-contain" style={{ maxHeight: 68 }} />
-          ) : (
-            <span className="text-2xl font-bold text-neutral-800">{dispositivo.empresas?.nombre}</span>
-          )}
+          {config.logo_url
+            ? <Image src={config.logo_url} alt="Logo" width={200} height={72} className="object-contain" style={{ maxHeight: 68 }} />
+            : <span className="text-2xl font-bold text-neutral-800">{dispositivo.empresas?.nombre}</span>}
         </div>
-
         <div className="text-center">
           <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl" style={{ backgroundColor: `${config.primary_color}10` }}>
             <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: config.primary_color }} />
@@ -121,7 +124,6 @@ export default function DisplayPage() {
             </span>
           </div>
         </div>
-
         <div className="text-right">
           <p className="text-4xl font-black text-neutral-300 tabular-nums">{hora}</p>
           <p className="text-neutral-300 text-xs mt-1">{dispositivo.sucursales?.nombre}</p>
@@ -142,11 +144,8 @@ export default function DisplayPage() {
           <div className="w-full max-w-5xl">
             <div className="flex flex-wrap justify-center gap-6">
               {pedidos.map(pedido => (
-                <div
-                  key={pedido.id}
-                  className="flex flex-col items-center justify-center bg-white rounded-3xl shadow-md border border-neutral-100"
-                  style={{ minWidth: 220, minHeight: 220, padding: '2.5rem' }}
-                >
+                <div key={pedido.id} className="flex flex-col items-center justify-center bg-white rounded-3xl shadow-md border border-neutral-100"
+                  style={{ minWidth: 220, minHeight: 220, padding: '2.5rem' }}>
                   <p className="font-black text-neutral-200 text-lg mb-1 tracking-wide">PEDIDO</p>
                   <p className="font-black leading-none mb-4" style={{ fontSize: '7rem', color: config.primary_color }}>
                     #{pedido.numero_pedido}
