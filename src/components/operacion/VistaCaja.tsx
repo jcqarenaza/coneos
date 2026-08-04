@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, ShoppingBag, Loader2, RefreshCw } from 'lucide-react'
+import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
@@ -30,6 +30,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [tab, setTab] = useState<'activos' | 'nuevo'>('activos')
   const [seleccionado, setSeleccionado] = useState<Pedido | null>(null)
   const [procesando, setProcesando] = useState(false)
+  const [entregado, setEntregado] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string | null>(null)
   const verTodas = sesion.operador.sucursal_id === null
 
@@ -70,12 +71,20 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
   async function cambiarEstado(pedidoId: string, estadoNuevo: string) {
     setProcesando(true)
+    if (estadoNuevo === 'DELIVERED') setEntregado(false)
     await fetch('/api/pedidos/estado', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pedido_id: pedidoId, estado_nuevo: estadoNuevo, operador_id: sesion.operador.id }),
     })
     setProcesando(false)
+    if (estadoNuevo === 'DELIVERED') {
+      setEntregado(true)
+      setTimeout(() => {
+        setEntregado(false)
+        setSeleccionado(null)
+      }, 1800)
+    }
   }
 
   const tabs = [
@@ -89,7 +98,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Sub-tabs */}
       <div className="flex bg-white border-b border-neutral-100 px-4 gap-0.5">
         <button onClick={() => { setTab('activos'); setFiltroEstado(null) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'activos' && !filtroEstado ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
@@ -118,7 +126,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         <NuevoPedido dispositivo={dispositivo} sesion={sesion} onPedidoCreado={() => setTab('activos')} />
       ) : (
         <div className="flex-1 flex overflow-hidden">
-          {/* Lista */}
           <div className="w-64 border-r border-neutral-100 flex flex-col overflow-hidden bg-white">
             <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-50">
               <p className="text-xs font-semibold text-neutral-400">{pedidosFiltrados.length} pedido{pedidosFiltrados.length !== 1 ? 's' : ''}</p>
@@ -132,7 +139,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   <ShoppingBag className="h-8 w-8 mb-2" /><p className="text-xs">Sin pedidos</p>
                 </div>
               ) : pedidosFiltrados.map(pedido => (
-                <button key={pedido.id} onClick={() => setSeleccionado(pedido)}
+                <button key={pedido.id} onClick={() => { setSeleccionado(pedido); setEntregado(false) }}
                   className={`w-full text-left px-4 py-3 border-b border-neutral-50 border-l-4 transition-colors ${seleccionado?.id === pedido.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[pedido.estado]}`}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-bold text-neutral-800 text-base">#{pedido.numero_pedido}</span>
@@ -148,12 +155,19 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             </div>
           </div>
 
-          {/* Detalle */}
           <div className="flex-1 overflow-y-auto p-6 bg-neutral-50">
             {!seleccionado ? (
               <div className="flex flex-col items-center justify-center h-full text-neutral-200">
                 <ShoppingBag className="h-14 w-14 mb-3" />
                 <p className="text-sm">Seleccioná un pedido</p>
+              </div>
+            ) : entregado ? (
+              <div className="flex flex-col items-center justify-center h-full gap-4">
+                <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
+                  <CheckCircle className="h-10 w-10 text-green-600" />
+                </div>
+                <p className="text-xl font-black text-neutral-800">¡Entregado!</p>
+                <p className="text-neutral-400 text-sm">Pedido #{seleccionado.numero_pedido} entregado</p>
               </div>
             ) : (
               <div className="max-w-lg mx-auto">
@@ -166,7 +180,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   <span className={`px-3 py-1.5 rounded-xl text-sm font-bold ${ESTADO_BADGE[seleccionado.estado]}`}>{ESTADO_LABEL[seleccionado.estado]}</span>
                 </div>
 
-                {/* Items */}
                 <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden shadow-sm mb-4">
                   {seleccionado.pedido_items.map((item, i) => (
                     <div key={item.id} className={`p-4 ${i < seleccionado.pedido_items.length - 1 ? 'border-b border-neutral-50' : ''}`}>
@@ -198,7 +211,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   </div>
                 )}
 
-                {/* Acciones */}
                 <div className="space-y-2">
                   {seleccionado.estado === 'PENDING_PAYMENT' && (<>
                     <button onClick={() => cambiarEstado(seleccionado.id, 'PAID')} disabled={procesando}
@@ -224,8 +236,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   )}
                   {seleccionado.estado === 'READY' && (
                     <button onClick={() => cambiarEstado(seleccionado.id, 'DELIVERED')} disabled={procesando}
-                      className="w-full py-4 bg-neutral-800 hover:bg-neutral-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
-                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Entregado'}
+                      className="w-full py-4 bg-neutral-800 hover:bg-neutral-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
+                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-5 w-5" /> Entregado</>}
                     </button>
                   )}
                 </div>
