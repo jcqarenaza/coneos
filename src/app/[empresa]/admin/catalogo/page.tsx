@@ -477,8 +477,7 @@ export default function CatalogoPage() {
           )
         })}
       </div>
-
-      </div>}
+      </>}
 
       {/* Modal Categoría */}
       <ConeModal open={modalCat} onClose={() => setModalCat(false)} title={editId ? 'Editar categoría' : 'Nueva categoría'}
