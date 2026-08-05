@@ -7,7 +7,7 @@ import { ConePageHeader, ConeButton, ConeModal, ConeBadge } from '@/components/a
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Loader2, Pencil, Trash2, Upload, X, ImageIcon } from 'lucide-react'
+import { Plus, Loader2, Pencil, Trash2, Upload, X, ImageIcon, ChevronDown, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
 
 interface Categoria { id: string; nombre: string; orden: number; activo: boolean; icono_url: string | null }
@@ -15,8 +15,7 @@ interface Producto { id: string; nombre: string; descripcion: string | null; ima
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean }
-
-type Tab = 'categorias' | 'productos' | 'presentaciones' | 'sabores'
+interface PresGrupo { presentacion_id: string; grupo_id: string }
 
 function ImageUpload({ value, onChange, folder = 'productos' }: {
   value: string | null; onChange: (url: string | null) => void; folder?: string
@@ -42,14 +41,13 @@ function ImageUpload({ value, onChange, folder = 'productos' }: {
       {value ? (
         <div className="relative w-full h-32 rounded-xl overflow-hidden border border-neutral-200 bg-neutral-50 group">
           <Image src={value} alt="Preview" fill className="object-cover" />
-          <button onClick={() => onChange(null)}
-            className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
+          <button onClick={() => onChange(null)} className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
             <X className="h-4 w-4" />
           </button>
         </div>
       ) : (
         <button onClick={() => inputRef.current?.click()} disabled={uploading}
-          className="w-full h-32 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:border-neutral-300 transition-colors flex flex-col items-center justify-center gap-2 text-neutral-400 disabled:opacity-50">
+          className="w-full h-28 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:border-neutral-300 transition-colors flex flex-col items-center justify-center gap-2 text-neutral-400 disabled:opacity-50">
           {uploading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-5 w-5" />}
           <span className="text-sm font-medium">{uploading ? 'Subiendo...' : 'Subir imagen'}</span>
           <span className="text-xs text-neutral-300">JPG, PNG, WEBP</span>
@@ -63,7 +61,6 @@ function ImageUpload({ value, onChange, folder = 'productos' }: {
 
 export default function CatalogoPage() {
   const { ctx } = useEmpresa()
-  const [tab, setTab] = useState<Tab>('categorias')
   const [loading, setLoading] = useState(true)
 
   const [categorias, setCategorias] = useState<Categoria[]>([])
@@ -71,7 +68,13 @@ export default function CatalogoPage() {
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
   const [grupos, setGrupos] = useState<GrupoOpciones[]>([])
   const [opciones, setOpciones] = useState<Opcion[]>([])
+  const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
 
+  // Expandidos
+  const [catExpandidas, setCatExpandidas] = useState<Set<string>>(new Set())
+  const [prodExpandidos, setProdExpandidos] = useState<Set<string>>(new Set())
+
+  // Modales
   const [modalCat, setModalCat] = useState(false)
   const [modalProd, setModalProd] = useState(false)
   const [modalPres, setModalPres] = useState(false)
@@ -79,6 +82,10 @@ export default function CatalogoPage() {
   const [modalOp, setModalOp] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Context para modal presentación/sabor
+  const [contextCatId, setContextCatId] = useState<string | null>(null)
+  const [contextProdId, setContextProdId] = useState<string | null>(null)
 
   const [formCat, setFormCat] = useState({ nombre: '', orden: 1, activo: true, icono_url: null as string | null })
   const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true })
@@ -89,22 +96,53 @@ export default function CatalogoPage() {
   async function load() {
     if (!ctx) return
     const supabase = createClient()
-    const [{ data: cats }, { data: prods }, { data: pres }, { data: grps }, { data: ops }] = await Promise.all([
+    const [{ data: cats }, { data: prods }, { data: pres }, { data: grps }, { data: ops }, { data: pg }] = await Promise.all([
       supabase.from('categorias').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
       supabase.from('productos').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
       supabase.from('presentaciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
       supabase.from('grupos_opciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
       supabase.from('opciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
+      supabase.from('presentacion_grupos').select('presentacion_id, grupo_id'),
     ])
     setCategorias((cats ?? []) as Categoria[])
     setProductos((prods ?? []) as Producto[])
     setPresentaciones((pres ?? []) as Presentacion[])
     setGrupos((grps ?? []) as GrupoOpciones[])
     setOpciones((ops ?? []) as Opcion[])
+    setPresGrupos((pg ?? []) as PresGrupo[])
+    // Expandir todo por defecto
+    setCatExpandidas(new Set((cats ?? []).map((c: Categoria) => c.id)))
     setLoading(false)
   }
 
   useEffect(() => { load() }, [ctx])
+
+  function toggleCat(id: string) { setCatExpandidas(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s }) }
+  function toggleProd(id: string) { setProdExpandidos(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s }) }
+
+  // Helpers para obtener grupos de sabores de una categoría (via presentaciones)
+  function getGruposDeCat(catId: string): GrupoOpciones[] {
+    const prods = productos.filter(p => p.categoria_id === catId)
+    const presIds = presentaciones.filter(p => prods.some(pr => pr.id === p.producto_id)).map(p => p.id)
+    const grupoIds = new Set(presGrupos.filter(pg => presIds.includes(pg.presentacion_id)).map(pg => pg.grupo_id))
+    return grupos.filter(g => grupoIds.has(g.id))
+  }
+
+  function getSaboresDeCat(catId: string): Opcion[] {
+    const grupoIds = new Set(getGruposDeCat(catId).map(g => g.id))
+    return opciones.filter(o => grupoIds.has(o.grupo_id))
+  }
+
+  function getGruposDeProd(prodId: string): GrupoOpciones[] {
+    const presIds = presentaciones.filter(p => p.producto_id === prodId).map(p => p.id)
+    const grupoIds = new Set(presGrupos.filter(pg => presIds.includes(pg.presentacion_id)).map(pg => pg.grupo_id))
+    return grupos.filter(g => grupoIds.has(g.id))
+  }
+
+  function getSaboresDeProd(prodId: string): Opcion[] {
+    const grupoIds = new Set(getGruposDeProd(prodId).map(g => g.id))
+    return opciones.filter(o => grupoIds.has(o.grupo_id))
+  }
 
   // Categorías
   function openNewCat() { setFormCat({ nombre: '', orden: categorias.length + 1, activo: true, icono_url: null }); setEditId(null); setModalCat(true) }
@@ -113,20 +151,18 @@ export default function CatalogoPage() {
     if (!ctx || !formCat.nombre) return
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formCat.nombre, orden: formCat.orden, activo: formCat.activo, icono_url: formCat.icono_url }
-    if (editId) await supabase.from('categorias').update(payload).eq('id', editId)
-    else await supabase.from('categorias').insert({ ...payload, empresa_id: ctx.empresaId })
+    if (editId) await supabase.from('categorias').update({ nombre: formCat.nombre, orden: formCat.orden, activo: formCat.activo, icono_url: formCat.icono_url }).eq('id', editId)
+    else await supabase.from('categorias').insert({ nombre: formCat.nombre, orden: formCat.orden, activo: formCat.activo, icono_url: formCat.icono_url, empresa_id: ctx.empresaId })
     setSaving(false); setModalCat(false); load()
   }
   async function deleteCat(id: string) {
     if (!confirm('¿Eliminar categoría?')) return
-    const supabase = createClient()
-    await supabase.from('categorias').delete().eq('id', id)
+    await createClient().from('categorias').delete().eq('id', id)
     load()
   }
 
   // Productos
-  function openNewProd() { setFormProd({ nombre: '', descripcion: '', imagen_url: null, categoria_id: categorias[0]?.id ?? '', codigo: '', orden: productos.length + 1, activo: true, visible_kiosk: true }); setEditId(null); setModalProd(true) }
+  function openNewProd(catId: string) { setFormProd({ nombre: '', descripcion: '', imagen_url: null, categoria_id: catId, codigo: '', orden: productos.filter(p => p.categoria_id === catId).length + 1, activo: true, visible_kiosk: true }); setEditId(null); setModalProd(true) }
   function openEditProd(p: Producto) { setFormProd({ nombre: p.nombre, descripcion: p.descripcion ?? '', imagen_url: p.imagen_url, categoria_id: p.categoria_id, codigo: p.codigo ?? '', orden: p.orden, activo: p.activo, visible_kiosk: p.visible_kiosk }); setEditId(p.id); setModalProd(true) }
   async function saveProd() {
     if (!ctx || !formProd.nombre) return
@@ -139,13 +175,12 @@ export default function CatalogoPage() {
   }
   async function deleteProd(id: string) {
     if (!confirm('¿Eliminar producto?')) return
-    const supabase = createClient()
-    await supabase.from('productos').delete().eq('id', id)
+    await createClient().from('productos').delete().eq('id', id)
     load()
   }
 
   // Presentaciones
-  function openNewPres() { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: productos[0]?.id ?? '', imagen_url: null }); setEditId(null); setModalPres(true) }
+  function openNewPres(prodId: string) { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: prodId, imagen_url: null }); setEditId(null); setModalPres(true) }
   function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url }); setEditId(p.id); setModalPres(true) }
   async function savePres() {
     if (!ctx || !formPres.nombre || !formPres.producto_id) return
@@ -158,13 +193,12 @@ export default function CatalogoPage() {
   }
   async function deletePres(id: string) {
     if (!confirm('¿Eliminar presentación?')) return
-    const supabase = createClient()
-    await supabase.from('presentaciones').delete().eq('id', id)
+    await createClient().from('presentaciones').delete().eq('id', id)
     load()
   }
 
   // Grupos
-  function openNewGrupo() { setFormGrupo({ nombre: '', orden: grupos.length + 1, activo: true }); setEditId(null); setModalGrupo(true) }
+  function openNewGrupo(catId?: string, prodId?: string) { setContextCatId(catId ?? null); setContextProdId(prodId ?? null); setFormGrupo({ nombre: '', orden: grupos.length + 1, activo: true }); setEditId(null); setModalGrupo(true) }
   function openEditGrupo(g: GrupoOpciones) { setFormGrupo({ nombre: g.nombre, orden: g.orden, activo: g.activo }); setEditId(g.id); setModalGrupo(true) }
   async function saveGrupo() {
     if (!ctx || !formGrupo.nombre) return
@@ -176,7 +210,7 @@ export default function CatalogoPage() {
   }
 
   // Sabores
-  function openNewOp() { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupos[0]?.id ?? '', orden: 1, activo: true }); setEditId(null); setModalOp(true) }
+  function openNewOp(grupoId?: string) { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupoId ?? grupos[0]?.id ?? '', orden: 1, activo: true }); setEditId(null); setModalOp(true) }
   function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo }); setEditId(o.id); setModalOp(true) }
   async function saveOp() {
     if (!ctx || !formOp.nombre || !formOp.grupo_id) return
@@ -189,194 +223,194 @@ export default function CatalogoPage() {
   }
   async function deleteOp(id: string) {
     if (!confirm('¿Eliminar sabor?')) return
-    const supabase = createClient()
-    await supabase.from('opciones').delete().eq('id', id)
+    await createClient().from('opciones').delete().eq('id', id)
     load()
   }
-
-  const TABS: { key: Tab; label: string; count: number }[] = [
-    { key: 'categorias', label: 'Categorías', count: categorias.length },
-    { key: 'productos', label: 'Productos', count: productos.length },
-    { key: 'presentaciones', label: 'Presentaciones', count: presentaciones.length },
-    { key: 'sabores', label: 'Sabores', count: opciones.length },
-  ]
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
 
   return (
     <div>
-      <ConePageHeader title="Catálogo" description="Productos, categorías, presentaciones y sabores" />
+      <ConePageHeader title="Catálogo" description="Vista completa del catálogo organizado por categoría"
+        action={{ label: 'Nueva categoría', onClick: openNewCat }} />
 
-      <div className="flex gap-1 bg-neutral-100 p-1 rounded-xl mb-6 w-fit">
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t.key ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
-            {t.label} <span className="ml-1 text-xs opacity-60">{t.count}</span>
-          </button>
-        ))}
-      </div>
+      <div className="space-y-3">
+        {categorias.map(cat => {
+          const catProds = productos.filter(p => p.categoria_id === cat.id)
+          const catExpandida = catExpandidas.has(cat.id)
+          const saboresCat = getSaboresDeCat(cat.id)
+          // Categorías sin productos muestran sabores a nivel de categoría
+          const mostrarSaboresCat = catProds.length === 0 && saboresCat.length > 0
 
-      {/* Productos */}
-      {tab === 'productos' && (
-        <div>
-          <div className="flex justify-end mb-4">
-            <ConeButton onClick={openNewProd} icon={<Plus className="h-4 w-4" />}>Nuevo producto</ConeButton>
-          </div>
-          <div className="space-y-2">
-            {productos.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin productos</div>}
-            {productos.map(prod => {
-              const cat = categorias.find(c => c.id === prod.categoria_id)
-              const pres = presentaciones.filter(p => p.producto_id === prod.id)
-              return (
-                <div key={prod.id} className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-4 p-4">
-                    <div className="w-16 h-16 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {prod.imagen_url ? <Image src={prod.imagen_url} alt={prod.nombre} width={64} height={64} className="object-cover w-full h-full" /> : <ImageIcon className="h-6 w-6 text-neutral-300" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-neutral-900">{prod.nombre}</span>
-                        <ConeBadge active={prod.activo} />
-                        {!prod.visible_kiosk && <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Oculto en kiosk</span>}
-                      </div>
-                      {prod.descripcion && <p className="text-neutral-400 text-xs mt-0.5 truncate">{prod.descripcion}</p>}
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        {cat && <span className="text-xs bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">{cat.nombre}</span>}
-                        {pres.map(p => <span key={p.id} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{p.nombre} ${Number(p.precio).toLocaleString('es-AR')}</span>)}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <button onClick={() => openEditProd(prod)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => deleteProd(prod.id)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Categorías */}
-      {tab === 'categorias' && (
-        <div>
-          <div className="flex justify-end mb-4">
-            <ConeButton onClick={openNewCat} icon={<Plus className="h-4 w-4" />}>Nueva categoría</ConeButton>
-          </div>
-          <div className="space-y-2">
-            {categorias.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin categorías</div>}
-            {categorias.map(cat => (
-              <div key={cat.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
+          return (
+            <div key={cat.id} className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+              {/* Header categoría */}
+              <div className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-neutral-50/50 transition-colors"
+                onClick={() => toggleCat(cat.id)}>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {cat.icono_url ? <Image src={cat.icono_url} alt={cat.nombre} width={40} height={40} className="object-cover w-full h-full" /> : <ImageIcon className="h-4 w-4 text-neutral-300" />}
+                  <button className="text-neutral-300 hover:text-neutral-500 transition-colors">
+                    {catExpandida ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  </button>
+                  <div className="w-9 h-9 rounded-xl bg-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {cat.icono_url ? <Image src={cat.icono_url} alt={cat.nombre} width={36} height={36} className="object-cover w-full h-full" /> : <span className="text-lg">📁</span>}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-neutral-900">{cat.nombre}</span>
                       <ConeBadge active={cat.activo} />
                     </div>
-                    <p className="text-xs text-neutral-400">Orden: {cat.orden} · {productos.filter(p => p.categoria_id === cat.id).length} productos</p>
+                    <p className="text-xs text-neutral-400">{catProds.length} productos · {saboresCat.length} sabores</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <button onClick={() => openEditCat(cat)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => deleteCat(cat.id)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
+                <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => openNewProd(cat.id)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors">
+                    <Plus className="h-3 w-3" /> Producto
+                  </button>
+                  <button onClick={() => openEditCat(cat)} className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => deleteCat(cat.id)} className="p-1.5 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Presentaciones */}
-      {tab === 'presentaciones' && (
-        <div>
-          <div className="flex justify-end mb-4">
-            <ConeButton onClick={openNewPres} icon={<Plus className="h-4 w-4" />}>Nueva presentación</ConeButton>
-          </div>
-          <div className="space-y-2">
-            {presentaciones.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin presentaciones</div>}
-            {presentaciones.map(pres => {
-              const prod = productos.find(p => p.id === pres.producto_id)
-              return (
-                <div key={pres.id} className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-4 p-4">
-                    <div className="w-14 h-14 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {pres.imagen_url
-                        ? <Image src={pres.imagen_url} alt={pres.nombre} width={56} height={56} className="object-cover w-full h-full" />
-                        : <ImageIcon className="h-5 w-5 text-neutral-300" />}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-neutral-900">{prod?.nombre ?? '?'}</span>
-                        <span className="text-neutral-400">→</span>
-                        <span className="font-semibold text-neutral-700">{pres.nombre}</span>
-                        <ConeBadge active={pres.activo} />
+              {catExpandida && (
+                <div className="border-t border-neutral-50">
+                  {/* Productos */}
+                  {catProds.map(prod => {
+                    const prodPres = presentaciones.filter(p => p.producto_id === prod.id)
+                    const prodExpandido = prodExpandidos.has(prod.id)
+                    const saboresProd = getSaboresDeProd(prod.id)
+
+                    return (
+                      <div key={prod.id} className="border-b border-neutral-50 last:border-0">
+                        {/* Header producto */}
+                        <div className="flex items-center justify-between pl-12 pr-5 py-3 hover:bg-neutral-50/30 cursor-pointer transition-colors"
+                          onClick={() => toggleProd(prod.id)}>
+                          <div className="flex items-center gap-3">
+                            <button className="text-neutral-300 hover:text-neutral-500">
+                              {prodExpandido ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            </button>
+                            <div className="w-8 h-8 rounded-lg bg-neutral-50 border border-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                              {prod.imagen_url ? <Image src={prod.imagen_url} alt={prod.nombre} width={32} height={32} className="object-cover w-full h-full" /> : <ImageIcon className="h-3.5 w-3.5 text-neutral-300" />}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-neutral-800 text-sm">📦 {prod.nombre}</span>
+                                <ConeBadge active={prod.activo} />
+                              </div>
+                              <p className="text-xs text-neutral-400">{prodPres.length} presentaciones · {saboresProd.length} sabores</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                            <button onClick={() => openNewPres(prod.id)}
+                              className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors">
+                              <Plus className="h-3 w-3" /> Presentación
+                            </button>
+                            <button onClick={() => openEditProd(prod)} className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => deleteProd(prod.id)} className="p-1.5 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                        </div>
+
+                        {prodExpandido && (
+                          <div className="pl-24 pr-5 pb-3 space-y-1.5">
+                            {/* Presentaciones */}
+                            {prodPres.map(pres => (
+                              <div key={pres.id} className="flex items-center justify-between bg-neutral-50 rounded-xl px-4 py-2.5">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-7 h-7 rounded-lg bg-white border border-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                    {pres.imagen_url ? <Image src={pres.imagen_url} alt={pres.nombre} width={28} height={28} className="object-cover w-full h-full" /> : <span className="text-xs">💰</span>}
+                                  </div>
+                                  <div>
+                                    <span className="text-neutral-700 text-sm font-semibold">{pres.nombre}</span>
+                                    <span className="text-neutral-400 text-xs ml-2">${Number(pres.precio).toLocaleString('es-AR')}</span>
+                                    {pres.permite_opciones && <span className="text-amber-600 text-xs ml-2">{pres.opciones_min}–{pres.opciones_max} sabores</span>}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => openEditPres(pres)} className="p-1 text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3 w-3" /></button>
+                                  <button onClick={() => deletePres(pres.id)} className="p-1 text-neutral-200 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3 w-3" /></button>
+                                </div>
+                              </div>
+                            ))}
+
+                            {/* Sabores del producto */}
+                            {saboresProd.length > 0 && (
+                              <div className="mt-2">
+                                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">Sabores</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {saboresProd.map(op => (
+                                    <div key={op.id} className="flex items-center gap-1.5 bg-white border border-neutral-100 rounded-full px-3 py-1">
+                                      {op.imagen_url
+                                        ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
+                                        : <span className="text-sm">{op.emoji || '🍦'}</span>}
+                                      <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
+                                      <button onClick={() => openEditOp(op)} className="text-neutral-200 hover:text-neutral-500 transition-colors"><Pencil className="h-2.5 w-2.5" /></button>
+                                    </div>
+                                  ))}
+                                  <button onClick={() => { const g = getGruposDeProd(prod.id)[0]; if (g) openNewOp(g.id) }}
+                                    className="flex items-center gap-1 px-2.5 py-1 text-xs text-neutral-400 border border-dashed border-neutral-200 rounded-full hover:border-neutral-300 hover:text-neutral-600 transition-colors">
+                                    <Plus className="h-3 w-3" /> Sabor
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-neutral-700 font-bold">${Number(pres.precio).toLocaleString('es-AR')}</span>
-                        {pres.permite_opciones && <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{pres.opciones_min}–{pres.opciones_max} sabores</span>}
+                    )
+                  })}
+
+                  {/* Sabores a nivel de categoría (para categorías sin productos, como Helados por Kilo) */}
+                  {mostrarSaboresCat && (
+                    <div className="pl-12 pr-5 py-3">
+                      <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Sabores</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {saboresCat.map(op => (
+                          <div key={op.id} className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-100 rounded-full px-3 py-1">
+                            {op.imagen_url
+                              ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
+                              : <span className="text-sm">{op.emoji || '🍦'}</span>}
+                            <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
+                            <button onClick={() => openEditOp(op)} className="text-neutral-200 hover:text-neutral-500 transition-colors"><Pencil className="h-2.5 w-2.5" /></button>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => openEditPres(pres)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => deletePres(pres.id)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
+                  )}
+
+                  {/* Sabores a nivel de categoría cuando SÍ hay productos (ej: Helados por Kilo) */}
+                  {catProds.length > 0 && saboresCat.length > 0 && (
+                    <div className="pl-12 pr-5 py-3 bg-neutral-50/50 border-t border-neutral-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Sabores de la categoría</p>
+                        <button onClick={() => openNewOp(getGruposDeCat(cat.id)[0]?.id)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-600 border border-dashed border-neutral-200 rounded-lg transition-colors">
+                          <Plus className="h-3 w-3" /> Sabor
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {saboresCat.map(op => (
+                          <div key={op.id} className="flex items-center gap-1.5 bg-white border border-neutral-100 rounded-full px-3 py-1">
+                            {op.imagen_url
+                              ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
+                              : <span className="text-sm">{op.emoji || '🍦'}</span>}
+                            <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
+                            <button onClick={() => openEditOp(op)} className="text-neutral-200 hover:text-neutral-500 ml-1 transition-colors"><Pencil className="h-2.5 w-2.5" /></button>
+                            <button onClick={() => deleteOp(op.id)} className="text-neutral-200 hover:text-red-400 transition-colors"><Trash2 className="h-2.5 w-2.5" /></button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {catProds.length === 0 && saboresCat.length === 0 && (
+                    <div className="pl-12 pr-5 py-4 text-neutral-300 text-xs">Sin productos — usá el botón + Producto para agregar</div>
+                  )}
                 </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Sabores */}
-      {tab === 'sabores' && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex gap-2">
-              <ConeButton onClick={openNewGrupo} variant="outline" icon={<Plus className="h-4 w-4" />}>Nuevo grupo</ConeButton>
-              <ConeButton onClick={openNewOp} icon={<Plus className="h-4 w-4" />}>Nuevo sabor</ConeButton>
+              )}
             </div>
-          </div>
-          {grupos.map(grupo => {
-            const ops = opciones.filter(o => o.grupo_id === grupo.id)
-            return (
-              <div key={grupo.id} className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-neutral-700">{grupo.nombre}</h3>
-                    <span className="text-xs text-neutral-400">{ops.length} sabores</span>
-                  </div>
-                  <button onClick={() => openEditGrupo(grupo)} className="p-1.5 text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {ops.map(op => (
-                    <div key={op.id} className="bg-white rounded-xl border border-neutral-100 overflow-hidden shadow-sm group">
-                      {op.imagen_url && (
-                        <div className="w-full h-20 overflow-hidden bg-neutral-50">
-                          <Image src={op.imagen_url} alt={op.nombre} width={200} height={80} className="object-cover w-full h-full" />
-                        </div>
-                      )}
-                      <div className="p-2.5 flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {!op.imagen_url && <span className="text-xl flex-shrink-0">{op.emoji || '🍦'}</span>}
-                          <p className="text-neutral-800 text-xs font-semibold truncate">{op.nombre}</p>
-                        </div>
-                        <div className="flex items-center gap-0.5 flex-shrink-0">
-                          <button onClick={() => openEditOp(op)} className="p-1 text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3 w-3" /></button>
-                          <button onClick={() => deleteOp(op.id)} className="p-1 text-neutral-200 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3 w-3" /></button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+          )
+        })}
+      </div>
 
       {/* Modal Categoría */}
       <ConeModal open={modalCat} onClose={() => setModalCat(false)} title={editId ? 'Editar categoría' : 'Nueva categoría'}
@@ -393,7 +427,7 @@ export default function CatalogoPage() {
       <ConeModal open={modalProd} onClose={() => setModalProd(false)} title={editId ? 'Editar producto' : 'Nuevo producto'}
         footer={<><ConeButton variant="outline" onClick={() => setModalProd(false)}>Cancelar</ConeButton><ConeButton onClick={saveProd} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
-          <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formProd.nombre} onChange={e => setFormProd({ ...formProd, nombre: e.target.value })} placeholder="Helado artesanal" autoFocus /></div>
+          <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formProd.nombre} onChange={e => setFormProd({ ...formProd, nombre: e.target.value })} placeholder="Bombón Suizo" autoFocus /></div>
           <div className="space-y-1.5">
             <Label>Categoría *</Label>
             <Select value={formProd.categoria_id} onValueChange={v => setFormProd({ ...formProd, categoria_id: v })}>
@@ -402,7 +436,6 @@ export default function CatalogoPage() {
             </Select>
           </div>
           <div className="space-y-1.5"><Label>Descripción</Label><Input value={formProd.descripcion} onChange={e => setFormProd({ ...formProd, descripcion: e.target.value })} /></div>
-          <div className="space-y-1.5"><Label>Código</Label><Input value={formProd.codigo} onChange={e => setFormProd({ ...formProd, codigo: e.target.value })} className="font-mono" /></div>
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formProd.imagen_url} onChange={url => setFormProd({ ...formProd, imagen_url: url })} /></div>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formProd.activo} onChange={e => setFormProd({ ...formProd, activo: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Activo</span></label>
@@ -415,14 +448,7 @@ export default function CatalogoPage() {
       <ConeModal open={modalPres} onClose={() => setModalPres(false)} title={editId ? 'Editar presentación' : 'Nueva presentación'}
         footer={<><ConeButton variant="outline" onClick={() => setModalPres(false)}>Cancelar</ConeButton><ConeButton onClick={savePres} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Producto *</Label>
-            <Select value={formPres.producto_id} onValueChange={v => setFormPres({ ...formPres, producto_id: v })}>
-              <SelectTrigger><SelectValue placeholder="Seleccioná" /></SelectTrigger>
-              <SelectContent>{productos.map(p => <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formPres.nombre} onChange={e => setFormPres({ ...formPres, nombre: e.target.value })} placeholder="1/4 Kg" autoFocus /></div>
+          <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formPres.nombre} onChange={e => setFormPres({ ...formPres, nombre: e.target.value })} placeholder="Porción / x8 / x20" autoFocus /></div>
           <div className="space-y-1.5"><Label>Precio *</Label><Input type="number" value={formPres.precio} onChange={e => setFormPres({ ...formPres, precio: Number(e.target.value) })} /></div>
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formPres.imagen_url} onChange={url => setFormPres({ ...formPres, imagen_url: url })} folder="presentaciones" /></div>
           <label className="flex items-center gap-2 cursor-pointer">
@@ -442,7 +468,7 @@ export default function CatalogoPage() {
       <ConeModal open={modalGrupo} onClose={() => setModalGrupo(false)} title={editId ? 'Editar grupo' : 'Nuevo grupo de sabores'}
         footer={<><ConeButton variant="outline" onClick={() => setModalGrupo(false)}>Cancelar</ConeButton><ConeButton onClick={saveGrupo} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
-          <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formGrupo.nombre} onChange={e => setFormGrupo({ ...formGrupo, nombre: e.target.value })} placeholder="Chocolates" autoFocus /></div>
+          <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formGrupo.nombre} onChange={e => setFormGrupo({ ...formGrupo, nombre: e.target.value })} placeholder="Variedades Bombón" autoFocus /></div>
           <div className="space-y-1.5"><Label>Orden</Label><Input type="number" value={formGrupo.orden} onChange={e => setFormGrupo({ ...formGrupo, orden: Number(e.target.value) })} className="w-24" /></div>
         </div>
       </ConeModal>
