@@ -70,6 +70,9 @@ export default function CatalogoPage() {
   const [opciones, setOpciones] = useState<Opcion[]>([])
   const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
 
+  // Tabs
+  const [vistaActiva, setVistaActiva] = useState<'catalogo' | 'sabores'>('catalogo')
+
   // Expandidos
   const [catExpandidas, setCatExpandidas] = useState<Set<string>>(new Set())
   const [prodExpandidos, setProdExpandidos] = useState<Set<string>>(new Set())
@@ -110,8 +113,8 @@ export default function CatalogoPage() {
     setGrupos((grps ?? []) as GrupoOpciones[])
     setOpciones((ops ?? []) as Opcion[])
     setPresGrupos((pg ?? []) as PresGrupo[])
-    // Expandir todo por defecto
-    setCatExpandidas(new Set((cats ?? []).map((c: Categoria) => c.id)))
+    // Cerradas por defecto
+    setCatExpandidas(new Set())
     setLoading(false)
   }
 
@@ -231,9 +234,24 @@ export default function CatalogoPage() {
 
   return (
     <div>
-      <ConePageHeader title="Catálogo" description="Vista completa del catálogo organizado por categoría"
-        action={{ label: 'Nueva categoría', onClick: openNewCat }} />
+      <ConePageHeader title="Catálogo" description="Productos, presentaciones y sabores" />
 
+      {/* Tabs */}
+      <div className="flex gap-1 bg-neutral-100 p-1 rounded-xl mb-6 w-fit">
+        <button onClick={() => setVistaActiva('catalogo')}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'catalogo' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
+          Catálogo
+        </button>
+        <button onClick={() => setVistaActiva('sabores')}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'sabores' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
+          Sabores <span className="ml-1 text-xs opacity-60">{opciones.length}</span>
+        </button>
+      </div>
+
+      {vistaActiva === 'catalogo' && <>
+      <div className="flex justify-end mb-4">
+        <ConeButton onClick={openNewCat} icon={<Plus className="h-4 w-4" />}>Nueva categoría</ConeButton>
+      </div>
       <div className="space-y-3">
         {categorias.map(cat => {
           const catProds = productos.filter(p => p.categoria_id === cat.id)
@@ -412,13 +430,11 @@ export default function CatalogoPage() {
         })}
       </div>
 
-      {/* Sección sabores — edición completa con fotos */}
-      <div className="mt-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-bold text-neutral-800">Sabores</h2>
-            <p className="text-xs text-neutral-400">{opciones.length} sabores · {grupos.length} grupos</p>
-          </div>
+      </>}
+
+      {vistaActiva === 'sabores' && <div className="mt-0">
+        <div className="flex items-center justify-between mb-5">
+          <p className="text-xs text-neutral-400">{opciones.length} sabores · {grupos.length} grupos</p>
           <div className="flex gap-2">
             <ConeButton onClick={() => openNewGrupo()} variant="outline" icon={<Plus className="h-4 w-4" />}>Nuevo grupo</ConeButton>
             <ConeButton onClick={() => openNewOp()} icon={<Plus className="h-4 w-4" />}>Nuevo sabor</ConeButton>
@@ -461,6 +477,8 @@ export default function CatalogoPage() {
           )
         })}
       </div>
+
+      </div>}
 
       {/* Modal Categoría */}
       <ConeModal open={modalCat} onClose={() => setModalCat(false)} title={editId ? 'Editar categoría' : 'Nueva categoría'}
