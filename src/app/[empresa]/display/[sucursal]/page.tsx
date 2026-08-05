@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Image from 'next/image'
@@ -11,14 +11,8 @@ interface Dispositivo {
   empresas: { nombre: string }
   sucursales: { nombre: string }
 }
-
-interface EmpresaConfig {
-  primary_color: string; secondary_color: string; logo_url: string | null
-}
-
-interface Pedido {
-  id: string; numero_pedido: number; codigo_retiro: string
-}
+interface EmpresaConfig { primary_color: string; secondary_color: string; logo_url: string | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string }
 
 export default function DisplayPage() {
   const searchParams = useSearchParams()
@@ -30,8 +24,10 @@ export default function DisplayPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hora, setHora] = useState('')
-  const [empresaId, setEmpresaId] = useState<string | null>(null)
-  const [sucursalId, setSucursalId] = useState<string | null>(null)
+
+  // Refs para evitar closure stale en el handler de Realtime
+  const empresaIdRef = useRef<string | null>(null)
+  const sucursalIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const tick = () => setHora(new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }))
@@ -39,6 +35,23 @@ export default function DisplayPage() {
     const interval = setInterval(tick, 30000)
     return () => clearInterval(interval)
   }, [])
+
+  async function cargarPedidos() {
+    const empId = empresaIdRef.current
+    const sucId = sucursalIdRef.current
+    if (!empId || !sucId) return
+    const supabase = createClient()
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+    const { data } = await supabase
+      .from('pedidos')
+      .select('id, numero_pedido, codigo_retiro')
+      .eq('empresa_id', empId)
+      .eq('sucursal_id', sucId)
+      .eq('fecha_pedido', hoy)
+      .eq('estado', 'READY')
+      .order('numero_pedido', { ascending: true })
+    setPedidos((data ?? []) as Pedido[])
+  }
 
   useEffect(() => {
     if (!token) { setError('Token no válido'); setLoading(false); return }
@@ -51,49 +64,31 @@ export default function DisplayPage() {
       .then(async data => {
         if (data.error) { setError(data.error); return }
         setDispositivo(data.dispositivo)
-        setEmpresaId(data.dispositivo.empresa_id)
-        setSucursalId(data.dispositivo.sucursal_id)
+
+        // Guardar en refs antes de suscribir Realtime
+        empresaIdRef.current = data.dispositivo.empresa_id
+        sucursalIdRef.current = data.dispositivo.sucursal_id
+
         const res = await fetch(`/api/kiosk/config?empresa_id=${data.dispositivo.empresa_id}`)
         const cfg = await res.json()
         setConfig(cfg)
         setLoading(false)
+
+        // Cargar pedidos iniciales
+        await cargarPedidos()
+
+        // Suscribir Realtime — una sola vez, usando refs para siempre tener los IDs actuales
+        const supabase = createClient()
+        supabase
+          .channel(`display-${data.dispositivo.sucursal_id}`)
+          .on('postgres_changes', {
+            event: '*', schema: 'public', table: 'pedidos',
+            filter: `empresa_id=eq.${data.dispositivo.empresa_id}`,
+          }, () => cargarPedidos())
+          .subscribe()
       })
       .catch(() => { setError('Error de conexión'); setLoading(false) })
   }, [token])
-
-  const cargarPedidos = useCallback(async () => {
-    if (!empresaId || !sucursalId) return
-    const supabase = createClient()
-    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
-    const { data } = await supabase
-      .from('pedidos')
-      .select('id, numero_pedido, codigo_retiro')
-      .eq('empresa_id', empresaId)
-      .eq('sucursal_id', sucursalId)
-      .eq('fecha_pedido', hoy)
-      .eq('estado', 'READY')
-      .order('numero_pedido', { ascending: true })
-    setPedidos((data ?? []) as Pedido[])
-  }, [empresaId, sucursalId])
-
-  // Cargar pedidos cuando tengamos los IDs
-  useEffect(() => {
-    if (empresaId && sucursalId) cargarPedidos()
-  }, [empresaId, sucursalId, cargarPedidos])
-
-  // Realtime — se reconecta cuando cambia cargarPedidos
-  useEffect(() => {
-    if (!empresaId || !sucursalId) return
-    const supabase = createClient()
-    const channel = supabase
-      .channel(`display-${sucursalId}-${Date.now()}`)
-      .on('postgres_changes', {
-        event: '*', schema: 'public', table: 'pedidos',
-        filter: `empresa_id=eq.${empresaId}`,
-      }, () => cargarPedidos())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [empresaId, sucursalId, cargarPedidos])
 
   if (loading) return (
     <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
@@ -109,7 +104,6 @@ export default function DisplayPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
-      {/* Header */}
       <div className="bg-white border-b border-neutral-100 shadow-sm px-10 py-5 flex items-center justify-between">
         <div>
           {config.logo_url
@@ -130,7 +124,6 @@ export default function DisplayPage() {
         </div>
       </div>
 
-      {/* Contenido */}
       <div className="flex-1 flex flex-col items-center justify-center px-10 py-12">
         {pedidos.length === 0 ? (
           <div className="text-center">
@@ -162,7 +155,6 @@ export default function DisplayPage() {
         )}
       </div>
 
-      {/* Footer */}
       <div className="bg-white border-t border-neutral-100 px-10 py-4 flex items-center justify-between">
         <p className="text-neutral-300 text-sm">Presentá tu código al retirar tu pedido</p>
         <div className="flex items-center gap-2">
