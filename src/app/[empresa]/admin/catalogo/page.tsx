@@ -110,6 +110,10 @@ export default function CatalogoPage() {
     setGrupos((grps ?? []) as GrupoOpciones[])
     setOpciones((ops ?? []) as Opcion[])
     setPresGrupos((pg ?? []) as PresGrupo[])
+    console.log('DEBUG presGrupos:', pg?.length, pg)
+    console.log('DEBUG grupos:', grps?.length, grps)
+    console.log('DEBUG opciones:', ops?.length, ops)
+    console.log('DEBUG presentaciones:', pres?.length, pres)
     // Expandir todo por defecto
     setCatExpandidas(new Set((cats ?? []).map((c: Categoria) => c.id)))
     setLoading(false)
