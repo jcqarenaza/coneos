@@ -110,10 +110,6 @@ export default function CatalogoPage() {
     setGrupos((grps ?? []) as GrupoOpciones[])
     setOpciones((ops ?? []) as Opcion[])
     setPresGrupos((pg ?? []) as PresGrupo[])
-    console.log('DEBUG presGrupos:', pg?.length, pg)
-    console.log('DEBUG grupos:', grps?.length, grps)
-    console.log('DEBUG opciones:', ops?.length, ops)
-    console.log('DEBUG presentaciones:', pres?.length, pres)
     // Expandir todo por defecto
     setCatExpandidas(new Set((cats ?? []).map((c: Categoria) => c.id)))
     setLoading(false)
@@ -411,6 +407,56 @@ export default function CatalogoPage() {
                   )}
                 </div>
               )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Sección sabores — edición completa con fotos */}
+      <div className="mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-neutral-800">Sabores</h2>
+            <p className="text-xs text-neutral-400">{opciones.length} sabores · {grupos.length} grupos</p>
+          </div>
+          <div className="flex gap-2">
+            <ConeButton onClick={() => openNewGrupo()} variant="outline" icon={<Plus className="h-4 w-4" />}>Nuevo grupo</ConeButton>
+            <ConeButton onClick={() => openNewOp()} icon={<Plus className="h-4 w-4" />}>Nuevo sabor</ConeButton>
+          </div>
+        </div>
+        {grupos.map(grupo => {
+          const ops = opciones.filter(o => o.grupo_id === grupo.id)
+          return (
+            <div key={grupo.id} className="mb-5">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-neutral-700 text-sm">{grupo.nombre}</h3>
+                  <span className="text-xs text-neutral-400">{ops.length} sabores</span>
+                </div>
+                <button onClick={() => openEditGrupo(grupo)} className="p-1.5 text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+                {ops.map(op => (
+                  <div key={op.id} className="bg-white rounded-xl border border-neutral-100 overflow-hidden shadow-sm group">
+                    {op.imagen_url ? (
+                      <div className="w-full h-20 overflow-hidden bg-neutral-50">
+                        <Image src={op.imagen_url} alt={op.nombre} width={200} height={80} className="object-cover w-full h-full" />
+                      </div>
+                    ) : (
+                      <div className="w-full h-20 bg-neutral-50 flex items-center justify-center">
+                        <span className="text-3xl">{op.emoji || '🍦'}</span>
+                      </div>
+                    )}
+                    <div className="p-2 flex items-center justify-between gap-1">
+                      <p className="text-neutral-800 text-xs font-semibold truncate">{op.nombre}</p>
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <button onClick={() => openEditOp(op)} className="p-1 text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3 w-3" /></button>
+                        <button onClick={() => deleteOp(op.id)} className="p-1 text-neutral-200 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3 w-3" /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )
         })}
