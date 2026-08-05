@@ -248,7 +248,7 @@ export default function CatalogoPage() {
         </button>
       </div>
 
-      {vistaActiva === 'catalogo' && <>
+      {vistaActiva === 'catalogo' && <div>
       <div className="flex justify-end mb-4">
         <ConeButton onClick={openNewCat} icon={<Plus className="h-4 w-4" />}>Nueva categoría</ConeButton>
       </div>
@@ -430,7 +430,7 @@ export default function CatalogoPage() {
         })}
       </div>
 
-      </>}
+      </div>}
 
       {vistaActiva === 'sabores' && <div className="mt-0">
         <div className="flex items-center justify-between mb-5">
@@ -476,8 +476,7 @@ export default function CatalogoPage() {
             </div>
           )
         })}
-      </div>
-      </>}
+      </div>}
 
       {/* Modal Categoría */}
       <ConeModal open={modalCat} onClose={() => setModalCat(false)} title={editId ? 'Editar categoría' : 'Nueva categoría'}
