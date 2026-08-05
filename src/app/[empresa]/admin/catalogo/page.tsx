@@ -63,7 +63,7 @@ function ImageUpload({ value, onChange, folder = 'productos' }: {
 
 export default function CatalogoPage() {
   const { ctx } = useEmpresa()
-  const [tab, setTab] = useState<Tab>('productos')
+  const [tab, setTab] = useState<Tab>('categorias')
   const [loading, setLoading] = useState(true)
 
   const [categorias, setCategorias] = useState<Categoria[]>([])
@@ -195,8 +195,8 @@ export default function CatalogoPage() {
   }
 
   const TABS: { key: Tab; label: string; count: number }[] = [
-    { key: 'productos', label: 'Productos', count: productos.length },
     { key: 'categorias', label: 'Categorías', count: categorias.length },
+    { key: 'productos', label: 'Productos', count: productos.length },
     { key: 'presentaciones', label: 'Presentaciones', count: presentaciones.length },
     { key: 'sabores', label: 'Sabores', count: opciones.length },
   ]
