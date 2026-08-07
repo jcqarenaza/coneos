@@ -14,7 +14,7 @@ interface Categoria { id: string; nombre: string; orden: number; activo: boolean
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null; visible_kiosk: boolean }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
-interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean }
+interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean; visible_kiosk: boolean }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 
 function ImageUpload({ value, onChange, folder = 'productos' }: {
@@ -94,7 +94,7 @@ export default function CatalogoPage() {
   const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true })
   const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null, visible_kiosk: true })
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
-  const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true })
+  const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true, visible_kiosk: true })
 
   async function load(mantenerEstado = false) {
     if (!ctx) return
@@ -213,13 +213,13 @@ export default function CatalogoPage() {
   }
 
   // Sabores
-  function openNewOp(grupoId?: string) { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupoId ?? grupos[0]?.id ?? '', orden: 1, activo: true }); setEditId(null); setModalOp(true) }
-  function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo }); setEditId(o.id); setModalOp(true) }
+  function openNewOp(grupoId?: string) { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupoId ?? grupos[0]?.id ?? '', orden: 1, activo: true, visible_kiosk: true }); setEditId(null); setModalOp(true) }
+  function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo, visible_kiosk: o.visible_kiosk }); setEditId(o.id); setModalOp(true) }
   async function saveOp() {
     if (!ctx || !formOp.nombre || !formOp.grupo_id) return
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo }
+    const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo, visible_kiosk: formOp.visible_kiosk }
     if (editId) await supabase.from('opciones').update(payload).eq('id', editId)
     else await supabase.from('opciones').insert({ ...payload, empresa_id: ctx.empresaId })
     setSaving(false); setModalOp(false); load(true)
@@ -557,6 +557,7 @@ export default function CatalogoPage() {
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formOp.nombre} onChange={e => setFormOp({ ...formOp, nombre: e.target.value })} placeholder="Chocolate" autoFocus /></div>
           <div className="space-y-1.5"><Label>Emoji</Label><Input value={formOp.emoji} onChange={e => setFormOp({ ...formOp, emoji: e.target.value })} placeholder="🍫" className="text-xl w-24" /></div>
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formOp.imagen_url} onChange={url => setFormOp({ ...formOp, imagen_url: url })} folder="sabores" /></div>
+          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formOp.visible_kiosk} onChange={e => setFormOp({ ...formOp, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Visible en kiosk</span></label>
           <div className="space-y-1.5"><Label>Descripción</Label><Input value={formOp.descripcion} onChange={e => setFormOp({ ...formOp, descripcion: e.target.value })} placeholder="Descripción corta" /></div>
         </div>
       </ConeModal>
