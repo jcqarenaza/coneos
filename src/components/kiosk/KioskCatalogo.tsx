@@ -7,7 +7,7 @@ import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empres
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string }
-interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string }
+interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
@@ -238,10 +238,17 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                         const cant = getCant(prod.id, p.id)
                         return (
                           <div key={p.id} className={`flex items-center justify-between px-5 py-3.5 ${i < pres.length - 1 ? 'border-b border-neutral-50' : ''} ${cant > 0 ? 'bg-blue-50/50' : ''}`}>
+                            <div className="flex items-center gap-3">
+                            {p.imagen_url && (
+                              <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0">
+                                <Image src={p.imagen_url} alt={p.nombre} width={56} height={56} className="object-cover w-full h-full" />
+                              </div>
+                            )}
                             <div>
                               <p className="font-semibold text-neutral-700">{p.nombre}</p>
                               <p className="font-bold text-lg" style={{ color: config.primary_color }}>{formatPrecio(p.precio)}</p>
                               {p.permite_opciones && <p className="text-xs text-neutral-400">{p.opciones_max === 1 ? 'Elegís variedad' : `${p.opciones_min}–${p.opciones_max} sabores`}</p>}
+                            </div>
                             </div>
                             <div className="flex items-center gap-3">
                               <button onClick={() => setCant(prod.id, p.id, cant - 1)} className="w-10 h-10 flex items-center justify-center rounded-xl border-2 border-neutral-200 bg-white active:bg-neutral-50 transition-colors">
