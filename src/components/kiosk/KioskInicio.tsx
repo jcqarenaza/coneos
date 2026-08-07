@@ -6,7 +6,7 @@ import type { EmpresaConfig, DispositivoKiosk } from '@/app/[empresa]/kiosk/[suc
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string }
-interface Presentacion { id: string; producto_id: string }
+interface Presentacion { id: string; producto_id: string; imagen_url: string | null }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 interface Opcion { id: string; grupo_id: string; imagen_url: string | null; emoji: string | null }
 
@@ -83,6 +83,16 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
       .slice(0, 4)
   }
 
+  function getFotosPresentacionesCat(catId: string): string[] {
+    const prodIds = new Set(productos.filter(p => p.categoria_id === catId).map(p => p.id))
+    const seen = new Set<string>()
+    return presentaciones
+      .filter(p => prodIds.has(p.producto_id) && p.imagen_url)
+      .filter(p => { if (seen.has(p.imagen_url!)) return false; seen.add(p.imagen_url!); return true })
+      .map(p => p.imagen_url!)
+      .slice(0, 4)
+  }
+
   function getFotosSaboresCat(catId: string): string[] {
     // Obtener presentaciones de productos de esta categoría
     const prodIds = new Set(productos.filter(p => p.categoria_id === catId).map(p => p.id))
@@ -134,7 +144,8 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
           {categorias.map(cat => {
             const fotosProds = getFotosCat(cat.id)
             const fotosSabores = fotosProds.length === 0 ? getFotosSaboresCat(cat.id) : []
-            const fotos = fotosProds.length > 0 ? fotosProds : fotosSabores
+            const fotosPres = fotosProds.length === 0 && fotosSabores.length === 0 ? getFotosPresentacionesCat(cat.id) : []
+            const fotos = fotosProds.length > 0 ? fotosProds : fotosSabores.length > 0 ? fotosSabores : fotosPres
             const tieneIcono = !!cat.icono_url
             const tieneFotos = fotos.length > 0
 
