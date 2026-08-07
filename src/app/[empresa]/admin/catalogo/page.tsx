@@ -275,7 +275,7 @@ export default function CatalogoPage() {
                       <span className="font-bold text-neutral-900">{cat.nombre}</span>
                       <ConeBadge active={cat.activo} />
                     </div>
-                    <p className="text-xs text-neutral-400">{catProds.length} productos · {saboresCat.length} sabores</p>
+                    <p className="text-xs text-neutral-400">{catProds.length} productos</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
@@ -380,45 +380,13 @@ export default function CatalogoPage() {
                     <div className="pl-12 pr-5 py-3">
                       <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Sabores</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {saboresCat.map(op => (
-                          <div key={op.id} className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-100 rounded-full px-3 py-1">
-                            {op.imagen_url
-                              ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
-                              : <span className="text-sm">{op.emoji || '🍦'}</span>}
-                            <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
-                            <button onClick={() => openEditOp(op)} className="text-neutral-400 hover:text-neutral-700 transition-colors"><Pencil className="h-3 w-3" /></button>
-                          </div>
-                        ))}
                       </div>
                     </div>
                   )}
 
                   {/* Sabores a nivel de categoría cuando SÍ hay productos (ej: Helados por Kilo) */}
-                  {catProds.length > 0 && saboresCat.length > 0 && (
-                    <div className="pl-12 pr-5 py-3 bg-neutral-50/50 border-t border-neutral-50">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Sabores de la categoría</p>
-                        <button onClick={() => openNewOp(getGruposDeCat(cat.id)[0]?.id)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-600 border border-dashed border-neutral-200 rounded-lg transition-colors">
-                          <Plus className="h-3 w-3" /> Sabor
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {saboresCat.map(op => (
-                          <div key={op.id} className="flex items-center gap-1.5 bg-white border border-neutral-100 rounded-full px-3 py-1">
-                            {op.imagen_url
-                              ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
-                              : <span className="text-sm">{op.emoji || '🍦'}</span>}
-                            <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
-                            <button onClick={() => openEditOp(op)} className="text-neutral-400 hover:text-neutral-700 ml-1 transition-colors"><Pencil className="h-3 w-3" /></button>
-                            <button onClick={() => deleteOp(op.id)} className="text-neutral-400 hover:text-red-500 transition-colors"><Trash2 className="h-3 w-3" /></button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
-                  {catProds.length === 0 && saboresCat.length === 0 && (
+                  {catProds.length === 0 && (
                     <div className="pl-12 pr-5 py-4 text-neutral-300 text-xs">Sin productos — usá el botón + Producto para agregar</div>
                   )}
                 </div>
