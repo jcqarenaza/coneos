@@ -132,7 +132,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
           <span className="text-sm font-medium tracking-widest uppercase" style={{ color: config.secondary_color }}>Bienvenido</span>
           <div className="h-px w-8 rounded" style={{ backgroundColor: config.secondary_color }} />
         </div>
-        <h1 className="text-5xl font-bold mb-3" style={{ color: config.primary_color }}>
+        <h1 className="text-4xl font-bold mb-3" style={{ color: config.primary_color }}>
           ¿Qué querés<br />disfrutar hoy?
         </h1>
         <p className="text-neutral-400 text-lg">Tocá una categoría para comenzar</p>
@@ -140,7 +140,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
 
       {/* Categorías */}
       <div className="flex-1 px-6 pb-10">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto">
           {categorias.map(cat => {
             const fotosProds = getFotosCat(cat.id)
             const fotosSabores = fotosProds.length === 0 ? getFotosSaboresCat(cat.id) : []
@@ -153,10 +153,10 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
               <button
                 key={cat.id}
                 onClick={() => onComenzar(cat.id)}
-                className="group relative flex flex-col rounded-3xl bg-white border border-neutral-100 shadow-sm hover:shadow-lg active:scale-95 transition-all duration-200 overflow-hidden min-h-[200px]">
+                className="group relative flex flex-col rounded-2xl bg-white border border-neutral-100 shadow-sm hover:shadow-lg active:scale-95 transition-all duration-200 overflow-hidden min-h-[150px]">
 
                 {/* Imagen o collage o emoji */}
-                <div className="flex-1 w-full p-3">
+                <div className="flex-1 w-full p-2">
                   {tieneIcono ? (
                     <div className="w-full h-full rounded-xl overflow-hidden">
                       <Image src={cat.icono_url!} alt={cat.nombre} width={200} height={200} className="object-cover w-full h-full" />
@@ -171,8 +171,8 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
                 </div>
 
                 {/* Nombre */}
-                <div className="px-4 pb-4 pt-1 text-center">
-                  <span className="text-base font-bold text-neutral-700">{cat.nombre}</span>
+                <div className="px-3 pb-3 pt-1 text-center">
+                  <span className="text-sm font-bold text-neutral-700">{cat.nombre}</span>
                 </div>
               </button>
             )
