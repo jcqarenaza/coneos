@@ -285,8 +285,8 @@ export default function CatalogoPage() {
                     className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors">
                     <Plus className="h-3 w-3" /> Producto
                   </button>
-                  <button onClick={() => openEditCat(cat)} className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                  <button onClick={() => deleteCat(cat.id)} className="p-1.5 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => openEditCat(cat)} className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => deleteCat(cat.id)} className="p-1.5 text-neutral-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
 
@@ -323,8 +323,8 @@ export default function CatalogoPage() {
                               className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors">
                               <Plus className="h-3 w-3" /> Presentación
                             </button>
-                            <button onClick={() => openEditProd(prod)} className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => deleteProd(prod.id)} className="p-1.5 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => openEditProd(prod)} className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => deleteProd(prod.id)} className="p-1.5 text-neutral-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                           </div>
                         </div>
 
@@ -344,8 +344,8 @@ export default function CatalogoPage() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                  <button onClick={() => openEditPres(pres)} className="p-1 text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3 w-3" /></button>
-                                  <button onClick={() => deletePres(pres.id)} className="p-1 text-neutral-200 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3 w-3" /></button>
+                                  <button onClick={() => openEditPres(pres)} className="p-1 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100 rounded-lg transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                                  <button onClick={() => deletePres(pres.id)} className="p-1 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                                 </div>
                               </div>
                             ))}
@@ -361,7 +361,7 @@ export default function CatalogoPage() {
                                         ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
                                         : <span className="text-sm">{op.emoji || '🍦'}</span>}
                                       <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
-                                      <button onClick={() => openEditOp(op)} className="text-neutral-200 hover:text-neutral-500 transition-colors"><Pencil className="h-2.5 w-2.5" /></button>
+                                      <button onClick={() => openEditOp(op)} className="text-neutral-400 hover:text-neutral-700 transition-colors"><Pencil className="h-3 w-3" /></button>
                                     </div>
                                   ))}
                                   <button onClick={() => { const g = getGruposDeProd(prod.id)[0]; if (g) openNewOp(g.id) }}
@@ -388,7 +388,7 @@ export default function CatalogoPage() {
                               ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
                               : <span className="text-sm">{op.emoji || '🍦'}</span>}
                             <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
-                            <button onClick={() => openEditOp(op)} className="text-neutral-200 hover:text-neutral-500 transition-colors"><Pencil className="h-2.5 w-2.5" /></button>
+                            <button onClick={() => openEditOp(op)} className="text-neutral-400 hover:text-neutral-700 transition-colors"><Pencil className="h-3 w-3" /></button>
                           </div>
                         ))}
                       </div>
@@ -412,8 +412,8 @@ export default function CatalogoPage() {
                               ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
                               : <span className="text-sm">{op.emoji || '🍦'}</span>}
                             <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
-                            <button onClick={() => openEditOp(op)} className="text-neutral-200 hover:text-neutral-500 ml-1 transition-colors"><Pencil className="h-2.5 w-2.5" /></button>
-                            <button onClick={() => deleteOp(op.id)} className="text-neutral-200 hover:text-red-400 transition-colors"><Trash2 className="h-2.5 w-2.5" /></button>
+                            <button onClick={() => openEditOp(op)} className="text-neutral-400 hover:text-neutral-700 ml-1 transition-colors"><Pencil className="h-3 w-3" /></button>
+                            <button onClick={() => deleteOp(op.id)} className="text-neutral-400 hover:text-red-500 transition-colors"><Trash2 className="h-3 w-3" /></button>
                           </div>
                         ))}
                       </div>
