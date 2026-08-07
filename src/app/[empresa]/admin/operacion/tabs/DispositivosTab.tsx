@@ -7,7 +7,7 @@ import { ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeCompone
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Loader2, Copy, Check, Monitor, Tablet, Smartphone, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Loader2, Copy, Check, Monitor, Tablet, Smartphone, Pencil, Trash2, ExternalLink } from 'lucide-react'
 
 interface Sucursal { id: string; nombre: string; slug: string }
 interface Dispositivo {
@@ -42,13 +42,12 @@ export default function DispositivosTab() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [tokenModal, setTokenModal] = useState(false)
-  const [selectedToken, setSelectedToken] = useState('')
   const [selectedNombre, setSelectedNombre] = useState('')
   const [selectedDispositivo, setSelectedDispositivo] = useState<Dispositivo | null>(null)
   const [form, setForm] = useState({ nombre: '', tipo: 'KIOSK', sucursal_id: '' })
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copiedUrl, setCopiedUrl] = useState(false)
 
   async function load() {
     if (!ctx) return
@@ -70,7 +69,7 @@ export default function DispositivosTab() {
 
   function openNew() { setForm({ nombre: '', tipo: 'KIOSK', sucursal_id: sucursales[0]?.id ?? '' }); setEditId(null); setModal(true) }
   function openEdit(row: Dispositivo) { setForm({ nombre: row.nombre, tipo: row.tipo, sucursal_id: row.sucursal_id }); setEditId(row.id); setModal(true) }
-  function showToken(row: Dispositivo) { setSelectedToken(row.device_token); setSelectedNombre(row.nombre); setSelectedDispositivo(row); setTokenModal(true) }
+  function showToken(row: Dispositivo) { setSelectedNombre(row.nombre); setSelectedDispositivo(row); setTokenModal(true) }
 
   function getUrl(row: Dispositivo) {
     const base = window.location.origin
@@ -82,9 +81,10 @@ export default function DispositivosTab() {
     return `${base}/${empresaSlug}/operacion/${sucSlug}?token=${row.device_token}`
   }
 
-  async function copyToken() {
-    await navigator.clipboard.writeText(selectedToken)
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
+  async function copyUrl() {
+    if (!selectedDispositivo) return
+    await navigator.clipboard.writeText(getUrl(selectedDispositivo))
+    setCopiedUrl(true); setTimeout(() => setCopiedUrl(false), 2000)
   }
 
   async function handleSave() {
@@ -99,10 +99,8 @@ export default function DispositivosTab() {
   async function handleDelete(row: Dispositivo) {
     if (!confirm(`¿Eliminar el dispositivo "${row.nombre}"?`)) return
     const supabase = createClient()
-    // Usar RPC para borrar sesiones primero y luego el dispositivo
     const { error } = await supabase.rpc('delete_dispositivo', { p_id: row.id })
     if (error) {
-      // Fallback: intentar borrar directo
       await supabase.from('operator_sessions').delete().eq('dispositivo_id', row.id)
       await supabase.from('dispositivos').delete().eq('id', row.id)
     }
@@ -133,7 +131,7 @@ export default function DispositivosTab() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => showToken(row)} className="px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors">Ver token</button>
+              <button onClick={() => showToken(row)} className="px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors">Ver URL</button>
               <button onClick={() => openEdit(row)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
               <button onClick={() => handleDelete(row)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
             </div>
@@ -141,6 +139,7 @@ export default function DispositivosTab() {
         ))}
       </div>
 
+      {/* Modal nuevo/editar */}
       <ConeModal open={modal} onClose={() => setModal(false)} title={editId ? 'Editar dispositivo' : 'Nuevo dispositivo'}
         footer={<><ConeButton variant="outline" onClick={() => setModal(false)}>Cancelar</ConeButton><ConeButton onClick={handleSave} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
@@ -167,26 +166,39 @@ export default function DispositivosTab() {
         </div>
       </ConeModal>
 
-      <ConeModal open={tokenModal} onClose={() => setTokenModal(false)} title={`Token — ${selectedNombre}`}
+      {/* Modal URL */}
+      <ConeModal open={tokenModal} onClose={() => setTokenModal(false)} title={`Vincular — ${selectedNombre}`}
         footer={<ConeButton onClick={() => setTokenModal(false)} variant="outline">Cerrar</ConeButton>}>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Device Token</Label>
-            <div className="flex gap-2">
-              <Input value={selectedToken} readOnly className="font-mono text-xs bg-neutral-50" />
-              <ConeButton variant="outline" onClick={copyToken} icon={copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}>
-                {copied ? 'Copiado' : 'Copiar'}
-              </ConeButton>
+        {selectedDispositivo && (
+          <div className="space-y-5">
+            {/* URL clickeable */}
+            <div className="space-y-2">
+              <Label>URL del dispositivo</Label>
+              <a href={getUrl(selectedDispositivo)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 transition-colors group">
+                <ExternalLink className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                <span className="text-xs font-mono text-blue-700 break-all">{getUrl(selectedDispositivo)}</span>
+              </a>
+              <p className="text-xs text-neutral-400">Tocá el link para abrir el dispositivo, o copiá la URL para enviarla por WhatsApp</p>
+            </div>
+
+            {/* Botón copiar URL */}
+            <button onClick={copyUrl}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all border-2 border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50">
+              {copiedUrl
+                ? <><Check className="h-4 w-4 text-green-600" /><span className="text-green-600">¡URL copiada!</span></>
+                : <><Copy className="h-4 w-4 text-neutral-500" /><span className="text-neutral-600">Copiar URL para compartir</span></>}
+            </button>
+
+            {/* Tipo de dispositivo */}
+            <div className="flex items-center gap-2 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+              <div className={`text-xs font-bold px-2 py-1 rounded-full ${tipoBadge(selectedDispositivo.tipo)}`}>
+                {TIPOS.find(t => t.value === selectedDispositivo.tipo)?.label}
+              </div>
+              <span className="text-neutral-500 text-sm">{selectedDispositivo.sucursal_nombre}</span>
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>URL de vinculación</Label>
-            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
-              <p className="text-xs font-mono text-neutral-600 break-all">{selectedDispositivo ? getUrl(selectedDispositivo) : ''}</p>
-            </div>
-            <p className="text-xs text-neutral-400">Abrí esta URL en el dispositivo para vincularlo</p>
-          </div>
-        </div>
+        )}
       </ConeModal>
     </div>
   )
