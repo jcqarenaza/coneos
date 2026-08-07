@@ -12,7 +12,7 @@ import Image from 'next/image'
 
 interface Categoria { id: string; nombre: string; orden: number; activo: boolean; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean }
-interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null }
+interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null; visible_kiosk: boolean }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
@@ -92,11 +92,11 @@ export default function CatalogoPage() {
 
   const [formCat, setFormCat] = useState({ nombre: '', orden: 1, activo: true, icono_url: null as string | null })
   const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true })
-  const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null })
+  const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null, visible_kiosk: true })
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
   const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true })
 
-  async function load() {
+  async function load(mantenerEstado = false) {
     if (!ctx) return
     const supabase = createClient()
     const [{ data: cats }, { data: prods }, { data: pres }, { data: grps }, { data: ops }, { data: pg }] = await Promise.all([
@@ -113,8 +113,8 @@ export default function CatalogoPage() {
     setGrupos((grps ?? []) as GrupoOpciones[])
     setOpciones((ops ?? []) as Opcion[])
     setPresGrupos((pg ?? []) as PresGrupo[])
-    // Cerradas por defecto
-    setCatExpandidas(new Set())
+    // Solo resetear expandidos en la carga inicial
+    if (!mantenerEstado) setCatExpandidas(new Set())
     setLoading(false)
   }
 
@@ -156,12 +156,12 @@ export default function CatalogoPage() {
     const supabase = createClient()
     if (editId) await supabase.from('categorias').update({ nombre: formCat.nombre, orden: formCat.orden, activo: formCat.activo, icono_url: formCat.icono_url }).eq('id', editId)
     else await supabase.from('categorias').insert({ nombre: formCat.nombre, orden: formCat.orden, activo: formCat.activo, icono_url: formCat.icono_url, empresa_id: ctx.empresaId })
-    setSaving(false); setModalCat(false); load()
+    setSaving(false); setModalCat(false); load(true)
   }
   async function deleteCat(id: string) {
     if (!confirm('¿Eliminar categoría?')) return
     await createClient().from('categorias').delete().eq('id', id)
-    load()
+    load(true)
   }
 
   // Productos
@@ -174,30 +174,30 @@ export default function CatalogoPage() {
     const payload = { nombre: formProd.nombre, descripcion: formProd.descripcion || null, imagen_url: formProd.imagen_url, categoria_id: formProd.categoria_id, codigo: formProd.codigo || null, orden: formProd.orden, activo: formProd.activo, visible_kiosk: formProd.visible_kiosk }
     if (editId) await supabase.from('productos').update(payload).eq('id', editId)
     else await supabase.from('productos').insert({ ...payload, empresa_id: ctx.empresaId })
-    setSaving(false); setModalProd(false); load()
+    setSaving(false); setModalProd(false); load(true)
   }
   async function deleteProd(id: string) {
     if (!confirm('¿Eliminar producto?')) return
     await createClient().from('productos').delete().eq('id', id)
-    load()
+    load(true)
   }
 
   // Presentaciones
-  function openNewPres(prodId: string) { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: prodId, imagen_url: null }); setEditId(null); setModalPres(true) }
-  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url }); setEditId(p.id); setModalPres(true) }
+  function openNewPres(prodId: string) { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: prodId, imagen_url: null, visible_kiosk: true }); setEditId(null); setModalPres(true) }
+  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url, visible_kiosk: p.visible_kiosk }); setEditId(p.id); setModalPres(true) }
   async function savePres() {
     if (!ctx || !formPres.nombre || !formPres.producto_id) return
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id, imagen_url: formPres.imagen_url }
+    const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id, imagen_url: formPres.imagen_url, visible_kiosk: formPres.visible_kiosk }
     if (editId) await supabase.from('presentaciones').update(payload).eq('id', editId)
     else await supabase.from('presentaciones').insert({ ...payload, empresa_id: ctx.empresaId })
-    setSaving(false); setModalPres(false); load()
+    setSaving(false); setModalPres(false); load(true)
   }
   async function deletePres(id: string) {
     if (!confirm('¿Eliminar presentación?')) return
     await createClient().from('presentaciones').delete().eq('id', id)
-    load()
+    load(true)
   }
 
   // Grupos
@@ -209,7 +209,7 @@ export default function CatalogoPage() {
     const supabase = createClient()
     if (editId) await supabase.from('grupos_opciones').update(formGrupo).eq('id', editId)
     else await supabase.from('grupos_opciones').insert({ ...formGrupo, empresa_id: ctx.empresaId })
-    setSaving(false); setModalGrupo(false); load()
+    setSaving(false); setModalGrupo(false); load(true)
   }
 
   // Sabores
@@ -222,12 +222,12 @@ export default function CatalogoPage() {
     const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo }
     if (editId) await supabase.from('opciones').update(payload).eq('id', editId)
     else await supabase.from('opciones').insert({ ...payload, empresa_id: ctx.empresaId })
-    setSaving(false); setModalOp(false); load()
+    setSaving(false); setModalOp(false); load(true)
   }
   async function deleteOp(id: string) {
     if (!confirm('¿Eliminar sabor?')) return
     await createClient().from('opciones').delete().eq('id', id)
-    load()
+    load(true)
   }
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
@@ -517,6 +517,10 @@ export default function CatalogoPage() {
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formPres.nombre} onChange={e => setFormPres({ ...formPres, nombre: e.target.value })} placeholder="Porción / x8 / x20" autoFocus /></div>
           <div className="space-y-1.5"><Label>Precio *</Label><Input type="number" value={formPres.precio} onChange={e => setFormPres({ ...formPres, precio: Number(e.target.value) })} /></div>
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formPres.imagen_url} onChange={url => setFormPres({ ...formPres, imagen_url: url })} folder="presentaciones" /></div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={formPres.visible_kiosk} onChange={e => setFormPres({ ...formPres, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" />
+            <span className="text-sm text-neutral-700">Visible en kiosk</span>
+          </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.permite_opciones} onChange={e => setFormPres({ ...formPres, permite_opciones: e.target.checked, opciones_min: e.target.checked ? 1 : 0, opciones_max: e.target.checked ? 1 : 0 })} className="w-4 h-4 rounded" />
             <span className="text-sm text-neutral-700">Permite selección de sabores</span>
