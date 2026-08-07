@@ -377,17 +377,6 @@ export default function CatalogoPage() {
                     )
                   })}
 
-                  {/* Sabores a nivel de categoría (para categorías sin productos, como Helados por Kilo) */}
-                  {mostrarSaboresCat && (
-                    <div className="pl-12 pr-5 py-3">
-                      <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Sabores</p>
-                      <div className="flex flex-wrap gap-1.5">
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Sabores a nivel de categoría cuando SÍ hay productos (ej: Helados por Kilo) */}
-
                   {catProds.length === 0 && (
                     <div className="pl-12 pr-5 py-4 text-neutral-300 text-xs">Sin productos — usá el botón + Producto para agregar</div>
                   )}
