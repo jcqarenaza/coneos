@@ -327,7 +327,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
             )}
 
             {/* Grid sabores — con imagen si existe */}
-            <div className={`grid gap-3 ${actualCola.presentacion.opciones_max === 1 ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {opcionesFiltradas.map(op => {
                 const sel = opcionesSeleccionadas.find(o => o.id === op.id)
                 const maxAlcanzado = opcionesSeleccionadas.length >= actualCola.presentacion.opciones_max
@@ -345,7 +345,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                       </div>
                     ) : (
                       <div className="w-full aspect-square flex items-center justify-center bg-neutral-50">
-                        <span className={actualCola.presentacion.opciones_max === 1 ? 'text-4xl' : 'text-5xl'}>{op.emoji ?? '🍦'}</span>
+                        <span className="text-4xl">{op.emoji ?? '🍦'}</span>
                       </div>
                     )}
 
