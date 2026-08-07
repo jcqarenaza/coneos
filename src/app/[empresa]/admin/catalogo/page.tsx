@@ -72,6 +72,8 @@ export default function CatalogoPage() {
 
   // Tabs
   const [vistaActiva, setVistaActiva] = useState<'catalogo' | 'sabores'>('catalogo')
+  const [saboresCatExpandidas, setSaboresCatExpandidas] = useState<Set<string>>(new Set())
+  function toggleSaboresCat(id: string) { setSaboresCatExpandidas(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s }) }
 
   // Expandidos
   const [catExpandidas, setCatExpandidas] = useState<Set<string>>(new Set())
@@ -406,16 +408,19 @@ export default function CatalogoPage() {
         {categorias.map(cat => {
           const saboresCat = getSaboresDeCat(cat.id)
           if (saboresCat.length === 0) return null
+          const expandida = saboresCatExpandidas.has(cat.id)
           return (
-            <div key={cat.id} className="mb-6">
-              <div className="flex items-center gap-2 mb-3">
+            <div key={cat.id} className="mb-3">
+              <button onClick={() => toggleSaboresCat(cat.id)}
+                className="w-full flex items-center gap-2 mb-2 p-3 bg-white rounded-xl border border-neutral-100 hover:bg-neutral-50 transition-colors shadow-sm">
+                <ChevronRight className={`h-4 w-4 text-neutral-400 transition-transform ${expandida ? 'rotate-90' : ''}`} />
                 <div className="w-6 h-6 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {cat.icono_url ? <Image src={cat.icono_url} alt={cat.nombre} width={24} height={24} className="object-cover w-full h-full" /> : <span className="text-xs">📁</span>}
                 </div>
                 <h3 className="font-bold text-neutral-700">{cat.nombre}</h3>
                 <span className="text-xs text-neutral-400">{saboresCat.length} sabores</span>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+              </button>
+              {expandida && <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-3">
                 {saboresCat.map(op => (
                   <div key={op.id} className="bg-white rounded-xl border border-neutral-100 overflow-hidden shadow-sm">
                     {op.imagen_url ? (
@@ -436,7 +441,7 @@ export default function CatalogoPage() {
                     </div>
                   </div>
                 ))}
-              </div>
+              </div>}
             </div>
           )
         })}
