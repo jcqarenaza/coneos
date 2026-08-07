@@ -6,6 +6,9 @@ import type { EmpresaConfig, DispositivoKiosk } from '@/app/[empresa]/kiosk/[suc
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string }
+interface Presentacion { id: string; producto_id: string }
+interface PresGrupo { presentacion_id: string; grupo_id: string }
+interface Opcion { id: string; grupo_id: string; imagen_url: string | null; emoji: string | null }
 
 interface Props {
   config: EmpresaConfig
@@ -52,6 +55,9 @@ function CategoriaFotos({ fotos, emoji }: { fotos: string[]; emoji: string }) {
 export default function KioskInicio({ config, dispositivo, onComenzar }: Props) {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
+  const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
+  const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
+  const [opciones, setOpciones] = useState<Opcion[]>([])
   const [hora, setHora] = useState('')
 
   useEffect(() => {
@@ -60,6 +66,9 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
       .then(data => {
         setCategorias(data.categorias ?? [])
         setProductos(data.productos ?? [])
+        setPresentaciones(data.presentaciones ?? [])
+        setPresGrupos(data.presentacion_grupos ?? [])
+        setOpciones(data.opciones ?? [])
       })
     const tick = () => setHora(new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }))
     tick()
@@ -71,6 +80,21 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
     return productos
       .filter(p => p.categoria_id === catId && p.imagen_url)
       .map(p => p.imagen_url!)
+      .slice(0, 4)
+  }
+
+  function getFotosSaboresCat(catId: string): string[] {
+    // Obtener presentaciones de productos de esta categoría
+    const prodIds = new Set(productos.filter(p => p.categoria_id === catId).map(p => p.id))
+    const presIds = new Set(presentaciones.filter(p => prodIds.has(p.producto_id)).map(p => p.id))
+    // Obtener grupos vinculados a esas presentaciones
+    const grupoIds = new Set(presGrupos.filter(pg => presIds.has(pg.presentacion_id)).map(pg => pg.grupo_id))
+    // Obtener opciones con imagen de esos grupos (deduplicadas)
+    const seen = new Set<string>()
+    return opciones
+      .filter(op => grupoIds.has(op.grupo_id) && op.imagen_url)
+      .filter(op => { if (seen.has(op.imagen_url!)) return false; seen.add(op.imagen_url!); return true })
+      .map(op => op.imagen_url!)
       .slice(0, 4)
   }
 
@@ -108,7 +132,9 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
       <div className="flex-1 px-6 pb-10">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
           {categorias.map(cat => {
-            const fotos = getFotosCat(cat.id)
+            const fotosProds = getFotosCat(cat.id)
+            const fotosSabores = fotosProds.length === 0 ? getFotosSaboresCat(cat.id) : []
+            const fotos = fotosProds.length > 0 ? fotosProds : fotosSabores
             const tieneIcono = !!cat.icono_url
             const tieneFotos = fotos.length > 0
 
