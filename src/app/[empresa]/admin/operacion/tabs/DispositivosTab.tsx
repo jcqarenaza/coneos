@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeComponents'
@@ -33,6 +33,34 @@ const tipoBadge = (tipo: string) => {
   if (tipo === 'CAJA') return 'bg-blue-50 text-blue-700'
   if (tipo === 'PREPARACION') return 'bg-amber-50 text-amber-700'
   return 'bg-green-50 text-green-700'
+}
+
+function QRCode({ url }: { url: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    if (!canvasRef.current || !url) return
+    import('qrcode').then(QRLib => {
+      QRLib.toCanvas(canvasRef.current!, url, {
+        width: 200, margin: 2,
+        color: { dark: '#1a1a1a', light: '#ffffff' }
+      })
+    }).catch(() => {
+      // fallback: usar API de QR externo
+      const img = new window.Image()
+      img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`
+      img.onload = () => {
+        const ctx = canvasRef.current?.getContext('2d')
+        if (ctx) ctx.drawImage(img, 0, 0, 200, 200)
+      }
+    })
+  }, [url])
+
+  return (
+    <div className="flex flex-col items-center">
+      <canvas ref={canvasRef} width={200} height={200} className="rounded-xl border border-neutral-100" />
+    </div>
+  )
 }
 
 export default function DispositivosTab() {
@@ -69,7 +97,7 @@ export default function DispositivosTab() {
 
   function openNew() { setForm({ nombre: '', tipo: 'KIOSK', sucursal_id: sucursales[0]?.id ?? '' }); setEditId(null); setModal(true) }
   function openEdit(row: Dispositivo) { setForm({ nombre: row.nombre, tipo: row.tipo, sucursal_id: row.sucursal_id }); setEditId(row.id); setModal(true) }
-  function showToken(row: Dispositivo) { setSelectedNombre(row.nombre); setSelectedDispositivo(row); setTokenModal(true) }
+  function showToken(row: Dispositivo) { setSelectedNombre(row.nombre); setSelectedDispositivo(row); setCopiedUrl(false); setTokenModal(true) }
 
   function getUrl(row: Dispositivo) {
     const base = window.location.origin
@@ -166,20 +194,28 @@ export default function DispositivosTab() {
         </div>
       </ConeModal>
 
-      {/* Modal URL */}
+      {/* Modal URL + QR */}
       <ConeModal open={tokenModal} onClose={() => setTokenModal(false)} title={`Vincular — ${selectedNombre}`}
         footer={<ConeButton onClick={() => setTokenModal(false)} variant="outline">Cerrar</ConeButton>}>
         {selectedDispositivo && (
           <div className="space-y-5">
+            {/* QR */}
+            <div className="flex flex-col items-center">
+              <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-3">Escanear con la tablet</p>
+              <QRCode url={getUrl(selectedDispositivo)} />
+              <p className="text-xs text-neutral-400 mt-2 text-center">Apuntá la cámara al QR para abrir el dispositivo</p>
+            </div>
+
+            <div className="h-px bg-neutral-100" />
+
             {/* URL clickeable */}
             <div className="space-y-2">
-              <Label>URL del dispositivo</Label>
+              <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">O abrí el link</p>
               <a href={getUrl(selectedDispositivo)} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 transition-colors group">
+                className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 transition-colors">
                 <ExternalLink className="h-4 w-4 text-blue-500 flex-shrink-0" />
                 <span className="text-xs font-mono text-blue-700 break-all">{getUrl(selectedDispositivo)}</span>
               </a>
-              <p className="text-xs text-neutral-400">Tocá el link para abrir el dispositivo, o copiá la URL para enviarla por WhatsApp</p>
             </div>
 
             {/* Botón copiar URL */}
@@ -187,10 +223,9 @@ export default function DispositivosTab() {
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all border-2 border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50">
               {copiedUrl
                 ? <><Check className="h-4 w-4 text-green-600" /><span className="text-green-600">¡URL copiada!</span></>
-                : <><Copy className="h-4 w-4 text-neutral-500" /><span className="text-neutral-600">Copiar URL para compartir</span></>}
+                : <><Copy className="h-4 w-4 text-neutral-500" /><span className="text-neutral-600">Copiar URL para compartir por WhatsApp</span></>}
             </button>
 
-            {/* Tipo de dispositivo */}
             <div className="flex items-center gap-2 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
               <div className={`text-xs font-bold px-2 py-1 rounded-full ${tipoBadge(selectedDispositivo.tipo)}`}>
                 {TIPOS.find(t => t.value === selectedDispositivo.tipo)?.label}
