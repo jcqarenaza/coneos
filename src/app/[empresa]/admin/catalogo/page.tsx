@@ -474,6 +474,7 @@ export default function CatalogoPage() {
         <div className="space-y-4">
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formPres.nombre} onChange={e => setFormPres({ ...formPres, nombre: e.target.value })} placeholder="Porción / x8 / x20" autoFocus /></div>
           <div className="space-y-1.5"><Label>Precio *</Label><Input type="number" value={formPres.precio} onChange={e => setFormPres({ ...formPres, precio: Number(e.target.value) })} /></div>
+          <div className="space-y-1.5"><Label>Orden</Label><Input type="number" value={formPres.orden} onChange={e => setFormPres({ ...formPres, orden: Number(e.target.value) })} className="w-24" /><p className="text-xs text-neutral-400">1 = primero en el listado</p></div>
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formPres.imagen_url} onChange={url => setFormPres({ ...formPres, imagen_url: url })} folder="presentaciones" /></div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.visible_kiosk} onChange={e => setFormPres({ ...formPres, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" />
