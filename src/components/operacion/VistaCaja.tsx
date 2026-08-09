@@ -69,6 +69,19 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     }
   }, [pedidos, seleccionado])
 
+  async function imprimirTicket(pedidoId: string) {
+    const res = await fetch('/api/comprobantes/ticket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pedido_id: pedidoId }),
+    })
+    if (res.ok) {
+      const html = await res.text()
+      const win = window.open('', '_blank', 'width=400,height=700')
+      if (win) { win.document.write(html); win.document.close() }
+    }
+  }
+
   async function cambiarEstado(pedidoId: string, estadoNuevo: string) {
     setProcesando(true)
     if (estadoNuevo === 'DELIVERED') setEntregado(false)
