@@ -244,11 +244,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
                 <div className="space-y-2">
                   {seleccionado.estado === 'PENDING_PAYMENT' && (<>
-                    <button onClick={() => cambiarEstado(seleccionado.id, 'PAID')} disabled={procesando}
+                    <button onClick={async () => {
+                        await cambiarEstado(seleccionado.id, 'PAID')
+                        imprimirTicket(seleccionado.id)
+                        await cambiarEstado(seleccionado.id, 'PREPARING')
+                      }} disabled={procesando}
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
                     </button>
-                    <button onClick={() => cambiarEstado(seleccionado.id, 'PAID')} disabled={procesando}
+                    <button onClick={() => { cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
                       className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
                       📱 Cobrar transferencia
                     </button>
@@ -296,15 +300,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </div>
           <div className="space-y-2">
             <button
-              onClick={() => imprimirTicket(seleccionado.id, nombreCliente)}
+              onClick={async () => { await imprimirTicket(seleccionado.id, nombreCliente); cambiarEstado(seleccionado.id, 'PREPARING') }}
               disabled={generandoTicket}
               className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
               {generandoTicket ? <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</> : '🖨️ Generar ticket'}
             </button>
             <button
-              onClick={() => { setModalComprobante(false); setNombreCliente('') }}
+              onClick={() => { setModalComprobante(false); setNombreCliente(''); cambiarEstado(seleccionado.id, 'PREPARING') }}
               className="w-full py-3 text-neutral-500 hover:text-neutral-700 rounded-xl text-sm transition-colors">
-              No necesita comprobante
+              No necesita comprobante → Preparación
             </button>
           </div>
         </div>
