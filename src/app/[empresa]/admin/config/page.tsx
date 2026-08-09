@@ -9,7 +9,11 @@ import { Label } from '@/components/ui/label'
 import { Loader2, Check, Upload, X } from 'lucide-react'
 import Image from 'next/image'
 
-interface Config { primary_color: string; secondary_color: string; logo_url: string | null; texto_bienvenida: string; moneda: string }
+interface Config {
+  primary_color: string; secondary_color: string; logo_url: string | null
+  texto_bienvenida: string; moneda: string
+  cuit: string | null; razon_social: string | null; condicion_iva: string | null; punto_venta: number | null
+}
 interface Empresa { nombre: string; slug: string; plan: string }
 
 export default function ConfigPage() {
@@ -26,10 +30,16 @@ export default function ConfigPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('empresas').select('nombre, slug, plan').eq('id', ctx.empresaId).single(),
-      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda').eq('empresa_id', ctx.empresaId).single(),
+      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta').eq('empresa_id', ctx.empresaId).single(),
     ]).then(([{ data: emp }, { data: cfg }]) => {
       if (emp) setEmpresa(emp)
-      if (cfg) setConfig(cfg)
+      if (cfg) setConfig({
+        ...cfg,
+        cuit: cfg.cuit ?? '',
+        razon_social: cfg.razon_social ?? '',
+        condicion_iva: cfg.condicion_iva ?? 'RI',
+        punto_venta: cfg.punto_venta ?? 1,
+      })
     })
   }, [ctx])
 
@@ -57,6 +67,10 @@ export default function ConfigPage() {
       logo_url: config.logo_url,
       texto_bienvenida: config.texto_bienvenida,
       moneda: config.moneda,
+      cuit: config.cuit || null,
+      razon_social: config.razon_social || null,
+      condicion_iva: config.condicion_iva || 'RI',
+      punto_venta: config.punto_venta || 1,
     }).eq('empresa_id', ctx.empresaId)
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
   }
@@ -69,6 +83,8 @@ export default function ConfigPage() {
     <div>
       <ConePageHeader title="Configuración" description="Datos de empresa y preferencias del sistema" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Datos empresa */}
         <ConeCard title="Datos de empresa">
           <div className="space-y-4">
             <div className="space-y-1.5">
@@ -87,6 +103,7 @@ export default function ConfigPage() {
           </div>
         </ConeCard>
 
+        {/* Logo */}
         <ConeCard title="Logo">
           <div className="space-y-3">
             {config.logo_url ? (
@@ -111,6 +128,7 @@ export default function ConfigPage() {
           </div>
         </ConeCard>
 
+        {/* Personalización */}
         <ConeCard title="Personalización">
           <div className="space-y-4">
             <div className="space-y-1.5">
@@ -136,6 +154,7 @@ export default function ConfigPage() {
           </div>
         </ConeCard>
 
+        {/* Vista previa */}
         <ConeCard title="Vista previa">
           <div className="rounded-xl overflow-hidden border border-neutral-100">
             <div className="p-5 text-white flex items-center gap-3" style={{ backgroundColor: config.primary_color }}>
@@ -151,6 +170,41 @@ export default function ConfigPage() {
           </div>
         </ConeCard>
 
+        {/* Datos fiscales */}
+        <ConeCard title="Datos fiscales">
+          <div className="space-y-4">
+            <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl">
+              <p className="text-xs text-blue-700 font-medium">Estos datos se usan para los tickets de caja. La integración con ARCA para facturación electrónica estará disponible próximamente.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Razón social</Label>
+              <Input value={config.razon_social ?? ''} onChange={e => setConfig({ ...config, razon_social: e.target.value })} placeholder="Cecchetto S.R.L." />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>CUIT</Label>
+                <Input value={config.cuit ?? ''} onChange={e => setConfig({ ...config, cuit: e.target.value })} placeholder="30-12345678-9" className="font-mono" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Condición IVA</Label>
+                <select value={config.condicion_iva ?? 'RI'} onChange={e => setConfig({ ...config, condicion_iva: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400 bg-white">
+                  <option value="RI">Responsable Inscripto</option>
+                  <option value="MT">Monotributista</option>
+                  <option value="EX">Exento</option>
+                  <option value="CF">Consumidor Final</option>
+                </select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Punto de venta</Label>
+              <Input type="number" value={config.punto_venta ?? 1} onChange={e => setConfig({ ...config, punto_venta: Number(e.target.value) })} className="w-24 font-mono" />
+              <p className="text-xs text-neutral-400">Número de punto de venta habilitado en AFIP</p>
+            </div>
+          </div>
+        </ConeCard>
+
+        {/* Pedidos */}
         <ConeCard title="Configuración de pedidos">
           <div className="space-y-4">
             <div className="space-y-1.5">
@@ -163,6 +217,7 @@ export default function ConfigPage() {
             </div>
           </div>
         </ConeCard>
+
       </div>
 
       <div className="mt-6 flex justify-end">
