@@ -147,6 +147,7 @@ export default function KioskPage() {
           onPedidoCreado={(numero, codigo) => { setPedidoCreado({ numero, codigo }); setCarrito([]) }}
           pedidoCreado={pedidoCreado}
           onNuevoPedido={limpiarCarrito}
+          onVolver={() => setPaso('carrito')}
         />
       )}
     </div>

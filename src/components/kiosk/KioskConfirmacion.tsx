@@ -12,6 +12,7 @@ interface Props {
   pedidoCreado: { numero: number; codigo: string } | null
   onPedidoCreado: (numero: number, codigo: string) => void
   onNuevoPedido: () => void
+  onVolver: () => void
 }
 
 interface MetodoPago { id: string; label: string; emoji: string; descripcion: string }
@@ -20,7 +21,7 @@ type EstadoMP = 'idle' | 'creando' | 'esperando' | 'aprobado' | 'rechazado'
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 
-export default function KioskConfirmacion({ config, dispositivo, carrito, pedidoCreado, onPedidoCreado, onNuevoPedido }: Props) {
+export default function KioskConfirmacion({ config, dispositivo, carrito, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver }: Props) {
   const [metodosDisponibles, setMetodosDisponibles] = useState<MetodoPago[]>([])
   const [metodoPago, setMetodoPago] = useState<string>('')
   const [creando, setCreando] = useState(false)
@@ -303,6 +304,10 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
             className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all disabled:opacity-40 flex items-center justify-center gap-3"
             style={{ backgroundColor: config.primary_color }}>
             {(creando || estadoMP === 'creando') ? <><Loader2 className="h-5 w-5 animate-spin" /> Procesando...</> : 'Confirmar pedido →'}
+          </button>
+          <button onClick={onVolver}
+            className="w-full py-3 rounded-2xl text-neutral-400 text-sm font-medium hover:text-neutral-600 transition-colors">
+            ← Volver al carrito
           </button>
         </div>
       </div>
