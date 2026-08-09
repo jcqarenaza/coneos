@@ -31,6 +31,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [seleccionado, setSeleccionado] = useState<Pedido | null>(null)
   const [procesando, setProcesando] = useState(false)
   const [entregado, setEntregado] = useState(false)
+  const [modalComprobante, setModalComprobante] = useState(false)
+  const [nombreCliente, setNombreCliente] = useState('')
+  const [generandoTicket, setGenerandoTicket] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string | null>(null)
   const verTodas = sesion.operador.sucursal_id === null
 
@@ -69,16 +72,31 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     }
   }, [pedidos, seleccionado])
 
-  async function imprimirTicket(pedidoId: string) {
+  async function imprimirTicket(pedidoId: string, nombre?: string) {
+    setGenerandoTicket(true)
     const res = await fetch('/api/comprobantes/ticket', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pedido_id: pedidoId }),
+      body: JSON.stringify({ pedido_id: pedidoId, nombre_cliente: nombre || null }),
     })
+    setGenerandoTicket(false)
     if (res.ok) {
       const html = await res.text()
       const win = window.open('', '_blank', 'width=400,height=700')
       if (win) { win.document.write(html); win.document.close() }
+    }
+    setModalComprobante(false)
+    setNombreCliente('')
+  }
+
+  function handleTicketBtn(pedido: Pedido) {
+    const metodo = pedido.metodo_pago ?? ''
+    if (metodo === 'efectivo') {
+      // Efectivo: ticket directo sin preguntar
+      imprimirTicket(pedido.id)
+    } else {
+      // Transferencia / MP: preguntar si quiere comprobante
+      setModalComprobante(true)
     }
   }
 
@@ -260,5 +278,39 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         </div>
       )}
     </div>
+
+    {/* Modal comprobante */}
+    {modalComprobante && seleccionado && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setModalComprobante(false)} />
+        <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+          <h3 className="font-bold text-neutral-900 text-lg mb-1">¿El cliente quiere comprobante?</h3>
+          <p className="text-neutral-400 text-sm mb-5">Podés agregar el nombre del cliente al ticket.</p>
+          <div className="space-y-3 mb-5">
+            <label className="text-sm font-medium text-neutral-700">Nombre del cliente (opcional)</label>
+            <input
+              value={nombreCliente}
+              onChange={e => setNombreCliente(e.target.value)}
+              placeholder="Nombre y apellido"
+              className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-2">
+            <button
+              onClick={() => imprimirTicket(seleccionado.id, nombreCliente)}
+              disabled={generandoTicket}
+              className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+              {generandoTicket ? <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</> : '🖨️ Generar ticket'}
+            </button>
+            <button
+              onClick={() => { setModalComprobante(false); setNombreCliente('') }}
+              className="w-full py-3 text-neutral-500 hover:text-neutral-700 rounded-xl text-sm transition-colors">
+              No necesita comprobante
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   )
 }

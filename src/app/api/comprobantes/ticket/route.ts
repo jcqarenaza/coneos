@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
-  const { pedido_id } = await request.json()
+  const { pedido_id, nombre_cliente } = await request.json()
   if (!pedido_id) return NextResponse.json({ error: 'pedido_id requerido' }, { status: 400 })
 
   const supabase = createAdminClient()
@@ -85,6 +85,7 @@ body { font-family:'Courier New',monospace; background:#f5f5f5; display:flex; fl
   <div class="total-section">
     <div class="total-final"><span>TOTAL</span><span>${fmt(pedido.total)}</span></div>
   </div>
+  ${nombre_cliente ? `<div class="metodo" style="margin-top:4px">Cliente: ${nombre_cliente}</div>` : ''}
   <div class="metodo">Pago: ${metodoLabel[pedido.metodo_pago ?? ''] ?? pedido.metodo_pago ?? '—'}</div>
   <div class="footer"><div>¡Gracias por tu compra!</div><div style="margin-top:4px">ConeOS · Sistema de pedidos</div></div>
 </div>
