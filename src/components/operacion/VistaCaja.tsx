@@ -277,8 +277,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </div>
         </div>
       )}
-    </div>
-
     {/* Modal comprobante */}
     {modalComprobante && seleccionado && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -312,5 +310,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         </div>
       </div>
     )}
+    </div>
   )
 }
