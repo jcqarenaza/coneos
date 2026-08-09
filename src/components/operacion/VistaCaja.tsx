@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle } from 'lucide-react'
+import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bell } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
@@ -24,6 +24,23 @@ function tiempoRelativo(ts: string) {
   return `${diff} min`
 }
 
+// Sonido discreto de notificación — beep simple via Web Audio API
+function playNotification() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 880
+    osc.type = 'sine'
+    gain.gain.setValueAtTime(0.3, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.4)
+  } catch { /* silencioso si falla */ }
+}
+
 export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispositivo; sesion: SesionOperador }) {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,7 +52,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [nombreCliente, setNombreCliente] = useState('')
   const [generandoTicket, setGenerandoTicket] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string | null>(null)
+  const [nuevoPedidoFlash, setNuevoPedidoFlash] = useState(false)
   const verTodas = sesion.operador.sucursal_id === null
+
+  // Ref para contar pedidos anteriores y detectar nuevos
+  const pedidosCountRef = useRef<number>(0)
+  const iniciadoRef = useRef(false)
 
   const cargarPedidos = useCallback(async () => {
     const supabase = createClient()
@@ -52,7 +74,21 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       .order('numero_pedido', { ascending: false })
     if (!verTodas) query = query.eq('sucursal_id', dispositivo.sucursal_id)
     const { data } = await query
-    setPedidos((data ?? []) as Pedido[])
+    const nuevos = (data ?? []) as Pedido[]
+
+    // Detectar pedido nuevo — solo después de la carga inicial
+    if (iniciadoRef.current) {
+      const pendientesNuevos = nuevos.filter(p => p.estado === 'PENDING_PAYMENT').length
+      const pendientesAnteriores = pedidosCountRef.current
+      if (pendientesNuevos > pendientesAnteriores) {
+        playNotification()
+        setNuevoPedidoFlash(true)
+        setTimeout(() => setNuevoPedidoFlash(false), 3000)
+      }
+      pedidosCountRef.current = pendientesNuevos
+    }
+
+    setPedidos(nuevos)
     setLoading(false)
   }, [dispositivo, verTodas])
 
@@ -61,11 +97,25 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   useEffect(() => { cargarPedidosRef.current = cargarPedidos }, [cargarPedidos])
 
   useEffect(() => {
-    cargarPedidos()
+    // Carga inicial
+    cargarPedidos().then(() => {
+      // Marcar como iniciado DESPUÉS de la primera carga
+      iniciadoRef.current = true
+    })
+
     const supabase = createClient()
-    const channel = supabase.channel(`caja-${dispositivo.sucursal_id}-${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, () => cargarPedidosRef.current())
+    const channelName = `caja-${dispositivo.sucursal_id}`
+    // Remover canal previo si existe
+    const prev = supabase.getChannels().find(c => c.topic === `realtime:${channelName}`)
+    if (prev) supabase.removeChannel(prev)
+
+    const channel = supabase.channel(channelName)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'pedidos',
+        filter: `empresa_id=eq.${dispositivo.empresa_id}`
+      }, () => cargarPedidosRef.current())
       .subscribe()
+
     return () => { supabase.removeChannel(channel) }
   }, [dispositivo])
 
@@ -91,17 +141,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     }
     setModalComprobante(false)
     setNombreCliente('')
-  }
-
-  function handleTicketBtn(pedido: Pedido) {
-    const metodo = pedido.metodo_pago ?? ''
-    if (metodo === 'efectivo') {
-      // Efectivo: ticket directo sin preguntar
-      imprimirTicket(pedido.id)
-    } else {
-      // Transferencia / MP: preguntar si quiere comprobante
-      setModalComprobante(true)
-    }
   }
 
   async function cambiarEstado(pedidoId: string, estadoNuevo: string) {
@@ -133,6 +172,14 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      {/* Flash nuevo pedido */}
+      {nuevoPedidoFlash && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-green-500 text-white text-center py-2 text-sm font-bold flex items-center justify-center gap-2 shadow-lg animate-pulse">
+          <Bell className="h-4 w-4" />
+          ¡Nuevo pedido!
+        </div>
+      )}
+
       <div className="flex bg-white border-b border-neutral-100 px-4 gap-0.5">
         <button onClick={() => { setTab('activos'); setFiltroEstado(null) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'activos' && !filtroEstado ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
@@ -291,39 +338,40 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </div>
         </div>
       )}
-    {/* Modal comprobante */}
-    {modalComprobante && seleccionado && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setModalComprobante(false)} />
-        <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-          <h3 className="font-bold text-neutral-900 text-lg mb-1">¿El cliente quiere comprobante?</h3>
-          <p className="text-neutral-400 text-sm mb-5">Podés agregar el nombre del cliente al ticket.</p>
-          <div className="space-y-3 mb-5">
-            <label className="text-sm font-medium text-neutral-700">Nombre del cliente (opcional)</label>
-            <input
-              value={nombreCliente}
-              onChange={e => setNombreCliente(e.target.value)}
-              placeholder="Nombre y apellido"
-              className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400"
-              autoFocus
-            />
-          </div>
-          <div className="space-y-2">
-            <button
-              onClick={async () => { await imprimirTicket(seleccionado.id, nombreCliente); cambiarEstado(seleccionado.id, 'PREPARING') }}
-              disabled={generandoTicket}
-              className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
-              {generandoTicket ? <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</> : '🖨️ Generar ticket'}
-            </button>
-            <button
-              onClick={() => { setModalComprobante(false); setNombreCliente(''); cambiarEstado(seleccionado.id, 'PREPARING') }}
-              className="w-full py-3 text-neutral-500 hover:text-neutral-700 rounded-xl text-sm transition-colors">
-              No necesita comprobante → Preparación
-            </button>
+
+      {/* Modal comprobante */}
+      {modalComprobante && seleccionado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setModalComprobante(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-neutral-900 text-lg mb-1">¿El cliente quiere comprobante?</h3>
+            <p className="text-neutral-400 text-sm mb-5">Podés agregar el nombre del cliente al ticket.</p>
+            <div className="space-y-3 mb-5">
+              <label className="text-sm font-medium text-neutral-700">Nombre del cliente (opcional)</label>
+              <input
+                value={nombreCliente}
+                onChange={e => setNombreCliente(e.target.value)}
+                placeholder="Nombre y apellido"
+                className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <button
+                onClick={async () => { await imprimirTicket(seleccionado.id, nombreCliente); cambiarEstado(seleccionado.id, 'PREPARING') }}
+                disabled={generandoTicket}
+                className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                {generandoTicket ? <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</> : '🖨️ Generar ticket'}
+              </button>
+              <button
+                onClick={() => { setModalComprobante(false); setNombreCliente(''); cambiarEstado(seleccionado.id, 'PREPARING') }}
+                className="w-full py-3 text-neutral-500 hover:text-neutral-700 rounded-xl text-sm transition-colors">
+                No necesita comprobante → Preparación
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
     </div>
   )
 }
