@@ -56,14 +56,18 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     setLoading(false)
   }, [dispositivo, verTodas])
 
+  // Ref para evitar closure stale en Realtime
+  const cargarPedidosRef = useRef(cargarPedidos)
+  useEffect(() => { cargarPedidosRef.current = cargarPedidos }, [cargarPedidos])
+
   useEffect(() => {
     cargarPedidos()
     const supabase = createClient()
-    const channel = supabase.channel(`caja-${dispositivo.sucursal_id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, cargarPedidos)
+    const channel = supabase.channel(`caja-${dispositivo.sucursal_id}-${Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, () => cargarPedidosRef.current())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [cargarPedidos, dispositivo])
+  }, [dispositivo])
 
   useEffect(() => {
     if (seleccionado) {
@@ -246,13 +250,13 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   {seleccionado.estado === 'PENDING_PAYMENT' && (<>
                     <button onClick={async () => {
                         await cambiarEstado(seleccionado.id, 'PAID')
-                        imprimirTicket(seleccionado.id)
                         await cambiarEstado(seleccionado.id, 'PREPARING')
+                        imprimirTicket(seleccionado.id)
                       }} disabled={procesando}
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
                     </button>
-                    <button onClick={() => { cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
+                    <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
                       className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
                       📱 Cobrar transferencia
                     </button>
