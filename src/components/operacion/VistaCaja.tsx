@@ -279,6 +279,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-5 w-5" /> Entregado</>}
                     </button>
                   )}
+                  {seleccionado.estado === 'DELIVERED' && (
+                    <button onClick={() => imprimirTicket(seleccionado.id)}
+                      className="w-full py-4 border-2 border-neutral-200 text-neutral-600 hover:bg-neutral-50 rounded-2xl font-bold text-base transition-colors flex items-center justify-center gap-2">
+                      🖨️ Reimprimir ticket
+                    </button>
+                  )}
                 </div>
               </div>
             )}
