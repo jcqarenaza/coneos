@@ -47,6 +47,7 @@ export default function KioskPage() {
   const [error, setError] = useState<string | null>(null)
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
   const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>(undefined)
+  const [catalogoKey, setCatalogoKey] = useState(0)
 
   useEffect(() => {
     if (!token) { setError('Dispositivo no configurado'); setLoading(false); return }
@@ -85,6 +86,7 @@ export default function KioskPage() {
     setCarrito([])
     setPedidoCreado(null)
     setCategoriaInicial(undefined)
+    setCatalogoKey(k => k + 1)
     setPaso('inicio')
   }
 
@@ -119,7 +121,7 @@ export default function KioskPage() {
       )}
       {paso === 'catalogo' && (
         <KioskCatalogo
-          key={categoriaInicial ?? 'all'}
+          key={`${categoriaInicial ?? 'all'}-${catalogoKey}`}
           dispositivo={dispositivo}
           config={config}
           carrito={carrito}
