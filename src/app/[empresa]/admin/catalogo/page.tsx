@@ -71,7 +71,12 @@ export default function CatalogoPage() {
   const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
 
   // Tabs
-  const [vistaActiva, setVistaActiva] = useState<'catalogo' | 'sabores'>('catalogo')
+  const [vistaActiva, setVistaActiva] = useState<'catalogo' | 'sabores' | 'disponibilidad'>('catalogo')
+  const [sucursales, setSucursales] = useState<{id: string; nombre: string}[]>([])
+  const [sucursalDispo, setSucursalDispo] = useState<string>('')
+  const [disponibilidad, setDisponibilidad] = useState<Record<string, boolean>>({})
+  const [loadingDispo, setLoadingDispo] = useState(false)
+  const [savingDispo, setSavingDispo] = useState<string | null>(null)
   const [saboresCatExpandidas, setSaboresCatExpandidas] = useState<Set<string>>(new Set())
   function toggleSaboresCat(id: string) { setSaboresCatExpandidas(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s }) }
 
@@ -122,6 +127,52 @@ export default function CatalogoPage() {
   }
 
   useEffect(() => { load() }, [ctx])
+
+  useEffect(() => {
+    if (!ctx) return
+    createClient().from('sucursales').select('id, nombre').eq('empresa_id', ctx.empresaId).eq('activo', true).order('nombre')
+      .then(({ data }) => {
+        const suc = (data ?? []) as {id: string; nombre: string}[]
+        setSucursales(suc)
+        if (suc.length > 0 && !sucursalDispo) setSucursalDispo(suc[0].id)
+      })
+  }, [ctx])
+
+  async function cargarDisponibilidad(sucId?: string) {
+    if (!ctx) return
+    const sid = sucId ?? sucursalDispo
+    if (!sid) return
+    setLoadingDispo(true)
+    const { data } = await createClient()
+      .from('sucursal_catalogo_config')
+      .select('entidad_id, disponible')
+      .eq('empresa_id', ctx.empresaId)
+      .eq('sucursal_id', sid)
+    const map: Record<string, boolean> = {}
+    ;(data ?? []).forEach((r: {entidad_id: string; disponible: boolean}) => { map[r.entidad_id] = r.disponible })
+    setDisponibilidad(map)
+    setLoadingDispo(false)
+  }
+
+  async function toggleDisponibilidad(entidadId: string, entidadTipo: string, actual: boolean) {
+    if (!ctx || !sucursalDispo) return
+    setSavingDispo(entidadId)
+    const supabase = createClient()
+    const nuevo = !actual
+    await supabase.from('sucursal_catalogo_config').upsert({
+      empresa_id: ctx.empresaId,
+      sucursal_id: sucursalDispo,
+      entidad_tipo: entidadTipo,
+      entidad_id: entidadId,
+      disponible: nuevo,
+    }, { onConflict: 'sucursal_id,entidad_id' })
+    setDisponibilidad(prev => ({ ...prev, [entidadId]: nuevo }))
+    setSavingDispo(null)
+  }
+
+  function isDisponible(id: string): boolean {
+    return disponibilidad[id] !== false // undefined = disponible por defecto
+  }
 
   function toggleCat(id: string) { setCatExpandidas(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s }) }
   function toggleProd(id: string) { setProdExpandidos(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s }) }
@@ -248,6 +299,10 @@ export default function CatalogoPage() {
         <button onClick={() => setVistaActiva('sabores')}
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'sabores' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
           Sabores <span className="ml-1 text-xs opacity-60">{opciones.length}</span>
+        </button>
+        <button onClick={() => { setVistaActiva('disponibilidad'); cargarDisponibilidad() }}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'disponibilidad' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
+          Disponibilidad
         </button>
       </div>
 
@@ -437,7 +492,82 @@ export default function CatalogoPage() {
         })}
       </div>}
 
-      {/* Modal Categoría */}
+      {vistaActiva === 'disponibilidad' && (
+        <div className="mt-0">
+          {/* Selector sucursal */}
+          <div className="flex items-center gap-3 mb-6">
+            <p className="text-sm font-semibold text-neutral-700">Sucursal:</p>
+            <div className="flex gap-2">
+              {sucursales.map(s => (
+                <button key={s.id}
+                  onClick={() => { setSucursalDispo(s.id); cargarDisponibilidad(s.id) }}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${sucursalDispo === s.id ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
+                  {s.nombre}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {loadingDispo ? (
+            <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
+          ) : (
+            <div className="space-y-3">
+              {categorias.map(cat => {
+                const catProds = productos.filter(p => p.categoria_id === cat.id)
+                return (
+                  <div key={cat.id} className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+                    {catProds.map((prod, pi) => {
+                      const prodPres = presentaciones.filter(p => p.producto_id === prod.id)
+                      return (
+                        <div key={prod.id} className={pi < catProds.length - 1 ? 'border-b border-neutral-50' : ''}>
+                          {/* Producto header */}
+                          <div className="flex items-center justify-between px-5 py-3 bg-neutral-50/50">
+                            <div className="flex items-center gap-3">
+                              <div className="w-7 h-7 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                {prod.imagen_url ? <Image src={prod.imagen_url} alt={prod.nombre} width={28} height={28} className="object-cover w-full h-full" /> : <ImageIcon className="h-3.5 w-3.5 text-neutral-300" />}
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-neutral-800">{prod.nombre}</p>
+                                <p className="text-xs text-neutral-400">{cat.nombre}</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => toggleDisponibilidad(prod.id, 'producto', isDisponible(prod.id))}
+                              disabled={savingDispo === prod.id}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isDisponible(prod.id) ? 'bg-green-500' : 'bg-neutral-200'} disabled:opacity-50`}>
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isDisponible(prod.id) ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                          </div>
+                          {/* Presentaciones */}
+                          {prodPres.map(pres => (
+                            <div key={pres.id} className="flex items-center justify-between pl-16 pr-5 py-2.5 border-t border-neutral-50">
+                              <div className="flex items-center gap-2">
+                                <span className="text-neutral-600 text-sm">{pres.nombre}</span>
+                                <span className="text-neutral-400 text-xs">${Number(pres.precio).toLocaleString('es-AR')}</span>
+                              </div>
+                              <button
+                                onClick={() => toggleDisponibilidad(pres.id, 'presentacion', isDisponible(pres.id))}
+                                disabled={savingDispo === pres.id}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isDisponible(pres.id) ? 'bg-green-500' : 'bg-neutral-200'} disabled:opacity-50`}>
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isDisponible(pres.id) ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                    {catProds.length === 0 && (
+                      <div className="px-5 py-3 text-neutral-300 text-xs">Sin productos</div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal Categoría */}}
       <ConeModal open={modalCat} onClose={() => setModalCat(false)} title={editId ? 'Editar categoría' : 'Nueva categoría'}
         footer={<><ConeButton variant="outline" onClick={() => setModalCat(false)}>Cancelar</ConeButton><ConeButton onClick={saveCat} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
