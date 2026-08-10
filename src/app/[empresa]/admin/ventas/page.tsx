@@ -50,7 +50,7 @@ const RANGOS = [
 
 export default function VentasPage() {
   const { ctx } = useEmpresa()
-  const [tab, setTab] = useState<'resumen' | 'historial'>('resumen')
+  const [tab, setTab] = useState<'resumen' | 'historial' | 'arqueo'>('resumen')
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [pedidos, setPedidos] = useState<PedidoVenta[]>([])
   const [loading, setLoading] = useState(true)
@@ -66,6 +66,16 @@ export default function VentasPage() {
   const [motivoCancelacion, setMotivoCancelacion] = useState('Cliente desistió')
   const [motivoCustom, setMotivoCustom] = useState('')
   const [cancelando, setCancelando] = useState(false)
+
+  // Arqueo
+  interface Arqueo { id: string; fecha: string; sucursal_id: string; total_efectivo: number; total_transferencia: number; total_mp: number; total_sistema: number; efectivo_contado: number; diferencia: number; notas: string | null; created_at: string }
+  const [arqueos, setArqueos] = useState<Arqueo[]>([])
+  const [loadingArqueo, setLoadingArqueo] = useState(false)
+  const [efectivoContado, setEfectivoContado] = useState('')
+  const [notasArqueo, setNotasArqueo] = useState('')
+  const [guardandoArqueo, setGuardandoArqueo] = useState(false)
+  const [arqueoGuardado, setArqueoGuardado] = useState(false)
+  const [sucursalArqueo, setSucursalArqueo] = useState('')
 
   function getFechas() {
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
@@ -118,6 +128,64 @@ export default function VentasPage() {
   }, [ctx])
 
   useEffect(() => { cargar() }, [ctx, tab, rango, sucursalFiltro, metodoPagoFiltro, estadoFiltro, fechaDesde, fechaHasta])
+
+  async function cargarArqueos() {
+    if (!ctx) return
+    setLoadingArqueo(true)
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('arqueos')
+      .select('*')
+      .eq('empresa_id', ctx.empresaId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setArqueos((data ?? []) as Arqueo[])
+    setLoadingArqueo(false)
+  }
+
+  async function registrarArqueo() {
+    if (!ctx) return
+    setGuardandoArqueo(true)
+    const supabase = createClient()
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+    const sucId = sucursalArqueo || (sucursales[0]?.id ?? null)
+
+    // Calcular totales del día para esta sucursal
+    let query = supabase.from('pedidos')
+      .select('total, metodo_pago')
+      .eq('empresa_id', ctx.empresaId)
+      .eq('fecha_pedido', hoy)
+      .in('estado', ['PAID', 'PREPARING', 'READY', 'DELIVERED'])
+    if (sucId) query = query.eq('sucursal_id', sucId)
+    const { data: pedidosHoy } = await query
+
+    const totEfectivo = (pedidosHoy ?? []).filter((p: {metodo_pago: string | null}) => p.metodo_pago === 'efectivo').reduce((acc: number, p: {total: number}) => acc + Number(p.total), 0)
+    const totTransf = (pedidosHoy ?? []).filter((p: {metodo_pago: string | null}) => p.metodo_pago === 'transferencia').reduce((acc: number, p: {total: number}) => acc + Number(p.total), 0)
+    const totMP = (pedidosHoy ?? []).filter((p: {metodo_pago: string | null}) => p.metodo_pago === 'mp').reduce((acc: number, p: {total: number}) => acc + Number(p.total), 0)
+    const totSistema = totEfectivo + totTransf + totMP
+    const contado = parseFloat(efectivoContado) || 0
+    const diferencia = contado - totEfectivo
+
+    await supabase.from('arqueos').insert({
+      empresa_id: ctx.empresaId,
+      sucursal_id: sucId,
+      fecha: hoy,
+      total_efectivo: totEfectivo,
+      total_transferencia: totTransf,
+      total_mp: totMP,
+      total_sistema: totSistema,
+      efectivo_contado: contado,
+      diferencia,
+      notas: notasArqueo || null,
+    })
+
+    setGuardandoArqueo(false)
+    setArqueoGuardado(true)
+    setEfectivoContado('')
+    setNotasArqueo('')
+    setTimeout(() => setArqueoGuardado(false), 3000)
+    cargarArqueos()
+  }
 
   async function cancelarPedido() {
     if (!pedidoCancelar) return
@@ -229,6 +297,10 @@ export default function VentasPage() {
         <button onClick={() => setTab('historial')}
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${tab === 'historial' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
           Historial
+        </button>
+        <button onClick={() => { setTab('arqueo'); cargarArqueos() }}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${tab === 'arqueo' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
+          Arqueo
         </button>
       </div>
 
@@ -393,6 +465,131 @@ export default function VentasPage() {
                   </div>
                 )
               })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'arqueo' && (
+        <div className="space-y-6">
+          {/* Selector sucursal */}
+          {sucursales.length > 1 && (
+            <div className="flex items-center gap-3">
+              <p className="text-sm font-semibold text-neutral-700">Sucursal:</p>
+              <div className="flex gap-2">
+                {sucursales.map(s => (
+                  <button key={s.id} onClick={() => setSucursalArqueo(s.id)}
+                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${sucursalArqueo === s.id ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
+                    {s.nombre}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Arqueo del día */}
+          <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-neutral-50">
+              <h3 className="font-bold text-neutral-700">Arqueo del día</h3>
+              <p className="text-xs text-neutral-400 mt-0.5">{new Date().toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })}</p>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Totales sistema */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Cobrado según sistema</p>
+                {[
+                  { label: '💵 Efectivo', key: 'efectivo', color: 'text-green-700' },
+                  { label: '📲 Transferencia', key: 'transferencia', color: 'text-blue-700' },
+                  { label: '💳 Mercado Pago', key: 'mp', color: 'text-sky-700' },
+                ].map(({ label, key, color }) => {
+                  const tot = pedidos.filter(p => p.metodo_pago === key && p.estado !== 'CANCELLED').reduce((acc, p) => acc + Number(p.total), 0)
+                  const cant = pedidos.filter(p => p.metodo_pago === key && p.estado !== 'CANCELLED').length
+                  return (
+                    <div key={key} className="flex items-center justify-between py-2 px-4 bg-neutral-50 rounded-xl">
+                      <div>
+                        <span className="text-sm font-semibold text-neutral-700">{label}</span>
+                        <span className="text-xs text-neutral-400 ml-2">{cant} pedidos</span>
+                      </div>
+                      <span className={`font-bold text-base ${color}`}>{formatPrecio(tot)}</span>
+                    </div>
+                  )
+                })}
+                <div className="flex items-center justify-between py-2 px-4 bg-neutral-800 rounded-xl">
+                  <span className="text-sm font-bold text-white">Total</span>
+                  <span className="font-black text-base text-white">{formatPrecio(pedidos.filter(p => p.estado !== 'CANCELLED').reduce((acc, p) => acc + Number(p.total), 0))}</span>
+                </div>
+              </div>
+
+              {/* Conteo de efectivo */}
+              <div className="space-y-2 pt-2 border-t border-neutral-100">
+                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Efectivo en caja</p>
+                <div className="flex items-center gap-3">
+                  <span className="text-neutral-500 text-sm font-medium">$</span>
+                  <input
+                    type="number"
+                    value={efectivoContado}
+                    onChange={e => setEfectivoContado(e.target.value)}
+                    placeholder="0"
+                    className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-xl font-bold focus:outline-none focus:border-neutral-400"
+                  />
+                </div>
+                {efectivoContado && (() => {
+                  const totEfectivo = pedidos.filter(p => p.metodo_pago === 'efectivo' && p.estado !== 'CANCELLED').reduce((acc, p) => acc + Number(p.total), 0)
+                  const contado = parseFloat(efectivoContado) || 0
+                  const dif = contado - totEfectivo
+                  return (
+                    <div className={`flex items-center justify-between px-4 py-3 rounded-xl ${dif === 0 ? 'bg-green-50' : dif > 0 ? 'bg-blue-50' : 'bg-red-50'}`}>
+                      <span className={`text-sm font-semibold ${dif === 0 ? 'text-green-700' : dif > 0 ? 'text-blue-700' : 'text-red-700'}`}>
+                        {dif === 0 ? '✓ Cuadra perfectamente' : dif > 0 ? `Sobran ${formatPrecio(dif)}` : `Faltan ${formatPrecio(Math.abs(dif))}`}
+                      </span>
+                      <span className={`font-black text-base ${dif === 0 ? 'text-green-700' : dif > 0 ? 'text-blue-700' : 'text-red-700'}`}>{dif >= 0 ? '+' : ''}{formatPrecio(dif)}</span>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* Notas */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Notas (opcional)</p>
+                <input value={notasArqueo} onChange={e => setNotasArqueo(e.target.value)}
+                  placeholder="Observaciones del turno..."
+                  className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400" />
+              </div>
+
+              <button onClick={registrarArqueo} disabled={guardandoArqueo || !efectivoContado}
+                className="w-full py-3.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 flex items-center justify-center gap-2 bg-neutral-800 text-white hover:bg-neutral-700">
+                {guardandoArqueo ? <><Loader2 className="h-4 w-4 animate-spin" /> Guardando...</>
+                  : arqueoGuardado ? '✓ ¡Arqueo registrado!'
+                  : 'Registrar arqueo'}
+              </button>
+            </div>
+          </div>
+
+          {/* Historial de arqueos */}
+          {arqueos.length > 0 && (
+            <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-neutral-50">
+                <h3 className="font-bold text-neutral-700">Arqueos anteriores</h3>
+              </div>
+              <div className="divide-y divide-neutral-50">
+                {arqueos.map(a => (
+                  <div key={a.id} className="px-5 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-neutral-700">{formatFecha(a.fecha)}</p>
+                      <p className="text-xs text-neutral-400">
+                        Efectivo: {formatPrecio(a.total_efectivo)} · Transf: {formatPrecio(a.total_transferencia)} · MP: {formatPrecio(a.total_mp)}
+                      </p>
+                      {a.notas && <p className="text-xs text-neutral-400 mt-0.5">📝 {a.notas}</p>}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-neutral-800">{formatPrecio(a.total_sistema)}</p>
+                      <p className={`text-xs font-semibold ${a.diferencia === 0 ? 'text-green-600' : a.diferencia > 0 ? 'text-blue-600' : 'text-red-500'}`}>
+                        {a.diferencia >= 0 ? '+' : ''}{formatPrecio(a.diferencia)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
