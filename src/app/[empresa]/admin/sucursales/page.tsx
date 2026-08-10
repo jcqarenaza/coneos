@@ -147,8 +147,12 @@ export default function SucursalesPage() {
               <div className="flex items-center gap-2"><input type="checkbox" id="mp" checked={pagos.acepta_mp} onChange={e => setPagos({ ...pagos, acepta_mp: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="mp" className="cursor-pointer flex items-center gap-1.5"><Smartphone className="h-4 w-4 text-neutral-400" /> Mercado Pago</Label></div>
               {pagos.acepta_mp && (
                 <div className="ml-6 space-y-3">
-                  <div className="p-3 bg-sky-50 border border-sky-100 rounded-xl"><p className="text-xs text-sky-700">Integración MP disponible próximamente. Podés pre-cargar los datos.</p></div>
-                  <div className="space-y-1.5"><Label>Access Token</Label><Input value={pagos.mp_access_token ?? ''} onChange={e => setPagos({ ...pagos, mp_access_token: e.target.value })} placeholder="APP_USR-..." type="password" /></div>
+                  <div className="p-3 bg-neutral-50 border border-neutral-100 rounded-xl space-y-1">
+                    <p className="text-xs font-semibold text-neutral-600">¿Dónde obtengo las credenciales?</p>
+                    <p className="text-xs text-neutral-500">mercadopago.com.ar → Tu negocio → Configuración → Credenciales → Producción</p>
+                    <p className="text-xs text-neutral-400">Necesitás activar el modo vendedor en tu cuenta de MP.</p>
+                  </div>
+                  <div className="space-y-1.5"><Label>Access Token (privado)</Label><Input value={pagos.mp_access_token ?? ''} onChange={e => setPagos({ ...pagos, mp_access_token: e.target.value })} placeholder="APP_USR-..." type="password" /></div>
                   <div className="space-y-1.5"><Label>Public Key</Label><Input value={pagos.mp_public_key ?? ''} onChange={e => setPagos({ ...pagos, mp_public_key: e.target.value })} placeholder="APP_USR-..." /></div>
                 </div>
               )}

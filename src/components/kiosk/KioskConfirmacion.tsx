@@ -16,7 +16,7 @@ interface Props {
 }
 
 interface MetodoPago { id: string; label: string; emoji: string; descripcion: string }
-interface PagosSucursal { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; mp_alias?: string | null }
+interface PagosSucursal { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; mp_alias?: string | null; mp_access_token?: string | null }
 
 type EstadoMP = 'idle' | 'creando' | 'esperando' | 'aprobado' | 'rechazado'
 
@@ -46,7 +46,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     fetch(`/api/kiosk/pagos?sucursal_id=${dispositivo.sucursal_id}`)
       .then(r => r.json())
       .then(data => {
-        setPagosSucursal(data)
+        setPagosSucursal({ ...data, mp_access_token: data.mp_access_token })
         const metodos: MetodoPago[] = []
         if (data.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo en caja', emoji: '💵', descripcion: 'Pagás al retirar tu pedido' })
         if (data.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia', emoji: '📲', descripcion: data.cbu_transferencia ? `Alias: ${data.cbu_transferencia}` : 'Transferencia bancaria' })
@@ -135,20 +135,31 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
       }
       setPedidoTransferencia({ id: data.pedido.id, numero: data.pedido.numero_pedido, codigo: data.pedido.codigo_retiro })
     } else if (metodo === 'mp') {
-      setPedidoIdPendiente(data.pedido.id)
-      setEstadoMP('creando')
-      const mpRes = await fetch('/api/mp/crear-preferencia', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedido_id: data.pedido.id, sucursal_id: dispositivo.sucursal_id, empresa_id: dispositivo.empresa_id, items, total }),
-      })
-      if (mpRes.ok) {
-        const mpData = await mpRes.json()
-        setMpInitPoint(mpData.sandbox_init_point ?? mpData.init_point)
-        setEstadoMP('esperando')
-        setPollingCount(0)
+      // Verificar si MP está configurado
+      const mpConfigurado = pagosSucursal?.mp_access_token && pagosSucursal.mp_access_token.startsWith('APP_USR-')
+      if (!mpConfigurado) {
+        // Fallback a transferencia — mostrar alias
+        if (numComprobante.trim()) {
+          const { createClient } = await import('@/lib/supabase/client')
+          await createClient().from('pedidos').update({ notas: `Comprobante: ...${numComprobante.trim()}` }).eq('id', data.pedido.id)
+        }
+        setPedidoTransferencia({ id: data.pedido.id, numero: data.pedido.numero_pedido, codigo: data.pedido.codigo_retiro })
       } else {
-        setEstadoMP('rechazado')
+        setPedidoIdPendiente(data.pedido.id)
+        setEstadoMP('creando')
+        const mpRes = await fetch('/api/mp/crear-preferencia', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pedido_id: data.pedido.id, sucursal_id: dispositivo.sucursal_id, empresa_id: dispositivo.empresa_id, items, total }),
+        })
+        if (mpRes.ok) {
+          const mpData = await mpRes.json()
+          setMpInitPoint(mpData.sandbox_init_point ?? mpData.init_point)
+          setEstadoMP('esperando')
+          setPollingCount(0)
+        } else {
+          setEstadoMP('rechazado')
+        }
       }
     } else {
       onPedidoCreado(data.pedido.numero_pedido, data.pedido.codigo_retiro)
