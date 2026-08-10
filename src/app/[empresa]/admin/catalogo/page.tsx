@@ -567,7 +567,7 @@ export default function CatalogoPage() {
         </div>
       )}
 
-      {/* Modal Categoría */}}
+      {/* Modal Categoría */}
       <ConeModal open={modalCat} onClose={() => setModalCat(false)} title={editId ? 'Editar categoría' : 'Nueva categoría'}
         footer={<><ConeButton variant="outline" onClick={() => setModalCat(false)}>Cancelar</ConeButton><ConeButton onClick={saveCat} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
