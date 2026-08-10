@@ -95,6 +95,7 @@ export default function CatalogoPage() {
   const [formCat, setFormCat] = useState({ nombre: '', orden: 1, activo: true, icono_url: null as string | null })
   const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true })
   const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null, visible_kiosk: true })
+  const [gruposSeleccionados, setGruposSeleccionados] = useState<string[]>([])
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
   const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true, visible_kiosk: true })
 
@@ -185,8 +186,8 @@ export default function CatalogoPage() {
   }
 
   // Presentaciones
-  function openNewPres(prodId: string) { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: prodId, imagen_url: null, visible_kiosk: true }); setEditId(null); setModalPres(true) }
-  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url, visible_kiosk: p.visible_kiosk }); setEditId(p.id); setModalPres(true) }
+  function openNewPres(prodId: string) { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: prodId, imagen_url: null, visible_kiosk: true }); setGruposSeleccionados([]); setEditId(null); setModalPres(true) }
+  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url, visible_kiosk: p.visible_kiosk }); setGruposSeleccionados(presGrupos.filter(pg => pg.presentacion_id === p.id).map(pg => pg.grupo_id)); setEditId(p.id); setModalPres(true) }
   async function savePres() {
     if (!ctx || !formPres.nombre || !formPres.producto_id) return
     setSaving(true)
@@ -485,9 +486,27 @@ export default function CatalogoPage() {
             <span className="text-sm text-neutral-700">Permite selección de sabores</span>
           </label>
           {formPres.permite_opciones && (
-            <div className="grid grid-cols-2 gap-3 ml-6">
-              <div className="space-y-1.5"><Label>Mínimo</Label><Input type="number" value={formPres.opciones_min} onChange={e => setFormPres({ ...formPres, opciones_min: Number(e.target.value) })} /></div>
-              <div className="space-y-1.5"><Label>Máximo</Label><Input type="number" value={formPres.opciones_max} onChange={e => setFormPres({ ...formPres, opciones_max: Number(e.target.value) })} /></div>
+            <div className="space-y-3 ml-6">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5"><Label>Mínimo</Label><Input type="number" value={formPres.opciones_min} onChange={e => setFormPres({ ...formPres, opciones_min: Number(e.target.value) })} /></div>
+                <div className="space-y-1.5"><Label>Máximo</Label><Input type="number" value={formPres.opciones_max} onChange={e => setFormPres({ ...formPres, opciones_max: Number(e.target.value) })} /></div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Grupo de sabores</Label>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto border border-neutral-100 rounded-xl p-2 bg-neutral-50">
+                  {grupos.map(g => (
+                    <label key={g.id} className="flex items-center gap-2 cursor-pointer px-2 py-1.5 hover:bg-white rounded-lg transition-colors">
+                      <input type="checkbox"
+                        checked={gruposSeleccionados.includes(g.id)}
+                        onChange={e => setGruposSeleccionados(prev => e.target.checked ? [...prev, g.id] : prev.filter(id => id !== g.id))}
+                        className="w-4 h-4 rounded" />
+                      <span className="text-sm text-neutral-700">{g.nombre}</span>
+                      <span className="text-xs text-neutral-400 ml-auto">{opciones.filter(o => o.grupo_id === g.id).length} sabores</span>
+                    </label>
+                  ))}
+                </div>
+                {gruposSeleccionados.length === 0 && <p className="text-xs text-amber-600">Seleccioná al menos un grupo de sabores</p>}
+              </div>
             </div>
           )}
         </div>
