@@ -139,7 +139,11 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     if (paso === 'opciones') {
       if (colaIndex > 0) { setColaIndex(colaIndex - 1); setOpcionesSeleccionadas([]) }
       else { setPaso('productos'); setCola([]); setColaIndex(0); setOpcionesSeleccionadas([]) }
-    } else if (paso === 'productos') { setPaso('categorias'); setCategoriaActiva(null); setCantidad({}) }
+    } else if (paso === 'productos') {
+      setPaso('categorias')
+      // NO reseteamos categoriaActiva ni cantidad — el usuario puede volver a entrar
+      setCantidad({})
+    }
     else onVolver()
   }
 
@@ -201,14 +205,61 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         {paso === 'categorias' && (
           <div className="max-w-3xl mx-auto pt-6">
             <h2 className="text-2xl font-bold mb-6 text-center" style={{ color: config.primary_color }}>¿Qué querés pedir?</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {categorias.map(cat => (
-                <button key={cat.id} onClick={() => seleccionarCategoria(cat)}
-                  className="flex flex-col items-center justify-center p-6 bg-white rounded-3xl shadow-sm border border-neutral-100 hover:shadow-md active:scale-95 transition-all gap-3 min-h-[150px]">
-                  <span className="text-5xl">{getEmoji(cat.nombre)}</span>
-                  <span className="font-semibold text-neutral-700 text-center">{cat.nombre}</span>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {categorias.map(cat => {
+                const fotosProds = productos.filter(p => p.categoria_id === cat.id && p.imagen_url).map(p => p.imagen_url!).slice(0, 4)
+                const seen = new Set<string>()
+                const fotosPres = fotosProds.length === 0
+                  ? presentaciones.filter(p => productos.some(pr => pr.categoria_id === cat.id && pr.id === p.producto_id) && p.imagen_url)
+                      .filter(p => { if (seen.has(p.imagen_url!)) return false; seen.add(p.imagen_url!); return true })
+                      .map(p => p.imagen_url!).slice(0, 4)
+                  : []
+                const seen2 = new Set<string>()
+                const fotosSabores = fotosProds.length === 0 && fotosPres.length === 0
+                  ? (() => {
+                      const prodIds = new Set(productos.filter(p => p.categoria_id === cat.id).map(p => p.id))
+                      const presIds = new Set(presentaciones.filter(p => prodIds.has(p.producto_id)).map(p => p.id))
+                      const grupoIds = new Set(presGrupos.filter(pg => presIds.has(pg.presentacion_id)).map(pg => pg.grupo_id))
+                      return opciones.filter(op => grupoIds.has(op.grupo_id) && op.imagen_url)
+                        .filter(op => { if (seen2.has(op.imagen_url!)) return false; seen2.add(op.imagen_url!); return true })
+                        .map(op => op.imagen_url!).slice(0, 4)
+                    })()
+                  : []
+                const fotos = fotosProds.length > 0 ? fotosProds : fotosPres.length > 0 ? fotosPres : fotosSabores
+                const tieneIcono = !!cat.icono_url
+
+                return (
+                  <button key={cat.id} onClick={() => seleccionarCategoria(cat)}
+                    className="group relative flex flex-col rounded-2xl bg-white border border-neutral-100 shadow-sm hover:shadow-lg active:scale-95 transition-all duration-200 overflow-hidden min-h-[150px]">
+                    <div className="flex-1 w-full p-2">
+                      {tieneIcono ? (
+                        <div className="w-full h-full rounded-xl overflow-hidden">
+                          <Image src={cat.icono_url!} alt={cat.nombre} width={200} height={200} className="object-cover w-full h-full" />
+                        </div>
+                      ) : fotos.length === 1 ? (
+                        <div className="w-full h-full rounded-xl overflow-hidden">
+                          <Image src={fotos[0]} alt="" width={200} height={200} className="object-cover w-full h-full" />
+                        </div>
+                      ) : fotos.length > 1 ? (
+                        <div className={`w-full h-full grid gap-0.5 rounded-xl overflow-hidden ${fotos.length >= 4 ? 'grid-cols-2 grid-rows-2' : fotos.length === 3 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2'}`}>
+                          {fotos.slice(0, 4).map((url, i) => (
+                            <div key={i} className={`overflow-hidden ${fotos.length === 3 && i === 0 ? 'row-span-2' : ''}`}>
+                              <Image src={url} alt="" width={100} height={100} className="object-cover w-full h-full" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="text-6xl group-hover:scale-110 transition-transform duration-200">{getEmoji(cat.nombre)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-3 pb-3 pt-1 text-center">
+                      <span className="text-sm font-bold text-neutral-700">{cat.nombre}</span>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
