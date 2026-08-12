@@ -224,13 +224,14 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                   <div key={prod.id} className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
                     <div className="flex gap-4 p-4 items-center">
                       {(() => {
-                        const todasTienenFoto = pres.length > 0 && pres.every(p => p.imagen_url)
-                        if (todasTienenFoto) return null
+                        const algunaTieneImagen = pres.some(p => p.imagen_url)
+                        // Si alguna presentación tiene foto, no mostrar imagen/emoji del producto
+                        if (algunaTieneImagen) return null
                         return (
                           <div className="w-20 h-20 rounded-xl bg-neutral-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
                             {prod.imagen_url
                               ? <Image src={prod.imagen_url} alt={prod.nombre} width={80} height={80} className="object-cover w-full h-full" />
-                              : <span className="text-4xl">{getEmoji(categoriaActiva.nombre)}</span>}
+                              : null}
                           </div>
                         )
                       })()}
