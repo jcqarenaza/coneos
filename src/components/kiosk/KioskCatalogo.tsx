@@ -393,7 +393,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
             {/* Grid sabores — con imagen si existe */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {opcionesFiltradas.map(op => {
+              {[...opcionesFiltradas].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(op => {
                 const sel = opcionesSeleccionadas.find(o => o.id === op.id)
                 const maxAlcanzado = opcionesSeleccionadas.length >= actualCola.presentacion.opciones_max
                 const tieneImagen = !!op.imagen_url
