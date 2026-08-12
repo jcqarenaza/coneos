@@ -78,6 +78,7 @@ export default function CatalogoPage() {
   const [loadingDispo, setLoadingDispo] = useState(false)
   const [savingDispo, setSavingDispo] = useState<string | null>(null)
   const [saboresCatExpandidas, setSaboresCatExpandidas] = useState<Set<string>>(new Set())
+  const [busquedaSabor, setBusquedaSabor] = useState('')
   function toggleSaboresCat(id: string) { setSaboresCatExpandidas(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s }) }
 
   // Expandidos
@@ -411,7 +412,7 @@ export default function CatalogoPage() {
                               <div className="mt-2">
                                 <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">Sabores</p>
                                 <div className="flex flex-wrap gap-1.5">
-                                  {saboresProd.map(op => (
+                                  {[...saboresProd].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(op => (
                                     <div key={op.id} className="flex items-center gap-1.5 bg-white border border-neutral-100 rounded-full px-3 py-1">
                                       {op.imagen_url
                                         ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
@@ -446,12 +447,24 @@ export default function CatalogoPage() {
       </div>}
 
       {vistaActiva === 'sabores' && <div className="mt-0">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
           <p className="text-xs text-neutral-400">{opciones.length} sabores</p>
           <ConeButton onClick={() => openNewOp()} icon={<Plus className="h-4 w-4" />}>Nuevo sabor</ConeButton>
         </div>
+        <div className="relative mb-5">
+          <input
+            value={busquedaSabor}
+            onChange={e => setBusquedaSabor(e.target.value)}
+            placeholder="Buscar sabor..."
+            className="w-full px-4 py-2.5 pl-9 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400 bg-white"
+          />
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" /></svg>
+          {busquedaSabor && <button onClick={() => setBusquedaSabor('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 text-lg leading-none">&times;</button>}
+        </div>
         {categorias.map(cat => {
           const saboresCat = getSaboresDeCat(cat.id)
+            .filter(op => !busquedaSabor || op.nombre.toLowerCase().includes(busquedaSabor.toLowerCase()))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
           if (saboresCat.length === 0) return null
           const expandida = saboresCatExpandidas.has(cat.id)
           return (
