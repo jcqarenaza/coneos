@@ -7,11 +7,12 @@ import { ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeCompone
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Loader2, Copy, Check, Monitor, Tablet, Smartphone, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Loader2, Copy, Check, Monitor, Tablet, Smartphone, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import QRCode from 'qrcode'
 
 interface Sucursal { id: string; nombre: string; slug: string }
 interface Dispositivo {
-  id: string; nombre: string; tipo: 'KIOSK' | 'CAJA' | 'PREPARACION' | 'DISPLAY' | 'DELIVERY'
+  id: string; nombre: string; tipo: 'KIOSK' | 'CAJA' | 'PREPARACION' | 'DISPLAY'
   sucursal_id: string; sucursal_nombre?: string; sucursal_slug?: string; device_token: string; activo: boolean
 }
 
@@ -20,13 +21,11 @@ const TIPOS = [
   { value: 'CAJA', label: 'Caja', desc: 'Gestión de pagos y pedidos' },
   { value: 'PREPARACION', label: 'Preparación', desc: 'Pantalla de preparación' },
   { value: 'DISPLAY', label: 'Display', desc: 'Pantalla pública de pedidos listos' },
-  { value: 'DELIVERY', label: 'Delivery', desc: 'Link para pedidos a domicilio desde celular' },
 ]
 
 const tipoIcon = (tipo: string) => {
   if (tipo === 'KIOSK') return <Tablet className="h-4 w-4" />
   if (tipo === 'DISPLAY') return <Monitor className="h-4 w-4" />
-  if (tipo === 'DELIVERY') return <Smartphone className="h-4 w-4" />
   return <Smartphone className="h-4 w-4" />
 }
 
@@ -34,7 +33,6 @@ const tipoBadge = (tipo: string) => {
   if (tipo === 'KIOSK') return 'bg-purple-50 text-purple-700'
   if (tipo === 'CAJA') return 'bg-blue-50 text-blue-700'
   if (tipo === 'PREPARACION') return 'bg-amber-50 text-amber-700'
-  if (tipo === 'DELIVERY') return 'bg-orange-50 text-orange-700'
   return 'bg-green-50 text-green-700'
 }
 
@@ -52,6 +50,8 @@ export default function DispositivosTab() {
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [copiedUrl, setCopiedUrl] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
 
   async function load() {
     if (!ctx) return
@@ -73,7 +73,18 @@ export default function DispositivosTab() {
 
   function openNew() { setForm({ nombre: '', tipo: 'KIOSK', sucursal_id: sucursales[0]?.id ?? '' }); setEditId(null); setModal(true) }
   function openEdit(row: Dispositivo) { setForm({ nombre: row.nombre, tipo: row.tipo, sucursal_id: row.sucursal_id }); setEditId(row.id); setModal(true) }
-  function showToken(row: Dispositivo) { setSelectedToken(row.device_token); setSelectedNombre(row.nombre); setSelectedDispositivo(row); setTokenModal(true) }
+  async function showToken(row: Dispositivo) {
+    setSelectedToken(row.device_token)
+    setSelectedNombre(row.nombre)
+    setSelectedDispositivo(row)
+    setQrDataUrl(null)
+    setTokenModal(true)
+    try {
+      const url = getUrl(row)
+      const dataUrl = await QRCode.toDataURL(url, { width: 200, margin: 2 })
+      setQrDataUrl(dataUrl)
+    } catch { /* sin QR */ }
+  }
 
   function getUrl(row: Dispositivo) {
     const base = window.location.origin
@@ -82,13 +93,17 @@ export default function DispositivosTab() {
     if (!empresaSlug || !sucSlug) return `${base}?token=${row.device_token}`
     if (row.tipo === 'KIOSK') return `${base}/${empresaSlug}/kiosk/${sucSlug}?token=${row.device_token}`
     if (row.tipo === 'DISPLAY') return `${base}/${empresaSlug}/display/${sucSlug}?token=${row.device_token}`
-    if (row.tipo === 'DELIVERY') return `${base}/${empresaSlug}/delivery/${sucSlug}?token=${row.device_token}`
     return `${base}/${empresaSlug}/operacion/${sucSlug}?token=${row.device_token}`
   }
 
   async function copyToken() {
     await navigator.clipboard.writeText(selectedToken)
     setCopied(true); setTimeout(() => setCopied(false), 2000)
+  }
+  async function copyUrl() {
+    if (!selectedDispositivo) return
+    await navigator.clipboard.writeText(getUrl(selectedDispositivo))
+    setCopiedUrl(true); setTimeout(() => setCopiedUrl(false), 2000)
   }
 
   async function handleSave() {
@@ -150,7 +165,7 @@ export default function DispositivosTab() {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label>Tipo *</Label>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2">
               {TIPOS.map(t => (
                 <button key={t.value} type="button" onClick={() => setForm({ ...form, tipo: t.value })}
                   className={`flex flex-col items-start p-3 rounded-xl border text-left transition-colors ${form.tipo === t.value ? 'border-neutral-800 bg-neutral-50' : 'border-neutral-200 hover:border-neutral-300'}`}>
