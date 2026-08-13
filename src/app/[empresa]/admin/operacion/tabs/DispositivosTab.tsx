@@ -43,15 +43,14 @@ export default function DispositivosTab() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [tokenModal, setTokenModal] = useState(false)
-  const [selectedToken, setSelectedToken] = useState('')
   const [selectedNombre, setSelectedNombre] = useState('')
   const [selectedDispositivo, setSelectedDispositivo] = useState<Dispositivo | null>(null)
   const [form, setForm] = useState({ nombre: '', tipo: 'KIOSK', sucursal_id: '' })
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const [copiedUrl, setCopiedUrl] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [qrLoading, setQrLoading] = useState(false)
 
   async function load() {
     if (!ctx) return
@@ -73,17 +72,19 @@ export default function DispositivosTab() {
 
   function openNew() { setForm({ nombre: '', tipo: 'KIOSK', sucursal_id: sucursales[0]?.id ?? '' }); setEditId(null); setModal(true) }
   function openEdit(row: Dispositivo) { setForm({ nombre: row.nombre, tipo: row.tipo, sucursal_id: row.sucursal_id }); setEditId(row.id); setModal(true) }
+
   async function showToken(row: Dispositivo) {
-    setSelectedToken(row.device_token)
     setSelectedNombre(row.nombre)
     setSelectedDispositivo(row)
     setQrDataUrl(null)
+    setQrLoading(true)
     setTokenModal(true)
     try {
       const url = getUrl(row)
-      const dataUrl = await QRCode.toDataURL(url, { width: 200, margin: 2 })
+      const dataUrl = await QRCode.toDataURL(url, { width: 220, margin: 2 })
       setQrDataUrl(dataUrl)
     } catch { /* sin QR */ }
+    setQrLoading(false)
   }
 
   function getUrl(row: Dispositivo) {
@@ -96,14 +97,15 @@ export default function DispositivosTab() {
     return `${base}/${empresaSlug}/operacion/${sucSlug}?token=${row.device_token}`
   }
 
-  async function copyToken() {
-    await navigator.clipboard.writeText(selectedToken)
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
-  }
   async function copyUrl() {
     if (!selectedDispositivo) return
     await navigator.clipboard.writeText(getUrl(selectedDispositivo))
     setCopiedUrl(true); setTimeout(() => setCopiedUrl(false), 2000)
+  }
+
+  function openUrl() {
+    if (!selectedDispositivo) return
+    window.open(getUrl(selectedDispositivo), '_blank')
   }
 
   async function handleSave() {
@@ -118,10 +120,8 @@ export default function DispositivosTab() {
   async function handleDelete(row: Dispositivo) {
     if (!confirm(`¿Eliminar el dispositivo "${row.nombre}"?`)) return
     const supabase = createClient()
-    // Usar RPC para borrar sesiones primero y luego el dispositivo
     const { error } = await supabase.rpc('delete_dispositivo', { p_id: row.id })
     if (error) {
-      // Fallback: intentar borrar directo
       await supabase.from('operator_sessions').delete().eq('dispositivo_id', row.id)
       await supabase.from('dispositivos').delete().eq('id', row.id)
     }
@@ -152,7 +152,7 @@ export default function DispositivosTab() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => showToken(row)} className="px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors">Ver token</button>
+              <button onClick={() => showToken(row)} className="px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors">Vincular</button>
               <button onClick={() => openEdit(row)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
               <button onClick={() => handleDelete(row)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
             </div>
@@ -160,6 +160,7 @@ export default function DispositivosTab() {
         ))}
       </div>
 
+      {/* Modal nuevo/editar */}
       <ConeModal open={modal} onClose={() => setModal(false)} title={editId ? 'Editar dispositivo' : 'Nuevo dispositivo'}
         footer={<><ConeButton variant="outline" onClick={() => setModal(false)}>Cancelar</ConeButton><ConeButton onClick={handleSave} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
@@ -186,24 +187,42 @@ export default function DispositivosTab() {
         </div>
       </ConeModal>
 
-      <ConeModal open={tokenModal} onClose={() => setTokenModal(false)} title={`Token — ${selectedNombre}`}
+      {/* Modal vincular dispositivo */}
+      <ConeModal open={tokenModal} onClose={() => setTokenModal(false)} title={`Vincular — ${selectedNombre}`}
         footer={<ConeButton onClick={() => setTokenModal(false)} variant="outline">Cerrar</ConeButton>}>
         <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Device Token</Label>
-            <div className="flex gap-2">
-              <Input value={selectedToken} readOnly className="font-mono text-xs bg-neutral-50" />
-              <ConeButton variant="outline" onClick={copyToken} icon={copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}>
-                {copied ? 'Copiado' : 'Copiar'}
-              </ConeButton>
-            </div>
+          {/* QR */}
+          <div className="flex flex-col items-center justify-center py-2">
+            {qrLoading && (
+              <div className="w-[220px] h-[220px] flex items-center justify-center bg-neutral-50 rounded-2xl border border-neutral-100">
+                <Loader2 className="h-6 w-6 animate-spin text-neutral-300" />
+              </div>
+            )}
+            {!qrLoading && qrDataUrl && (
+              <img src={qrDataUrl} alt="QR de vinculación" className="w-[220px] h-[220px] rounded-2xl border border-neutral-100" />
+            )}
+            {!qrLoading && !qrDataUrl && (
+              <div className="w-[220px] h-[220px] flex items-center justify-center bg-neutral-50 rounded-2xl border border-neutral-100 text-xs text-neutral-400">
+                No se pudo generar el QR
+              </div>
+            )}
+            <p className="text-xs text-neutral-400 mt-3 text-center">Escaneá con el dispositivo para vincularlo</p>
           </div>
+
+          {/* URL */}
           <div className="space-y-1.5">
             <Label>URL de vinculación</Label>
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
               <p className="text-xs font-mono text-neutral-600 break-all">{selectedDispositivo ? getUrl(selectedDispositivo) : ''}</p>
             </div>
-            <p className="text-xs text-neutral-400">Abrí esta URL en el dispositivo para vincularlo</p>
+            <div className="flex gap-2 pt-1">
+              <ConeButton variant="outline" onClick={copyUrl} icon={copiedUrl ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}>
+                {copiedUrl ? 'Copiada' : 'Copiar URL'}
+              </ConeButton>
+              <ConeButton variant="outline" onClick={openUrl} icon={<ExternalLink className="h-4 w-4" />}>
+                Abrir
+              </ConeButton>
+            </div>
           </div>
         </div>
       </ConeModal>
