@@ -583,6 +583,43 @@ export default function CatalogoPage() {
                               </button>
                             </div>
                           ))}
+                          {/* Sabores del producto si tiene grupos */}
+                          {(() => {
+                            const presIds = new Set(prodPres.map(p => p.id))
+                            const grupoIds = new Set(presGrupos.filter(pg => presIds.has(pg.presentacion_id)).map(pg => pg.grupo_id))
+                            const saboresProd = [...opciones]
+                              .filter(op => grupoIds.has(op.grupo_id))
+                              .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+                            if (saboresProd.length === 0) return null
+                            return (
+                              <div className="pl-16 pr-5 py-3 border-t border-neutral-50 bg-neutral-50/30">
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Sabores</p>
+                                  <p className="text-xs text-neutral-400">{saboresProd.filter(op => isDisponible(op.id)).length}/{saboresProd.length}</p>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {saboresProd.map(op => {
+                                    const activo = isDisponible(op.id)
+                                    return (
+                                      <button
+                                        key={op.id}
+                                        onClick={() => toggleSaborDispo(op.id, activo)}
+                                        disabled={savingDispo === op.id}
+                                        className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-50 ${
+                                          activo
+                                            ? 'bg-green-50 border-green-200 text-green-700'
+                                            : 'bg-neutral-100 border-neutral-200 text-neutral-400 line-through'
+                                        }`}>
+                                        {op.emoji && <span>{op.emoji}</span>}
+                                        {op.nombre}
+                                        {savingDispo === op.id && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })()}
                         </div>
                       )
                     })}
@@ -595,52 +632,7 @@ export default function CatalogoPage() {
             </div>
           )}
 
-          {/* Sección sabores */}
-          {!loadingDispo && opciones.length > 0 && (
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-bold text-neutral-700">Sabores disponibles</p>
-                <p className="text-xs text-neutral-400">{opciones.filter(o => isDisponible(o.id) !== false).length} de {opciones.length} activos</p>
-              </div>
-              {/* Buscador */}
-              <div className="relative mb-4">
-                <input
-                  value={busquedaDispo}
-                  onChange={e => setBusquedaDispo(e.target.value)}
-                  placeholder="Buscar sabor..."
-                  className="w-full px-4 py-2.5 pl-9 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400 bg-white"
-                />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" /></svg>
-                {busquedaDispo && <button onClick={() => setBusquedaDispo('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 text-lg leading-none">&times;</button>}
-              </div>
-              {/* Grilla de chips */}
-              <div className="flex flex-wrap gap-2">
-                {[...opciones]
-                  .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-                  .filter(op => !busquedaDispo || op.nombre.toLowerCase().includes(busquedaDispo.toLowerCase()))
-                  .map(op => {
-                    const activo = isDisponible(op.id)
-                    return (
-                      <button
-                        key={op.id}
-                        onClick={() => toggleSaborDispo(op.id, activo)}
-                        disabled={savingDispo === op.id}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold border transition-all disabled:opacity-50 ${
-                          activo
-                            ? 'bg-green-50 border-green-200 text-green-700'
-                            : 'bg-neutral-100 border-neutral-200 text-neutral-400 line-through'
-                        }`}>
-                        {op.emoji && <span>{op.emoji}</span>}
-                        {op.nombre}
-                        {savingDispo === op.id
-                          ? <Loader2 className="h-3 w-3 animate-spin" />
-                          : <span className={`w-2 h-2 rounded-full ${activo ? 'bg-green-500' : 'bg-neutral-300'}`} />}
-                      </button>
-                    )
-                  })}
-              </div>
-            </div>
-          )}
+
         </div>
       )}
 
