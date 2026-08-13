@@ -58,6 +58,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const [pedidoId, setPedidoId] = useState<string | null>(null)
   const [pedidoNum, setPedidoNum] = useState<number | null>(null)
   const [codigoRetiro, setCodigoRetiro] = useState<string>('')
+  const pedidoRef = useRef<{ id: string; numero: number; codigo: string } | null>(null)
   const [copiado, setCopiado] = useState(false)
   const [captura, setCaptura] = useState<File | null>(null)
   const [capturaPreview, setCapturaPreview] = useState<string | null>(null)
@@ -108,6 +109,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     setPedidoId(data.pedido.id)
     setPedidoNum(data.pedido.numero_pedido)
     setCodigoRetiro(data.pedido.codigo_retiro)
+    pedidoRef.current = { id: data.pedido.id, numero: data.pedido.numero_pedido, codigo: data.pedido.codigo_retiro }
     return data.pedido
   }
 
@@ -129,14 +131,15 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   }
 
   async function confirmarTransferencia() {
-    if (!pedidoId || !pedidoNum) return
+    const p = pedidoRef.current
+    if (!p) return
     if (captura) {
-      const url = await subirCaptura(pedidoId)
+      const url = await subirCaptura(p.id)
       if (url) {
-        await createClient().from('pedidos').update({ captura_transferencia_url: url }).eq('id', pedidoId)
+        await createClient().from('pedidos').update({ captura_transferencia_url: url }).eq('id', p.id)
       }
     }
-    onPedidoCreado(pedidoNum, codigoRetiro)
+    onPedidoCreado(p.numero, p.codigo)
     setPaso('exito')
   }
 
