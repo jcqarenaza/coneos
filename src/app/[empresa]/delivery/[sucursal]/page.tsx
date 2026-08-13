@@ -41,7 +41,6 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
     async function init() {
       const supabase = createClient()
 
-      // Buscar dispositivo por token (igual que kiosk)
       let disp: { id: string; empresa_id: string; sucursal_id: string; tipo: string } | null = null
 
       if (token) {
@@ -56,18 +55,15 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       }
 
       if (!disp) {
-        // Fallback: buscar por empresa/sucursal slug
         const { data: empresa } = await supabase.from('empresas').select('id').eq('slug', params.empresa).single()
         if (!empresa) { setError('No encontrado'); setLoading(false); return }
         const { data: sucursal } = await supabase.from('sucursales').select('id').eq('empresa_id', empresa.id).eq('slug', params.sucursal).single()
         if (!sucursal) { setError('No encontrado'); setLoading(false); return }
-        // Buscar dispositivo delivery de esa sucursal
         const { data: d } = await supabase.from('dispositivos').select('id, empresa_id, sucursal_id, tipo').eq('sucursal_id', sucursal.id).eq('tipo', 'DELIVERY').eq('activo', true).single()
         disp = d
         if (!disp) { setError('No hay un dispositivo de delivery activo para esta sucursal'); setLoading(false); return }
       }
 
-      // Cargar empresa config
       const { data: empData } = await supabase.from('empresas')
         .select('nombre, config:empresa_config(primary_color, secondary_color, logo_url)')
         .eq('id', disp.empresa_id).single()
@@ -76,7 +72,6 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
       setDispositivo({ id: disp.id, empresa_id: disp.empresa_id, sucursal_id: disp.sucursal_id, empresas: { nombre: empData?.nombre ?? '' } })
 
-      // Cargar costo de envío
       const { data: dc } = await supabase.from('delivery_config').select('costo_envio').eq('sucursal_id', disp.sucursal_id).single()
       if (dc) setCostoEnvio(Number(dc.costo_envio))
 
@@ -85,12 +80,8 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
     init()
   }, [params, token])
 
-  const agregarAlCarrito = useCallback((item: ItemCarrito) => {
-    setCarrito(prev => {
-      const existe = prev.find(i => i.id === item.id)
-      if (existe) return prev.map(i => i.id === item.id ? { ...i, cantidad: i.cantidad + item.cantidad } : i)
-      return [...prev, item]
-    })
+  const agregarAlCarrito = useCallback((item: Omit<ItemCarrito, 'id'>) => {
+    setCarrito(prev => [...prev, { ...item, id: crypto.randomUUID() }])
   }, [])
 
   function nuevoPedido() {
@@ -116,12 +107,15 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
           onComenzar={(catId) => { setCategoriaInicial(catId); setPaso('catalogo') }} />
       )}
       {paso === 'catalogo' && (
-        <KioskCatalogo config={config} dispositivo={dispositivo}
-          categoriaInicialId={categoriaInicial}
-          onAgregarCarrito={agregarAlCarrito}
+        <KioskCatalogo
+          config={config}
+          dispositivo={dispositivo}
+          carrito={carrito}
+          categoriaIdInicial={categoriaInicial}
+          onAgregar={agregarAlCarrito}
           onVerCarrito={() => setPaso('carrito')}
-          onVolver={() => setPaso('inicio')}
-          carrito={carrito} />
+          onVolver={() => { setCategoriaInicial(undefined); setPaso('inicio') }}
+        />
       )}
       {paso === 'carrito' && (
         <KioskCarritoDelivery
