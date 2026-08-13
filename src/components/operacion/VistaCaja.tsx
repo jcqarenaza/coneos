@@ -2,14 +2,15 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bell } from 'lucide-react'
+import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string; nombre: string; puede_cobrar: boolean; puede_preparar: boolean; sucursal_id: string | null } }
 interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; sucursales?: { nombre: string }; pedido_items: PedidoItem[] }
+interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -24,23 +25,6 @@ function tiempoRelativo(ts: string) {
   return `${diff} min`
 }
 
-// Sonido discreto de notificación — beep simple via Web Audio API
-function playNotification() {
-  try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.frequency.value = 880
-    osc.type = 'sine'
-    gain.gain.setValueAtTime(0.3, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.4)
-  } catch { /* silencioso si falla */ }
-}
-
 export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispositivo; sesion: SesionOperador }) {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
@@ -52,19 +36,14 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [nombreCliente, setNombreCliente] = useState('')
   const [generandoTicket, setGenerandoTicket] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string | null>(null)
-  const [nuevoPedidoFlash, setNuevoPedidoFlash] = useState(false)
   const verTodas = sesion.operador.sucursal_id === null
-
-  // Ref para contar pedidos anteriores y detectar nuevos
-  const pedidosCountRef = useRef<number>(0)
-  const iniciadoRef = useRef(false)
 
   const cargarPedidos = useCallback(async () => {
     const supabase = createClient()
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
     let query = supabase
       .from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at,
+      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url,
         sucursales(nombre),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
@@ -74,21 +53,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       .order('numero_pedido', { ascending: false })
     if (!verTodas) query = query.eq('sucursal_id', dispositivo.sucursal_id)
     const { data } = await query
-    const nuevos = (data ?? []) as Pedido[]
-
-    // Detectar pedido nuevo — solo después de la carga inicial
-    if (iniciadoRef.current) {
-      const pendientesNuevos = nuevos.filter(p => p.estado === 'PENDING_PAYMENT').length
-      const pendientesAnteriores = pedidosCountRef.current
-      if (pendientesNuevos > pendientesAnteriores) {
-        playNotification()
-        setNuevoPedidoFlash(true)
-        setTimeout(() => setNuevoPedidoFlash(false), 3000)
-      }
-      pedidosCountRef.current = pendientesNuevos
-    }
-
-    setPedidos(nuevos)
+    setPedidos((data ?? []) as Pedido[])
     setLoading(false)
   }, [dispositivo, verTodas])
 
@@ -97,25 +62,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   useEffect(() => { cargarPedidosRef.current = cargarPedidos }, [cargarPedidos])
 
   useEffect(() => {
-    // Carga inicial
-    cargarPedidos().then(() => {
-      // Marcar como iniciado DESPUÉS de la primera carga
-      iniciadoRef.current = true
-    })
-
+    cargarPedidos()
     const supabase = createClient()
-    const channelName = `caja-${dispositivo.sucursal_id}`
-    // Remover canal previo si existe
-    const prev = supabase.getChannels().find(c => c.topic === `realtime:${channelName}`)
-    if (prev) supabase.removeChannel(prev)
-
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes', {
-        event: '*', schema: 'public', table: 'pedidos',
-        filter: `empresa_id=eq.${dispositivo.empresa_id}`
-      }, () => cargarPedidosRef.current())
+    const channel = supabase.channel(`caja-${dispositivo.sucursal_id}-${Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, () => cargarPedidosRef.current())
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
   }, [dispositivo])
 
@@ -141,6 +92,17 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     }
     setModalComprobante(false)
     setNombreCliente('')
+  }
+
+  function handleTicketBtn(pedido: Pedido) {
+    const metodo = pedido.metodo_pago ?? ''
+    if (metodo === 'efectivo') {
+      // Efectivo: ticket directo sin preguntar
+      imprimirTicket(pedido.id)
+    } else {
+      // Transferencia / MP: preguntar si quiere comprobante
+      setModalComprobante(true)
+    }
   }
 
   async function cambiarEstado(pedidoId: string, estadoNuevo: string) {
@@ -172,14 +134,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Flash nuevo pedido */}
-      {nuevoPedidoFlash && (
-        <div className="absolute top-0 left-0 right-0 z-50 bg-green-500 text-white text-center py-2 text-sm font-bold flex items-center justify-center gap-2 shadow-lg animate-pulse">
-          <Bell className="h-4 w-4" />
-          ¡Nuevo pedido!
-        </div>
-      )}
-
       <div className="flex bg-white border-b border-neutral-100 px-4 gap-0.5">
         <button onClick={() => { setTab('activos'); setFiltroEstado(null) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'activos' && !filtroEstado ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
@@ -224,7 +178,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                 <button key={pedido.id} onClick={() => { setSeleccionado(pedido); setEntregado(false) }}
                   className={`w-full text-left px-4 py-3 border-b border-neutral-50 border-l-4 transition-colors ${seleccionado?.id === pedido.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[pedido.estado]}`}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-neutral-800 text-base">#{pedido.numero_pedido}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-neutral-800 text-base">#{pedido.numero_pedido}</span>
+                      {pedido.tipo_pedido === 'delivery' && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">Delivery</span>}
+                    </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
                   </div>
                   <p className="text-neutral-400 text-xs truncate mb-1">{pedido.pedido_items.map(i => i.nombre_producto_snap).join(', ')}</p>
@@ -292,48 +249,37 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <p className="text-amber-700 text-sm">📝 {seleccionado.notas}</p>
                   </div>
                 )}
+                {seleccionado.tipo_pedido === 'delivery' && seleccionado.datos_delivery && (
+                  <div className="mb-4 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 space-y-1">
+                    <p className="text-purple-700 text-sm font-bold mb-1">🛵 Datos de entrega</p>
+                    <p className="text-purple-600 text-sm"><span className="font-semibold">Nombre:</span> {seleccionado.datos_delivery.nombre}</p>
+                    <p className="text-purple-600 text-sm"><span className="font-semibold">Tel:</span> {seleccionado.datos_delivery.telefono}</p>
+                    <p className="text-purple-600 text-sm"><span className="font-semibold">Dirección:</span> {seleccionado.datos_delivery.direccion}</p>
+                    {seleccionado.datos_delivery.entre_calles && <p className="text-purple-600 text-sm"><span className="font-semibold">Entre:</span> {seleccionado.datos_delivery.entre_calles}</p>}
+                    {seleccionado.costo_envio ? <p className="text-purple-600 text-sm"><span className="font-semibold">Envío:</span> ${Number(seleccionado.costo_envio).toLocaleString('es-AR')}</p> : null}
+                    {seleccionado.captura_transferencia_url && (
+                      <a href={seleccionado.captura_transferencia_url} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-600 underline mt-1">
+                        Ver comprobante de transferencia
+                      </a>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   {seleccionado.estado === 'PENDING_PAYMENT' && (<>
-                    {seleccionado.metodo_pago === 'transferencia' ? (
-                      <div className="space-y-2">
-                        <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                          <p className="text-blue-700 text-sm font-semibold text-center">📲 Transferencia pendiente</p>
-                          {seleccionado.notas && seleccionado.notas.startsWith('Comprobante:') && (
-                            <p className="text-blue-600 text-sm text-center mt-1 font-mono font-bold">{seleccionado.notas}</p>
-                          )}
-                        </div>
-                        <button onClick={async () => {
-                            await cambiarEstado(seleccionado.id, 'PAID')
-                            await cambiarEstado(seleccionado.id, 'PREPARING')
-                            imprimirTicket(seleccionado.id)
-                          }} disabled={procesando}
-                          className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
-                          {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✅ Confirmar transferencia recibida'}
-                        </button>
-                        <button onClick={async () => {
-                            await cambiarEstado(seleccionado.id, 'PAID')
-                            await cambiarEstado(seleccionado.id, 'PREPARING')
-                            imprimirTicket(seleccionado.id)
-                          }} disabled={procesando}
-                          className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
-                          {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '💵 Cobrar en efectivo'}
-                        </button>
-                      </div>
-                    ) : (<>
-                      <button onClick={async () => {
-                          await cambiarEstado(seleccionado.id, 'PAID')
-                          await cambiarEstado(seleccionado.id, 'PREPARING')
-                          imprimirTicket(seleccionado.id)
-                        }} disabled={procesando}
-                        className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
-                        {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
-                      </button>
-                      <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
-                        className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
-                        📱 Cobrar transferencia
-                      </button>
-                    </>)}
+                    <button onClick={async () => {
+                        await cambiarEstado(seleccionado.id, 'PAID')
+                        await cambiarEstado(seleccionado.id, 'PREPARING')
+                        imprimirTicket(seleccionado.id)
+                      }} disabled={procesando}
+                      className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
+                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
+                    </button>
+                    <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
+                      className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
+                      📱 Cobrar transferencia
+                    </button>
                   </>)}
                   {seleccionado.estado === 'PAID' && (
                     <button onClick={() => cambiarEstado(seleccionado.id, 'PREPARING')} disabled={procesando}
@@ -365,40 +311,39 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </div>
         </div>
       )}
-
-      {/* Modal comprobante */}
-      {modalComprobante && seleccionado && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setModalComprobante(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <h3 className="font-bold text-neutral-900 text-lg mb-1">¿El cliente quiere comprobante?</h3>
-            <p className="text-neutral-400 text-sm mb-5">Podés agregar el nombre del cliente al ticket.</p>
-            <div className="space-y-3 mb-5">
-              <label className="text-sm font-medium text-neutral-700">Nombre del cliente (opcional)</label>
-              <input
-                value={nombreCliente}
-                onChange={e => setNombreCliente(e.target.value)}
-                placeholder="Nombre y apellido"
-                className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-2">
-              <button
-                onClick={async () => { await imprimirTicket(seleccionado.id, nombreCliente); cambiarEstado(seleccionado.id, 'PREPARING') }}
-                disabled={generandoTicket}
-                className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
-                {generandoTicket ? <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</> : '🖨️ Generar ticket'}
-              </button>
-              <button
-                onClick={() => { setModalComprobante(false); setNombreCliente(''); cambiarEstado(seleccionado.id, 'PREPARING') }}
-                className="w-full py-3 text-neutral-500 hover:text-neutral-700 rounded-xl text-sm transition-colors">
-                No necesita comprobante → Preparación
-              </button>
-            </div>
+    {/* Modal comprobante */}
+    {modalComprobante && seleccionado && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setModalComprobante(false)} />
+        <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+          <h3 className="font-bold text-neutral-900 text-lg mb-1">¿El cliente quiere comprobante?</h3>
+          <p className="text-neutral-400 text-sm mb-5">Podés agregar el nombre del cliente al ticket.</p>
+          <div className="space-y-3 mb-5">
+            <label className="text-sm font-medium text-neutral-700">Nombre del cliente (opcional)</label>
+            <input
+              value={nombreCliente}
+              onChange={e => setNombreCliente(e.target.value)}
+              placeholder="Nombre y apellido"
+              className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-2">
+            <button
+              onClick={async () => { await imprimirTicket(seleccionado.id, nombreCliente); cambiarEstado(seleccionado.id, 'PREPARING') }}
+              disabled={generandoTicket}
+              className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+              {generandoTicket ? <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</> : '🖨️ Generar ticket'}
+            </button>
+            <button
+              onClick={() => { setModalComprobante(false); setNombreCliente(''); cambiarEstado(seleccionado.id, 'PREPARING') }}
+              className="w-full py-3 text-neutral-500 hover:text-neutral-700 rounded-xl text-sm transition-colors">
+              No necesita comprobante → Preparación
+            </button>
           </div>
         </div>
-      )}
+      </div>
+    )}
     </div>
   )
 }

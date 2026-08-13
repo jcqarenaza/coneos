@@ -1,0 +1,146 @@
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import KioskInicio from '@/components/kiosk/KioskInicio'
+import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
+import KioskCarritoDelivery from '@/components/delivery/KioskCarritoDelivery'
+import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDelivery'
+
+export interface EmpresaConfig {
+  primary_color: string; secondary_color: string; logo_url: string | null
+}
+export interface DispositivoKiosk {
+  id: string; empresa_id: string; sucursal_id: string
+  empresas?: { nombre: string } | null
+}
+export interface ItemCarrito {
+  id: string; presentacion_id: string; nombre_producto: string
+  nombre_presentacion: string; precio: number; cantidad: number
+  opciones: { opcion_id: string; nombre: string; emoji: string | null; color: string | null }[]
+}
+
+type Paso = 'inicio' | 'catalogo' | 'carrito' | 'confirmacion'
+
+export default function DeliveryPage({ params }: { params: { empresa: string; sucursal: string } }) {
+  const searchParams = useSearchParams()
+  const token = searchParams.get('token')
+
+  const [dispositivo, setDispositivo] = useState<DispositivoKiosk | null>(null)
+  const [config, setConfig] = useState<EmpresaConfig>({ primary_color: '#1E3A5F', secondary_color: '#F5C842', logo_url: null })
+  const [costoEnvio, setCostoEnvio] = useState(4000)
+  const [paso, setPaso] = useState<Paso>('inicio')
+  const [carrito, setCarrito] = useState<ItemCarrito[]>([])
+  const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>()
+  const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function init() {
+      const supabase = createClient()
+
+      // Buscar dispositivo por token (igual que kiosk)
+      let disp: { id: string; empresa_id: string; sucursal_id: string; tipo: string } | null = null
+
+      if (token) {
+        const { data } = await supabase
+          .from('dispositivos')
+          .select('id, empresa_id, sucursal_id, tipo')
+          .eq('device_token', token)
+          .eq('tipo', 'DELIVERY')
+          .eq('activo', true)
+          .single()
+        disp = data
+      }
+
+      if (!disp) {
+        // Fallback: buscar por empresa/sucursal slug
+        const { data: empresa } = await supabase.from('empresas').select('id').eq('slug', params.empresa).single()
+        if (!empresa) { setError('No encontrado'); setLoading(false); return }
+        const { data: sucursal } = await supabase.from('sucursales').select('id').eq('empresa_id', empresa.id).eq('slug', params.sucursal).single()
+        if (!sucursal) { setError('No encontrado'); setLoading(false); return }
+        // Buscar dispositivo delivery de esa sucursal
+        const { data: d } = await supabase.from('dispositivos').select('id, empresa_id, sucursal_id, tipo').eq('sucursal_id', sucursal.id).eq('tipo', 'DELIVERY').eq('activo', true).single()
+        disp = d
+        if (!disp) { setError('No hay un dispositivo de delivery activo para esta sucursal'); setLoading(false); return }
+      }
+
+      // Cargar empresa config
+      const { data: empData } = await supabase.from('empresas')
+        .select('nombre, config:empresa_config(primary_color, secondary_color, logo_url)')
+        .eq('id', disp.empresa_id).single()
+      const cfg = Array.isArray(empData?.config) ? empData?.config[0] : empData?.config
+      if (cfg) setConfig({ primary_color: cfg.primary_color || '#1E3A5F', secondary_color: cfg.secondary_color || '#F5C842', logo_url: cfg.logo_url })
+
+      setDispositivo({ id: disp.id, empresa_id: disp.empresa_id, sucursal_id: disp.sucursal_id, empresas: { nombre: empData?.nombre ?? '' } })
+
+      // Cargar costo de envío
+      const { data: dc } = await supabase.from('delivery_config').select('costo_envio').eq('sucursal_id', disp.sucursal_id).single()
+      if (dc) setCostoEnvio(Number(dc.costo_envio))
+
+      setLoading(false)
+    }
+    init()
+  }, [params, token])
+
+  const agregarAlCarrito = useCallback((item: ItemCarrito) => {
+    setCarrito(prev => {
+      const existe = prev.find(i => i.id === item.id)
+      if (existe) return prev.map(i => i.id === item.id ? { ...i, cantidad: i.cantidad + item.cantidad } : i)
+      return [...prev, item]
+    })
+  }, [])
+
+  function nuevoPedido() {
+    setCarrito([]); setPedidoCreado(null); setPaso('inicio'); setCategoriaInicial(undefined)
+  }
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
+    </div>
+  )
+
+  if (error || !dispositivo) return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4" style={{ backgroundColor: '#faf8f5' }}>
+      <p className="text-neutral-400 text-center">{error ?? 'Error al cargar el delivery'}</p>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen">
+      {paso === 'inicio' && (
+        <KioskInicio config={config} dispositivo={dispositivo}
+          onComenzar={(catId) => { setCategoriaInicial(catId); setPaso('catalogo') }} />
+      )}
+      {paso === 'catalogo' && (
+        <KioskCatalogo config={config} dispositivo={dispositivo}
+          categoriaInicialId={categoriaInicial}
+          onAgregarCarrito={agregarAlCarrito}
+          onVerCarrito={() => setPaso('carrito')}
+          onVolver={() => setPaso('inicio')}
+          carrito={carrito} />
+      )}
+      {paso === 'carrito' && (
+        <KioskCarritoDelivery
+          config={config} dispositivo={dispositivo}
+          carrito={carrito} setCarrito={setCarrito}
+          costoEnvio={costoEnvio}
+          onConfirmar={() => setPaso('confirmacion')}
+          onSeguirComprando={() => setPaso('catalogo')}
+          onVolver={() => setPaso('catalogo')} />
+      )}
+      {paso === 'confirmacion' && (
+        <KioskConfirmacionDelivery
+          config={config} dispositivo={dispositivo}
+          carrito={carrito} costoEnvio={costoEnvio}
+          pedidoCreado={pedidoCreado}
+          onPedidoCreado={(num, cod) => setPedidoCreado({ numero: num, codigo: cod })}
+          onNuevoPedido={nuevoPedido}
+          onVolver={() => setPaso('carrito')} />
+      )}
+    </div>
+  )
+}
