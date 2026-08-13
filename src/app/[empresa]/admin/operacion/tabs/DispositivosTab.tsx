@@ -12,7 +12,7 @@ import QRCode from 'qrcode'
 
 interface Sucursal { id: string; nombre: string; slug: string }
 interface Dispositivo {
-  id: string; nombre: string; tipo: 'KIOSK' | 'CAJA' | 'PREPARACION' | 'DISPLAY'
+  id: string; nombre: string; tipo: 'KIOSK' | 'CAJA' | 'PREPARACION' | 'DISPLAY' | 'DELIVERY'
   sucursal_id: string; sucursal_nombre?: string; sucursal_slug?: string; device_token: string; activo: boolean
 }
 
@@ -21,6 +21,7 @@ const TIPOS = [
   { value: 'CAJA', label: 'Caja', desc: 'Gestión de pagos y pedidos' },
   { value: 'PREPARACION', label: 'Preparación', desc: 'Pantalla de preparación' },
   { value: 'DISPLAY', label: 'Display', desc: 'Pantalla pública de pedidos listos' },
+  { value: 'DELIVERY', label: 'Delivery', desc: 'Dispositivo para pedidos a domicilio' },
 ]
 
 const tipoIcon = (tipo: string) => {
@@ -33,7 +34,8 @@ const tipoBadge = (tipo: string) => {
   if (tipo === 'KIOSK') return 'bg-purple-50 text-purple-700'
   if (tipo === 'CAJA') return 'bg-blue-50 text-blue-700'
   if (tipo === 'PREPARACION') return 'bg-amber-50 text-amber-700'
-  return 'bg-green-50 text-green-700'
+  if (tipo === 'DISPLAY') return 'bg-green-50 text-green-700'
+  return 'bg-orange-50 text-orange-700'
 }
 
 export default function DispositivosTab() {
@@ -94,6 +96,7 @@ export default function DispositivosTab() {
     if (!empresaSlug || !sucSlug) return `${base}?token=${row.device_token}`
     if (row.tipo === 'KIOSK') return `${base}/${empresaSlug}/kiosk/${sucSlug}?token=${row.device_token}`
     if (row.tipo === 'DISPLAY') return `${base}/${empresaSlug}/display/${sucSlug}?token=${row.device_token}`
+    if (row.tipo === 'DELIVERY') return `${base}/${empresaSlug}/delivery/${sucSlug}?token=${row.device_token}`
     return `${base}/${empresaSlug}/operacion/${sucSlug}?token=${row.device_token}`
   }
 
@@ -213,7 +216,14 @@ export default function DispositivosTab() {
           <div className="space-y-1.5">
             <Label>URL de vinculación</Label>
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
-              <p className="text-xs font-mono text-neutral-600 break-all">{selectedDispositivo ? getUrl(selectedDispositivo) : ''}</p>
+              <a
+                href={selectedDispositivo ? getUrl(selectedDispositivo) : '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-mono text-blue-600 hover:text-blue-800 underline break-all"
+              >
+                {selectedDispositivo ? getUrl(selectedDispositivo) : ''}
+              </a>
             </div>
             <div className="flex gap-2 pt-1">
               <ConeButton variant="outline" onClick={copyUrl} icon={copiedUrl ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}>
