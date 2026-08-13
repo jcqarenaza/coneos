@@ -258,10 +258,13 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     {seleccionado.datos_delivery.entre_calles && <p className="text-purple-600 text-sm"><span className="font-semibold">Entre:</span> {seleccionado.datos_delivery.entre_calles}</p>}
                     {seleccionado.costo_envio ? <p className="text-purple-600 text-sm"><span className="font-semibold">Envío:</span> ${Number(seleccionado.costo_envio).toLocaleString('es-AR')}</p> : null}
                     {seleccionado.captura_transferencia_url && (
-                      <a href={seleccionado.captura_transferencia_url} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-blue-600 underline mt-1">
-                        Ver comprobante de transferencia
-                      </a>
+                      <div className="mt-2">
+                        <p className="text-xs text-purple-500 font-semibold mb-1">📎 Comprobante de transferencia</p>
+                        <a href={seleccionado.captura_transferencia_url} target="_blank" rel="noopener noreferrer">
+                          <img src={seleccionado.captura_transferencia_url} alt="Comprobante"
+                            className="w-full max-h-64 object-contain rounded-xl border border-purple-100 bg-white cursor-zoom-in" />
+                        </a>
+                      </div>
                     )}
                   </div>
                 )}
