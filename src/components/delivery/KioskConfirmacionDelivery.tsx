@@ -51,6 +51,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   const [paso, setPaso] = useState<'datos' | 'pago' | 'transferencia' | 'exito'>('datos')
   const [datos, setDatos] = useState<DatosDelivery>({ nombre: '', telefono: '', direccion: '', entre_calles: '' })
+  const [erroresCampos, setErroresCampos] = useState<Partial<DatosDelivery>>({})
   const [metodoPago, setMetodoPago] = useState('efectivo')
   const [pagosSucursal, setPagosSucursal] = useState<PagosSucursal | null>(null)
   const [creando, setCreando] = useState(false)
@@ -61,13 +62,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const [captura, setCaptura] = useState<File | null>(null)
   const [capturaPreview, setCapturaPreview] = useState<string | null>(null)
   const [subiendoCaptura, setSubiendoCaptura] = useState(false)
-  const [intentoEnvio, setIntentoEnvio] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const errores: Partial<DatosDelivery> = {}
-  if (!datos.nombre.trim()) errores.nombre = 'Ingresá tu nombre'
-  if (!datos.telefono.trim()) errores.telefono = 'Ingresá tu teléfono'
-  if (!datos.direccion.trim()) errores.direccion = 'Ingresá tu dirección'
 
   useEffect(() => {
     fetch(`/api/kiosk/pagos?sucursal_id=${dispositivo.sucursal_id}`)
@@ -116,9 +111,13 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     return data.pedido
   }
 
-  async function confirmarDatos() {
-    setIntentoEnvio(true)
-    if (Object.keys(errores).length > 0) return
+  function confirmarDatos() {
+    const errs: Partial<DatosDelivery> = {}
+    if (!datos.nombre.trim()) errs.nombre = 'Ingresá tu nombre'
+    if (!datos.telefono.trim()) errs.telefono = 'Ingresá tu teléfono'
+    if (!datos.direccion.trim()) errs.direccion = 'Ingresá tu dirección'
+    setErroresCampos(errs)
+    if (Object.keys(errs).length > 0) return
     setPaso('pago')
   }
 
@@ -141,36 +140,42 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     setPaso('exito')
   }
 
-  function Input({ label, value, onChange, placeholder, type = 'text', error, required }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; error?: string; required?: boolean }) {
-    return (
-      <div>
-        <label className="text-sm font-semibold text-neutral-700 block mb-1.5">
-          {label} {required && <span className="text-red-400">*</span>}
-        </label>
-        <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type}
-          className={`w-full px-4 py-3.5 rounded-2xl border text-base focus:outline-none transition-colors ${error ? 'border-red-300 bg-red-50' : 'border-neutral-200 focus:border-neutral-400'}`}
-          style={{ fontSize: '16px' }} // Evita zoom en iOS
-        />
-        {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
-      </div>
-    )
-  }
-
   // ── DATOS ──
   if (paso === 'datos') return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
       <Header onBack={onVolver} title="Datos de entrega" />
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
-        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 space-y-4 mb-4">
-          <Input label="Nombre y apellido" value={datos.nombre} onChange={v => setDatos({ ...datos, nombre: v })}
-            placeholder="Juan García" required error={intentoEnvio ? errores.nombre : undefined} />
-          <Input label="Teléfono" value={datos.telefono} onChange={v => setDatos({ ...datos, telefono: v })}
-            placeholder="3302 123456" type="tel" required error={intentoEnvio ? errores.telefono : undefined} />
-          <Input label="Dirección" value={datos.direccion} onChange={v => setDatos({ ...datos, direccion: v })}
-            placeholder="San Martín 456" required error={intentoEnvio ? errores.direccion : undefined} />
-          <Input label="Entre calles (opcional)" value={datos.entre_calles} onChange={v => setDatos({ ...datos, entre_calles: v })}
-            placeholder="Rivadavia y Belgrano" />
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-48">
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-4 space-y-4">
+          {[
+            { key: 'nombre', label: 'Nombre y apellido', placeholder: 'Juan García', type: 'text', required: true },
+            { key: 'telefono', label: 'Teléfono', placeholder: '3491 123456', type: 'tel', required: true },
+            { key: 'direccion', label: 'Dirección', placeholder: 'San Martín 456', type: 'text', required: true },
+            { key: 'entre_calles', label: 'Entre calles (opcional)', placeholder: 'Rivadavia y Belgrano', type: 'text', required: false },
+          ].map(({ key, label, placeholder, type, required }) => (
+            <div key={key}>
+              <label className="text-xs font-semibold text-neutral-500 mb-1 block">
+                {label} {required && <span className="text-red-400">*</span>}
+              </label>
+              <input
+                type={type}
+                value={datos[key as keyof DatosDelivery]}
+                onChange={e => setDatos(prev => ({ ...prev, [key]: e.target.value }))}
+                placeholder={placeholder}
+                className={`w-full px-4 py-3 rounded-xl border text-base bg-white outline-none transition-colors ${
+                  erroresCampos[key as keyof DatosDelivery]
+                    ? 'border-red-300 focus:border-red-400'
+                    : 'border-neutral-200 focus:border-neutral-400'
+                }`}
+              />
+              {erroresCampos[key as keyof DatosDelivery] && (
+                <p className="text-xs text-red-400 mt-1">{erroresCampos[key as keyof DatosDelivery]}</p>
+              )}
+            </div>
+          ))}
         </div>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-100 px-4 pt-3 pb-6 shadow-lg">
         <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} />
         <button onClick={confirmarDatos}
           className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all"
@@ -183,10 +188,10 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   // ── PAGO ──
   if (paso === 'pago') {
-    const metodos = []
+    const mpConfigurado = pagosSucursal?.mp_access_token && pagosSucursal.mp_access_token.length > 10
+    const metodos: { id: string; label: string; desc: string }[] = []
     if (pagosSucursal?.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo al repartidor', desc: 'Pagás cuando llegue tu pedido' })
-    const mpConfigurado = pagosSucursal?.mp_access_token?.startsWith('APP_USR-')
-    if (pagosSucursal?.acepta_transferencia && pagosSucursal?.cbu_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia bancaria', desc: `Alias: ${pagosSucursal.cbu_transferencia}` })
+    if (pagosSucursal?.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia bancaria', desc: `Alias: ${pagosSucursal.cbu_transferencia ?? ''}` })
     if (pagosSucursal?.acepta_mp && mpConfigurado) metodos.push({ id: 'mp', label: 'Mercado Pago', desc: 'Pagá con QR o link' })
     if (!metodos.length) metodos.push({ id: 'efectivo', label: 'Efectivo al repartidor', desc: 'Pagás cuando llegue tu pedido' })
 
@@ -194,7 +199,6 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
         <Header onBack={() => setPaso('datos')} title="Método de pago" />
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
-          {/* Resumen entrega */}
           <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-4">
             <p className="text-xs text-neutral-400 uppercase tracking-wide font-semibold mb-2">Entregar a</p>
             <p className="font-bold text-neutral-800">{datos.nombre}</p>
@@ -202,17 +206,16 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             <p className="text-sm text-neutral-500">{datos.telefono}</p>
           </div>
 
-          {/* Métodos */}
           <div className="space-y-3 mb-4">
             {metodos.map(m => (
               <button key={m.id} onClick={() => setMetodoPago(m.id)}
-                className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all bg-white text-left active:scale-98`}
+                className="w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all bg-white text-left active:scale-98"
                 style={metodoPago === m.id ? { borderColor: config.primary_color } : { borderColor: '#F3F4F6' }}>
                 <div className="flex-1">
                   <p className="font-bold text-neutral-800">{m.label}</p>
                   <p className="text-neutral-400 text-sm mt-0.5">{m.desc}</p>
                 </div>
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors`}
+                <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors"
                   style={metodoPago === m.id ? { borderColor: config.primary_color, backgroundColor: config.primary_color } : { borderColor: '#D1D5DB' }}>
                   {metodoPago === m.id && <div className="w-2 h-2 bg-white rounded-full" />}
                 </div>
@@ -260,7 +263,6 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           </div>
         </div>
 
-        {/* Subir captura */}
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-4">
           <p className="text-sm font-bold text-neutral-700 mb-1">Subir comprobante</p>
           <p className="text-xs text-neutral-400 mb-3">Opcional pero recomendado — acelera la confirmación</p>
