@@ -199,7 +199,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         </div>
       )}
 
-      <div className={`flex-1 px-6 ${paso === 'opciones' || haySeleccion ? 'pb-36' : 'pb-8'}`}>
+      <div className={`flex-1 px-6 ${paso === 'opciones' || haySeleccion ? 'pb-56' : 'pb-8'}`}>
 
         {/* Categorías */}
         {paso === 'categorias' && (
@@ -436,7 +436,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
       {/* Botón fijo — productos */}
       {paso === 'productos' && haySeleccion && (
-        <div className="fixed bottom-0 left-0 right-0 px-4 pt-4 pb-8 bg-white/90 backdrop-blur-sm border-t border-neutral-100" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom, 2rem))" }}>
+        <div className="fixed bottom-0 left-0 right-0 px-4 pt-4 pb-8 bg-white/90 backdrop-blur-sm border-t border-neutral-100" style={{ paddingBottom: "max(3.5rem, env(safe-area-inset-bottom, 3.5rem))" }}>
           <div className="max-w-md mx-auto">
             <button onClick={confirmarSeleccion}
               className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all"
@@ -454,7 +454,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
       {/* Botón fijo — opciones */}
       {paso === 'opciones' && actualCola && (
-        <div className="fixed bottom-0 left-0 right-0 px-4 pt-4 pb-8 bg-white/90 backdrop-blur-sm border-t border-neutral-100" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom, 2rem))" }}>
+        <div className="fixed bottom-0 left-0 right-0 px-4 pt-4 pb-8 bg-white/90 backdrop-blur-sm border-t border-neutral-100" style={{ paddingBottom: "max(3.5rem, env(safe-area-inset-bottom, 3.5rem))" }}>
           <div className="max-w-md mx-auto">
             <button onClick={confirmarSabores}
               disabled={(actualCola.presentacion.permite_opciones && opcionesSeleccionadas.length < actualCola.presentacion.opciones_min) || agregado}
