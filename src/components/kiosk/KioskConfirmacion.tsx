@@ -266,7 +266,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
                 inputMode="numeric"
                 pattern="[0-9]*"
                 autoFocus
-                className="flex-1 px-4 py-4 rounded-xl border-2 border-blue-200 text-3xl font-mono font-black text-center tracking-widest focus:outline-none focus:border-blue-400 bg-white"
+                className="flex-1 px-4 py-3 rounded-xl border-2 border-blue-200 text-xl font-mono font-black text-center tracking-widest focus:outline-none focus:border-blue-400 bg-white"
               />
             </div>
           </div>
