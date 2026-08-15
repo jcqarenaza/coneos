@@ -24,5 +24,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Dispositivo inactivo' }, { status: 403 })
   }
 
-  return NextResponse.json({ dispositivo })
+  // Normalizar joins que Supabase puede devolver como array o como objeto
+  const sucursales = Array.isArray(dispositivo.sucursales)
+    ? dispositivo.sucursales[0]
+    : dispositivo.sucursales
+  const empresas = Array.isArray(dispositivo.empresas)
+    ? dispositivo.empresas[0]
+    : dispositivo.empresas
+
+  return NextResponse.json({
+    dispositivo: { ...dispositivo, sucursales, empresas }
+  })
 }
