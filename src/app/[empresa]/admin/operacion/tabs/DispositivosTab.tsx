@@ -86,7 +86,7 @@ export default function DispositivosTab() {
     try {
       const url = getUrl(row)
       setUrlActual(url)
-      const dataUrl = await QRCode.toDataURL(url, { width: 220, margin: 2 })
+      const dataUrl = await QRCode.toDataURL(url, { width: 300, margin: 3, errorCorrectionLevel: "M" })
       setQrDataUrl(dataUrl)
     } catch { /* sin QR */ }
     setQrLoading(false)
@@ -205,7 +205,7 @@ export default function DispositivosTab() {
               </div>
             )}
             {!qrLoading && qrDataUrl && (
-              <img src={qrDataUrl} alt="QR de vinculación" className="w-[220px] h-[220px] rounded-2xl border border-neutral-100" />
+              <img src={qrDataUrl} alt="QR de vinculación" className="w-[300px] h-[300px] rounded-2xl border border-neutral-100" />
             )}
             {!qrLoading && !qrDataUrl && (
               <div className="w-[220px] h-[220px] flex items-center justify-center bg-neutral-50 rounded-2xl border border-neutral-100 text-xs text-neutral-400">

@@ -184,7 +184,17 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
                   </div>
-                  <p className="text-neutral-400 text-xs truncate mb-1">{pedido.pedido_items.map(i => i.nombre_producto_snap).join(', ')}</p>
+                  <div className="mb-1 space-y-0.5">
+                    {pedido.pedido_items.slice(0, 3).map((item, i) => (
+                      <div key={i}>
+                        <p className="text-neutral-600 text-xs font-medium truncate">{item.cantidad}× {item.nombre_presentacion_snap}</p>
+                        {item.pedido_item_opciones.length > 0 && (
+                          <p className="text-neutral-400 text-xs truncate">{item.pedido_item_opciones.map(o => `${o.emoji_snap ?? ''} ${o.nombre_snap}`).join(', ')}</p>
+                        )}
+                      </div>
+                    ))}
+                    {pedido.pedido_items.length > 3 && <p className="text-neutral-300 text-xs">+{pedido.pedido_items.length - 3} más</p>}
+                  </div>
                   <div className="flex justify-between items-center">
                     <span className="text-neutral-300 text-xs">{tiempoRelativo(pedido.created_at)}</span>
                     <span className="text-neutral-600 text-xs font-bold">{formatPrecio(pedido.total)}</span>
