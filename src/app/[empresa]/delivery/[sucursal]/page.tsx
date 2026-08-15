@@ -43,31 +43,22 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
   useEffect(() => {
     async function init() {
+      if (!token) { setError('Dispositivo no configurado'); setLoading(false); return }
+
+      // Usar /api/device/verify igual que kiosk — compatible con todos los browsers
+      const res = await fetch('/api/device/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_token: token }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.dispositivo) { setError(data.error ?? 'Dispositivo no encontrado'); setLoading(false); return }
+
+      const disp = data.dispositivo
+      if (disp.tipo !== 'DELIVERY') { setError('Este dispositivo no es de delivery'); setLoading(false); return }
+
+      // Cargar config de empresa
       const supabase = createClient()
-
-      let disp: { id: string; empresa_id: string; sucursal_id: string; tipo: string } | null = null
-
-      if (token) {
-        const { data } = await supabase
-          .from('dispositivos')
-          .select('id, empresa_id, sucursal_id, tipo')
-          .eq('device_token', token)
-          .eq('tipo', 'DELIVERY')
-          .eq('activo', true)
-          .single()
-        disp = data
-      }
-
-      if (!disp) {
-        const { data: empresa } = await supabase.from('empresas').select('id').eq('slug', params.empresa).single()
-        if (!empresa) { setError('No encontrado'); setLoading(false); return }
-        const { data: sucursal } = await supabase.from('sucursales').select('id').eq('empresa_id', empresa.id).eq('slug', params.sucursal).single()
-        if (!sucursal) { setError('No encontrado'); setLoading(false); return }
-        const { data: d } = await supabase.from('dispositivos').select('id, empresa_id, sucursal_id, tipo').eq('sucursal_id', sucursal.id).eq('tipo', 'DELIVERY').eq('activo', true).single()
-        disp = d
-        if (!disp) { setError('No hay un dispositivo de delivery activo para esta sucursal'); setLoading(false); return }
-      }
-
       const { data: empData } = await supabase.from('empresas')
         .select('nombre, config:empresa_config(primary_color, secondary_color, logo_url)')
         .eq('id', disp.empresa_id).single()
