@@ -168,7 +168,7 @@ export default function CatalogoPage() {
       entidad_tipo: entidadTipo,
       entidad_id: entidadId,
       disponible: nuevo,
-    }, { onConflict: 'sucursal_id,entidad_id' })
+    }, { onConflict: 'sucursal_id,entidad_tipo,entidad_id' })
     setDisponibilidad(prev => ({ ...prev, [entidadId]: nuevo }))
     setSavingDispo(null)
   }
