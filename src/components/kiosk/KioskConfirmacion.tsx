@@ -251,23 +251,33 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
             </div>
           </div>
 
-          {/* Campo comprobante opcional */}
-          <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-4 shadow-sm">
-            <p className="text-sm font-semibold text-neutral-700 mb-2">¿Tenés el número de comprobante?</p>
+          {/* Campo comprobante */}
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 mb-4 shadow-sm">
+            <p className="text-sm font-bold text-blue-800 mb-1">📋 Últimos 3 números del comprobante</p>
+            <p className="text-xs text-blue-500 mb-3">Necesario para confirmar tu pago en caja</p>
             <div className="flex items-center gap-2">
-              <span className="text-neutral-400 text-sm font-mono">...</span>
+              <span className="text-blue-300 text-lg font-mono font-bold">...</span>
               <input
                 value={numComprobante}
                 onChange={e => setNumComprobante(e.target.value.replace(/\D/g, '').slice(0, 3))}
                 placeholder="123"
                 maxLength={3}
-                className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-xl font-mono font-bold text-center tracking-widest focus:outline-none focus:border-neutral-400"
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoFocus
+                className="flex-1 px-4 py-4 rounded-xl border-2 border-blue-200 text-3xl font-mono font-black text-center tracking-widest focus:outline-none focus:border-blue-400 bg-white"
               />
             </div>
-            <p className="text-neutral-400 text-xs mt-1.5 text-center">Últimos 3 números — opcional</p>
           </div>
 
-          <button onClick={() => { onPedidoCreado(pedidoTransferencia.numero, pedidoTransferencia.codigo) }}
+          <button onClick={async () => {
+              if (numComprobante.trim()) {
+                const { createClient } = await import('@/lib/supabase/client')
+                await createClient().from('pedidos').update({ notas: `Comprobante: ...${numComprobante.trim()}` }).eq('id', pedidoTransferencia.id)
+              }
+              onPedidoCreado(pedidoTransferencia.numero, pedidoTransferencia.codigo)
+            }}
             className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all mb-3"
             style={{ backgroundColor: config.primary_color }}>
             ✅ Ya realicé la transferencia
