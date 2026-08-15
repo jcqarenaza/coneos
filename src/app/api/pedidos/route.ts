@@ -50,7 +50,6 @@ export async function POST(request: Request) {
     precio_snap: number; cantidad: number; opciones?: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }[]
   }) => ({
     pedido_id: pedido.id,
-    empresa_id,
     presentacion_id: item.presentacion_id,
     nombre_producto_snap: item.nombre_producto_snap,
     nombre_presentacion_snap: item.nombre_presentacion_snap,
