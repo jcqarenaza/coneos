@@ -23,6 +23,10 @@ export interface ItemCarrito {
 
 type Paso = 'inicio' | 'catalogo' | 'carrito' | 'confirmacion'
 
+function generarId() {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36)
+}
+
 export default function DeliveryPage({ params }: { params: { empresa: string; sucursal: string } }) {
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
@@ -81,7 +85,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   }, [params, token])
 
   const agregarAlCarrito = useCallback((item: Omit<ItemCarrito, 'id'>) => {
-    setCarrito(prev => [...prev, { ...item, id: crypto.randomUUID() }])
+    setCarrito(prev => [...prev, { ...item, id: generarId() }])
   }, [])
 
   function nuevoPedido() {
