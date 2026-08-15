@@ -119,7 +119,10 @@ export default function DispositivosTab() {
     setSaving(true)
     const supabase = createClient()
     if (editId) { await supabase.from('dispositivos').update({ nombre: form.nombre, tipo: form.tipo, sucursal_id: form.sucursal_id }).eq('id', editId) }
-    else { await supabase.from('dispositivos').insert({ nombre: form.nombre, tipo: form.tipo, sucursal_id: form.sucursal_id, empresa_id: ctx.empresaId }) }
+    else {
+      const token = `${form.tipo.toLowerCase()}-${form.nombre.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 20)}-${Math.random().toString(36).substring(2, 6)}`
+      await supabase.from('dispositivos').insert({ nombre: form.nombre, tipo: form.tipo, sucursal_id: form.sucursal_id, empresa_id: ctx.empresaId, device_token: token })
+    }
     setSaving(false); setModal(false); load()
   }
 
