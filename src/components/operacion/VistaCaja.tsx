@@ -434,7 +434,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         </div>
       </div>
     )}
-    {/* Modal comprobante */}}
+    {/* Modal comprobante */}
     {modalComprobante && seleccionado && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setModalComprobante(false)} />
