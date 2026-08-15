@@ -61,11 +61,12 @@ export default function DispositivosTab() {
       supabase.from('dispositivos').select('id, nombre, tipo, sucursal_id, device_token, activo, sucursales(nombre, slug)').eq('empresa_id', ctx.empresaId).order('nombre'),
       supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', ctx.empresaId).eq('activo', true).order('nombre'),
     ])
-    setData((devs ?? []).map((d: Record<string, unknown>) => ({
-      ...d,
-      sucursal_nombre: (d.sucursales as { nombre: string; slug: string } | null)?.nombre ?? '',
-      sucursal_slug: (d.sucursales as { nombre: string; slug: string } | null)?.slug ?? '',
-    })) as Dispositivo[])
+    setData((devs ?? []).map((d: Record<string, unknown>) => {
+      const suc = Array.isArray(d.sucursales)
+        ? (d.sucursales as { nombre: string; slug: string }[])[0]
+        : (d.sucursales as { nombre: string; slug: string } | null)
+      return { ...d, sucursal_nombre: suc?.nombre ?? '', sucursal_slug: suc?.slug ?? '' }
+    }) as Dispositivo[])
     setSucursales((suc ?? []) as Sucursal[])
     setLoading(false)
   }
