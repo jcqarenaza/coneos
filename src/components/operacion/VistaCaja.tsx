@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle } from 'lucide-react'
+import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
@@ -10,7 +10,8 @@ interface SesionOperador { session_id: string; operador: { id: string; nombre: s
 interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null }
+interface Colaborador { id: string; nombre: string }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -36,6 +37,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [nombreCliente, setNombreCliente] = useState('')
   const [generandoTicket, setGenerandoTicket] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string | null>(null)
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
+  const [modalAsignar, setModalAsignar] = useState(false)
+  const [pedidosSeleccionados, setPedidosSeleccionados] = useState<string[]>([])
+  const [colaboradorSeleccionado, setColaboradorSeleccionado] = useState<string>('')
+  const [asignando, setAsignando] = useState(false)
   const verTodas = sesion.operador.sucursal_id === null
 
   const cargarPedidos = useCallback(async () => {
@@ -54,6 +60,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     if (!verTodas) query = query.eq('sucursal_id', dispositivo.sucursal_id)
     const { data } = await query
     setPedidos((data ?? []) as Pedido[])
+    // Cargar colaboradores
+    const { data: cols } = await supabase.from('colaboradores')
+      .select('id, nombre').eq('empresa_id', dispositivo.empresa_id)
+      .eq('activo', true).eq('rol', 'cadete').order('nombre')
+    setColaboradores((cols ?? []) as Colaborador[])
     setLoading(false)
   }, [dispositivo, verTodas])
 
@@ -76,6 +87,45 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       if (actualizado) setSeleccionado(actualizado)
     }
   }, [pedidos, seleccionado])
+
+  async function asignarCadete() {
+    if (!colaboradorSeleccionado || !pedidosSeleccionados.length) return
+    setAsignando(true)
+    const supabase = createClient()
+    const col = colaboradores.find(c => c.id === colaboradorSeleccionado)
+    await supabase.from('pedidos')
+      .update({ colaborador_id: colaboradorSeleccionado, colaborador_nombre: col?.nombre ?? '' })
+      .in('id', pedidosSeleccionados)
+    // Imprimir comanda de cada pedido
+    for (const pid of pedidosSeleccionados) {
+      const res = await fetch('/api/comprobantes/comanda', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido_id: pid }),
+      })
+      if (res.ok) {
+        const html = await res.text()
+        const win = window.open('', '_blank', 'width=400,height=700')
+        if (win) { win.document.write(html); win.document.close() }
+      }
+    }
+    setAsignando(false)
+    setModalAsignar(false)
+    setPedidosSeleccionados([])
+    setColaboradorSeleccionado('')
+    cargarPedidos()
+  }
+
+  async function imprimirComanda(pedidoId: string) {
+    const res = await fetch('/api/comprobantes/comanda', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pedido_id: pedidoId }),
+    })
+    if (res.ok) {
+      const html = await res.text()
+      const win = window.open('', '_blank', 'width=400,height=700')
+      if (win) { win.document.write(html); win.document.close() }
+    }
+  }
 
   async function imprimirTicket(pedidoId: string, nombre?: string) {
     setGenerandoTicket(true)
@@ -165,7 +215,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           <div className="w-64 border-r border-neutral-100 flex flex-col overflow-hidden bg-white">
             <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-50">
               <p className="text-xs font-semibold text-neutral-400">{pedidosFiltrados.length} pedido{pedidosFiltrados.length !== 1 ? 's' : ''}</p>
-              <button onClick={cargarPedidos} className="p-1 text-neutral-300 hover:text-neutral-500 transition-colors"><RefreshCw className="h-3.5 w-3.5" /></button>
+              <div className="flex items-center gap-1">
+                {pedidosSeleccionados.length > 0 && (
+                  <button onClick={() => setModalAsignar(true)}
+                    className="flex items-center gap-1 px-2 py-1 bg-neutral-800 text-white text-xs font-semibold rounded-lg">
+                    <Bike className="h-3 w-3" /> Asignar ({pedidosSeleccionados.length})
+                  </button>
+                )}
+                <button onClick={cargarPedidos} className="p-1 text-neutral-300 hover:text-neutral-500 transition-colors"><RefreshCw className="h-3.5 w-3.5" /></button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto">
               {loading ? (
@@ -175,12 +233,21 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   <ShoppingBag className="h-8 w-8 mb-2" /><p className="text-xs">Sin pedidos</p>
                 </div>
               ) : pedidosFiltrados.map(pedido => (
-                <button key={pedido.id} onClick={() => { setSeleccionado(pedido); setEntregado(false) }}
-                  className={`w-full text-left px-4 py-3 border-b border-neutral-50 border-l-4 transition-colors ${seleccionado?.id === pedido.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[pedido.estado]}`}>
+                <div key={pedido.id} className={`w-full text-left border-b border-neutral-50 border-l-4 transition-colors ${seleccionado?.id === pedido.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[pedido.estado]}`}>
+                  {pedido.tipo_pedido === 'delivery' && (
+                    <div className="flex items-center gap-2 px-4 pt-2">
+                      <input type="checkbox" checked={pedidosSeleccionados.includes(pedido.id)}
+                        onChange={e => { e.stopPropagation(); setPedidosSeleccionados(prev => e.target.checked ? [...prev, pedido.id] : prev.filter(id => id !== pedido.id)) }}
+                        className="w-4 h-4 rounded accent-neutral-800 cursor-pointer" />
+                      <span className="text-xs text-neutral-400 font-medium">Seleccionar para asignar</span>
+                    </div>
+                  )}
+                  <button onClick={() => { setSeleccionado(pedido); setEntregado(false) }} className="w-full text-left px-4 py-3">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-neutral-800 text-base">#{pedido.numero_pedido}</span>
                       {pedido.tipo_pedido === 'delivery' && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">Delivery</span>}
+                      {pedido.colaborador_nombre && <span className="text-xs bg-neutral-800 text-white px-1.5 py-0.5 rounded-full font-semibold">🛵 {pedido.colaborador_nombre}</span>}
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
                   </div>
@@ -199,7 +266,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <span className="text-neutral-300 text-xs">{tiempoRelativo(pedido.created_at)}</span>
                     <span className="text-neutral-600 text-xs font-bold">{formatPrecio(pedido.total)}</span>
                   </div>
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -254,10 +322,24 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   </div>
                 </div>
 
-                {seleccionado.notas && (
+                {seleccionado.notas && seleccionado.notas.startsWith('Comprobante:') ? (
+                  <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                    <span className="text-2xl">📲</span>
+                    <div>
+                      <p className="text-xs text-blue-400 font-semibold uppercase tracking-wide">Últimos dígitos comprobante</p>
+                      <p className="text-blue-800 font-black text-2xl tracking-widest">{seleccionado.notas.replace('Comprobante: ...', '')}</p>
+                    </div>
+                  </div>
+                ) : seleccionado.notas ? (
                   <div className="mb-4 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
                     <p className="text-amber-700 text-sm">📝 {seleccionado.notas}</p>
                   </div>
+                ) : null}
+                {seleccionado.tipo_pedido === 'delivery' && (
+                  <button onClick={() => imprimirComanda(seleccionado.id)}
+                    className="w-full mb-3 py-2.5 flex items-center justify-center gap-2 border border-neutral-200 rounded-xl text-neutral-600 text-sm font-semibold hover:bg-neutral-50 transition-colors">
+                    <Printer className="h-4 w-4" /> Reimprimir comanda
+                  </button>
                 )}
                 {seleccionado.tipo_pedido === 'delivery' && seleccionado.datos_delivery && (
                   <div className="mb-4 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 space-y-1">
@@ -324,7 +406,35 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </div>
         </div>
       )}
-    {/* Modal comprobante */}
+    {/* Modal asignar cadete */}
+    {modalAsignar && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setModalAsignar(false)} />
+        <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+          <h3 className="font-bold text-neutral-900 text-lg mb-1">Asignar cadete</h3>
+          <p className="text-neutral-400 text-sm mb-5">{pedidosSeleccionados.length} pedido{pedidosSeleccionados.length !== 1 ? 's' : ''} seleccionado{pedidosSeleccionados.length !== 1 ? 's' : ''}</p>
+          <div className="space-y-2 mb-5">
+            {colaboradores.map(c => (
+              <button key={c.id} onClick={() => setColaboradorSeleccionado(c.id)}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${colaboradorSeleccionado === c.id ? 'border-neutral-800 bg-neutral-50' : 'border-neutral-200'}`}>
+                <span className="text-xl">🛵</span>
+                <span className="font-semibold text-neutral-800">{c.nombre}</span>
+              </button>
+            ))}
+            {colaboradores.length === 0 && <p className="text-neutral-400 text-sm text-center py-4">No hay cadetes activos. Cargalos en Admin → Operación → Colaboradores</p>}
+          </div>
+          <div className="space-y-2">
+            <button onClick={asignarCadete} disabled={!colaboradorSeleccionado || asignando}
+              className="w-full py-3 bg-neutral-800 text-white rounded-xl font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              {asignando ? <><Loader2 className="h-4 w-4 animate-spin" /> Asignando...</> : '🛵 Asignar e imprimir comanda'}
+            </button>
+            <button onClick={() => { setModalAsignar(false); setColaboradorSeleccionado('') }}
+              className="w-full py-3 text-neutral-500 rounded-xl text-sm">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    )}
+    {/* Modal comprobante */}}
     {modalComprobante && seleccionado && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setModalComprobante(false)} />
