@@ -15,7 +15,6 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient()
 
-  // Obtener número de pedido del día
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
   const { count } = await supabase.from('pedidos')
     .select('*', { count: 'exact', head: true })
@@ -28,24 +27,20 @@ export async function POST(request: Request) {
   const total = items.reduce((acc: number, item: { precio_snap: number; cantidad: number }) =>
     acc + Number(item.precio_snap) * item.cantidad, 0) + Number(costo_envio)
 
-  // Crear pedido
   const { data: pedido, error } = await supabase.from('pedidos').insert({
-    empresa_id,
-    sucursal_id,
+    empresa_id, sucursal_id,
     dispositivo_id: dispositivo_id || null,
-    numero_pedido,
-    codigo_retiro,
+    numero_pedido, codigo_retiro,
     estado: 'PENDING_PAYMENT',
-    metodo_pago,
-    total,
+    metodo_pago, total,
     fecha_pedido: hoy,
-    origen,
-    tipo_pedido,
+    origen, tipo_pedido,
     costo_envio: Number(costo_envio),
     datos_delivery,
   }).select('id, numero_pedido, codigo_retiro').single()
 
   if (error || !pedido) {
+    console.error('[pedidos] Error creando pedido:', error)
     return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
   }
 
@@ -63,14 +58,20 @@ export async function POST(request: Request) {
     cantidad: item.cantidad,
   }))
 
-  const { data: itemsCreados } = await supabase.from('pedido_items').insert(itemsInsert).select('id, presentacion_id')
+  const { data: itemsCreados, error: errorItems } = await supabase
+    .from('pedido_items').insert(itemsInsert).select('id, presentacion_id')
+
+  if (errorItems) {
+    console.error('[pedidos] Error insertando items:', errorItems)
+    return NextResponse.json({ error: 'Pedido creado pero error en items: ' + errorItems.message, pedido }, { status: 500 })
+  }
 
   // Insertar opciones
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
     const itemCreado = itemsCreados?.[i]
     if (!itemCreado || !item.opciones?.length) continue
-    await supabase.from('pedido_item_opciones').insert(
+    const { error: errorOpciones } = await supabase.from('pedido_item_opciones').insert(
       item.opciones.map((op: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }) => ({
         pedido_item_id: itemCreado.id,
         opcion_id: op.opcion_id,
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
         color_snap: op.color_snap,
       }))
     )
+    if (errorOpciones) console.error('[pedidos] Error insertando opciones item', i, ':', errorOpciones)
   }
 
   return NextResponse.json({ pedido })

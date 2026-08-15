@@ -53,6 +53,7 @@ export default function DispositivosTab() {
   const [copiedUrl, setCopiedUrl] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
+  const [urlActual, setUrlActual] = useState('')
 
   async function load() {
     if (!ctx) return
@@ -84,6 +85,7 @@ export default function DispositivosTab() {
     setTokenModal(true)
     try {
       const url = getUrl(row)
+      setUrlActual(url)
       const dataUrl = await QRCode.toDataURL(url, { width: 220, margin: 2 })
       setQrDataUrl(dataUrl)
     } catch { /* sin QR */ }
@@ -103,13 +105,13 @@ export default function DispositivosTab() {
 
   async function copyUrl() {
     if (!selectedDispositivo) return
-    await navigator.clipboard.writeText(getUrl(selectedDispositivo))
+    await navigator.clipboard.writeText(urlActual)
     setCopiedUrl(true); setTimeout(() => setCopiedUrl(false), 2000)
   }
 
   function openUrl() {
     if (!selectedDispositivo) return
-    window.open(getUrl(selectedDispositivo), '_blank')
+    window.open(urlActual, '_blank')
   }
 
   async function handleSave() {
@@ -218,12 +220,12 @@ export default function DispositivosTab() {
             <Label>URL de vinculación</Label>
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
               <a
-                href={selectedDispositivo ? getUrl(selectedDispositivo) : '#'}
+                href={urlActual}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs font-mono text-blue-600 hover:text-blue-800 underline break-all"
               >
-                {selectedDispositivo ? getUrl(selectedDispositivo) : ''}
+                {urlActual}
               </a>
             </div>
             <div className="flex gap-2 pt-1">
