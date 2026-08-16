@@ -8,16 +8,19 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Plus, Loader2, Store, CreditCard, Banknote, Smartphone, Pencil, Trash2 } from 'lucide-react'
 
+interface Horario { desde: string; hasta: string }
+interface DeliveryConfig { activo: boolean; costo_envio: number; horarios: Horario[]; mensaje_fuera_horario: string }
 interface SucursalPagos {
   acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean
   cbu_transferencia: string | null; mp_access_token: string | null
   mp_alias?: string | null; mp_public_key?: string | null
 }
 interface Sucursal {
-  id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; pagos?: SucursalPagos
+  id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; pagos?: SucursalPagos; delivery?: DeliveryConfig
 }
 
 const emptyPagos = (): SucursalPagos => ({ acepta_efectivo: true, acepta_transferencia: true, acepta_mp: false, cbu_transferencia: '', mp_access_token: '', mp_alias: '', mp_public_key: '' })
+const emptyDelivery = (): DeliveryConfig => ({ activo: false, costo_envio: 0, horarios: [{ desde: '20:00', hasta: '23:59' }], mensaje_fuera_horario: 'El delivery no está disponible en este momento. ¡Volvemos pronto!' })
 const emptySucursal = (): Partial<Sucursal> => ({ nombre: '', slug: '', direccion: '', activo: true })
 
 export default function SucursalesPage() {
@@ -29,17 +32,19 @@ export default function SucursalesPage() {
   const [pagos, setPagos] = useState<SucursalPagos>(emptyPagos())
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
+  const [delivery, setDelivery] = useState<DeliveryConfig>(emptyDelivery())
 
   async function load() {
     if (!ctx) return
     const supabase = createClient()
     const { data: suc } = await supabase
       .from('sucursales')
-      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, cbu_transferencia, mp_access_token)')
+      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, cbu_transferencia, mp_access_token), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario)')
       .eq('empresa_id', ctx.empresaId).order('nombre')
     setData((suc ?? []).map((s: Record<string, unknown>) => ({
       ...s,
       pagos: Array.isArray(s.sucursal_pagos) ? (s.sucursal_pagos[0] ?? emptyPagos()) : (s.sucursal_pagos ?? emptyPagos()),
+      delivery: Array.isArray(s.delivery_config) ? (s.delivery_config[0] ?? emptyDelivery()) : (s.delivery_config ?? emptyDelivery()),
     })) as Sucursal[])
     setLoading(false)
   }
@@ -50,8 +55,8 @@ export default function SucursalesPage() {
     return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
   }
 
-  function openNew() { setForm(emptySucursal()); setPagos(emptyPagos()); setEditId(null); setModal(true) }
-  function openEdit(s: Sucursal) { setForm({ nombre: s.nombre, slug: s.slug, direccion: s.direccion, activo: s.activo }); setPagos(s.pagos ?? emptyPagos()); setEditId(s.id); setModal(true) }
+  function openNew() { setForm(emptySucursal()); setPagos(emptyPagos()); setDelivery(emptyDelivery()); setEditId(null); setModal(true) }
+  function openEdit(s: Sucursal) { setForm({ nombre: s.nombre, slug: s.slug, direccion: s.direccion, activo: s.activo }); setPagos(s.pagos ?? emptyPagos()); setDelivery(s.delivery ?? emptyDelivery()); setEditId(s.id); setModal(true) }
 
   async function handleSave() {
     if (!ctx || !form.nombre || !form.slug) return
@@ -63,6 +68,15 @@ export default function SucursalesPage() {
     } else {
       const { data: nueva } = await supabase.from('sucursales').insert({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: true, empresa_id: ctx.empresaId }).select('id').single()
       if (nueva) await supabase.from('sucursal_pagos').insert({ sucursal_id: nueva.id, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, cbu_transferencia: pagos.cbu_transferencia || null, mp_access_token: pagos.mp_access_token || null })
+    }
+    // Guardar delivery_config
+    const sucursalId = editId ?? null
+    if (sucursalId) {
+      await supabase.from('delivery_config').upsert({
+        sucursal_id: sucursalId, empresa_id: ctx.empresaId,
+        activo: delivery.activo, costo_envio: delivery.costo_envio,
+        horarios: delivery.horarios, mensaje_fuera_horario: delivery.mensaje_fuera_horario,
+      }, { onConflict: 'sucursal_id' })
     }
     setSaving(false); setModal(false); load()
   }
@@ -158,6 +172,47 @@ export default function SucursalesPage() {
               )}
             </div>
           </div>
+
+          {editId && (
+            <div className="space-y-3 pt-2 border-t border-neutral-100">
+              <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Delivery</p>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="del" checked={delivery.activo} onChange={e => setDelivery({ ...delivery, activo: e.target.checked })} className="w-4 h-4 rounded" />
+                <Label htmlFor="del" className="cursor-pointer">Delivery activo</Label>
+              </div>
+              {delivery.activo && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Costo de envío ($)</Label>
+                    <Input type="number" value={delivery.costo_envio} onChange={e => setDelivery({ ...delivery, costo_envio: Number(e.target.value) })} placeholder="4000" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Horarios de delivery</Label>
+                      <button type="button" onClick={() => setDelivery({ ...delivery, horarios: [...delivery.horarios, { desde: '20:00', hasta: '23:59' }] })}
+                        className="text-xs text-blue-600 font-semibold">+ Agregar franja</button>
+                    </div>
+                    {delivery.horarios.map((h, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Input type="time" value={h.desde} onChange={e => { const hs = [...delivery.horarios]; hs[i] = { ...hs[i], desde: e.target.value }; setDelivery({ ...delivery, horarios: hs }) }} className="flex-1 text-sm" />
+                        <span className="text-neutral-400 text-sm">a</span>
+                        <Input type="time" value={h.hasta} onChange={e => { const hs = [...delivery.horarios]; hs[i] = { ...hs[i], hasta: e.target.value }; setDelivery({ ...delivery, horarios: hs }) }} className="flex-1 text-sm" />
+                        {delivery.horarios.length > 1 && (
+                          <button type="button" onClick={() => setDelivery({ ...delivery, horarios: delivery.horarios.filter((_, j) => j !== i) })}
+                            className="text-red-400 text-xs font-semibold">✕</button>
+                        )}
+                      </div>
+                    ))}
+                    <p className="text-xs text-neutral-400">Para horarios que cruzan la medianoche (ej: 20:00 a 01:00) usá 01:00 como hora de cierre.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Mensaje fuera de horario</Label>
+                    <Input value={delivery.mensaje_fuera_horario} onChange={e => setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value })} placeholder="El delivery no está disponible..." />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </ConeModal>
     </div>
