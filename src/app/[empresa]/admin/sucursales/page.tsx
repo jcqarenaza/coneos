@@ -141,10 +141,19 @@ export default function SucursalesPage() {
               <Label>Nombre *</Label>
               <Input value={form.nombre ?? ''} onChange={e => { const nombre = e.target.value; setForm({ ...form, nombre, slug: editId ? form.slug : slugify(nombre) }) }} placeholder="Federal" autoFocus />
             </div>
-            <div className="space-y-1.5">
-              <Label>Slug *</Label>
-              <Input value={form.slug ?? ''} onChange={e => setForm({ ...form, slug: slugify(e.target.value) })} placeholder="federal" className="font-mono text-sm" />
-            </div>
+            {!editId && (
+              <div className="space-y-1.5">
+                <Label>Slug *</Label>
+                <Input value={form.slug ?? ''} onChange={e => setForm({ ...form, slug: slugify(e.target.value) })} placeholder="federal" className="font-mono text-sm" />
+              </div>
+            )}
+            {editId && (
+              <div className="space-y-1.5">
+                <Label>Slug</Label>
+                <div className="px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl font-mono text-sm text-neutral-400 select-none">{form.slug}</div>
+                <p className="text-xs text-neutral-400">El slug no se puede modificar desde acá.</p>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Dirección</Label>
               <Input value={form.direccion ?? ''} onChange={e => setForm({ ...form, direccion: e.target.value })} placeholder="Av. San Martín 123" />
