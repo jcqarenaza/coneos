@@ -18,6 +18,16 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
   const [loadingOps, setLoadingOps] = useState(true)
 
   useEffect(() => {
+    if (!seleccionado) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key >= '0' && e.key <= '9') handlePin(e.key)
+      else if (e.key === 'Backspace') handleDelete()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [seleccionado, pin])
+
+  useEffect(() => {
     const supabase = createClient()
     supabase.from('operadores').select('id, nombre')
       .eq('empresa_id', dispositivo.empresa_id)
