@@ -40,6 +40,7 @@ export async function POST(request: Request) {
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family: 'Calibri', Arial, sans-serif; font-size: 13px; font-weight: bold; background: white; padding: 0; margin: 0; word-wrap: break-word; overflow-wrap: break-word; }
+* { font-weight: bold !important; }
 .linea { border-top: 1px dashed #000; margin: 4px 0; }
 .grande { font-size: 28px; font-weight: bold; text-align: center; }
 .chico { font-size: 12px; font-weight: normal; text-align: center; }
@@ -67,7 +68,7 @@ body { font-family: 'Calibri', Arial, sans-serif; font-size: 13px; font-weight: 
 
 ${datos?.direccion ? `
 <div class="dato">${datos.direccion}</div>
-${datos.entre_calles ? `<div class="dato-sub">entre ${datos.entre_calles}</div>` : ''}
+${datos.entre_calles ? `<div class="dato-sub">${datos.entre_calles}</div>` : ''}
 <div class="linea"></div>` : ''}
 
 ${items.map(item => `
