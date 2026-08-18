@@ -58,8 +58,8 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
 
           {/* Módulo Delivery */}
           {deliveryActivo ? (
-            <Link href={`/${slug}/admin/delivery`}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${pathname.startsWith(`/${slug}/admin/delivery`) ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-50'}`}>
+            <Link href={`/${slug}/admin/sucursales`}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${pathname.startsWith(`/${slug}/admin/sucursales`) ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-50'}`}>
               <Truck className="h-4 w-4 flex-shrink-0" />
               Delivery
             </Link>
