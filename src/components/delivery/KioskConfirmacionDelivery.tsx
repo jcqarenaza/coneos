@@ -92,6 +92,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   async function crearPedido(metodo: string) {
     setCreando(true)
+    console.log('[delivery] carrito al crear pedido:', carrito)
     const items = carrito.map(item => ({
       presentacion_id: item.presentacion_id,
       nombre_producto_snap: item.nombre_producto,
