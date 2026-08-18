@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer } from 'lucide-react'
+import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, History, ChevronLeft, ChevronRight } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
@@ -29,7 +29,11 @@ function tiempoRelativo(ts: string) {
 export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispositivo; sesion: SesionOperador }) {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'activos' | 'nuevo'>('activos')
+  const [tab, setTab] = useState<'activos' | 'nuevo' | 'historial'>('activos')
+  const [historialFecha, setHistorialFecha] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }))
+  const [historialPedidos, setHistorialPedidos] = useState<Pedido[]>([])
+  const [historialLoading, setHistorialLoading] = useState(false)
+  const [historialSeleccionado, setHistorialSeleccionado] = useState<Pedido | null>(null)
   const [seleccionado, setSeleccionado] = useState<Pedido | null>(null)
   const [procesando, setProcesando] = useState(false)
   const [entregado, setEntregado] = useState(false)
@@ -43,6 +47,22 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [colaboradorSeleccionado, setColaboradorSeleccionado] = useState<string>('')
   const [asignando, setAsignando] = useState(false)
   const verTodas = sesion.operador.sucursal_id === null
+
+  async function cargarHistorial(fecha: string) {
+    setHistorialLoading(true)
+    setHistorialSeleccionado(null)
+    const supabase = createClient()
+    let query = supabase
+      .from('pedidos')
+      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, tipo_pedido, costo_envio, datos_delivery, colaborador_nombre, pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
+      .eq('empresa_id', dispositivo.empresa_id)
+      .eq('fecha_pedido', fecha)
+      .order('numero_pedido', { ascending: true })
+    if (!verTodas) query = query.eq('sucursal_id', dispositivo.sucursal_id)
+    const { data } = await query
+    setHistorialPedidos((data ?? []) as Pedido[])
+    setHistorialLoading(false)
+  }
 
   const cargarPedidos = useCallback(async () => {
     const supabase = createClient()
@@ -201,6 +221,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </button>
         ))}
         <div className="flex-1" />
+        <button onClick={() => { setTab('historial'); cargarHistorial(historialFecha) }}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'historial' ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
+          <History className="h-4 w-4" />
+          <span className="hidden md:inline">Historial</span>
+        </button>
         <button onClick={() => setTab('nuevo')}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'nuevo' ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
           <Plus className="h-4 w-4" />
@@ -208,7 +233,117 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         </button>
       </div>
 
-      {tab === 'nuevo' ? (
+      {tab === 'historial' ? (
+        <div className="flex-1 flex flex-col overflow-hidden bg-neutral-50">
+          {/* Header historial con selector de fecha */}
+          <div className="bg-white border-b border-neutral-100 px-4 py-3 flex items-center gap-3">
+            <button onClick={() => { const d = new Date(historialFecha + 'T12:00:00'); d.setDate(d.getDate() - 1); const f = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }); setHistorialFecha(f); cargarHistorial(f) }}
+              className="p-2 hover:bg-neutral-100 rounded-xl transition-colors">
+              <ChevronLeft className="h-5 w-5 text-neutral-500" />
+            </button>
+            <input type="date" value={historialFecha}
+              onChange={e => { setHistorialFecha(e.target.value); cargarHistorial(e.target.value) }}
+              className="flex-1 text-center font-bold text-neutral-800 bg-transparent border-none outline-none text-sm" />
+            <button onClick={() => { const d = new Date(historialFecha + 'T12:00:00'); d.setDate(d.getDate() + 1); const f = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }); setHistorialFecha(f); cargarHistorial(f) }}
+              className="p-2 hover:bg-neutral-100 rounded-xl transition-colors">
+              <ChevronRight className="h-5 w-5 text-neutral-500" />
+            </button>
+          </div>
+
+          {historialLoading ? (
+            <div className="flex-1 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
+          ) : (
+            <div className="flex-1 flex overflow-hidden">
+              {/* Lista pedidos historial */}
+              <div className="w-64 border-r border-neutral-100 flex flex-col overflow-hidden bg-white">
+                {/* Resumen del día */}
+                {historialPedidos.length > 0 && (() => {
+                  const ef = historialPedidos.filter(p => p.metodo_pago === 'efectivo').reduce((a, p) => a + p.total, 0)
+                  const tr = historialPedidos.filter(p => p.metodo_pago === 'transferencia').reduce((a, p) => a + p.total, 0)
+                  const mp = historialPedidos.filter(p => p.metodo_pago === 'mp').reduce((a, p) => a + p.total, 0)
+                  const total = ef + tr + mp
+                  return (
+                    <div className="px-3 py-3 border-b border-neutral-100 bg-neutral-50">
+                      <p className="text-xs font-bold text-neutral-500 mb-2">{historialPedidos.length} pedidos — {formatPrecio(total)}</p>
+                      <div className="space-y-1">
+                        {ef > 0 && <div className="flex justify-between text-xs"><span className="text-green-600 font-semibold">💵 Efectivo</span><span className="font-bold">{formatPrecio(ef)}</span></div>}
+                        {tr > 0 && <div className="flex justify-between text-xs"><span className="text-blue-600 font-semibold">📲 Transfer.</span><span className="font-bold">{formatPrecio(tr)}</span></div>}
+                        {mp > 0 && <div className="flex justify-between text-xs"><span className="text-sky-600 font-semibold">📱 MP</span><span className="font-bold">{formatPrecio(mp)}</span></div>}
+                      </div>
+                    </div>
+                  )
+                })()}
+                <div className="flex-1 overflow-y-auto">
+                  {historialPedidos.length === 0 && <p className="text-center text-neutral-400 text-sm py-12">Sin pedidos este día</p>}
+                  {historialPedidos.map(p => (
+                    <button key={p.id} onClick={() => setHistorialSeleccionado(p)}
+                      className={`w-full text-left px-4 py-3 border-b border-neutral-50 border-l-4 transition-colors ${historialSeleccionado?.id === p.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[p.estado] ?? 'border-l-neutral-200'}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-neutral-800">#{p.numero_pedido}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[p.estado]}`}>{ESTADO_LABEL[p.estado]}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-neutral-400">{p.metodo_pago ?? '—'}</span>
+                        <span className="text-xs font-bold text-neutral-600">{formatPrecio(p.total)}</span>
+                      </div>
+                      {p.colaborador_nombre && <p className="text-xs text-neutral-400 mt-0.5">🛵 {p.colaborador_nombre}</p>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Detalle pedido historial */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {!historialSeleccionado ? (
+                  <div className="flex flex-col items-center justify-center h-full text-neutral-300 gap-3">
+                    <History className="h-12 w-12" />
+                    <p className="text-sm">Seleccioná un pedido</p>
+                  </div>
+                ) : (
+                  <div className="max-w-sm mx-auto">
+                    <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-3">
+                      <div className="flex items-center justify-between mb-3">
+                        <h2 className="font-black text-2xl text-neutral-800">#{historialSeleccionado.numero_pedido}</h2>
+                        <span className={`text-xs px-2 py-1 rounded-full font-semibold ${ESTADO_BADGE[historialSeleccionado.estado]}`}>{ESTADO_LABEL[historialSeleccionado.estado]}</span>
+                      </div>
+                      <div className="space-y-2 mb-3">
+                        {historialSeleccionado.pedido_items.map((item, i) => (
+                          <div key={i} className="border-b border-neutral-50 pb-2">
+                            <div className="flex justify-between text-sm">
+                              <span className="font-semibold">{item.cantidad}× {item.nombre_presentacion_snap}</span>
+                              <span className="font-bold">{formatPrecio(item.precio_snap)}</span>
+                            </div>
+                            {item.pedido_item_opciones.length > 0 && (
+                              <p className="text-xs text-neutral-400 mt-0.5">{item.pedido_item_opciones.map(o => `${o.emoji_snap ?? ''} ${o.nombre_snap}`).join(' · ')}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-between font-bold">
+                        <span>Total</span><span>{formatPrecio(historialSeleccionado.total)}</span>
+                      </div>
+                      <p className="text-xs text-neutral-400 mt-1">Pago: {historialSeleccionado.metodo_pago ?? '—'}</p>
+                      {historialSeleccionado.colaborador_nombre && <p className="text-xs text-neutral-400">🛵 {historialSeleccionado.colaborador_nombre}</p>}
+                      {historialSeleccionado.notas && <p className="text-xs text-amber-600 mt-1">{historialSeleccionado.notas}</p>}
+                    </div>
+                    {historialSeleccionado.datos_delivery && (() => {
+                      const d = historialSeleccionado.datos_delivery as DatosDelivery
+                      return (
+                        <div className="bg-purple-50 rounded-2xl border border-purple-100 p-4 text-sm">
+                          <p className="font-bold text-purple-700 mb-1">🛵 Datos delivery</p>
+                          <p className="text-purple-700">{d.nombre}</p>
+                          <p className="text-purple-600">{d.direccion}{d.entre_calles ? ` (entre ${d.entre_calles})` : ''}</p>
+                          <p className="text-purple-600">{d.telefono}</p>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : tab === 'nuevo' ? (
         <NuevoPedido dispositivo={dispositivo} sesion={sesion} onPedidoCreado={() => setTab('activos')} />
       ) : (
         <div className="flex-1 flex overflow-hidden">
@@ -405,7 +540,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             )}
           </div>
         </div>
-      )}
+      ) : null}
     {/* Modal asignar cadete */}
     {modalAsignar && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
