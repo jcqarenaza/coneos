@@ -85,16 +85,17 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
       setDispositivo({ id: disp.id, empresa_id: disp.empresa_id, sucursal_id: disp.sucursal_id, empresas: { nombre: empData?.nombre ?? '' } })
 
-      const { data: dc } = await supabase.from('delivery_config').select('costo_envio, horarios, mensaje_fuera_horario, activo').eq('sucursal_id', disp.sucursal_id).single()
-      if (dc) {
-        setCostoEnvio(Number(dc.costo_envio))
-        const horarios = (dc.horarios as { desde: string; hasta: string }[]) ?? []
-        // Obtener hora de Argentina desde el servidor para evitar problemas de timezone en browser
-        const horaRes = await fetch('/api/hora-argentina')
-        const horaData = horaRes.ok ? await horaRes.json() : null
-        const horaArgentina = horaData?.hora ?? new Date().toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })
-        setHorarioActivo(dc.activo ? estaEnHorario(horarios, horaArgentina) : false)
-        if (dc.mensaje_fuera_horario) setMensajeFueraHorario(dc.mensaje_fuera_horario)
+      // Obtener delivery_config y hora Argentina desde el servidor (evita RLS del cliente)
+      const horaRes = await fetch(`/api/hora-argentina?sucursal_id=${disp.sucursal_id}`)
+      if (horaRes.ok) {
+        const horaData = await horaRes.json()
+        const dc = horaData.delivery_config
+        if (dc) {
+          setCostoEnvio(Number(dc.costo_envio))
+          const horarios = (dc.horarios as { desde: string; hasta: string }[]) ?? []
+          setHorarioActivo(dc.activo ? estaEnHorario(horarios, horaData.hora) : false)
+          if (dc.mensaje_fuera_horario) setMensajeFueraHorario(dc.mensaje_fuera_horario)
+        }
       }
 
       setLoading(false)
