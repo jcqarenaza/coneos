@@ -249,16 +249,16 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             <p className="text-3xl font-black" style={{ color: config.primary_color }}>{formatPrecio(total)}</p>
           </div>
           {pagosSucursal?.cbu_transferencia && (
-            <div className="bg-neutral-50 rounded-xl p-4 mb-3">
-              <p className="text-xs text-neutral-400 uppercase tracking-wide mb-2">Alias / CBU</p>
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-mono font-bold text-neutral-800 text-lg break-all">{pagosSucursal.cbu_transferencia}</p>
-                <button onClick={() => { navigator.clipboard.writeText(pagosSucursal.cbu_transferencia!); setCopiado(true); setTimeout(() => setCopiado(false), 2000) }}
-                  className="flex-shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold transition-colors active:scale-95"
-                  style={{ backgroundColor: copiado ? '#dcfce7' : `${config.primary_color}15`, color: copiado ? '#16a34a' : config.primary_color }}>
-                  {copiado ? <><Check className="h-3.5 w-3.5" /> Copiado</> : <><Copy className="h-3.5 w-3.5" /> Copiar</>}
-                </button>
-              </div>
+            <div className="rounded-xl p-4 mb-3 border-2" style={{ borderColor: config.primary_color, backgroundColor: `${config.primary_color}08` }}>
+              <p className="text-xs text-neutral-400 uppercase tracking-wide mb-2">Alias / CBU — tocá para copiar</p>
+              <button onClick={() => { navigator.clipboard.writeText(pagosSucursal.cbu_transferencia!); setCopiado(true); setTimeout(() => setCopiado(false), 2000) }}
+                className="w-full text-left active:opacity-70 transition-opacity">
+                <p className="font-black text-2xl break-all leading-tight" style={{ color: config.primary_color }}>{pagosSucursal.cbu_transferencia}</p>
+              </button>
+              {copiado
+                ? <p className="text-green-600 text-sm font-bold mt-2 flex items-center gap-1"><Check className="h-4 w-4" /> ¡Copiado!</p>
+                : <p className="text-xs mt-2" style={{ color: config.primary_color }}>Tocá el alias para copiarlo</p>
+              }
             </div>
           )}
           <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
