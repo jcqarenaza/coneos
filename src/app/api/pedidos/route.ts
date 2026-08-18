@@ -2,37 +2,88 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
-  const { device_token } = await request.json()
+  const body = await request.json()
+  const {
+    empresa_id, sucursal_id, dispositivo_id, items,
+    metodo_pago, origen = 'KIOSK',
+    tipo_pedido = 'kiosk', costo_envio = 0, datos_delivery = null,
+  } = body
 
-  if (!device_token) {
-    return NextResponse.json({ error: 'Token requerido' }, { status: 400 })
+  console.log('[pedidos] body recibido:', JSON.stringify({ empresa_id, sucursal_id, items_length: items?.length, origen }))
+
+  if (!empresa_id || !sucursal_id || !items?.length) {
+    return NextResponse.json({ error: 'Datos incompletos', debug: { empresa_id, sucursal_id, items_length: items?.length } }, { status: 400 })
   }
 
   const supabase = createAdminClient()
 
-  const { data: dispositivo, error } = await supabase
-    .from('dispositivos')
-    .select('id, nombre, tipo, activo, empresa_id, sucursal_id, sucursales(nombre, slug), empresas(nombre, slug)')
-    .eq('device_token', device_token)
-    .single()
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
 
-  if (error || !dispositivo) {
-    return NextResponse.json({ error: 'Dispositivo no encontrado' }, { status: 404 })
+  const { data: maxData } = await supabase.from('pedidos')
+    .select('numero_pedido')
+    .eq('sucursal_id', sucursal_id)
+    .eq('fecha_pedido', hoy)
+    .order('numero_pedido', { ascending: false })
+    .limit(1)
+
+  const numero_pedido = (maxData?.[0]?.numero_pedido ?? 0) + 1
+  const codigo_retiro = Math.random().toString(36).substring(2, 6).toUpperCase()
+
+  const total = items.reduce((acc: number, item: { precio_snap: number; cantidad: number }) =>
+    acc + Number(item.precio_snap) * item.cantidad, 0) + Number(costo_envio)
+
+  const { data: pedido, error } = await supabase.from('pedidos').insert({
+    empresa_id, sucursal_id,
+    dispositivo_id: dispositivo_id || null,
+    numero_pedido, codigo_retiro,
+    estado: 'PENDING_PAYMENT',
+    metodo_pago, total,
+    fecha_pedido: hoy,
+    origen, tipo_pedido,
+    costo_envio: Number(costo_envio),
+    datos_delivery,
+  }).select('id, numero_pedido, codigo_retiro').single()
+
+  if (error || !pedido) {
+    console.error('[pedidos] Error creando pedido:', error)
+    return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
   }
 
-  if (!dispositivo.activo) {
-    return NextResponse.json({ error: 'Dispositivo inactivo' }, { status: 403 })
+  const itemsInsert = items.map((item: {
+    presentacion_id: string; nombre_producto_snap: string; nombre_presentacion_snap: string
+    precio_snap: number; cantidad: number; opciones?: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }[]
+  }) => ({
+    pedido_id: pedido.id,
+    presentacion_id: item.presentacion_id,
+    nombre_producto_snap: item.nombre_producto_snap,
+    nombre_presentacion_snap: item.nombre_presentacion_snap,
+    precio_snap: item.precio_snap,
+    cantidad: item.cantidad,
+  }))
+
+  const { data: itemsCreados, error: errorItems } = await supabase
+    .from('pedido_items').insert(itemsInsert).select('id, presentacion_id')
+
+  if (errorItems) {
+    console.error('[pedidos] Error insertando items:', errorItems)
+    return NextResponse.json({ error: 'Pedido creado pero error en items: ' + errorItems.message, pedido }, { status: 500 })
   }
 
-  // Normalizar joins que Supabase puede devolver como array o como objeto
-  const sucursales = Array.isArray(dispositivo.sucursales)
-    ? dispositivo.sucursales[0]
-    : dispositivo.sucursales
-  const empresas = Array.isArray(dispositivo.empresas)
-    ? dispositivo.empresas[0]
-    : dispositivo.empresas
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    const itemCreado = itemsCreados?.[i]
+    if (!itemCreado || !item.opciones?.length) continue
+    const { error: errorOpciones } = await supabase.from('pedido_item_opciones').insert(
+      item.opciones.map((op: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }) => ({
+        pedido_item_id: itemCreado.id,
+        opcion_id: op.opcion_id,
+        nombre_snap: op.nombre_snap,
+        emoji_snap: op.emoji_snap,
+        color_snap: op.color_snap,
+      }))
+    )
+    if (errorOpciones) console.error('[pedidos] Error insertando opciones item', i, ':', errorOpciones)
+  }
 
-  return NextResponse.json({
-    dispositivo: { ...dispositivo, sucursales, empresas }
-  })
+  return NextResponse.json({ pedido })
 }
