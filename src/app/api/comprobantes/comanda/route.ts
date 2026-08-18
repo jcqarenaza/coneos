@@ -71,12 +71,12 @@ ${datos?.direccion ? `
 ${datos.entre_calles ? `<div class="dato-sub">${datos.entre_calles}</div>` : ''}
 <div class="linea"></div>` : ''}
 
-${items.map(item => `
-<div>
-  <div class="item-prod">${item.nombre_producto_snap}</div>
-  <div class="item-pres">${item.cantidad > 1 ? `${item.cantidad}x ` : ''}${item.nombre_presentacion_snap}</div>
-  ${item.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${item.pedido_item_opciones.map(op => op.nombre_snap).join(' - ')}</div>` : ''}
-</div>`).join('<div class="linea"></div>')}
+${items.map(item => {
+    const prod = (item.nombre_producto_snap ?? '').toLowerCase()
+    const pres = (item.nombre_presentacion_snap ?? '').toLowerCase()
+    const mostrarProd = prod && !pres.includes(prod) && !prod.includes(pres)
+    return `<div>${mostrarProd ? `<div class="item-prod">${item.nombre_producto_snap}</div>` : ''}<div class="item-pres">${item.cantidad > 1 ? `${item.cantidad}x ` : ''}${item.nombre_presentacion_snap}</div>${item.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${item.pedido_item_opciones.map((op: {nombre_snap: string}) => op.nombre_snap).join(' - ')}</div>` : ''}</div>`
+  }).join('<div class="linea"></div>')}
 
 <div class="linea"></div>
 
