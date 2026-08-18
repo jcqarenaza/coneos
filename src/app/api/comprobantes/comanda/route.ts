@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   .btns { display: none !important; }
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: 'Calibri', Arial, sans-serif; font-size: 15px; background: white; width: 76mm; padding: 3mm; word-wrap: break-word; overflow-wrap: break-word; }
+body { font-family: 'Calibri', Arial, sans-serif; font-size: 15px; background: white; width: 68mm; max-width: 68mm; padding: 2mm; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; }
 .linea { border-top: 1px dashed #000; margin: 5px 0; }
 .grande { font-size: 26px; font-weight: bold; text-align: center; }
 .chico { font-size: 13px; color: #444; text-align: center; }
