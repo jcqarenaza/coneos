@@ -86,7 +86,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       setDispositivo({ id: disp.id, empresa_id: disp.empresa_id, sucursal_id: disp.sucursal_id, empresas: { nombre: empData?.nombre ?? '' } })
 
       // Obtener delivery_config, empresa_config y hora Argentina desde el servidor (evita RLS del cliente)
-      const horaRes = await fetch(`/api/hora-argentina?sucursal_id=${disp.sucursal_id}`)
+      const horaRes = await fetch(`/api/hora-argentina?sucursal_id=${disp.sucursal_id}&empresa_id=${disp.empresa_id}`)
       if (horaRes.ok) {
         const horaData = await horaRes.json()
         const dc = horaData.delivery_config

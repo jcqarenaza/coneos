@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const sucursal_id = searchParams.get('sucursal_id')
+  const empresa_id = searchParams.get('empresa_id')
 
   const hora = new Date().toLocaleTimeString('en-GB', {
     timeZone: 'America/Argentina/Buenos_Aires',
@@ -12,31 +13,18 @@ export async function GET(request: Request) {
 
   if (!sucursal_id) return NextResponse.json({ hora })
 
-  // Traer delivery_config con service_role para evitar RLS
   const supabase = createAdminClient()
-  const { data: dc } = await supabase
-    .from('delivery_config')
-    .select('costo_envio, horarios, mensaje_fuera_horario, activo')
-    .eq('sucursal_id', sucursal_id)
-    .single()
 
-  // Traer config de empresa también
-  let empresa_config = null
-  if (dc) {
-    const { data: disp } = await supabase
-      .from('delivery_config')
-      .select('empresa_id')
+  const [{ data: dc }, { data: emp }] = await Promise.all([
+    supabase.from('delivery_config')
+      .select('costo_envio, horarios, mensaje_fuera_horario, activo')
       .eq('sucursal_id', sucursal_id)
-      .single()
-    if (disp?.empresa_id) {
-      const { data: emp } = await supabase
-        .from('empresas')
-        .select('nombre, config:empresa_config(primary_color, secondary_color, logo_url)')
-        .eq('id', disp.empresa_id)
-        .single()
-      empresa_config = emp
-    }
-  }
+      .single(),
+    empresa_id ? supabase.from('empresas')
+      .select('nombre, config:empresa_config(primary_color, secondary_color, logo_url)')
+      .eq('id', empresa_id)
+      .single() : Promise.resolve({ data: null })
+  ])
 
-  return NextResponse.json({ hora, delivery_config: dc, empresa_config })
+  return NextResponse.json({ hora, delivery_config: dc, empresa_config: emp })
 }
