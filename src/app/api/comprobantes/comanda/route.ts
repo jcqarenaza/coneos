@@ -24,8 +24,9 @@ export async function POST(request: Request) {
   }[]
 
   const datos = pedido.datos_delivery as { nombre?: string; telefono?: string; direccion?: string; entre_calles?: string } | null
-  const metodoLabel: Record<string, string> = { efectivo: '💵 Efectivo', transferencia: '📲 Transferencia', mp: '📱 Mercado Pago' }
+  const metodoLabel: Record<string, string> = { efectivo: 'EFECTIVO', transferencia: 'TRANSFERENCIA', mp: 'MERCADO PAGO' }
   const fmt = (n: number) => `$${Number(n).toLocaleString('es-AR')}`
+  const fecha = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'numeric' })
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -34,57 +35,75 @@ export async function POST(request: Request) {
 <title>Comanda #${pedido.numero_pedido}</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Courier New',monospace; background:#f5f5f5; display:flex; flex-direction:column; align-items:center; padding:20px; gap:12px; }
-.ticket { background:white; width:320px; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); }
-.header { text-align:center; border-bottom:2px solid #000; padding-bottom:12px; margin-bottom:12px; }
-.titulo { font-size:18px; font-weight:bold; letter-spacing:2px; }
-.pedido-num { font-size:32px; font-weight:bold; text-align:center; margin:8px 0; }
-.seccion { border-bottom:1px dashed #ccc; padding:10px 0; margin-bottom:8px; }
-.seccion-titulo { font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#666; margin-bottom:6px; }
-.dato { font-size:13px; font-weight:bold; margin-bottom:3px; }
-.dato-sub { font-size:11px; color:#444; }
-.item { margin-bottom:10px; }
-.item-pres { font-size:13px; font-weight:bold; }
-.item-ops { font-size:11px; color:#333; font-weight:bold; margin-top:2px; }
-.total { display:flex; justify-content:space-between; font-size:16px; font-weight:bold; margin-top:10px; padding-top:10px; border-top:2px solid #000; }
-.cadete { background:#000; color:#fff; text-align:center; padding:8px; border-radius:4px; font-size:13px; font-weight:bold; margin-top:10px; }
-.btns { display:flex; gap:8px; }
-.btn { padding:10px 24px; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:bold; }
-@media print { body { background:white; padding:0; } .ticket { box-shadow:none; } .btns { display:none; } }
+body { font-family: Arial, sans-serif; background: white; display: flex; flex-direction: column; align-items: center; padding: 10px; }
+.ticket { width: 72mm; padding: 4mm; }
+.linea { border-top: 1px dashed #000; margin: 6px 0; }
+.centro { text-align: center; }
+.grande { font-size: 28px; font-weight: bold; }
+.medio { font-size: 18px; font-weight: bold; }
+.normal { font-size: 14px; }
+.chico { font-size: 12px; color: #444; }
+.item-pres { font-size: 16px; font-weight: bold; margin-top: 6px; }
+.item-sab { font-size: 14px; margin-left: 8px; }
+.fila { display: flex; justify-content: space-between; }
+.total-label { font-size: 18px; font-weight: bold; }
+.total-valor { font-size: 22px; font-weight: bold; }
+.metodo { font-size: 16px; font-weight: bold; text-align: center; margin-top: 6px; }
+.cadete { font-size: 16px; font-weight: bold; text-align: center; margin-top: 6px; border: 2px solid #000; padding: 4px; }
+.footer { font-size: 11px; text-align: center; color: #666; margin-top: 8px; }
+.btns { display: flex; gap: 8px; margin-top: 12px; }
+.btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; }
+@media print { body { padding: 0; } .btns { display: none; } }
 </style>
 </head>
 <body>
 <div class="ticket">
-  <div class="header">
-    <div class="titulo">🛵 COMANDA DELIVERY</div>
-    <div class="pedido-num">#${pedido.numero_pedido}</div>
+
+  <div class="centro">
+    <div class="grande">#${pedido.numero_pedido}</div>
+    <div class="chico">${fecha}</div>
   </div>
-  ${datos ? `<div class="seccion">
-    <div class="seccion-titulo">📍 Dirección de entrega</div>
-    <div class="dato">${datos.direccion ?? ''}</div>
-    ${datos.entre_calles ? `<div class="dato-sub">Entre: ${datos.entre_calles}</div>` : ''}
-  </div>` : ''}
-  <div class="seccion">
-    <div class="seccion-titulo">🍦 Pedido</div>
-    ${items.map(item => `<div class="item">
-      <div class="item-pres">${item.cantidad}× ${item.nombre_presentacion_snap}</div>
-      ${item.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${item.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}</div>` : ''}
-    </div>`).join('')}
+
+  <div class="linea"></div>
+
+  ${datos?.direccion ? `
+  <div class="medio">${datos.direccion}</div>
+  ${datos.entre_calles ? `<div class="normal">entre ${datos.entre_calles}</div>` : ''}
+  ` : ''}
+
+  <div class="linea"></div>
+
+  ${items.map(item => `
+  <div>
+    <div class="item-pres">${item.cantidad > 1 ? `${item.cantidad}x ` : ''}${item.nombre_presentacion_snap}</div>
+    ${item.pedido_item_opciones?.length > 0
+      ? item.pedido_item_opciones.map(op => `<div class="item-sab">${op.nombre_snap}</div>`).join('')
+      : ''}
+  </div>`).join('<div class="linea"></div>')}
+
+  <div class="linea"></div>
+
+  ${datos?.telefono ? `<div class="normal">${datos.telefono}</div>` : ''}
+  ${datos?.nombre ? `<div class="chico">${datos.nombre}</div>` : ''}
+
+  <div class="linea"></div>
+
+  <div class="fila">
+    <span class="total-label">TOTAL</span>
+    <span class="total-valor">${fmt(pedido.total)}</span>
   </div>
-  ${datos?.telefono ? `<div class="seccion">
-    <div class="seccion-titulo">📞 Teléfono</div>
-    <div class="dato">${datos.telefono}</div>
-    ${datos.nombre ? `<div class="dato-sub">${datos.nombre}</div>` : ''}
-  </div>` : ''}
-  <div class="seccion">
-    <div class="seccion-titulo">💳 Método de pago</div>
-    <div class="dato">${metodoLabel[pedido.metodo_pago ?? ''] ?? pedido.metodo_pago ?? '—'}</div>
-  </div>
-  <div class="total"><span>TOTAL</span><span>${fmt(pedido.total)}</span></div>
-  ${pedido.colaborador_nombre ? `<div class="cadete">🛵 ${pedido.colaborador_nombre}</div>` : ''}
+  <div class="metodo">${metodoLabel[pedido.metodo_pago ?? ''] ?? pedido.metodo_pago ?? '—'}</div>
+
+  ${pedido.colaborador_nombre ? `
+  <div class="linea"></div>
+  <div class="cadete">CADETE: ${pedido.colaborador_nombre}</div>` : ''}
+
+  <div class="footer">este ticket es la confirmación de tu pedido</div>
+
 </div>
+
 <div class="btns">
-  <button class="btn" style="background:#000;color:white" onclick="window.print()">🖨️ Imprimir</button>
+  <button class="btn" style="background:#000;color:white" onclick="window.print()">Imprimir</button>
   <button class="btn" style="background:#f1f1f1;color:#333" onclick="window.close()">Cerrar</button>
 </div>
 </body>
