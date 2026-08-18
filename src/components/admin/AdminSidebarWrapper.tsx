@@ -11,6 +11,7 @@ export default function AdminSidebarWrapper() {
   const router = useRouter()
   const [usuarioNombre, setUsuarioNombre] = useState('')
   const [empresaNombre, setEmpresaNombre] = useState('')
+  const [modulos, setModulos] = useState<Record<string, boolean>>({})
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -45,6 +46,15 @@ export default function AdminSidebarWrapper() {
       if (ua.nombre) setUsuarioNombre(ua.nombre)
       const empNombre = (ua.empresas as { nombre: string; slug: string } | null)?.nombre
       if (empNombre) setEmpresaNombre(empNombre)
+
+      // Cargar módulos habilitados
+      const { data: cfg } = await supabase
+        .from('empresa_config')
+        .select('modulos')
+        .eq('empresa_id', ua.empresa_id)
+        .single()
+      const mods = cfg?.modulos as Record<string, boolean> | null
+      setModulos(mods ?? { kiosk: true, caja: true, preparacion: true, display: true, delivery: false })
       setReady(true)
     }
     init()
@@ -56,5 +66,5 @@ export default function AdminSidebarWrapper() {
     </div>
   )
 
-  return <AdminSidebar usuarioNombre={usuarioNombre} empresaNombre={empresaNombre} slug={slug} />
+  return <AdminSidebar usuarioNombre={usuarioNombre} empresaNombre={empresaNombre} slug={slug} modulos={modulos} />
 }
