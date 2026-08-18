@@ -34,78 +34,74 @@ export async function POST(request: Request) {
 <meta charset="UTF-8">
 <title>Comanda #${pedido.numero_pedido}</title>
 <style>
+@media print {
+  @page { margin: 0; size: 80mm auto; }
+  .btns { display: none !important; }
+}
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: Arial, sans-serif; background: white; display: flex; flex-direction: column; align-items: center; padding: 10px; }
-.ticket { width: 72mm; padding: 4mm; }
-.linea { border-top: 1px dashed #000; margin: 6px 0; }
-.centro { text-align: center; }
-.grande { font-size: 28px; font-weight: bold; }
-.medio { font-size: 18px; font-weight: bold; }
-.normal { font-size: 14px; }
-.chico { font-size: 12px; color: #444; }
-.item-pres { font-size: 16px; font-weight: bold; margin-top: 6px; }
-.item-sab { font-size: 14px; margin-left: 8px; }
+body { font-family: 'Calibri', Arial, sans-serif; font-size: 16px; background: white; width: 80mm; padding: 4mm; }
+.linea { border-top: 1px dashed #000; margin: 5px 0; }
+.grande { font-size: 26px; font-weight: bold; text-align: center; }
+.chico { font-size: 13px; color: #444; text-align: center; }
+.seccion-titulo { font-size: 11px; text-transform: uppercase; color: #666; margin-bottom: 3px; }
+.dato { font-size: 16px; font-weight: bold; }
+.dato-sub { font-size: 13px; color: #444; }
+.item-prod { font-size: 13px; color: #444; }
+.item-pres { font-size: 16px; font-weight: bold; }
+.item-ops { font-size: 14px; font-weight: bold; margin-top: 2px; }
 .fila { display: flex; justify-content: space-between; }
 .total-label { font-size: 18px; font-weight: bold; }
-.total-valor { font-size: 22px; font-weight: bold; }
-.metodo { font-size: 16px; font-weight: bold; text-align: center; margin-top: 6px; }
-.cadete { font-size: 16px; font-weight: bold; text-align: center; margin-top: 6px; border: 2px solid #000; padding: 4px; }
-.footer { font-size: 11px; text-align: center; color: #666; margin-top: 8px; }
-.btns { display: flex; gap: 8px; margin-top: 12px; }
+.total-valor { font-size: 20px; font-weight: bold; }
+.metodo { font-size: 16px; font-weight: bold; text-align: center; margin-top: 4px; }
+.cadete { border: 2px solid #000; text-align: center; padding: 6px; font-size: 16px; font-weight: bold; margin-top: 8px; }
+.footer { font-size: 12px; text-align: center; color: #666; margin-top: 8px; }
+.btns { display: flex; gap: 8px; margin-top: 12px; justify-content: center; }
 .btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; }
-@media print { body { padding: 0; } .btns { display: none; } }
 </style>
 </head>
 <body>
-<div class="ticket">
 
-  <div class="centro">
-    <div class="grande">#${pedido.numero_pedido}</div>
-    <div class="chico">${fecha}</div>
-  </div>
+<div class="grande">#${pedido.numero_pedido}</div>
+<div class="chico">${fecha}</div>
 
-  <div class="linea"></div>
+<div class="linea"></div>
 
-  ${datos?.direccion ? `
-  <div class="medio">${datos.direccion}</div>
-  ${datos.entre_calles ? `<div class="normal">entre ${datos.entre_calles}</div>` : ''}
-  ` : ''}
+${datos?.direccion ? `
+<div class="dato">${datos.direccion}</div>
+${datos.entre_calles ? `<div class="dato-sub">entre ${datos.entre_calles}</div>` : ''}
+<div class="linea"></div>` : ''}
 
-  <div class="linea"></div>
+${items.map(item => `
+<div>
+  <div class="item-prod">${item.nombre_producto_snap}</div>
+  <div class="item-pres">${item.cantidad > 1 ? `${item.cantidad}x ` : ''}${item.nombre_presentacion_snap}</div>
+  ${item.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${item.pedido_item_opciones.map(op => op.nombre_snap).join(' - ')}</div>` : ''}
+</div>`).join('<div class="linea"></div>')}
 
-  ${items.map(item => `
-  <div>
-    <div class="item-pres">${item.cantidad > 1 ? `${item.cantidad}x ` : ''}${item.nombre_presentacion_snap}</div>
-    ${item.pedido_item_opciones?.length > 0
-      ? item.pedido_item_opciones.map(op => `<div class="item-sab">${op.nombre_snap}</div>`).join('')
-      : ''}
-  </div>`).join('<div class="linea"></div>')}
+<div class="linea"></div>
 
-  <div class="linea"></div>
+${datos?.telefono ? `<div class="dato">${datos.telefono}</div>` : ''}
+${datos?.nombre ? `<div class="dato-sub">${datos.nombre}</div>` : ''}
 
-  ${datos?.telefono ? `<div class="normal">${datos.telefono}</div>` : ''}
-  ${datos?.nombre ? `<div class="chico">${datos.nombre}</div>` : ''}
+<div class="linea"></div>
 
-  <div class="linea"></div>
-
-  <div class="fila">
-    <span class="total-label">TOTAL</span>
-    <span class="total-valor">${fmt(pedido.total)}</span>
-  </div>
-  <div class="metodo">${metodoLabel[pedido.metodo_pago ?? ''] ?? pedido.metodo_pago ?? '—'}</div>
-
-  ${pedido.colaborador_nombre ? `
-  <div class="linea"></div>
-  <div class="cadete">CADETE: ${pedido.colaborador_nombre}</div>` : ''}
-
-  <div class="footer">este ticket es la confirmación de tu pedido</div>
-
+<div class="fila">
+  <span class="total-label">TOTAL</span>
+  <span class="total-valor">${fmt(pedido.total)}</span>
 </div>
+<div class="metodo">${metodoLabel[pedido.metodo_pago ?? ''] ?? pedido.metodo_pago ?? '—'}</div>
+
+${pedido.colaborador_nombre ? `
+<div class="linea"></div>
+<div class="cadete">CADETE: ${pedido.colaborador_nombre}</div>` : ''}
+
+<div class="footer">este ticket es la confirmacion de tu pedido</div>
 
 <div class="btns">
   <button class="btn" style="background:#000;color:white" onclick="window.print()">Imprimir</button>
   <button class="btn" style="background:#f1f1f1;color:#333" onclick="window.close()">Cerrar</button>
 </div>
+
 </body>
 </html>`
 
