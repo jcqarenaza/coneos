@@ -20,5 +20,23 @@ export async function GET(request: Request) {
     .eq('sucursal_id', sucursal_id)
     .single()
 
-  return NextResponse.json({ hora, delivery_config: dc })
+  // Traer config de empresa también
+  let empresa_config = null
+  if (dc) {
+    const { data: disp } = await supabase
+      .from('delivery_config')
+      .select('empresa_id')
+      .eq('sucursal_id', sucursal_id)
+      .single()
+    if (disp?.empresa_id) {
+      const { data: emp } = await supabase
+        .from('empresas')
+        .select('nombre, config:empresa_config(primary_color, secondary_color, logo_url)')
+        .eq('id', disp.empresa_id)
+        .single()
+      empresa_config = emp
+    }
+  }
+
+  return NextResponse.json({ hora, delivery_config: dc, empresa_config })
 }

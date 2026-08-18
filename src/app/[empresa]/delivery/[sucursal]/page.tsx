@@ -85,7 +85,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
       setDispositivo({ id: disp.id, empresa_id: disp.empresa_id, sucursal_id: disp.sucursal_id, empresas: { nombre: empData?.nombre ?? '' } })
 
-      // Obtener delivery_config y hora Argentina desde el servidor (evita RLS del cliente)
+      // Obtener delivery_config, empresa_config y hora Argentina desde el servidor (evita RLS del cliente)
       const horaRes = await fetch(`/api/hora-argentina?sucursal_id=${disp.sucursal_id}`)
       if (horaRes.ok) {
         const horaData = await horaRes.json()
@@ -96,6 +96,10 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
           setHorarioActivo(dc.activo ? estaEnHorario(horarios, horaData.hora) : false)
           if (dc.mensaje_fuera_horario) setMensajeFueraHorario(dc.mensaje_fuera_horario)
         }
+        // Config de empresa
+        const emp = horaData.empresa_config
+        const cfg = Array.isArray(emp?.config) ? emp?.config[0] : emp?.config
+        if (cfg) setConfig({ primary_color: cfg.primary_color || '#1E3A5F', secondary_color: cfg.secondary_color || '#F5C842', logo_url: cfg.logo_url })
       }
 
       setLoading(false)
@@ -119,7 +123,10 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
   if (!horarioActivo) return (
     <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center" style={{ backgroundColor: '#faf8f5' }}>
-      <div className="text-6xl mb-6">🍦</div>
+      {config.logo_url
+        ? <img src={config.logo_url} alt="Logo" className="w-32 h-32 object-contain mb-6" />
+        : <div className="text-6xl mb-6">🍦</div>
+      }
       <h2 className="text-2xl font-bold text-neutral-800 mb-3">Delivery cerrado</h2>
       <p className="text-neutral-500 text-base max-w-xs">{mensajeFueraHorario}</p>
     </div>
