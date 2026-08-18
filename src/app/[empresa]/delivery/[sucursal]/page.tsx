@@ -23,10 +23,9 @@ export interface ItemCarrito {
 
 type Paso = 'inicio' | 'catalogo' | 'carrito' | 'confirmacion'
 
-function estaEnHorario(horarios: { desde: string; hasta: string }[]): boolean {
+function estaEnHorario(horarios: { desde: string; hasta: string }[], horaArgentina: string): boolean {
   if (!horarios || horarios.length === 0) return true
-  const ahora = new Date().toLocaleString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })
-  const [hh, mm] = ahora.split(':').map(Number)
+  const [hh, mm] = horaArgentina.split(':').map(Number)
   const minActual = hh * 60 + mm
   return horarios.some(({ desde, hasta }) => {
     const [dh, dm] = desde.split(':').map(Number)
@@ -34,7 +33,6 @@ function estaEnHorario(horarios: { desde: string; hasta: string }[]): boolean {
     const minDesde = dh * 60 + dm
     const minHasta = hah * 60 + ham
     if (minHasta < minDesde) {
-      // Franja cruza medianoche (ej: 20:00 a 01:00)
       return minActual >= minDesde || minActual <= minHasta
     }
     return minActual >= minDesde && minActual <= minHasta
@@ -91,7 +89,11 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       if (dc) {
         setCostoEnvio(Number(dc.costo_envio))
         const horarios = (dc.horarios as { desde: string; hasta: string }[]) ?? []
-        setHorarioActivo(dc.activo ? estaEnHorario(horarios) : false)
+        // Obtener hora de Argentina desde el servidor para evitar problemas de timezone en browser
+        const horaRes = await fetch('/api/hora-argentina')
+        const horaData = horaRes.ok ? await horaRes.json() : null
+        const horaArgentina = horaData?.hora ?? new Date().toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })
+        setHorarioActivo(dc.activo ? estaEnHorario(horarios, horaArgentina) : false)
         if (dc.mensaje_fuera_horario) setMensajeFueraHorario(dc.mensaje_fuera_horario)
       }
 
