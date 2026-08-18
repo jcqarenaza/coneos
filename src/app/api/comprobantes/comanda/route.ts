@@ -37,25 +37,23 @@ export async function POST(request: Request) {
 @media print {
   @page { margin: 2mm; }
   .btns { display: none !important; }
-  .total-valor { float: right; }
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: 'Calibri', Arial, sans-serif; font-size: 15px; background: white; padding: 0; margin: 0; word-wrap: break-word; overflow-wrap: break-word; }
-.linea { border-top: 1px dashed #000; margin: 5px 0; }
-.grande { font-size: 26px; font-weight: bold; text-align: center; }
-.chico { font-size: 13px; color: #444; text-align: center; }
-.seccion-titulo { font-size: 11px; text-transform: uppercase; color: #666; margin-bottom: 3px; }
-.dato { font-size: 16px; font-weight: bold; }
-.dato-sub { font-size: 13px; color: #444; }
-.item-prod { font-size: 13px; color: #444; }
-.item-pres { font-size: 16px; font-weight: bold; }
-.item-ops { font-size: 14px; font-weight: bold; margin-top: 2px; }
-.fila { display: flex; justify-content: space-between; }
-.total-label { font-size: 18px; font-weight: bold; }
-.total-valor { font-size: 20px; font-weight: bold; }
-.metodo { font-size: 16px; font-weight: bold; text-align: center; margin-top: 4px; }
-.cadete { border: 2px solid #000; text-align: center; padding: 6px; font-size: 16px; font-weight: bold; margin-top: 8px; }
-.footer { font-size: 12px; text-align: center; color: #666; margin-top: 8px; }
+body { font-family: 'Calibri', Arial, sans-serif; font-size: 13px; font-weight: bold; background: white; padding: 0; margin: 0; word-wrap: break-word; overflow-wrap: break-word; }
+.linea { border-top: 1px dashed #000; margin: 4px 0; }
+.grande { font-size: 28px; font-weight: bold; text-align: center; }
+.chico { font-size: 12px; font-weight: normal; text-align: center; }
+.dato { font-size: 14px; font-weight: bold; }
+.dato-sub { font-size: 12px; font-weight: normal; }
+.item-prod { font-size: 12px; font-weight: normal; }
+.item-pres { font-size: 14px; font-weight: bold; }
+.item-ops { font-size: 13px; font-weight: bold; margin-top: 2px; }
+.fila { display: table; width: 100%; }
+.total-label { display: table-cell; font-size: 16px; font-weight: bold; }
+.total-valor { display: table-cell; font-size: 16px; font-weight: bold; text-align: right; }
+.metodo { font-size: 15px; font-weight: bold; text-align: center; margin-top: 4px; }
+.cadete { border: 2px solid #000; text-align: center; padding: 5px; font-size: 14px; font-weight: bold; margin-top: 6px; }
+.footer { font-size: 11px; font-weight: normal; text-align: center; margin-top: 6px; }
 .btns { display: flex; gap: 8px; margin-top: 12px; justify-content: center; }
 .btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; }
 </style>
@@ -96,7 +94,7 @@ ${pedido.colaborador_nombre ? `
 <div class="linea"></div>
 <div class="cadete">CADETE: ${pedido.colaborador_nombre}</div>` : ''}
 
-<div class="footer">este ticket es la confirmacion de tu pedido</div>
+
 
 <div class="btns">
   <button class="btn" style="background:#000;color:white" onclick="window.print()">Imprimir</button>
