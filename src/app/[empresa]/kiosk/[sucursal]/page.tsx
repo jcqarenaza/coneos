@@ -6,7 +6,6 @@ import { Loader2 } from 'lucide-react'
 import KioskInicio from '@/components/kiosk/KioskInicio'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarrito from '@/components/kiosk/KioskCarrito'
-import KioskAccesorios from '@/components/kiosk/KioskAccesorios'
 import KioskConfirmacion from '@/components/kiosk/KioskConfirmacion'
 
 export interface EmpresaConfig {
@@ -43,7 +42,7 @@ export interface Accesorio {
   grupo_id: string
 }
 
-export type PasoKiosk = 'inicio' | 'catalogo' | 'carrito' | 'accesorios' | 'confirmacion'
+export type PasoKiosk = 'inicio' | 'catalogo' | 'carrito' | 'confirmacion'
 
 export default function KioskPage() {
   const searchParams = useSearchParams()
@@ -172,19 +171,11 @@ export default function KioskPage() {
         <KioskCarrito
           config={config}
           carrito={carrito}
+          accesorios={accesorios}
           onQuitar={quitarItem}
-          onConfirmar={() => accesorios.length > 0 ? setPaso('accesorios') : setPaso('confirmacion')}
+          onConfirmar={handleConfirmarAccesorios}
           onSeguirComprando={() => setPaso('catalogo')}
           onVaciar={limpiarCarrito}
-        />
-      )}
-      {paso === 'accesorios' && (
-        <KioskAccesorios
-          config={config}
-          accesorios={accesorios}
-          carrito={carrito}
-          onConfirmar={handleConfirmarAccesorios}
-          onVolver={() => setPaso('carrito')}
         />
       )}
       {paso === 'confirmacion' && (
