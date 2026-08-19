@@ -64,18 +64,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>()
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
   const [accesorios, setAccesorios] = useState<Accesorio[]>([])
-  const [installPrompt, setInstallPrompt] = useState<Event | null>(null)
-  const [mostrarInstall, setMostrarInstall] = useState(false)
 
-  useEffect(() => {
-    function handler(e: Event) {
-      e.preventDefault()
-      setInstallPrompt(e)
-      setMostrarInstall(true)
-    }
-    window.addEventListener('beforeinstallprompt', handler)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [horarioActivo, setHorarioActivo] = useState(true)
@@ -191,32 +180,8 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   return (
     <div className="min-h-screen">
       {paso === 'inicio' && (
-        <div className="relative">
-          <KioskInicio config={config} dispositivo={dispositivo}
+        <KioskInicio config={config} dispositivo={dispositivo}
             onComenzar={(catId) => { setCategoriaInicial(catId); setPaso('catalogo') }} />
-          {mostrarInstall && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-              <button onClick={async () => {
-                if (!installPrompt) return
-                ;(installPrompt as any).prompt()
-                const { outcome } = await (installPrompt as any).userChoice
-                if (outcome === 'accepted') setMostrarInstall(false)
-              }}
-                className="flex items-center gap-2 bg-white/90 backdrop-blur-sm shadow-lg rounded-full px-5 py-2.5 text-sm font-semibold text-neutral-700 border border-neutral-200 active:scale-95 transition-all">
-                <span>📲</span> Agregar al inicio
-                <span onClick={(e) => { e.stopPropagation(); setMostrarInstall(false) }} className="ml-1 text-neutral-400 text-xs cursor-pointer">✕</span>
-              </button>
-            </div>
-          )}
-          {!mostrarInstall && !installPrompt && typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent) && !/standalone/i.test(navigator.userAgent) && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-72">
-              <div className="bg-white/90 backdrop-blur-sm shadow-lg rounded-2xl px-4 py-3 text-center border border-neutral-200">
-                <p className="text-xs text-neutral-500">Para instalar como app en iPhone:</p>
-                <p className="text-xs font-semibold text-neutral-700 mt-0.5">Tocá <span className="text-blue-500">Compartir</span> → "Agregar a inicio" en Safari</p>
-              </div>
-            </div>
-          )}
-        </div>
       )}
       {paso === 'catalogo' && (
         <KioskCatalogo
