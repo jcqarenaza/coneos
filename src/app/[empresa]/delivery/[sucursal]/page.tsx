@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import KioskInicio from '@/components/kiosk/KioskInicio'
+import { useEffect, useRef } from 'react'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarritoDelivery from '@/components/delivery/KioskCarritoDelivery'
 import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDelivery'
@@ -64,6 +65,18 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>()
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
   const [accesorios, setAccesorios] = useState<Accesorio[]>([])
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null)
+  const [mostrarInstall, setMostrarInstall] = useState(false)
+
+  useEffect(() => {
+    function handler(e: Event) {
+      e.preventDefault()
+      setInstallPrompt(e)
+      setMostrarInstall(true)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [horarioActivo, setHorarioActivo] = useState(true)
@@ -179,8 +192,24 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   return (
     <div className="min-h-screen">
       {paso === 'inicio' && (
-        <KioskInicio config={config} dispositivo={dispositivo}
-          onComenzar={(catId) => { setCategoriaInicial(catId); setPaso('catalogo') }} />
+        <div className="relative">
+          <KioskInicio config={config} dispositivo={dispositivo}
+            onComenzar={(catId) => { setCategoriaInicial(catId); setPaso('catalogo') }} />
+          {mostrarInstall && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+              <button onClick={async () => {
+                if (!installPrompt) return
+                ;(installPrompt as any).prompt()
+                const { outcome } = await (installPrompt as any).userChoice
+                if (outcome === 'accepted') setMostrarInstall(false)
+              }}
+                className="flex items-center gap-2 bg-white/90 backdrop-blur-sm shadow-lg rounded-full px-5 py-2.5 text-sm font-semibold text-neutral-700 border border-neutral-200 active:scale-95 transition-all">
+                <span>📲</span> Agregar al inicio
+                <button onClick={() => setMostrarInstall(false)} className="ml-1 text-neutral-400 hover:text-neutral-600 text-xs">✕</button>
+              </button>
+            </div>
+          )}
+        </div>
       )}
       {paso === 'catalogo' && (
         <KioskCatalogo
