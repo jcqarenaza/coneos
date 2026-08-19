@@ -119,6 +119,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     if (!datos.nombre.trim()) errs.nombre = 'Ingresá tu nombre'
     if (!datos.telefono.trim()) errs.telefono = 'Ingresá tu teléfono'
     if (!datos.direccion.trim()) errs.direccion = 'Ingresá tu dirección'
+    if (!datos.entre_calles.trim()) errs.entre_calles = 'Ingresá las calles de referencia'
     setErroresCampos(errs)
     if (Object.keys(errs).length > 0) return
     setPaso('pago')
@@ -154,7 +155,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             { key: 'nombre', label: 'Nombre y apellido', placeholder: 'Juan García', type: 'text', required: true },
             { key: 'telefono', label: 'Teléfono', placeholder: '3491 123456', type: 'tel', required: true },
             { key: 'direccion', label: 'Dirección', placeholder: 'San Martín 456', type: 'text', required: true },
-            { key: 'entre_calles', label: 'Entre calles (opcional)', placeholder: 'Rivadavia y Belgrano', type: 'text', required: false },
+            { key: 'entre_calles', label: 'Entre calles', placeholder: '268 y 270', type: 'text', required: true },
           ].map(({ key, label, placeholder, type, required }) => (
             <div key={key}>
               <label className="text-xs font-semibold text-neutral-500 mb-1 block">
