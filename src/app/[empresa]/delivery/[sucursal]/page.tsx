@@ -11,6 +11,15 @@ import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDe
 export interface EmpresaConfig {
   primary_color: string; secondary_color: string; logo_url: string | null
 }
+export interface Accesorio {
+  id: string
+  nombre: string
+  emoji: string | null
+  imagen_url: string | null
+  precio_adicional: number
+  grupo_id: string
+}
+
 export interface DispositivoKiosk {
   id: string; empresa_id: string; sucursal_id: string
   empresas?: { nombre: string } | null
@@ -54,6 +63,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>()
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
+  const [accesorios, setAccesorios] = useState<Accesorio[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [horarioActivo, setHorarioActivo] = useState(true)
@@ -102,6 +112,16 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         if (cfg) setConfig({ primary_color: cfg.primary_color || '#1E3A5F', secondary_color: cfg.secondary_color || '#F5C842', logo_url: cfg.logo_url })
       }
 
+      // Cargar accesorios
+      const catRes = await fetch(`/api/kiosk/catalogo?empresa_id=${disp.empresa_id}&sucursal_id=${disp.sucursal_id}`)
+      if (catRes.ok) {
+        const cat = await catRes.json()
+        const grupos = (cat.grupos ?? []) as { id: string; nombre: string }[]
+        const gruposAccesorios = grupos.filter((g: { id: string; nombre: string }) => g.nombre.toLowerCase().includes('accesorio'))
+        const grupoIds = new Set(gruposAccesorios.map((g: { id: string }) => g.id))
+        const opcionesAcc = (cat.opciones ?? []).filter((op: Accesorio) => grupoIds.has(op.grupo_id) && (op.precio_adicional ?? 0) > 0)
+        setAccesorios(opcionesAcc)
+      }
       setLoading(false)
     }
     init()
@@ -110,6 +130,24 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const agregarAlCarrito = useCallback((item: Omit<ItemCarrito, 'id'>) => {
     setCarrito(prev => [...prev, { ...item, id: generarId() }])
   }, [])
+
+  function handleConfirmarCarrito(extras: { accesorio: Accesorio; cantidad: number }[]) {
+    if (extras.length > 0) {
+      setCarrito(prev => [
+        ...prev,
+        ...extras.map(({ accesorio, cantidad }) => ({
+          id: generarId(),
+          presentacion_id: '',
+          nombre_producto: accesorio.nombre,
+          nombre_presentacion: accesorio.nombre,
+          precio: accesorio.precio_adicional,
+          cantidad,
+          opciones: [],
+        }))
+      ])
+    }
+    setPaso('confirmacion')
+  }
 
   function nuevoPedido() {
     setCarrito([]); setPedidoCreado(null); setPaso('inicio'); setCategoriaInicial(undefined)
@@ -159,8 +197,9 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         <KioskCarritoDelivery
           config={config} dispositivo={dispositivo}
           carrito={carrito} setCarrito={setCarrito}
+          accesorios={accesorios}
           costoEnvio={costoEnvio}
-          onConfirmar={() => setPaso('confirmacion')}
+          onConfirmar={handleConfirmarCarrito}
           onSeguirComprando={() => setPaso('catalogo')}
           onVolver={() => setPaso('catalogo')} />
       )}
