@@ -1,10 +1,25 @@
-import type { Metadata } from 'next'
+// Layout server-side de la ruta delivery.
+// Inyecta el <link rel="manifest"> correcto ANTES de servir el HTML.
+// Los browsers usan el último <link rel="manifest"> que encuentran,
+// por lo que este sobreescribe al del layout raíz.
 
-export const metadata: Metadata = {
-  title: 'Delivery',
-  manifest: '/delivery-manifest.json',
-}
+export default async function DeliveryLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode
+  params: Promise<{ empresa: string; sucursal: string }>
+}) {
+  const { empresa, sucursal } = await params
 
-export default function DeliveryLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
+  return (
+    <>
+      {/* Manifest dinámico por empresa/sucursal — sobreescribe el raíz */}
+      <link
+        rel="manifest"
+        href={`/api/manifest?empresa=${empresa}&sucursal=${sucursal}`}
+      />
+      {children}
+    </>
+  )
 }
