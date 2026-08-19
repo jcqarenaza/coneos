@@ -72,18 +72,40 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
   useEffect(() => {
     async function init() {
-      if (!token) { setError('Dispositivo no configurado'); setLoading(false); return }
+      let disp: { id: string; empresa_id: string; sucursal_id: string; tipo: string } | null = null
 
-      // Usar /api/device/verify igual que kiosk — compatible con todos los browsers
-      const res = await fetch('/api/device/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_token: token }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.dispositivo) { setError(data.error ?? 'Dispositivo no encontrado'); setLoading(false); return }
+      if (token) {
+        // Flujo normal con token (iOS y links directos)
+        const res = await fetch('/api/device/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_token: token }),
+        })
+        const data = await res.json()
+        if (res.ok && data.dispositivo) disp = data.dispositivo
+      }
 
-      const disp = data.dispositivo
+      if (!disp) {
+        // Fallback sin token (PWA Android instalada abre start_url sin query params)
+        // Buscar dispositivo DELIVERY activo de la sucursal por slug
+        const supabaseFb = createClient()
+        const { data: emp } = await supabaseFb.from('empresas').select('id').eq('slug', params.empresa).single()
+        if (emp) {
+          const { data: suc } = await supabaseFb.from('sucursales').select('id').eq('empresa_id', emp.id).eq('slug', params.sucursal).single()
+          if (suc) {
+            const { data: d } = await supabaseFb.from('dispositivos')
+              .select('id, empresa_id, sucursal_id, tipo')
+              .eq('sucursal_id', suc.id)
+              .eq('tipo', 'DELIVERY')
+              .eq('activo', true)
+              .limit(1)
+              .maybeSingle()
+            if (d) disp = d
+          }
+        }
+      }
+
+      if (!disp) { setError('Dispositivo no configurado'); setLoading(false); return }
       if (disp.tipo !== 'DELIVERY') { setError('Este dispositivo no es de delivery'); setLoading(false); return }
 
       // Cargar config de empresa
