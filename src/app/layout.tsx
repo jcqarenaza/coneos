@@ -23,9 +23,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
             var path = window.location.pathname;
+            var token = new URLSearchParams(window.location.search).get('token');
             var manifestLink = document.getElementById('pwa-manifest');
-            if (manifestLink && path.includes('/delivery/')) {
-              manifestLink.href = '/delivery-manifest.json';
+            if (!manifestLink) return;
+
+            // Detectar tipo de dispositivo por ruta
+            var tipo = null;
+            if (path.includes('/delivery/') || path.includes('/d/')) tipo = 'delivery';
+            else if (path.includes('/kiosk/')) tipo = 'kiosk';
+            else if (path.includes('/display/')) tipo = 'display';
+
+            if (tipo && token) {
+              // Manifest dinámico via API
+              manifestLink.href = '/api/pwa-manifest?tipo=' + tipo + '&token=' + encodeURIComponent(token) + '&path=' + encodeURIComponent(path);
             }
           })();
         `}} />
