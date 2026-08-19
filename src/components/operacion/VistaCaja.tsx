@@ -498,22 +498,26 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
                 <div className="space-y-2">
                   {seleccionado.estado === 'PENDING_PAYMENT' && (<>
-                    {seleccionado.metodo_pago !== 'transferencia' && (
-                      <button onClick={async () => {
-                          await cambiarEstado(seleccionado.id, 'PAID')
-                          await cambiarEstado(seleccionado.id, 'PREPARING')
-                          imprimirTicket(seleccionado.id)
-                        }} disabled={procesando}
-                        className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
-                        {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
-                      </button>
+                    {seleccionado.metodo_pago && (
+                      <div className="flex items-center gap-2 mb-2 px-1">
+                        <span className="text-xs text-neutral-400">Cliente eligió:</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${seleccionado.metodo_pago === 'efectivo' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                          {seleccionado.metodo_pago === 'efectivo' ? '💵 Efectivo' : seleccionado.metodo_pago === 'transferencia' ? '📲 Transferencia' : '📱 Mercado Pago'}
+                        </span>
+                      </div>
                     )}
-                    {seleccionado.metodo_pago !== 'efectivo' && (
-                      <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
-                        className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
-                        📱 Cobrar transferencia
-                      </button>
-                    )}
+                    <button onClick={async () => {
+                        await cambiarEstado(seleccionado.id, 'PAID')
+                        await cambiarEstado(seleccionado.id, 'PREPARING')
+                        imprimirTicket(seleccionado.id)
+                      }} disabled={procesando}
+                      className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
+                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
+                    </button>
+                    <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
+                      className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
+                      📱 Cobrar transferencia
+                    </button>
                   </>)}
                   {seleccionado.estado === 'PAID' && (
                     <button onClick={() => cambiarEstado(seleccionado.id, 'PREPARING')} disabled={procesando}

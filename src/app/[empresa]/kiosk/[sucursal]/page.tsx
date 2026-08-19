@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react'
 import KioskInicio from '@/components/kiosk/KioskInicio'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarrito from '@/components/kiosk/KioskCarrito'
+import KioskAccesorios from '@/components/kiosk/KioskAccesorios'
 import KioskConfirmacion from '@/components/kiosk/KioskConfirmacion'
 
 export interface EmpresaConfig {
@@ -33,7 +34,16 @@ export interface ItemCarrito {
   opciones: { opcion_id: string; nombre: string; emoji: string | null; color: string | null }[]
 }
 
-export type PasoKiosk = 'inicio' | 'catalogo' | 'carrito' | 'confirmacion'
+export interface Accesorio {
+  id: string
+  nombre: string
+  emoji: string | null
+  imagen_url: string | null
+  precio_adicional: number
+  grupo_id: string
+}
+
+export type PasoKiosk = 'inicio' | 'catalogo' | 'carrito' | 'accesorios' | 'confirmacion'
 
 export default function KioskPage() {
   const searchParams = useSearchParams()
@@ -43,6 +53,7 @@ export default function KioskPage() {
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
   const [paso, setPaso] = useState<PasoKiosk>('inicio')
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
+  const [accesorios, setAccesorios] = useState<Accesorio[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
@@ -60,9 +71,19 @@ export default function KioskPage() {
       .then(async data => {
         if (data.error) { setError(data.error); return }
         setDispositivo(data.dispositivo)
-        const res = await fetch(`/api/kiosk/config?empresa_id=${data.dispositivo.empresa_id}`)
-        const cfg = await res.json()
+        const [cfgRes, catRes] = await Promise.all([
+          fetch(`/api/kiosk/config?empresa_id=${data.dispositivo.empresa_id}`),
+          fetch(`/api/kiosk/catalogo?empresa_id=${data.dispositivo.empresa_id}&sucursal_id=${data.dispositivo.sucursal_id}`)
+        ])
+        const cfg = await cfgRes.json()
+        const cat = await catRes.json()
         setConfig(cfg)
+        // Filtrar solo opciones de grupos de accesorios
+        const grupos = (cat.grupos ?? []) as { id: string; nombre: string }[]
+        const gruposAccesorios = grupos.filter((g: { id: string; nombre: string }) => g.nombre.toLowerCase().includes('accesorio'))
+        const grupoIds = new Set(gruposAccesorios.map((g: { id: string }) => g.id))
+        const opcionesAcc = (cat.opciones ?? []).filter((op: Accesorio) => grupoIds.has(op.grupo_id) && (op.precio_adicional ?? 0) > 0)
+        setAccesorios(opcionesAcc)
       })
       .catch(() => setError('Error de conexión'))
       .finally(() => setLoading(false))
@@ -75,7 +96,7 @@ export default function KioskPage() {
   }, [config])
 
   function agregarItem(item: Omit<ItemCarrito, 'id'>) {
-    setCarrito(prev => [...prev, { ...item, id: crypto.randomUUID() }])
+    setCarrito(prev => [...prev, { ...item, id: Math.random().toString(36).substring(2) + Date.now().toString(36) }])
   }
 
   function quitarItem(id: string) {
@@ -93,6 +114,22 @@ export default function KioskPage() {
   function handleComenzar(categoriaId?: string) {
     setCategoriaInicial(categoriaId)
     setPaso('catalogo')
+  }
+
+  function handleConfirmarAccesorios(extras: { accesorio: Accesorio; cantidad: number }[]) {
+    // Agregar accesorios como items separados al carrito
+    extras.forEach(({ accesorio, cantidad }) => {
+      setCarrito(prev => [...prev, {
+        id: Math.random().toString(36).substring(2) + Date.now().toString(36),
+        presentacion_id: accesorio.id,
+        nombre_producto: accesorio.nombre,
+        nombre_presentacion: accesorio.nombre,
+        precio: accesorio.precio_adicional,
+        cantidad,
+        opciones: [],
+      }])
+    })
+    setPaso('confirmacion')
   }
 
   if (loading) return (
@@ -136,9 +173,18 @@ export default function KioskPage() {
           config={config}
           carrito={carrito}
           onQuitar={quitarItem}
-          onConfirmar={() => setPaso('confirmacion')}
+          onConfirmar={() => accesorios.length > 0 ? setPaso('accesorios') : setPaso('confirmacion')}
           onSeguirComprando={() => setPaso('catalogo')}
           onVaciar={limpiarCarrito}
+        />
+      )}
+      {paso === 'accesorios' && (
+        <KioskAccesorios
+          config={config}
+          accesorios={accesorios}
+          carrito={carrito}
+          onConfirmar={handleConfirmarAccesorios}
+          onVolver={() => setPaso('carrito')}
         />
       )}
       {paso === 'confirmacion' && (

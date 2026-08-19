@@ -107,13 +107,22 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     setCola(nuevaCola); setColaIndex(0); setOpcionesSeleccionadas([]); setGrupoActivo(null); setPaso('opciones')
   }
 
+  function esAccesorio(op: Opcion): boolean {
+    const grupo = grupos.find(g => g.id === op.grupo_id)
+    return grupo?.nombre.toLowerCase().includes('accesorio') ?? false
+  }
+
   function toggleOpcion(op: Opcion) {
     const actual = cola[colaIndex]
     if (!actual) return
     const ya = opcionesSeleccionadas.find(o => o.id === op.id)
     if (ya) { setOpcionesSeleccionadas(prev => prev.filter(o => o.id !== op.id)) }
     else {
-      if (opcionesSeleccionadas.length >= actual.presentacion.opciones_max) return
+      // Accesorios no cuentan para el límite de sabores
+      if (!esAccesorio(op)) {
+        const saboresSeleccionados = opcionesSeleccionadas.filter(o => !esAccesorio(o))
+        if (saboresSeleccionados.length >= actual.presentacion.opciones_max) return
+      }
       setOpcionesSeleccionadas(prev => [...prev, op])
     }
   }
@@ -121,7 +130,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   function confirmarSabores() {
     const actual = cola[colaIndex]
     if (!actual) return
-    if (actual.presentacion.permite_opciones && opcionesSeleccionadas.length < actual.presentacion.opciones_min) return
+    const saboresCount = opcionesSeleccionadas.filter(o => { const g = grupos.find(gr => gr.id === o.grupo_id); return !g?.nombre.toLowerCase().includes('accesorio') }).length
+    if (actual.presentacion.permite_opciones && saboresCount < actual.presentacion.opciones_min) return
     onAgregar({
       presentacion_id: actual.presentacion.id, nombre_producto: actual.producto.nombre,
       nombre_presentacion: actual.presentacion.nombre, precio: actual.presentacion.precio,
@@ -349,7 +359,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               </h2>
               <p className="text-neutral-500">
                 {actualCola.presentacion.opciones_max === 1 ? 'Elegí una variedad' : `Elegí entre ${actualCola.presentacion.opciones_min} y ${actualCola.presentacion.opciones_max} sabores`}
-                {' '}<span className="font-bold" style={{ color: config.primary_color }}>({opcionesSeleccionadas.length}/{actualCola.presentacion.opciones_max})</span>
+                {' '}<span className="font-bold" style={{ color: config.primary_color }}>({opcionesSeleccionadas.filter(o => { const g = grupos.find(gr => gr.id === o.grupo_id); return !g?.nombre.toLowerCase().includes('accesorio') }).length}/{actualCola.presentacion.opciones_max})</span>
               </p>
             </div>
 
@@ -395,7 +405,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {[...opcionesFiltradas].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(op => {
                 const sel = opcionesSeleccionadas.find(o => o.id === op.id)
-                const maxAlcanzado = opcionesSeleccionadas.length >= actualCola.presentacion.opciones_max
+                const saboresSeleccionados = opcionesSeleccionadas.filter(o => { const g = grupos.find(gr => gr.id === o.grupo_id); return !g?.nombre.toLowerCase().includes('accesorio') })
+                const maxAlcanzado = !esAccesorio(op) && saboresSeleccionados.length >= actualCola.presentacion.opciones_max
                 const tieneImagen = !!op.imagen_url
 
                 return (
