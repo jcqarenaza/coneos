@@ -87,22 +87,14 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
       if (!disp) {
         // Fallback sin token (PWA Android instalada abre start_url sin query params)
-        // Buscar dispositivo DELIVERY activo de la sucursal por slug
-        const supabaseFb = createClient()
-        const { data: emp } = await supabaseFb.from('empresas').select('id').eq('slug', params.empresa).single()
-        if (emp) {
-          const { data: suc } = await supabaseFb.from('sucursales').select('id').eq('empresa_id', emp.id).eq('slug', params.sucursal).single()
-          if (suc) {
-            const { data: d } = await supabaseFb.from('dispositivos')
-              .select('id, empresa_id, sucursal_id, tipo')
-              .eq('sucursal_id', suc.id)
-              .eq('tipo', 'DELIVERY')
-              .eq('activo', true)
-              .limit(1)
-              .maybeSingle()
-            if (d) disp = d
-          }
-        }
+        // Buscar via API server-side (bypassa RLS)
+        const resFb = await fetch('/api/device/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ empresa_slug: params.empresa, sucursal_slug: params.sucursal, tipo: 'DELIVERY' }),
+        })
+        const dataFb = await resFb.json()
+        if (resFb.ok && dataFb.dispositivo) disp = dataFb.dispositivo
       }
 
       if (!disp) { setError('Dispositivo no configurado'); setLoading(false); return }
