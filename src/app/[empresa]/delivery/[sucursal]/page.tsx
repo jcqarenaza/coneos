@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import KioskInicio from '@/components/kiosk/KioskInicio'
-import { useEffect, useRef } from 'react'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarritoDelivery from '@/components/delivery/KioskCarritoDelivery'
 import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDelivery'
@@ -205,8 +204,16 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
               }}
                 className="flex items-center gap-2 bg-white/90 backdrop-blur-sm shadow-lg rounded-full px-5 py-2.5 text-sm font-semibold text-neutral-700 border border-neutral-200 active:scale-95 transition-all">
                 <span>📲</span> Agregar al inicio
-                <button onClick={() => setMostrarInstall(false)} className="ml-1 text-neutral-400 hover:text-neutral-600 text-xs">✕</button>
+                <span onClick={(e) => { e.stopPropagation(); setMostrarInstall(false) }} className="ml-1 text-neutral-400 text-xs cursor-pointer">✕</span>
               </button>
+            </div>
+          )}
+          {!mostrarInstall && !installPrompt && typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent) && !/standalone/i.test(navigator.userAgent) && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-72">
+              <div className="bg-white/90 backdrop-blur-sm shadow-lg rounded-2xl px-4 py-3 text-center border border-neutral-200">
+                <p className="text-xs text-neutral-500">Para instalar como app en iPhone:</p>
+                <p className="text-xs font-semibold text-neutral-700 mt-0.5">Tocá <span className="text-blue-500">Compartir</span> → "Agregar a inicio" en Safari</p>
+              </div>
             </div>
           )}
         </div>
