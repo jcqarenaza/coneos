@@ -116,18 +116,20 @@ export default function KioskPage() {
   }
 
   function handleConfirmarAccesorios(extras: { accesorio: Accesorio; cantidad: number }[]) {
-    // Agregar accesorios como items separados al carrito
-    extras.forEach(({ accesorio, cantidad }) => {
-      setCarrito(prev => [...prev, {
-        id: Math.random().toString(36).substring(2) + Date.now().toString(36),
-        presentacion_id: accesorio.id,
-        nombre_producto: accesorio.nombre,
-        nombre_presentacion: accesorio.nombre,
-        precio: accesorio.precio_adicional,
-        cantidad,
-        opciones: [],
-      }])
-    })
+    if (extras.length > 0) {
+      setCarrito(prev => [
+        ...prev,
+        ...extras.map(({ accesorio, cantidad }) => ({
+          id: Math.random().toString(36).substring(2) + Date.now().toString(36),
+          presentacion_id: '', // null-safe — la FK acepta null tras el alter
+          nombre_producto: accesorio.nombre,
+          nombre_presentacion: accesorio.nombre,
+          precio: accesorio.precio_adicional,
+          cantidad,
+          opciones: [],
+        }))
+      ])
+    }
     setPaso('confirmacion')
   }
 

@@ -29,9 +29,7 @@ export default function KioskCarrito({ config, carrito, accesorios, onQuitar, on
   }
 
   function handleConfirmar() {
-    // Agregar accesorios seleccionados al carrito antes de confirmar
-    // Se pasan via callback
-    onConfirmar(accesorios.filter(a => (cantAccesorios[a.id] ?? 0) > 0).map(a => ({ accesorio: a, cantidad: cantAccesorios[a.id] })))
+    onConfirmar(accesorios.filter(a => (cantAccesorios[a.id] ?? 0) > 0).map(a => ({ accesorio: a, cantidad: cantAccesorios[a.id] ?? 0 })))
   }
 
   return (
