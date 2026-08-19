@@ -1,11 +1,23 @@
 import { MetadataRoute } from 'next'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-export default function manifest(): MetadataRoute.Manifest {
+export default async function manifest({ params }: { params: { empresa: string; sucursal: string } }): Promise<MetadataRoute.Manifest> {
+  const supabase = createAdminClient()
+  
+  const { data: empresa } = await supabase
+    .from('empresas')
+    .select('nombre')
+    .eq('slug', params.empresa)
+    .single()
+
+  const nombre = empresa?.nombre ?? 'Delivery'
+
   return {
-    name: 'Cecchetto Delivery',
-    short_name: 'Delivery',
+    name: nombre,
+    short_name: nombre,
     description: 'Pedí tu helado a domicilio',
-    start_url: '/cecchetto/d/cecchetto-delivery',
+    start_url: `/${params.empresa}/delivery/${params.sucursal}`,
+    id: `/${params.empresa}/delivery/${params.sucursal}`,
     display: 'standalone',
     orientation: 'portrait',
     background_color: '#faf8f5',
