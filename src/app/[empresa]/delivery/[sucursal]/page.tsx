@@ -88,10 +88,15 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       if (!disp) {
         // Fallback sin token (PWA Android instalada abre start_url sin query params)
         // Buscar via API server-side (bypassa RLS)
+        // Leer slugs del pathname (params puede ser Promise en Next 16)
+        const partes = window.location.pathname.split('/').filter(Boolean)
+        // pathname: /[empresa]/delivery/[sucursal]
+        const empresaSlug = partes[0] ?? ''
+        const sucursalSlug = partes[2] ?? ''
         const resFb = await fetch('/api/device/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ empresa_slug: params.empresa, sucursal_slug: params.sucursal, tipo: 'DELIVERY' }),
+          body: JSON.stringify({ empresa_slug: empresaSlug, sucursal_slug: sucursalSlug, tipo: 'DELIVERY' }),
         })
         const dataFb = await resFb.json()
         if (resFb.ok && dataFb.dispositivo) disp = dataFb.dispositivo
