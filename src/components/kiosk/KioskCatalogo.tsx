@@ -8,7 +8,7 @@ import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empres
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null }
-interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string }
+interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string; precio_adicional?: number }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 interface PendienteSabores { presentacion: Presentacion; producto: Producto; numero: number; total: number }
@@ -425,6 +425,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                     <div className="p-2 text-center">
                       <p className="text-neutral-800 font-semibold text-sm leading-tight">{op.nombre}</p>
                       {op.descripcion && <p className="text-neutral-400 text-xs mt-0.5 line-clamp-1">{op.descripcion}</p>}
+                      {(op.precio_adicional ?? 0) > 0 && <p className="text-xs font-bold mt-0.5" style={{ color: config.primary_color }}>+${Number(op.precio_adicional).toLocaleString('es-AR')}</p>}
                     </div>
                   </button>
                 )
