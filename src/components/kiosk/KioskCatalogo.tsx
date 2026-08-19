@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
+
 import { ShoppingCart, ArrowLeft, Check, Plus, Minus, X } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
@@ -189,7 +189,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           <ArrowLeft className="h-5 w-5" /><span className="text-sm font-medium">Volver</span>
         </button>
         {config.logo_url
-          ? <Image src={config.logo_url} alt="Logo" width={120} height={48} className="object-contain" style={{ maxHeight: 44 }} />
+          ? <img src={config.logo_url} alt="Logo" width={120} height={48} className="object-contain" style={{ maxHeight: 44 }} />
           : <span className="font-bold text-lg" style={{ color: config.primary_color }}>{dispositivo.empresas?.nombre}</span>}
         <button onClick={onVerCarrito} className="relative flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium transition-all active:scale-95" style={{ backgroundColor: config.primary_color }}>
           <ShoppingCart className="h-5 w-5" />
@@ -244,17 +244,17 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                     <div className="flex-1 w-full p-2">
                       {tieneIcono ? (
                         <div className="w-full h-full rounded-xl overflow-hidden">
-                          <Image src={cat.icono_url!} alt={cat.nombre} width={200} height={200} className="object-cover w-full h-full" />
+                          <img src={cat.icono_url!} alt={cat.nombre} width={200} height={200} className="object-cover w-full h-full" />
                         </div>
                       ) : fotos.length === 1 ? (
                         <div className="w-full h-full rounded-xl overflow-hidden">
-                          <Image src={fotos[0]} alt="" width={200} height={200} className="object-cover w-full h-full" />
+                          <img src={fotos[0]} alt="" width={200} height={200} className="object-cover w-full h-full" />
                         </div>
                       ) : fotos.length > 1 ? (
                         <div className={`w-full h-full grid gap-0.5 rounded-xl overflow-hidden ${fotos.length >= 4 ? 'grid-cols-2 grid-rows-2' : fotos.length === 3 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2'}`}>
                           {fotos.slice(0, 4).map((url, i) => (
                             <div key={i} className={`overflow-hidden ${fotos.length === 3 && i === 0 ? 'row-span-2' : ''}`}>
-                              <Image src={url} alt="" width={100} height={100} className="object-cover w-full h-full" />
+                              <img src={url} alt="" width={100} height={100} className="object-cover w-full h-full" />
                             </div>
                           ))}
                         </div>
@@ -291,7 +291,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                         return (
                           <div className="w-20 h-20 rounded-xl bg-neutral-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
                             {prod.imagen_url
-                              ? <Image src={prod.imagen_url} alt={prod.nombre} width={80} height={80} className="object-cover w-full h-full" />
+                              ? <img src={prod.imagen_url} alt={prod.nombre} width={80} height={80} className="object-cover w-full h-full" />
                               : null}
                           </div>
                         )
@@ -309,7 +309,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                             <div className="flex items-center gap-3">
                             {p.imagen_url && (
                               <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0">
-                                <Image src={p.imagen_url} alt={p.nombre} width={56} height={56} className="object-cover w-full h-full" />
+                                <img src={p.imagen_url} alt={p.nombre} width={56} height={56} className="object-cover w-full h-full" />
                               </div>
                             )}
                             <div>
@@ -378,7 +378,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                     className="flex items-center gap-1.5 px-4 py-2 rounded-full text-white text-sm font-medium shadow-sm active:opacity-80 transition-opacity"
                     style={{ backgroundColor: config.primary_color }}>
                     {op.imagen_url
-                      ? <Image src={op.imagen_url} alt={op.nombre} width={18} height={18} className="rounded-full object-cover" />
+                      ? <img src={op.imagen_url} alt={op.nombre} width={18} height={18} className="rounded-full object-cover" />
                       : op.emoji}
                     {op.nombre}<X className="h-3.5 w-3.5 opacity-70" />
                   </button>
@@ -417,7 +417,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                     {/* Imagen del sabor */}
                     {tieneImagen ? (
                       <div className="w-full aspect-square overflow-hidden bg-neutral-50">
-                        <Image src={op.imagen_url!} alt={op.nombre} width={200} height={200} className="object-cover w-full h-full" />
+                        <img src={op.imagen_url!} alt={op.nombre} width={200} height={200} className="object-cover w-full h-full" />
                       </div>
                     ) : (
                       <div className="w-full aspect-square flex items-center justify-center bg-neutral-50">

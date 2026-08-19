@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import Image from 'next/image'
+
 import { Loader2, CheckCircle, RefreshCw, ArrowRight, Copy, Check } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
@@ -185,7 +185,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
         <div className="text-center max-w-sm w-full">
-          {config.logo_url && <Image src={config.logo_url} alt="Logo" width={160} height={64} className="object-contain mx-auto mb-8" />}
+          {config.logo_url && <img src={config.logo_url} alt="Logo" width={160} height={64} className="object-contain mx-auto mb-8" />}
           <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg" style={{ backgroundColor: config.primary_color }}>
             <CheckCircle className="h-10 w-10 text-white" />
           </div>
@@ -214,7 +214,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
         <div className="text-center max-w-sm w-full">
-          {config.logo_url && <Image src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
+          {config.logo_url && <img src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
 
           <div className="bg-white rounded-3xl p-6 shadow-md border border-neutral-100 mb-5">
             <p className="text-neutral-400 text-xs uppercase tracking-widest mb-1">Pedido</p>
@@ -251,33 +251,23 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
             </div>
           </div>
 
-          {/* Campo comprobante */}
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 mb-4 shadow-sm">
-            <p className="text-sm font-bold text-blue-800 mb-1">📋 Últimos 3 números del comprobante</p>
-            <p className="text-xs text-blue-500 mb-3">Necesario para confirmar tu pago en caja</p>
+          {/* Campo comprobante opcional */}
+          <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-4 shadow-sm">
+            <p className="text-sm font-semibold text-neutral-700 mb-2">¿Tenés el número de comprobante?</p>
             <div className="flex items-center gap-2">
-              <span className="text-blue-300 text-lg font-mono font-bold">...</span>
+              <span className="text-neutral-400 text-sm font-mono">...</span>
               <input
                 value={numComprobante}
                 onChange={e => setNumComprobante(e.target.value.replace(/\D/g, '').slice(0, 3))}
                 placeholder="123"
                 maxLength={3}
-                type="tel"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoFocus
-                className="flex-1 px-4 py-3 rounded-xl border-2 border-blue-200 text-xl font-mono font-black text-center tracking-widest focus:outline-none focus:border-blue-400 bg-white"
+                className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-xl font-mono font-bold text-center tracking-widest focus:outline-none focus:border-neutral-400"
               />
             </div>
+            <p className="text-neutral-400 text-xs mt-1.5 text-center">Últimos 3 números — opcional</p>
           </div>
 
-          <button onClick={async () => {
-              if (numComprobante.trim()) {
-                const { createClient } = await import('@/lib/supabase/client')
-                await createClient().from('pedidos').update({ notas: `Comprobante: ...${numComprobante.trim()}` }).eq('id', pedidoTransferencia.id)
-              }
-              onPedidoCreado(pedidoTransferencia.numero, pedidoTransferencia.codigo)
-            }}
+          <button onClick={() => { onPedidoCreado(pedidoTransferencia.numero, pedidoTransferencia.codigo) }}
             className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all mb-3"
             style={{ backgroundColor: config.primary_color }}>
             ✅ Ya realicé la transferencia
@@ -294,7 +284,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
         <div className="text-center max-w-sm w-full">
-          {config.logo_url && <Image src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
+          {config.logo_url && <img src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
           <div className="bg-white rounded-3xl p-8 shadow-md border border-neutral-100 mb-6">
             <p className="text-2xl font-black mb-2" style={{ color: config.primary_color }}>Mercado Pago</p>
             <p className="text-neutral-400 text-sm mb-6">Escaneá el QR o tocá el botón para pagar</p>
@@ -350,7 +340,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
       <div className="flex items-center justify-center px-6 py-5 bg-white border-b border-neutral-100">
         {config.logo_url
-          ? <Image src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain" style={{ maxHeight: 52 }} />
+          ? <img src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain" style={{ maxHeight: 52 }} />
           : <span className="font-bold text-xl" style={{ color: config.primary_color }}>{dispositivo.empresas?.nombre}</span>}
       </div>
 

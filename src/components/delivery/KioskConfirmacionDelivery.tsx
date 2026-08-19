@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import Image from 'next/image'
+
 import { Loader2, CheckCircle, Copy, Check, Truck, Upload, X, ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
@@ -303,7 +303,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-5" style={{ backgroundColor: '#faf8f5' }}>
       <div className="w-full max-w-sm">
-        {config.logo_url && <Image src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
+        {config.logo_url && <img src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
         <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-md" style={{ backgroundColor: config.primary_color }}>
           <CheckCircle className="h-9 w-9 text-white" />
         </div>

@@ -1,14 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
+
 import type { EmpresaConfig, DispositivoKiosk } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string }
 interface Presentacion { id: string; producto_id: string; imagen_url: string | null }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
-interface Grupo { id: string; nombre: string }
 interface Opcion { id: string; grupo_id: string; imagen_url: string | null; emoji: string | null }
 
 interface Props {
@@ -37,7 +36,7 @@ function CategoriaFotos({ fotos, emoji }: { fotos: string[]; emoji: string }) {
 
   if (fotos.length === 1) return (
     <div className="w-full h-full rounded-xl overflow-hidden">
-      <Image src={fotos[0]} alt="" width={200} height={200} className="object-cover w-full h-full" />
+      <img src={fotos[0]} alt="" width={200} height={200} className="object-cover w-full h-full" />
     </div>
   )
 
@@ -46,7 +45,7 @@ function CategoriaFotos({ fotos, emoji }: { fotos: string[]; emoji: string }) {
     <div className={`w-full h-full grid gap-0.5 rounded-xl overflow-hidden ${grid.length >= 4 ? 'grid-cols-2 grid-rows-2' : grid.length === 3 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2'}`}>
       {grid.map((url, i) => (
         <div key={i} className={`overflow-hidden ${grid.length === 3 && i === 0 ? 'row-span-2' : ''}`}>
-          <Image src={url} alt="" width={100} height={100} className="object-cover w-full h-full" />
+          <img src={url} alt="" width={100} height={100} className="object-cover w-full h-full" />
         </div>
       ))}
     </div>
@@ -59,7 +58,6 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
   const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
   const [opciones, setOpciones] = useState<Opcion[]>([])
-  const [grupos, setGrupos] = useState<Grupo[]>([])
   const [hora, setHora] = useState('')
 
   useEffect(() => {
@@ -71,7 +69,6 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
         setPresentaciones(data.presentaciones ?? [])
         setPresGrupos(data.presentacion_grupos ?? [])
         setOpciones(data.opciones ?? [])
-        setGrupos(data.grupos ?? [])
       })
     const tick = () => setHora(new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }))
     tick()
@@ -97,14 +94,15 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   }
 
   function getFotosSaboresCat(catId: string): string[] {
+    // Obtener presentaciones de productos de esta categoría
     const prodIds = new Set(productos.filter(p => p.categoria_id === catId).map(p => p.id))
     const presIds = new Set(presentaciones.filter(p => prodIds.has(p.producto_id)).map(p => p.id))
+    // Obtener grupos vinculados a esas presentaciones
     const grupoIds = new Set(presGrupos.filter(pg => presIds.has(pg.presentacion_id)).map(pg => pg.grupo_id))
-    // Excluir grupos de accesorios (no son sabores)
-    const gruposAccesorios = new Set(grupos.filter(g => g.nombre.toLowerCase().includes('accesorio')).map(g => g.id))
+    // Obtener opciones con imagen de esos grupos (deduplicadas)
     const seen = new Set<string>()
     return opciones
-      .filter(op => grupoIds.has(op.grupo_id) && op.imagen_url && !gruposAccesorios.has(op.grupo_id))
+      .filter(op => grupoIds.has(op.grupo_id) && op.imagen_url)
       .filter(op => { if (seen.has(op.imagen_url!)) return false; seen.add(op.imagen_url!); return true })
       .map(op => op.imagen_url!)
       .slice(0, 4)
@@ -119,7 +117,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
         </div>
         <div className="flex-1 flex justify-center">
           {config.logo_url ? (
-            <Image src={config.logo_url} alt="Logo" width={200} height={80} className="object-contain" style={{ maxHeight: 72 }} />
+            <img src={config.logo_url} alt="Logo" width={200} height={80} className="object-contain" style={{ maxHeight: 72 }} />
           ) : (
             <span className="text-2xl font-bold" style={{ color: config.primary_color }}>{dispositivo.empresas?.nombre}</span>
           )}
@@ -161,7 +159,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
                 <div className="flex-1 w-full p-2">
                   {tieneIcono ? (
                     <div className="w-full h-full rounded-xl overflow-hidden">
-                      <Image src={cat.icono_url!} alt={cat.nombre} width={200} height={200} className="object-cover w-full h-full" />
+                      <img src={cat.icono_url!} alt={cat.nombre} width={200} height={200} className="object-cover w-full h-full" />
                     </div>
                   ) : tieneFotos ? (
                     <CategoriaFotos fotos={fotos} emoji={getEmoji(cat.nombre)} />
