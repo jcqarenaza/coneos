@@ -92,11 +92,33 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const cargarPedidosRef = useRef(cargarPedidos)
   useEffect(() => { cargarPedidosRef.current = cargarPedidos }, [cargarPedidos])
 
+  const pedidosCountRef = useRef(0)
+
+  function reproducirSonido() {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(880, ctx.currentTime)
+      osc.frequency.setValueAtTime(660, ctx.currentTime + 0.1)
+      gain.gain.setValueAtTime(0.3, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+      osc.start(ctx.currentTime)
+      osc.stop(ctx.currentTime + 0.4)
+    } catch {}
+  }
+
   useEffect(() => {
     cargarPedidos()
     const supabase = createClient()
     const channel = supabase.channel(`caja-${dispositivo.sucursal_id}-${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, () => cargarPedidosRef.current())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, (payload) => {
+        if (payload.eventType === 'INSERT') reproducirSonido()
+        cargarPedidosRef.current()
+      })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [dispositivo])
