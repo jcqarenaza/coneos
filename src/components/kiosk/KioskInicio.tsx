@@ -8,6 +8,7 @@ interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string }
 interface Presentacion { id: string; producto_id: string; imagen_url: string | null }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
+interface Grupo { id: string; nombre: string }
 interface Opcion { id: string; grupo_id: string; imagen_url: string | null; emoji: string | null }
 
 interface Props {
@@ -58,6 +59,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
   const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
   const [opciones, setOpciones] = useState<Opcion[]>([])
+  const [grupos, setGrupos] = useState<Grupo[]>([])
   const [hora, setHora] = useState('')
 
   useEffect(() => {
@@ -69,6 +71,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
         setPresentaciones(data.presentaciones ?? [])
         setPresGrupos(data.presentacion_grupos ?? [])
         setOpciones(data.opciones ?? [])
+        setGrupos(data.grupos ?? [])
       })
     const tick = () => setHora(new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }))
     tick()
@@ -94,15 +97,14 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   }
 
   function getFotosSaboresCat(catId: string): string[] {
-    // Obtener presentaciones de productos de esta categoría
     const prodIds = new Set(productos.filter(p => p.categoria_id === catId).map(p => p.id))
     const presIds = new Set(presentaciones.filter(p => prodIds.has(p.producto_id)).map(p => p.id))
-    // Obtener grupos vinculados a esas presentaciones
     const grupoIds = new Set(presGrupos.filter(pg => presIds.has(pg.presentacion_id)).map(pg => pg.grupo_id))
-    // Obtener opciones con imagen de esos grupos (deduplicadas)
+    // Excluir grupos de accesorios (no son sabores)
+    const gruposAccesorios = new Set(grupos.filter(g => g.nombre.toLowerCase().includes('accesorio')).map(g => g.id))
     const seen = new Set<string>()
     return opciones
-      .filter(op => grupoIds.has(op.grupo_id) && op.imagen_url)
+      .filter(op => grupoIds.has(op.grupo_id) && op.imagen_url && !gruposAccesorios.has(op.grupo_id))
       .filter(op => { if (seen.has(op.imagen_url!)) return false; seen.add(op.imagen_url!); return true })
       .map(op => op.imagen_url!)
       .slice(0, 4)

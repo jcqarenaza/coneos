@@ -498,18 +498,22 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
                 <div className="space-y-2">
                   {seleccionado.estado === 'PENDING_PAYMENT' && (<>
-                    <button onClick={async () => {
-                        await cambiarEstado(seleccionado.id, 'PAID')
-                        await cambiarEstado(seleccionado.id, 'PREPARING')
-                        imprimirTicket(seleccionado.id)
-                      }} disabled={procesando}
-                      className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
-                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
-                    </button>
-                    <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
-                      className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
-                      📱 Cobrar transferencia
-                    </button>
+                    {seleccionado.metodo_pago !== 'transferencia' && (
+                      <button onClick={async () => {
+                          await cambiarEstado(seleccionado.id, 'PAID')
+                          await cambiarEstado(seleccionado.id, 'PREPARING')
+                          imprimirTicket(seleccionado.id)
+                        }} disabled={procesando}
+                        className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
+                        {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
+                      </button>
+                    )}
+                    {seleccionado.metodo_pago !== 'efectivo' && (
+                      <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
+                        className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
+                        📱 Cobrar transferencia
+                      </button>
+                    )}
                   </>)}
                   {seleccionado.estado === 'PAID' && (
                     <button onClick={() => cambiarEstado(seleccionado.id, 'PREPARING')} disabled={procesando}
