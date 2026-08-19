@@ -4,12 +4,14 @@ import { useState } from 'react'
 import { ArrowLeft, Trash2, ShoppingBag, Plus, Minus } from 'lucide-react'
 import type { EmpresaConfig, ItemCarrito, Accesorio } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
+interface AccesorioExtra { accesorio: Accesorio; cantidad: number }
+
 interface Props {
   config: EmpresaConfig
   carrito: ItemCarrito[]
   accesorios: Accesorio[]
   onQuitar: (id: string) => void
-  onConfirmar: () => void
+  onConfirmar: (extras: AccesorioExtra[]) => void
   onSeguirComprando: () => void
   onVaciar: () => void
 }
