@@ -171,6 +171,42 @@ export default function ConfigPage() {
           </div>
         </ConeCard>
 
+        {/* App instalable PWA */}
+        <ConeCard title="App instalable (PWA)">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Nombre de la app</Label>
+              <Input value={config.pwa_nombre ?? ''} onChange={e => setConfig({ ...config, pwa_nombre: e.target.value })}
+                placeholder="Cecchetto Delivery" />
+              <p className="text-xs text-neutral-400">Nombre que aparece al instalar la app en el celular. Vacío = nombre de la empresa.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Ícono de la app</Label>
+              <p className="text-xs text-neutral-400 mb-2">PNG cuadrado, mínimo 192×192px, ideal 512×512.</p>
+              {config.pwa_icono_url ? (
+                <div className="flex items-center gap-3">
+                  <img src={config.pwa_icono_url} alt="Ícono PWA" className="w-16 h-16 rounded-xl object-cover border border-neutral-200" />
+                  <ConeButton variant="outline" onClick={() => setConfig({ ...config, pwa_icono_url: null })} icon={<X className="h-4 w-4" />}>Quitar</ConeButton>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 px-4 py-2.5 border border-neutral-200 rounded-xl cursor-pointer hover:bg-neutral-50 transition-colors w-fit">
+                  <Upload className="h-4 w-4 text-neutral-400" />
+                  <span className="text-sm text-neutral-600">Subir ícono</span>
+                  <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={async e => {
+                    const file = e.target.files?.[0]
+                    if (!file || !ctx) return
+                    const supabase = createClient()
+                    const path = `pwa-icons/${ctx.empresaId}.png`
+                    await supabase.storage.from('logos').upload(path, file, { upsert: true })
+                    const { data } = supabase.storage.from('logos').getPublicUrl(path)
+                    setConfig({ ...config, pwa_icono_url: data.publicUrl + '?v=' + Date.now() })
+                  }} />
+                </label>
+              )}
+            </div>
+          </div>
+        </ConeCard>
+
         {/* Datos fiscales */}
         <ConeCard title="Datos fiscales">
           <div className="space-y-4">
