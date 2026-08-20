@@ -12,6 +12,8 @@ export async function GET(request: Request) {
   let nombre = 'ConeOS'
   let themeColor = '#1E3A5F'
   let logoUrl: string | null = null
+  let pwaNombre: string | null = null
+  let pwaIconoUrl: string | null = null
   let startUrl = '/'
 
   const supabase = createAdminClient()
@@ -30,15 +32,17 @@ export async function GET(request: Request) {
       if (emp) {
         nombre = emp.nombre
         startUrl = `/${emp.slug}/d/${token}`
-        const { data: cfg } = await supabase.from('empresa_config').select('primary_color, logo_url').eq('empresa_id', (await supabase.from('empresas').select('id').eq('slug', emp.slug).single()).data?.id ?? '').maybeSingle()
+        const { data: cfg } = await supabase.from('empresa_config').select('primary_color, logo_url, pwa_nombre, pwa_icono_url').eq('empresa_id', (await supabase.from('empresas').select('id').eq('slug', emp.slug).single()).data?.id ?? '').maybeSingle()
         if (cfg?.primary_color) themeColor = cfg.primary_color
         if (cfg?.logo_url) logoUrl = cfg.logo_url
+        if (cfg?.pwa_nombre) pwaNombre = cfg.pwa_nombre
+        if (cfg?.pwa_icono_url) pwaIconoUrl = cfg.pwa_icono_url
       }
     }
   } else if (empresaSlug) {
     const { data: emp } = await supabase
       .from('empresas')
-      .select('id, nombre, config:empresa_config(primary_color, logo_url)')
+      .select('id, nombre, config:empresa_config(primary_color, logo_url, pwa_nombre, pwa_icono_url)')
       .eq('slug', empresaSlug)
       .single()
     if (emp) {
@@ -46,22 +50,27 @@ export async function GET(request: Request) {
       const cfg = Array.isArray(emp.config) ? emp.config[0] : emp.config
       if (cfg?.primary_color) themeColor = cfg.primary_color
       if (cfg?.logo_url) logoUrl = cfg.logo_url
+      if (cfg?.pwa_nombre) pwaNombre = cfg.pwa_nombre
+      if (cfg?.pwa_icono_url) pwaIconoUrl = cfg.pwa_icono_url
       if (sucursalSlug) startUrl = `/${empresaSlug}/delivery/${sucursalSlug}`
     }
   }
 
+  const nombreFinal = pwaNombre ?? `${nombre} — Pedidos`
+  const iconoFinal = pwaIconoUrl ?? logoUrl
+
   const manifest = {
-    name: `${nombre} — Pedidos`,
-    short_name: nombre,
+    name: nombreFinal,
+    short_name: pwaNombre ?? nombre,
     description: `Hacé tu pedido en ${nombre}`,
     start_url: startUrl,
     display: 'standalone',
     background_color: '#faf8f5',
     theme_color: themeColor,
-    icons: logoUrl
+    icons: iconoFinal
       ? [
-          { src: logoUrl, sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: logoUrl, sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: iconoFinal, sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: iconoFinal, sizes: '512x512', type: 'image/png', purpose: 'any' },
         ]
       : [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
