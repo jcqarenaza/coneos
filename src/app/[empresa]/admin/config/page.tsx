@@ -1,4 +1,3 @@
-import Image from 'next/image'
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
@@ -8,6 +7,7 @@ import { ConePageHeader, ConeButton, ConeCard } from '@/components/admin/ConeCom
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Check, Upload, X } from 'lucide-react'
+import Image from 'next/image'
 
 interface Config {
   primary_color: string; secondary_color: string; logo_url: string | null
