@@ -37,6 +37,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             link.rel = 'manifest';
             link.href = href;
             document.head.appendChild(link);
+
+            // apple-touch-icon dinamico para iOS (iOS ignora el manifest para el icono)
+            if (href.indexOf('/api/manifest') === 0) {
+              fetch(href).then(function(r) { return r.json() }).then(function(m) {
+                if (m && m.icons && m.icons[0] && m.icons[0].src) {
+                  var old = document.querySelectorAll('link[rel="apple-touch-icon"]');
+                  old.forEach(function(l) { l.remove() });
+                  var ai = document.createElement('link');
+                  ai.rel = 'apple-touch-icon';
+                  ai.href = m.icons[0].src;
+                  document.head.appendChild(ai);
+                  if (m.name) {
+                    var mt = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+                    if (!mt) { mt = document.createElement('meta'); mt.name = 'apple-mobile-web-app-title'; document.head.appendChild(mt) }
+                    mt.content = m.name;
+                  }
+                }
+              }).catch(function() {});
+            }
           })();
         `}} />
       </head>
