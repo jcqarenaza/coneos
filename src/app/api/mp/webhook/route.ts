@@ -1,71 +1,52 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+// Webhook de Mercado Pago — confirma pagos
 export async function POST(request: Request) {
-  const body = await request.json()
-  console.log('MP webhook:', JSON.stringify(body))
+  const body = await request.json().catch(() => null)
+  if (!body) return NextResponse.json({ ok: true })
 
-  // MP envía notificaciones de tipo "payment"
-  if (body.type !== 'payment' || !body.data?.id) {
+  // MP manda type=payment con data.id
+  const paymentId = body?.data?.id
+  const type = body?.type ?? body?.topic
+
+  if (type !== 'payment' || !paymentId) {
     return NextResponse.json({ ok: true })
   }
 
-  const paymentId = body.data.id
-
-  // Obtener todos los access tokens configurados para verificar el pago
   const supabase = createAdminClient()
-  const { data: sucursales } = await supabase
-    .from('sucursal_pagos')
-    .select('mp_access_token, sucursal_id, empresa_id')
-    .not('mp_access_token', 'is', null)
 
-  if (!sucursales?.length) return NextResponse.json({ ok: true })
+  // Necesitamos saber de qué empresa es el pago — probamos con todas las credenciales
+  // (MP no incluye empresa en el webhook, pero el payment tiene external_reference = pedido_id)
+  const { data: credenciales } = await supabase.from('mp_credenciales').select('empresa_id, access_token')
 
-  // Intentar verificar el pago con cada token hasta encontrar el correcto
-  let payment = null
-  let sucursalData = null
-
-  for (const suc of sucursales) {
-    if (!suc.mp_access_token) continue
+  for (const cred of credenciales ?? []) {
     const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: { 'Authorization': `Bearer ${suc.mp_access_token}` },
+      headers: { 'Authorization': `Bearer ${cred.access_token}` },
     })
-    if (res.ok) {
-      payment = await res.json()
-      sucursalData = suc
-      break
+    if (!res.ok) continue
+
+    const payment = await res.json()
+    const pedidoId = payment.external_reference
+    if (!pedidoId) continue
+
+    if (payment.status === 'approved') {
+      const { data: pedido } = await supabase
+        .from('pedidos')
+        .select('id, estado, empresa_id')
+        .eq('id', pedidoId)
+        .eq('empresa_id', cred.empresa_id)
+        .single()
+
+      if (pedido && pedido.estado === 'PENDING_PAYMENT') {
+        await supabase.from('pedidos')
+          .update({ estado: 'PAID', notas: `MP payment ${paymentId}` })
+          .eq('id', pedido.id)
+        console.log(`[mp/webhook] Pedido ${pedidoId} pagado via MP ${paymentId}`)
+      }
     }
+    break
   }
 
-  if (!payment || !payment.external_reference) {
-    return NextResponse.json({ ok: true })
-  }
-
-  const pedidoId = payment.external_reference
-  const status = payment.status // approved, rejected, pending
-
-  if (status === 'approved') {
-    await supabase
-      .from('pedidos')
-      .update({ estado: 'PAID', mp_payment_id: String(paymentId) })
-      .eq('id', pedidoId)
-
-    await supabase.from('pedido_estados_log').insert({
-      pedido_id: pedidoId,
-      estado_anterior: 'PENDING_PAYMENT',
-      estado_nuevo: 'PAID',
-      operador_id: null,
-      notas: `MP payment_id: ${paymentId}`,
-    })
-  } else if (status === 'rejected') {
-    // El pedido queda en PENDING_PAYMENT — el cliente puede ir a caja
-    console.log(`MP pago rechazado para pedido ${pedidoId}`)
-  }
-
-  return NextResponse.json({ ok: true })
-}
-
-// MP también hace GET para verificar el endpoint
-export async function GET() {
   return NextResponse.json({ ok: true })
 }

@@ -52,6 +52,15 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const [paso, setPaso] = useState<'datos' | 'pago' | 'transferencia' | 'exito'>('datos')
   const [datos, setDatos] = useState<DatosDelivery>({ nombre: '', telefono: '', direccion: '', entre_calles: '' })
   const [erroresCampos, setErroresCampos] = useState<Partial<DatosDelivery>>({})
+  const [mpDisponible, setMpDisponible] = useState(false)
+
+  useEffect(() => {
+    // Verificar si la empresa tiene MP conectado via OAuth
+    fetch(`/api/mp/estado?empresa_id=${dispositivo.empresa_id}`)
+      .then(r => r.json())
+      .then(d => setMpDisponible(!!d.conectado))
+      .catch(() => setMpDisponible(false))
+  }, [dispositivo.empresa_id])
   const [metodoPago, setMetodoPago] = useState('efectivo')
   const [pagosSucursal, setPagosSucursal] = useState<PagosSucursal | null>(null)
   const [creando, setCreando] = useState(false)
@@ -129,6 +138,23 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     const pedido = await crearPedido(metodoPago)
     if (!pedido) return
     if (metodoPago === 'transferencia') { setPaso('transferencia') }
+    else if (metodoPago === 'mp') {
+      // Crear preferencia y redirigir al checkout de MP
+      setCreando(true)
+      const res = await fetch('/api/mp/preferencia', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido_id: pedido.id }),
+      })
+      const data = await res.json()
+      setCreando(false)
+      if (res.ok && data.init_point) {
+        window.location.href = data.init_point
+      } else {
+        // Fallback: mostrar éxito igual, la caja cobra manual
+        onPedidoCreado(pedido.numero_pedido, pedido.codigo_retiro)
+        setPaso('exito')
+      }
+    }
     else { onPedidoCreado(pedido.numero_pedido, pedido.codigo_retiro); setPaso('exito') }
   }
 
@@ -193,7 +219,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   // ── PAGO ──
   if (paso === 'pago') {
-    const mpConfigurado = pagosSucursal?.mp_access_token && pagosSucursal.mp_access_token.length > 10
+    const mpConfigurado = mpDisponible
     const metodos: { id: string; label: string; desc: string }[] = []
     if (pagosSucursal?.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo al repartidor', desc: 'Pagás cuando llegue tu pedido' })
     if (pagosSucursal?.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia bancaria', desc: `Alias: ${pagosSucursal.cbu_transferencia ?? ''}` })
