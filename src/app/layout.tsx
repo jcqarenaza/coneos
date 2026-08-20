@@ -13,7 +13,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es">
       <head>
-        <link rel="manifest" href="/manifest.json" id="pwa-manifest" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -23,23 +22,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           (function() {
             var path = window.location.pathname;
             var token = new URLSearchParams(window.location.search).get('token');
-            var manifestLink = document.getElementById('pwa-manifest');
-            if (!manifestLink) return;
+            var partes = path.split('/').filter(Boolean);
+            var href = '/manifest.json';
 
-            var esDelivery = path.includes('/delivery/') || path.split('/')[2] === 'd' || path.includes('/d/');
-            if (!esDelivery) return;
-
-            if (token) {
-              manifestLink.href = '/api/manifest?token=' + encodeURIComponent(token);
-            } else {
-              // Sin token: /{empresa}/d/{token} o /{empresa}/delivery/{sucursal}
-              var partes = path.split('/').filter(Boolean);
-              if (partes[1] === 'd' && partes[2]) {
-                manifestLink.href = '/api/manifest?token=' + encodeURIComponent(partes[2]);
-              } else if (partes[1] === 'delivery' && partes[2]) {
-                manifestLink.href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]) + '&sucursal=' + encodeURIComponent(partes[2]);
-              }
+            if (token && (path.indexOf('/delivery/') !== -1 || partes[1] === 'd')) {
+              href = '/api/manifest?token=' + encodeURIComponent(token);
+            } else if (partes[1] === 'd' && partes[2]) {
+              href = '/api/manifest?token=' + encodeURIComponent(partes[2]);
+            } else if (partes[1] === 'delivery' && partes[2]) {
+              href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]) + '&sucursal=' + encodeURIComponent(partes[2]);
             }
+
+            var link = document.createElement('link');
+            link.rel = 'manifest';
+            link.href = href;
+            document.head.appendChild(link);
           })();
         `}} />
       </head>
