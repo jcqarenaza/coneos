@@ -19,6 +19,7 @@ interface Empresa { nombre: string; slug: string; plan: string }
 
 export default function ConfigPage() {
   const { ctx, loading: ctxLoading } = useEmpresa()
+  const [mpConectado, setMpConectado] = useState<boolean | null>(null)
   const [empresa, setEmpresa] = useState<Empresa | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [saving, setSaving] = useState(false)
@@ -42,6 +43,8 @@ export default function ConfigPage() {
         punto_venta: cfg.punto_venta ?? 1,
       })
     })
+    supabase.from('mp_credenciales').select('id').eq('empresa_id', ctx.empresaId).maybeSingle()
+      .then(({ data }) => setMpConectado(!!data))
   }, [ctx])
 
   async function handleLogoUpload(file: File) {
@@ -206,6 +209,33 @@ export default function ConfigPage() {
                 </label>
               )}
             </div>
+          </div>
+        </ConeCard>
+
+        {/* Mercado Pago */}
+        <ConeCard title="Mercado Pago">
+          <div className="space-y-3">
+            {mpConectado === null ? (
+              <div className="flex items-center gap-2 text-neutral-400 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Verificando conexión...</div>
+            ) : mpConectado ? (
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+                  <Check className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-neutral-800 text-sm">Cuenta conectada</p>
+                  <p className="text-xs text-neutral-400">Los pagos online se acreditan directo en tu cuenta de Mercado Pago.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-neutral-500">Conectá tu cuenta de Mercado Pago para recibir pagos online de tus clientes. El dinero va directo a tu cuenta.</p>
+                <a href={`/api/mp/connect?empresa_id=${ctx?.empresaId}&slug=${empresa?.slug ?? ''}`}
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-[#009EE3] hover:bg-[#008ACB] text-white font-bold rounded-xl text-sm transition-colors">
+                  Conectar Mercado Pago →
+                </a>
+              </div>
+            )}
           </div>
         </ConeCard>
 
