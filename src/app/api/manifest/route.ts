@@ -69,8 +69,8 @@ export async function GET(request: Request) {
     theme_color: themeColor,
     icons: iconoFinal
       ? [
-          { src: iconoFinal, sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: iconoFinal, sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: iconoFinal, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ]
       : [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
