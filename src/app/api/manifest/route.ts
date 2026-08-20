@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// Manifest dinámico por empresa/sucursal para PWA delivery
-// URL: /api/manifest?empresa=federal&sucursal=federal
+// Manifest dinámico por empresa/sucursal o por token de dispositivo
+// URL: /api/manifest?empresa=X&sucursal=Y  ó  /api/manifest?token=Z
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const empresaSlug = searchParams.get('empresa')
@@ -12,12 +12,33 @@ export async function GET(request: Request) {
   let nombre = 'ConeOS'
   let themeColor = '#1E3A5F'
   let logoUrl: string | null = null
+  let startUrl = '/'
 
-  if (empresaSlug) {
-    const supabase = createAdminClient()
+  const supabase = createAdminClient()
+
+  if (token) {
+    // Resolver por token de dispositivo
+    const { data: disp } = await supabase
+      .from('dispositivos')
+      .select('device_token, empresas(nombre, slug), sucursales(slug)')
+      .eq('device_token', token)
+      .eq('activo', true)
+      .maybeSingle()
+    if (disp) {
+      const emp = Array.isArray(disp.empresas) ? disp.empresas[0] : disp.empresas
+      const suc = Array.isArray(disp.sucursales) ? disp.sucursales[0] : disp.sucursales
+      if (emp) {
+        nombre = emp.nombre
+        startUrl = `/${emp.slug}/d/${token}`
+        const { data: cfg } = await supabase.from('empresa_config').select('primary_color, logo_url').eq('empresa_id', (await supabase.from('empresas').select('id').eq('slug', emp.slug).single()).data?.id ?? '').maybeSingle()
+        if (cfg?.primary_color) themeColor = cfg.primary_color
+        if (cfg?.logo_url) logoUrl = cfg.logo_url
+      }
+    }
+  } else if (empresaSlug) {
     const { data: emp } = await supabase
       .from('empresas')
-      .select('nombre, config:empresa_config(primary_color, logo_url)')
+      .select('id, nombre, config:empresa_config(primary_color, logo_url)')
       .eq('slug', empresaSlug)
       .single()
     if (emp) {
@@ -25,12 +46,9 @@ export async function GET(request: Request) {
       const cfg = Array.isArray(emp.config) ? emp.config[0] : emp.config
       if (cfg?.primary_color) themeColor = cfg.primary_color
       if (cfg?.logo_url) logoUrl = cfg.logo_url
+      if (sucursalSlug) startUrl = `/${empresaSlug}/delivery/${sucursalSlug}`
     }
   }
-
-  const startUrl = empresaSlug && sucursalSlug
-    ? `/${empresaSlug}/delivery/${sucursalSlug}${token ? `?token=${token}` : ''}`
-    : '/'
 
   const manifest = {
     name: `${nombre} — Pedidos`,
