@@ -37,6 +37,14 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   // MP state
   const [estadoMP, setEstadoMP] = useState<EstadoMP>('idle')
   const [mpInitPoint, setMpInitPoint] = useState<string | null>(null)
+  const [mpDisponible, setMpDisponible] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/mp/estado?empresa_id=${dispositivo.empresa_id}`)
+      .then(r => r.json())
+      .then(d => setMpDisponible(!!d.conectado))
+      .catch(() => setMpDisponible(false))
+  }, [dispositivo.empresa_id])
   const [pedidoIdPendiente, setPedidoIdPendiente] = useState<string | null>(null)
   const [pollingCount, setPollingCount] = useState(0)
 
@@ -136,7 +144,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
       setPedidoTransferencia({ id: data.pedido.id, numero: data.pedido.numero_pedido, codigo: data.pedido.codigo_retiro })
     } else if (metodo === 'mp') {
       // Verificar si MP está configurado
-      const mpConfigurado = pagosSucursal?.mp_access_token && pagosSucursal.mp_access_token.startsWith('APP_USR-')
+      const mpConfigurado = mpDisponible
       if (!mpConfigurado) {
         // Fallback a transferencia — mostrar alias
         if (numComprobante.trim()) {
@@ -147,10 +155,10 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
       } else {
         setPedidoIdPendiente(data.pedido.id)
         setEstadoMP('creando')
-        const mpRes = await fetch('/api/mp/crear-preferencia', {
+        const mpRes = await fetch('/api/mp/preferencia', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pedido_id: data.pedido.id, sucursal_id: dispositivo.sucursal_id, empresa_id: dispositivo.empresa_id, items, total }),
+          body: JSON.stringify({ pedido_id: data.pedido.id }),
         })
         if (mpRes.ok) {
           const mpData = await mpRes.json()
@@ -288,7 +296,10 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
           <div className="bg-white rounded-3xl p-8 shadow-md border border-neutral-100 mb-6">
             <p className="text-2xl font-black mb-2" style={{ color: config.primary_color }}>Mercado Pago</p>
             <p className="text-neutral-400 text-sm mb-6">Escaneá el QR o tocá el botón para pagar</p>
-            <div className="flex justify-center mb-6"><Loader2 className="h-8 w-8 animate-spin text-neutral-300" /></div>
+            <div className="flex justify-center mb-6">
+              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(mpInitPoint)}`}
+                alt="QR Mercado Pago" className="w-52 h-52 rounded-xl border border-neutral-100" />
+            </div>
             <p className="text-neutral-400 text-sm mb-1">Total a pagar</p>
             <p className="font-black text-3xl mb-6" style={{ color: config.primary_color }}>{formatPrecio(total)}</p>
             <a href={mpInitPoint} target="_blank" rel="noopener noreferrer"
