@@ -72,6 +72,8 @@ export default function ConfigPage() {
       razon_social: config.razon_social || null,
       condicion_iva: config.condicion_iva || 'RI',
       punto_venta: config.punto_venta || 1,
+      pwa_nombre: config.pwa_nombre || null,
+      pwa_icono_url: config.pwa_icono_url || null,
     }).eq('empresa_id', ctx.empresaId)
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
   }
