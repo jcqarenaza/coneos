@@ -7,12 +7,12 @@ import { ConePageHeader, ConeButton, ConeCard } from '@/components/admin/ConeCom
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Check, Upload, X } from 'lucide-react'
-import Image from 'next/image'
 
 interface Config {
   primary_color: string; secondary_color: string; logo_url: string | null
   texto_bienvenida: string; moneda: string
   cuit: string | null; razon_social: string | null; condicion_iva: string | null; punto_venta: number | null
+  pwa_nombre: string | null; pwa_icono_url: string | null
 }
 interface Empresa { nombre: string; slug: string; plan: string }
 
@@ -30,7 +30,7 @@ export default function ConfigPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('empresas').select('nombre, slug, plan').eq('id', ctx.empresaId).single(),
-      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta').eq('empresa_id', ctx.empresaId).single(),
+      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta, pwa_nombre, pwa_icono_url').eq('empresa_id', ctx.empresaId).single(),
     ]).then(([{ data: emp }, { data: cfg }]) => {
       if (emp) setEmpresa(emp)
       if (cfg) setConfig({
