@@ -17,7 +17,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="ConeOS" />
         <meta name="theme-color" content="#faf8f5" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <script dangerouslySetInnerHTML={{ __html: `
@@ -27,15 +26,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             var manifestLink = document.getElementById('pwa-manifest');
             if (!manifestLink) return;
 
-            // Detectar tipo de dispositivo por ruta
-            var tipo = null;
-            if (path.includes('/delivery/') || path.includes('/d/')) tipo = 'delivery';
-            else if (path.includes('/kiosk/')) tipo = 'kiosk';
-            else if (path.includes('/display/')) tipo = 'display';
+            var esDelivery = path.includes('/delivery/') || path.split('/')[2] === 'd' || path.includes('/d/');
+            if (!esDelivery) return;
 
-            if (tipo && token) {
-              // Manifest dinámico via API
-              manifestLink.href = '/api/pwa-manifest?tipo=' + tipo + '&token=' + encodeURIComponent(token) + '&path=' + encodeURIComponent(path);
+            if (token) {
+              manifestLink.href = '/api/manifest?token=' + encodeURIComponent(token);
+            } else {
+              // Sin token: /{empresa}/d/{token} o /{empresa}/delivery/{sucursal}
+              var partes = path.split('/').filter(Boolean);
+              if (partes[1] === 'd' && partes[2]) {
+                manifestLink.href = '/api/manifest?token=' + encodeURIComponent(partes[2]);
+              } else if (partes[1] === 'delivery' && partes[2]) {
+                manifestLink.href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]) + '&sucursal=' + encodeURIComponent(partes[2]);
+              }
             }
           })();
         `}} />
