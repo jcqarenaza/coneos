@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('sucursal_pagos')
-    .select('acepta_efectivo, acepta_transferencia, acepta_mp, cbu_transferencia, mp_access_token, mp_public_key')
+    .select('acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, mp_access_token, mp_public_key')
     .eq('sucursal_id', sucursal_id)
     .single()
 

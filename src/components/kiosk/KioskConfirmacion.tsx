@@ -58,7 +58,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
         const metodos: MetodoPago[] = []
         if (data.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo en caja', emoji: '💵', descripcion: 'Pagás al retirar tu pedido' })
         if (data.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia', emoji: '📲', descripcion: data.cbu_transferencia ? `Alias: ${data.cbu_transferencia}` : 'Transferencia bancaria' })
-        if (data.acepta_mp) metodos.push({ id: 'mp', label: 'Mercado Pago', emoji: '💳', descripcion: 'Pagá con QR' })
+        if (data.acepta_mp && data.acepta_mp_kiosk !== false) metodos.push({ id: 'mp', label: 'Mercado Pago', emoji: '💳', descripcion: 'Pagá con QR' })
         setMetodosDisponibles(metodos)
         if (metodos.length > 0) setMetodoPago(metodos[0].id)
       })
