@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, IceCream2, LogOut, Truck, Lock, X } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, IceCream2, LogOut, Truck, Lock, X, Cherry } from 'lucide-react'
 
 interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean> }
 
@@ -16,6 +16,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
   const NAV = [
     { href: `/${slug}/admin`, label: 'Dashboard', icon: LayoutDashboard, exact: true },
     { href: `/${slug}/admin/catalogo`, label: 'Catálogo', icon: BookOpen },
+    { href: `/${slug}/admin/accesorios`, label: 'Accesorios', icon: Cherry },
     { href: `/${slug}/admin/sucursales`, label: 'Sucursales', icon: Store },
     { href: `/${slug}/admin/operacion`, label: 'Equipo', icon: Users },
     { href: `/${slug}/admin/ventas`, label: 'Ventas', icon: BarChart3 },
