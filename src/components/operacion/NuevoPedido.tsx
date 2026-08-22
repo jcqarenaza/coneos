@@ -219,17 +219,25 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                 const pres = presentaciones.filter(p => p.producto_id === prod.id)
                 return pres.map(p => {
                   const img = p.imagen_url || prod.imagen_url
-                  return (
+                  // Con foto: tarjeta grande. Sin foto: ficha compacta (formato accesorios)
+                  return img ? (
                     <button key={p.id} onClick={() => seleccionarPresentacion(p, prod)}
                       className="flex flex-col bg-white rounded-2xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98 overflow-hidden">
-                      {img
-                        ? <img src={img} alt={prod.nombre} className="w-full h-20 object-cover" />
-                        : <div className="w-full h-20 bg-neutral-50 flex items-center justify-center text-3xl">🍦</div>
-                      }
+                      <img src={img} alt={prod.nombre} className="w-full h-20 object-cover" />
                       <div className="p-3">
                         <p className="text-neutral-800 font-bold text-sm leading-tight">{prod.nombre}</p>
                         <p className="text-neutral-400 text-xs mt-0.5">{p.nombre}</p>
                         <p className="text-neutral-700 font-black mt-1.5 text-base">{formatPrecio(p.precio)}</p>
+                      </div>
+                    </button>
+                  ) : (
+                    <button key={p.id} onClick={() => seleccionarPresentacion(p, prod)}
+                      className="flex items-center gap-2.5 p-3 bg-white rounded-xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98">
+                      <span className="w-10 h-10 rounded-lg bg-neutral-50 flex items-center justify-center text-xl flex-shrink-0">🍦</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-neutral-800 font-bold text-sm leading-tight truncate">{prod.nombre}</p>
+                        <p className="text-neutral-400 text-xs truncate">{p.nombre}</p>
+                        <p className="text-neutral-700 font-black text-sm mt-0.5">{formatPrecio(p.precio)}</p>
                       </div>
                     </button>
                   )
