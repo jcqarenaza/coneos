@@ -28,7 +28,32 @@ export async function POST(request: Request) {
   const fmt = (n: number) => `$${Number(n).toLocaleString('es-AR')}`
   const fecha = new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   const metodoLabel: Record<string, string> = { efectivo: 'EFECTIVO', transferencia: 'TRANSFERENCIA', mp: 'MERCADO PAGO' }
-  const items = (pedido.pedido_items ?? []) as { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }[]
+  type Item = { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
+  const items = (pedido.pedido_items ?? []) as Item[]
+
+  // Accesorios agrupados: título + subtotal, detalle en chico
+  const esAccesorio = (it: Item) => it.nombre_producto_snap === 'Accesorios' || it.nombre_producto_snap === it.nombre_presentacion_snap
+  const normales = items.filter(it => !esAccesorio(it))
+  const accesorios = items.filter(esAccesorio)
+  const totalAccesorios = accesorios.reduce((s, it) => s + Number(it.precio_snap) * it.cantidad, 0)
+
+  const bloquesItems = normales.map(item => {
+  const prod = (item.nombre_producto_snap ?? '').toLowerCase()
+  const pres = (item.nombre_presentacion_snap ?? '').toLowerCase()
+  const mostrarProd = prod && !pres.includes(prod) && !prod.includes(pres)
+  return `<div>
+  ${mostrarProd ? `<div class="item-prod">${item.nombre_producto_snap}</div>` : ''}
+  <div class="item-pres">${item.cantidad > 1 ? `${item.cantidad}x ` : ''}${item.nombre_presentacion_snap}</div>
+  ${item.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${item.pedido_item_opciones.map(op => op.nombre_snap).join(' - ')}</div>` : ''}
+  <div class="item-precio"><span class="item-precio-cant">x${item.cantidad}</span><span class="item-precio-val">${fmt(item.precio_snap)}</span></div>
+</div>`})
+
+  if (accesorios.length > 0) {
+    bloquesItems.push(`<div>
+  <div class="item-precio"><span class="item-precio-cant"><span class="item-pres">Accesorios</span></span><span class="item-precio-val"><span class="item-pres">${fmt(totalAccesorios)}</span></span></div>
+  ${accesorios.map(item => `<div class="item-precio acc-det"><span class="item-precio-cant">${item.cantidad}x ${item.nombre_presentacion_snap.replace(/^Toppings?\s+/i, '')}</span><span class="item-precio-val">${fmt(Number(item.precio_snap) * item.cantidad)}</span></div>`).join('')}
+</div>`)
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -55,6 +80,8 @@ body { font-family: 'Calibri', Arial, sans-serif; font-size: 13px; background: w
 .item-precio { display: table; width: 100%; font-size: 13px; }
 .item-precio-cant { display: table-cell; }
 .item-precio-val { display: table-cell; text-align: right; }
+.acc-det { font-size: 12px; font-weight: normal; }
+.acc-det * { font-weight: normal; }
 .fila { display: table; width: 100%; }
 .total-label { display: table-cell; font-size: 16px; font-weight: bold; }
 .total-valor { display: table-cell; font-size: 16px; font-weight: bold; text-align: right; }
@@ -80,16 +107,7 @@ ${cfg?.cuit ? `<div class="sub">CUIT: ${cfg.cuit}</div>` : ''}
 
 <div class="linea"></div>
 
-${items.map(item => {
-  const prod = (item.nombre_producto_snap ?? '').toLowerCase()
-  const pres = (item.nombre_presentacion_snap ?? '').toLowerCase()
-  const mostrarProd = prod && !pres.includes(prod) && !prod.includes(pres)
-  return `<div>
-  ${mostrarProd ? `<div class="item-prod">${item.nombre_producto_snap}</div>` : ''}
-  <div class="item-pres">${item.cantidad > 1 ? `${item.cantidad}x ` : ''}${item.nombre_presentacion_snap}</div>
-  ${item.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${item.pedido_item_opciones.map(op => op.nombre_snap).join(' - ')}</div>` : ''}
-  <div class="item-precio"><span class="item-precio-cant">x${item.cantidad}</span><span class="item-precio-val">${fmt(item.precio_snap)}</span></div>
-</div>`}).join('<div class="linea"></div>')}
+${bloquesItems.join('<div class="linea"></div>')}
 
 <div class="linea"></div>
 

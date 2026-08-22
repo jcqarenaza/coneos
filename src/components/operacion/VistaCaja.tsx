@@ -478,24 +478,48 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                 </div>
 
                 <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden shadow-sm mb-4">
-                  {seleccionado.pedido_items.map((item, i) => (
-                    <div key={item.id} className={`p-4 ${i < seleccionado.pedido_items.length - 1 ? 'border-b border-neutral-50' : ''}`}>
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="flex-1">
-                          <p className="text-neutral-800 font-bold">{item.nombre_producto_snap === item.nombre_presentacion_snap ? 'Accesorios' : item.nombre_producto_snap}</p>
-                          <p className="text-neutral-400 text-sm">{item.nombre_producto_snap === item.nombre_presentacion_snap ? item.nombre_presentacion_snap.replace(/^Toppings?\s+/i, '') : item.nombre_presentacion_snap}</p>
-                          {item.pedido_item_opciones.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-2">
-                              {item.pedido_item_opciones.map((op, j) => (
-                                <span key={j} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-1 rounded-full">{op.emoji_snap} {op.nombre_snap}</span>
-                              ))}
+                  {(() => {
+                    const esAccesorio = (it: PedidoItem) => it.nombre_producto_snap === 'Accesorios' || it.nombre_producto_snap === it.nombre_presentacion_snap
+                    const normales = seleccionado.pedido_items.filter(it => !esAccesorio(it))
+                    const accs = seleccionado.pedido_items.filter(esAccesorio)
+                    const totalAccs = accs.reduce((s, it) => s + Number(it.precio_snap) * it.cantidad, 0)
+                    return (<>
+                      {normales.map((item, i) => (
+                        <div key={item.id} className={`p-4 ${i < normales.length - 1 || accs.length > 0 ? 'border-b border-neutral-50' : ''}`}>
+                          <div className="flex justify-between items-start gap-4">
+                            <div className="flex-1">
+                              <p className="text-neutral-800 font-bold">{item.nombre_producto_snap}</p>
+                              <p className="text-neutral-400 text-sm">{item.nombre_presentacion_snap}</p>
+                              {item.pedido_item_opciones.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {item.pedido_item_opciones.map((op, j) => (
+                                    <span key={j} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-1 rounded-full">{op.emoji_snap} {op.nombre_snap}</span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          )}
+                            <p className="text-neutral-800 font-bold">{formatPrecio(item.precio_snap)}</p>
+                          </div>
                         </div>
-                        <p className="text-neutral-800 font-bold">{formatPrecio(item.precio_snap)}</p>
-                      </div>
-                    </div>
-                  ))}
+                      ))}
+                      {accs.length > 0 && (
+                        <div className="p-4">
+                          <div className="flex justify-between items-start gap-4">
+                            <p className="text-neutral-800 font-bold">Accesorios</p>
+                            <p className="text-neutral-800 font-bold">{formatPrecio(totalAccs)}</p>
+                          </div>
+                          <div className="mt-1 space-y-0.5">
+                            {accs.map(item => (
+                              <div key={item.id} className="flex justify-between items-center gap-4">
+                                <p className="text-neutral-400 text-sm">{item.cantidad}× {item.nombre_presentacion_snap.replace(/^Toppings?\s+/i, '')}</p>
+                                <p className="text-neutral-400 text-xs">{formatPrecio(Number(item.precio_snap) * item.cantidad)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>)
+                  })()}
                   <div className="px-4 py-3 bg-neutral-50 border-t border-neutral-100 flex justify-between">
                     <span className="text-neutral-500 font-medium">Total</span>
                     <span className="text-neutral-900 font-black text-lg">{formatPrecio(seleccionado.total)}</span>
