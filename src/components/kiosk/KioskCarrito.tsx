@@ -34,7 +34,7 @@ export default function KioskCarrito({ config, carrito, accesorios, onQuitar, on
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
-      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-neutral-100 shadow-sm">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white border-b border-neutral-100 shadow-sm">
         <button onClick={onSeguirComprando} className="flex items-center gap-2 px-4 py-2 rounded-xl text-neutral-500 hover:bg-neutral-50 transition-colors">
           <ArrowLeft className="h-5 w-5" />
           <span className="text-sm font-medium">Seguir comprando</span>
