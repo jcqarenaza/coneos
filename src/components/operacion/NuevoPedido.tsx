@@ -261,7 +261,10 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                   return (
                     <button key={op.id} onClick={() => toggleOpcion(op)} disabled={!sel && maxAlcanzado}
                       className={`flex items-center gap-2 p-3 rounded-xl border transition-all text-left ${sel ? 'border-neutral-800 bg-neutral-50' : 'border-neutral-200 bg-white hover:border-neutral-300'} disabled:opacity-30 active:scale-98`}>
-                      <span className="text-xl">{op.emoji || '🍦'}</span>
+                      {op.imagen_url
+                        ? <img src={op.imagen_url} alt={op.nombre} className="w-8 h-8 object-cover rounded-lg flex-shrink-0" />
+                        : <span className="text-xl">{op.emoji || '🍦'}</span>
+                      }
                       <span className="text-neutral-700 text-sm font-semibold">{op.nombre}</span>
                     </button>
                   )
