@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, History, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, History, ChevronLeft, ChevronRight, CloudRain } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
@@ -47,6 +47,21 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [colaboradorSeleccionado, setColaboradorSeleccionado] = useState<string>('')
   const [asignando, setAsignando] = useState(false)
   const verTodas = sesion.operador.sucursal_id === null
+  const [deliveryPausado, setDeliveryPausado] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('delivery_config').select('pausado').eq('sucursal_id', dispositivo.sucursal_id).maybeSingle()
+      .then(({ data }) => setDeliveryPausado(data ? !!data.pausado : null))
+  }, [dispositivo.sucursal_id])
+
+  async function togglePausaDelivery() {
+    if (deliveryPausado === null) return
+    const nuevo = !deliveryPausado
+    setDeliveryPausado(nuevo)
+    const supabase = createClient()
+    await supabase.from('delivery_config').update({ pausado: nuevo }).eq('sucursal_id', dispositivo.sucursal_id)
+  }
 
   async function cargarHistorial(fecha: string) {
     setHistorialLoading(true)
@@ -243,6 +258,14 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </button>
         ))}
         <div className="flex-1" />
+        {deliveryPausado !== null && (
+          <button onClick={togglePausaDelivery}
+            title={deliveryPausado ? 'Reactivar delivery' : 'Pausar delivery (mal tiempo)'}
+            className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors ${deliveryPausado ? 'text-blue-600' : 'text-neutral-300 hover:text-neutral-500'}`}>
+            <CloudRain className="h-4 w-4" />
+            <span className="hidden md:inline">{deliveryPausado ? 'Delivery pausado' : 'Pausar delivery'}</span>
+          </button>
+        )}
         <button onClick={() => { setTab('historial'); cargarHistorial(historialFecha) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'historial' ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
           <History className="h-4 w-4" />

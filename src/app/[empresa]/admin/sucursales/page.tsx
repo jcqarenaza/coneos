@@ -39,7 +39,7 @@ export default function SucursalesPage() {
     const supabase = createClient()
     const { data: suc } = await supabase
       .from('sucursales')
-      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, mp_access_token), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario)')
+      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, mp_access_token), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa)')
       .eq('empresa_id', ctx.empresaId).order('nombre')
     setData((suc ?? []).map((s: Record<string, unknown>) => ({
       ...s,
@@ -219,6 +219,17 @@ export default function SucursalesPage() {
                   <div className="space-y-1.5">
                     <Label>Mensaje fuera de horario</Label>
                     <Input value={delivery.mensaje_fuera_horario} onChange={e => setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value })} placeholder="El delivery no está disponible..." />
+                  </div>
+                  <div className="pt-2 border-t border-neutral-100 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" id="del-pausado" checked={delivery.pausado} onChange={e => setDelivery({ ...delivery, pausado: e.target.checked })} className="w-4 h-4 rounded" />
+                      <Label htmlFor="del-pausado" className="cursor-pointer">🌧️ Pausar por mal tiempo</Label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Mensaje de pausa</Label>
+                      <Input value={delivery.mensaje_pausa} onChange={e => setDelivery({ ...delivery, mensaje_pausa: e.target.value })} />
+                      <p className="text-xs text-neutral-400">También se puede pausar/reactivar desde la caja con un click.</p>
+                    </div>
                   </div>
                 </div>
               )}

@@ -69,40 +69,23 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [error, setError] = useState<string | null>(null)
   const [horarioActivo, setHorarioActivo] = useState(true)
   const [mensajeFueraHorario, setMensajeFueraHorario] = useState('El delivery no está disponible en este momento. ¡Volvemos pronto!')
+  const [pausado, setPausado] = useState(false)
+  const [mensajePausa, setMensajePausa] = useState('🌧️ Por el mal tiempo el delivery está pausado. ¡Ni bien mejore volvemos a repartir!')
 
   useEffect(() => {
     async function init() {
-      let disp: { id: string; empresa_id: string; sucursal_id: string; tipo: string } | null = null
+      if (!token) { setError('Dispositivo no configurado'); setLoading(false); return }
 
-      if (token) {
-        // Flujo normal con token (iOS y links directos)
-        const res = await fetch('/api/device/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ device_token: token }),
-        })
-        const data = await res.json()
-        if (res.ok && data.dispositivo) disp = data.dispositivo
-      }
+      // Usar /api/device/verify igual que kiosk — compatible con todos los browsers
+      const res = await fetch('/api/device/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_token: token }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.dispositivo) { setError(data.error ?? 'Dispositivo no encontrado'); setLoading(false); return }
 
-      if (!disp) {
-        // Fallback sin token (PWA Android instalada abre start_url sin query params)
-        // Buscar via API server-side (bypassa RLS)
-        // Leer slugs del pathname (params puede ser Promise en Next 16)
-        const partes = window.location.pathname.split('/').filter(Boolean)
-        // pathname: /[empresa]/delivery/[sucursal]
-        const empresaSlug = partes[0] ?? ''
-        const sucursalSlug = partes[2] ?? ''
-        const resFb = await fetch('/api/device/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ empresa_slug: empresaSlug, sucursal_slug: sucursalSlug, tipo: 'DELIVERY' }),
-        })
-        const dataFb = await resFb.json()
-        if (resFb.ok && dataFb.dispositivo) disp = dataFb.dispositivo
-      }
-
-      if (!disp) { setError('Dispositivo no configurado'); setLoading(false); return }
+      const disp = data.dispositivo
       if (disp.tipo !== 'DELIVERY') { setError('Este dispositivo no es de delivery'); setLoading(false); return }
 
       // Cargar config de empresa
@@ -125,6 +108,8 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
           const horarios = (dc.horarios as { desde: string; hasta: string }[]) ?? []
           setHorarioActivo(dc.activo ? estaEnHorario(horarios, horaData.hora) : false)
           if (dc.mensaje_fuera_horario) setMensajeFueraHorario(dc.mensaje_fuera_horario)
+          setPausado(!!dc.pausado)
+          if (dc.mensaje_pausa) setMensajePausa(dc.mensaje_pausa)
         }
         // Config de empresa
         const emp = horaData.empresa_config
@@ -176,6 +161,17 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
       <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
+    </div>
+  )
+
+  if (pausado) return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center" style={{ backgroundColor: '#faf8f5' }}>
+      {config.logo_url
+        ? <img src={config.logo_url} alt="Logo" className="w-32 h-32 object-contain mb-6" />
+        : <div className="text-6xl mb-6">🌧️</div>
+      }
+      <h2 className="text-2xl font-bold text-neutral-800 mb-3">Delivery pausado</h2>
+      <p className="text-neutral-500 text-base max-w-xs">{mensajePausa}</p>
     </div>
   )
 
