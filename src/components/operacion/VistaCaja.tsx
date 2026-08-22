@@ -201,6 +201,26 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     setNombreCliente('')
   }
 
+  const [facturacionActiva, setFacturacionActiva] = useState(false)
+  useEffect(() => {
+    fetch(`/api/facturacion/emitir?empresa_id=${dispositivo.empresa_id}`)
+      .then(r => r.json()).then(d => setFacturacionActiva(!!d.activa)).catch(() => {})
+  }, [dispositivo])
+
+  // Emisión silenciosa: si está desactivada por base no hace nada; si falla, no bloquea el cobro
+  async function emitirFacturaSiCorresponde(pedidoId: string) {
+    if (!facturacionActiva) return
+    try {
+      const r = await fetch('/api/facturacion/emitir', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empresa_id: dispositivo.empresa_id, pedido_id: pedidoId }),
+      })
+      const d = await r.json()
+      if (!r.ok || !d.ok) console.error('[facturacion] no emitida:', d.error ?? r.status)
+      else console.log('[facturacion] CAE:', d.cae, 'Nro:', d.nro_cbte)
+    } catch (e) { console.error('[facturacion] error:', e) }
+  }
+
   function handleTicketBtn(pedido: Pedido) {
     const metodo = pedido.metodo_pago ?? ''
     if (metodo === 'efectivo') {
@@ -583,7 +603,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
                     </button>
-                    <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
+                    <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); emitirFacturaSiCorresponde(seleccionado.id); setModalComprobante(true) }} disabled={procesando}
                       className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
                       📱 Cobrar transferencia
                     </button>
