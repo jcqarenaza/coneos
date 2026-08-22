@@ -32,7 +32,7 @@ export interface ItemCarrito {
 
 type Paso = 'inicio' | 'catalogo' | 'carrito' | 'confirmacion'
 
-function estaEnHorario(horarios: { desde: string; hasta: string }[], horaArgentina: string): boolean {
+function estaEnHorario(horarios: { desde: string; hasta: string }[], horaArgentina: string, toleranciaMin = 0): boolean {
   if (!horarios || horarios.length === 0) return true
   const [hh, mm] = horaArgentina.split(':').map(Number)
   const minActual = hh * 60 + mm
@@ -40,8 +40,9 @@ function estaEnHorario(horarios: { desde: string; hasta: string }[], horaArgenti
     const [dh, dm] = desde.split(':').map(Number)
     const [hah, ham] = hasta.split(':').map(Number)
     const minDesde = dh * 60 + dm
-    const minHasta = hah * 60 + ham
-    if (minHasta < minDesde) {
+    const minHasta = (hah * 60 + ham + toleranciaMin) % 1440
+    const cruzaMedianoche = (hah * 60 + ham) < minDesde || minHasta < minDesde
+    if (cruzaMedianoche) {
       return minActual >= minDesde || minActual <= minHasta
     }
     return minActual >= minDesde && minActual <= minHasta
@@ -69,8 +70,27 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [error, setError] = useState<string | null>(null)
   const [horarioActivo, setHorarioActivo] = useState(true)
   const [mensajeFueraHorario, setMensajeFueraHorario] = useState('El delivery no está disponible en este momento. ¡Volvemos pronto!')
-  const [pausado, setPausado] = useState(false)
   const [mensajePausa, setMensajePausa] = useState('🌧️ Por el mal tiempo el delivery está pausado. ¡Ni bien mejore volvemos a repartir!')
+  const [pausado, setPausado] = useState(false)
+  const [horariosConfig, setHorariosConfig] = useState<{ desde: string; hasta: string }[]>([])
+  const [toleranciaCierre, setToleranciaCierre] = useState(5)
+
+  // La lluvia no se negocia: chequeo cada 60s aunque el cliente esté en medio del pedido
+  useEffect(() => {
+    if (!dispositivo) return
+    const int = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/hora-argentina?sucursal_id=${dispositivo.sucursal_id}`)
+        if (!r.ok) return
+        const d = await r.json()
+        if (d.delivery_config) {
+          setPausado(!!d.delivery_config.pausado)
+          if (d.delivery_config.mensaje_pausa) setMensajePausa(d.delivery_config.mensaje_pausa)
+        }
+      } catch {}
+    }, 60000)
+    return () => clearInterval(int)
+  }, [dispositivo])
 
   useEffect(() => {
     async function init() {
@@ -107,6 +127,8 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
           setCostoEnvio(Number(dc.costo_envio))
           const horarios = (dc.horarios as { desde: string; hasta: string }[]) ?? []
           setHorarioActivo(dc.activo ? estaEnHorario(horarios, horaData.hora) : false)
+          setHorariosConfig(horarios)
+          setToleranciaCierre(Number(dc.tolerancia_cierre ?? 5))
           if (dc.mensaje_fuera_horario) setMensajeFueraHorario(dc.mensaje_fuera_horario)
           setPausado(!!dc.pausado)
           if (dc.mensaje_pausa) setMensajePausa(dc.mensaje_pausa)

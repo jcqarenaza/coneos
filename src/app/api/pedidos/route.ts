@@ -17,6 +17,39 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient()
 
+  // Validación server-side para pedidos DELIVERY: pausa y horario con tolerancia
+  if (origen === 'DELIVERY') {
+    const { data: dc } = await supabase
+      .from('delivery_config')
+      .select('activo, pausado, horarios, tolerancia_cierre, mensaje_pausa, mensaje_fuera_horario')
+      .eq('sucursal_id', sucursal_id)
+      .maybeSingle()
+
+    if (dc) {
+      if (dc.pausado) {
+        return NextResponse.json({ error: dc.mensaje_pausa ?? 'El delivery está pausado momentáneamente.' }, { status: 409 })
+      }
+      const horarios = (dc.horarios as { desde: string; hasta: string }[] | null) ?? []
+      if (dc.activo && horarios.length > 0) {
+        const horaArg = new Date().toLocaleTimeString('en-GB', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })
+        const [hh, mm] = horaArg.split(':').map(Number)
+        const minActual = hh * 60 + mm
+        const tol = Number(dc.tolerancia_cierre ?? 5)
+        const dentro = horarios.some(({ desde, hasta }) => {
+          const [dh, dm] = desde.split(':').map(Number)
+          const [hah, ham] = hasta.split(':').map(Number)
+          const minDesde = dh * 60 + dm
+          const minHasta = (hah * 60 + ham + tol) % 1440
+          const cruza = (hah * 60 + ham) < minDesde || minHasta < minDesde
+          return cruza ? (minActual >= minDesde || minActual <= minHasta) : (minActual >= minDesde && minActual <= minHasta)
+        })
+        if (!dentro) {
+          return NextResponse.json({ error: dc.mensaje_fuera_horario ?? 'El delivery ya cerró por hoy.' }, { status: 409 })
+        }
+      }
+    }
+  }
+
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
 
   const { data: maxData } = await supabase.from('pedidos')

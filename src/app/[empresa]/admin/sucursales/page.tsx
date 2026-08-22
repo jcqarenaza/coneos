@@ -39,7 +39,7 @@ export default function SucursalesPage() {
     const supabase = createClient()
     const { data: suc } = await supabase
       .from('sucursales')
-      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, mp_access_token), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa)')
+      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, mp_access_token), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre)')
       .eq('empresa_id', ctx.empresaId).order('nombre')
     setData((suc ?? []).map((s: Record<string, unknown>) => ({
       ...s,
@@ -219,6 +219,11 @@ export default function SucursalesPage() {
                   <div className="space-y-1.5">
                     <Label>Mensaje fuera de horario</Label>
                     <Input value={delivery.mensaje_fuera_horario} onChange={e => setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value })} placeholder="El delivery no está disponible..." />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Tolerancia de cierre (minutos)</Label>
+                    <Input type="number" min={0} max={60} value={delivery.tolerancia_cierre ?? 5} onChange={e => setDelivery({ ...delivery, tolerancia_cierre: Number(e.target.value) })} className="w-28" />
+                    <p className="text-xs text-neutral-400">Quien ya está pidiendo puede confirmar hasta estos minutos después del cierre.</p>
                   </div>
                   <div className="pt-2 border-t border-neutral-100 space-y-2">
                     <div className="flex items-center gap-2">
