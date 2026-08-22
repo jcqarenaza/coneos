@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Plus, Loader2, Store, CreditCard, Banknote, Smartphone, Pencil, Trash2 } from 'lucide-react'
 
 interface Horario { desde: string; hasta: string }
-interface DeliveryConfig { activo: boolean; costo_envio: number; horarios: Horario[]; mensaje_fuera_horario: string }
+interface DeliveryConfig { activo: boolean; costo_envio: number; horarios: Horario[]; mensaje_fuera_horario: string; pausado?: boolean; mensaje_pausa?: string; tolerancia_cierre?: number }
 interface SucursalPagos {
   acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; acepta_mp_kiosk: boolean; acepta_mp_delivery: boolean
   cbu_transferencia: string | null; mp_access_token: string | null
@@ -76,6 +76,8 @@ export default function SucursalesPage() {
         sucursal_id: sucursalId, empresa_id: ctx.empresaId,
         activo: delivery.activo, costo_envio: delivery.costo_envio,
         horarios: delivery.horarios, mensaje_fuera_horario: delivery.mensaje_fuera_horario,
+        pausado: delivery.pausado ?? false, mensaje_pausa: delivery.mensaje_pausa || null,
+        tolerancia_cierre: delivery.tolerancia_cierre ?? 5,
       }, { onConflict: 'sucursal_id' })
     }
     setSaving(false); setModal(false); load()
@@ -218,7 +220,7 @@ export default function SucursalesPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Mensaje fuera de horario</Label>
-                    <Input value={delivery.mensaje_fuera_horario} onChange={e => setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value })} placeholder="El delivery no está disponible..." />
+                    <textarea value={delivery.mensaje_fuera_horario} onChange={e => setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value })} placeholder="El delivery no está disponible..." rows={3} className="w-full rounded-md border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-y" />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Tolerancia de cierre (minutos)</Label>
@@ -232,7 +234,7 @@ export default function SucursalesPage() {
                     </div>
                     <div className="space-y-1.5">
                       <Label>Mensaje de pausa</Label>
-                      <Input value={delivery.mensaje_pausa} onChange={e => setDelivery({ ...delivery, mensaje_pausa: e.target.value })} />
+                      <textarea value={delivery.mensaje_pausa ?? ''} onChange={e => setDelivery({ ...delivery, mensaje_pausa: e.target.value })} rows={3} className="w-full rounded-md border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-y" />
                       <p className="text-xs text-neutral-400">También se puede pausar/reactivar desde la caja con un click.</p>
                     </div>
                   </div>
