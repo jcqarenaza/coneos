@@ -94,13 +94,24 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
   useEffect(() => {
     async function init() {
-      if (!token) { setError('Dispositivo no configurado'); setLoading(false); return }
+      // Con token: flujo normal. Sin token (PWA Android/iOS con start_url sin query):
+      // fallback por slugs leídos del pathname — /{empresa}/delivery/{sucursal}
+      // (No usar params.empresa: en Next 16 los params de client pages son Promise)
+      let body: Record<string, string>
+      if (token) {
+        body = { device_token: token }
+      } else {
+        const partes = window.location.pathname.split('/').filter(Boolean)
+        const empresaSlug = partes[0]
+        const sucursalSlug = partes[2]
+        if (!empresaSlug || !sucursalSlug) { setError('Dispositivo no configurado'); setLoading(false); return }
+        body = { empresa_slug: empresaSlug, sucursal_slug: sucursalSlug, tipo: 'DELIVERY' }
+      }
 
-      // Usar /api/device/verify igual que kiosk — compatible con todos los browsers
       const res = await fetch('/api/device/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_token: token }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok || !data.dispositivo) { setError(data.error ?? 'Dispositivo no encontrado'); setLoading(false); return }
