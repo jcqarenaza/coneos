@@ -122,8 +122,8 @@ export default function KioskPage() {
         ...extras.map(({ accesorio, cantidad }) => ({
           id: Math.random().toString(36).substring(2) + Date.now().toString(36),
           presentacion_id: '', // null-safe — la FK acepta null tras el alter
-          nombre_producto: accesorio.nombre,
-          nombre_presentacion: accesorio.nombre,
+          nombre_producto: 'Accesorios',
+          nombre_presentacion: accesorio.nombre.replace(/^Toppings?\s+/i, ''),
           precio: accesorio.precio_adicional,
           cantidad,
           opciones: [],

@@ -482,8 +482,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <div key={item.id} className={`p-4 ${i < seleccionado.pedido_items.length - 1 ? 'border-b border-neutral-50' : ''}`}>
                       <div className="flex justify-between items-start gap-4">
                         <div className="flex-1">
-                          <p className="text-neutral-800 font-bold">{item.nombre_producto_snap}</p>
-                          <p className="text-neutral-400 text-sm">{item.nombre_presentacion_snap}</p>
+                          <p className="text-neutral-800 font-bold">{item.nombre_producto_snap === item.nombre_presentacion_snap ? 'Accesorios' : item.nombre_producto_snap}</p>
+                          <p className="text-neutral-400 text-sm">{item.nombre_producto_snap === item.nombre_presentacion_snap ? item.nombre_presentacion_snap.replace(/^Toppings?\s+/i, '') : item.nombre_presentacion_snap}</p>
                           {item.pedido_item_opciones.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mt-2">
                               {item.pedido_item_opciones.map((op, j) => (

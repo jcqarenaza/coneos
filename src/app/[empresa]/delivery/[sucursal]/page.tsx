@@ -176,8 +176,8 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         ...extras.map(({ accesorio, cantidad }) => ({
           id: generarId(),
           presentacion_id: '',
-          nombre_producto: accesorio.nombre,
-          nombre_presentacion: accesorio.nombre,
+          nombre_producto: 'Accesorios',
+          nombre_presentacion: accesorio.nombre.replace(/^Toppings?\s+/i, ''),
           precio: accesorio.precio_adicional,
           cantidad,
           opciones: [],
