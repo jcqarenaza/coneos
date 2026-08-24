@@ -285,7 +285,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   })()
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-dvh flex flex-col overflow-hidden">
       <div className="flex bg-white border-b border-neutral-100 px-4 gap-0.5">
         <button onClick={() => { setTab('activos'); setFiltroEstado(null) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'activos' && !filtroEstado ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
@@ -451,8 +451,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       ) : tab === 'nuevo' ? (
         <NuevoPedido dispositivo={dispositivo} sesion={sesion} onPedidoCreado={() => setTab('activos')} />
       ) : (
-        <div className="flex-1 flex items-start">
-          <div className="w-64 border-r border-neutral-100 flex flex-col bg-white">
+        <div className="flex-1 flex overflow-hidden min-h-0">
+          <div className="w-64 border-r border-neutral-100 flex flex-col overflow-hidden bg-white">
             <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-50">
               <p className="text-xs font-semibold text-neutral-400">{pedidosFiltrados.length} pedido{pedidosFiltrados.length !== 1 ? 's' : ''}</p>
               <div className="flex items-center gap-1">
@@ -512,7 +512,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             </div>
           </div>
 
-          <div ref={detalleRef} className="flex-1 sticky top-0 self-start max-h-[100dvh] overflow-y-auto p-6 bg-neutral-50">
+          <div ref={detalleRef} className="flex-1 overflow-y-auto p-6 bg-neutral-50">
             {!seleccionado ? (
               <div className="flex flex-col items-center justify-center h-full text-neutral-200">
                 <ShoppingBag className="h-14 w-14 mb-3" />
