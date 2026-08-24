@@ -221,6 +221,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     } catch (e) { console.error('[facturacion] error:', e) }
   }
 
+  // Fix desfase con muchos pedidos: al elegir un pedido, el panel de detalle vuelve arriba
+  const detalleRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { detalleRef.current?.scrollTo({ top: 0 }) }, [seleccionado?.id])
+
   function handleTicketBtn(pedido: Pedido) {
     const metodo = pedido.metodo_pago ?? ''
     if (metodo === 'efectivo') {
@@ -472,7 +476,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 bg-neutral-50">
+          <div ref={detalleRef} className="flex-1 overflow-y-auto p-6 bg-neutral-50">
             {!seleccionado ? (
               <div className="flex flex-col items-center justify-center h-full text-neutral-200">
                 <ShoppingBag className="h-14 w-14 mb-3" />
