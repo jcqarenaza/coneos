@@ -263,6 +263,27 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const counts = tabs.reduce((acc, t) => ({ ...acc, [t.key]: pedidos.filter(p => p.estado === t.key).length }), {} as Record<string, number>)
   const pedidosFiltrados = filtroEstado ? pedidos.filter(p => p.estado === filtroEstado) : pedidos
 
+  // Resumen del día (siempre visible): solo pedidos cobrados/en curso, no pendientes de pago
+  const resumen = (() => {
+    const cobrados = pedidos.filter(p => p.estado !== 'PENDING_PAYMENT')
+    const sum = (arr: Pedido[], f: (p: Pedido) => number) => arr.reduce((a, p) => a + f(p), 0)
+    const envios = sum(cobrados, p => Number(p.costo_envio ?? 0))
+    const total = sum(cobrados, p => Number(p.total))
+    const kiosk = cobrados.filter(p => p.tipo_pedido !== 'delivery')
+    const delivery = cobrados.filter(p => p.tipo_pedido === 'delivery')
+    return {
+      cantidad: cobrados.length,
+      total,
+      productos: total - envios,
+      envios,
+      kiosk: sum(kiosk, p => Number(p.total)),
+      deliveryProductos: sum(delivery, p => Number(p.total) - Number(p.costo_envio ?? 0)),
+      efectivo: sum(cobrados.filter(p => p.metodo_pago === 'efectivo'), p => Number(p.total)),
+      transferencia: sum(cobrados.filter(p => p.metodo_pago === 'transferencia'), p => Number(p.total)),
+      mp: sum(cobrados.filter(p => p.metodo_pago === 'mp'), p => Number(p.total)),
+    }
+  })()
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <div className="flex bg-white border-b border-neutral-100 px-4 gap-0.5">
@@ -301,6 +322,21 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           Nuevo
         </button>
       </div>
+
+      {tab === 'activos' && resumen.cantidad > 0 && (
+        <div className="flex items-center gap-x-4 gap-y-1 flex-wrap bg-neutral-800 text-white px-4 py-2 text-xs">
+          <span className="font-black text-sm">{formatPrecio(resumen.total)}</span>
+          <span className="text-neutral-400">{resumen.cantidad} pedidos</span>
+          <span className="text-neutral-500">|</span>
+          <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumen.kiosk)}</b></span>
+          <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumen.deliveryProductos)}</b></span>
+          <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumen.envios)}</b></span>
+          <span className="text-neutral-500">|</span>
+          <span>💵 <b>{formatPrecio(resumen.efectivo)}</b></span>
+          <span>📱 <b>{formatPrecio(resumen.transferencia)}</b></span>
+          {resumen.mp > 0 && <span>🔵 <b>{formatPrecio(resumen.mp)}</b></span>}
+        </div>
+      )}
 
       {tab === 'historial' ? (
         <div className="flex-1 flex flex-col overflow-hidden bg-neutral-50">
