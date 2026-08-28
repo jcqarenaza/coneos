@@ -138,20 +138,12 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
 
     if (metodo === 'transferencia') {
       // Guardar comprobante en notas si lo ingresó
-      if (numComprobante.trim()) {
-        const { createClient } = await import('@/lib/supabase/client')
-        await createClient().from('pedidos').update({ notas: `Comprobante: ...${numComprobante.trim()}` }).eq('id', data.pedido.id)
-      }
       setPedidoTransferencia({ id: data.pedido.id, numero: data.pedido.numero_pedido, codigo: data.pedido.codigo_retiro })
     } else if (metodo === 'mp') {
       // Verificar si MP está configurado
       const mpConfigurado = mpDisponible
       if (!mpConfigurado) {
         // Fallback a transferencia — mostrar alias
-        if (numComprobante.trim()) {
-          const { createClient } = await import('@/lib/supabase/client')
-          await createClient().from('pedidos').update({ notas: `Comprobante: ...${numComprobante.trim()}` }).eq('id', data.pedido.id)
-        }
         setPedidoTransferencia({ id: data.pedido.id, numero: data.pedido.numero_pedido, codigo: data.pedido.codigo_retiro })
       } else {
         setPedidoIdPendiente(data.pedido.id)
@@ -276,7 +268,12 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
             <p className="text-neutral-400 text-xs mt-1.5 text-center">Últimos 3 números — opcional</p>
           </div>
 
-          <button onClick={() => { onPedidoCreado(pedidoTransferencia.numero, pedidoTransferencia.codigo) }}
+          <button onClick={async () => {
+            if (numComprobante.trim()) {
+              try { await fetch('/api/pedidos/comprobante', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedido_id: pedidoTransferencia.id, comprobante: numComprobante.trim() }) }) } catch {}
+            }
+            onPedidoCreado(pedidoTransferencia.numero, pedidoTransferencia.codigo)
+          }}
             className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all mb-3"
             style={{ backgroundColor: config.primary_color }}>
             ✅ Ya realicé la transferencia
