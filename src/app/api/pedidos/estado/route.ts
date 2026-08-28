@@ -1,32 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function POST(request: Request) {
-  const { pedido_id, estado_nuevo, operador_id } = await request.json()
+// Estado mínimo de un pedido para que kiosk/delivery (anónimos) detecten el pago MP.
+// Expone solo lo necesario: estado, número y código de retiro.
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const pedido_id = searchParams.get('pedido_id')
+  if (!pedido_id) return NextResponse.json({ error: 'pedido_id requerido' }, { status: 400 })
 
   const supabase = createAdminClient()
-
-  const { data: pedido } = await supabase
-    .from('pedidos')
-    .select('estado')
+  const { data, error } = await supabase.from('pedidos')
+    .select('estado, numero_pedido, codigo_retiro')
     .eq('id', pedido_id)
     .single()
 
-  if (!pedido) {
-    return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
-  }
-
-  await supabase.from('pedidos').update({
-    estado: estado_nuevo,
-    updated_at: new Date().toISOString(),
-  }).eq('id', pedido_id)
-
-  await supabase.from('pedido_estados_log').insert({
-    pedido_id,
-    operador_id: operador_id || null,
-    estado_anterior: pedido.estado,
-    estado_nuevo,
-  })
-
-  return NextResponse.json({ ok: true })
+  if (error || !data) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
+  return NextResponse.json(data)
 }

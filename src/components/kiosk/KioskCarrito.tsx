@@ -71,7 +71,7 @@ export default function KioskCarrito({ config, carrito, accesorios, onQuitar, on
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <p className="font-bold text-lg" style={{ color: config.primary_color }}>{formatPrecio(item.precio)}</p>
-                  <button onClick={() => onQuitar(item.id)} className="p-1.5 text-neutral-200 hover:text-red-400 transition-colors">
+                  <button onClick={() => onQuitar(item.id)} className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>

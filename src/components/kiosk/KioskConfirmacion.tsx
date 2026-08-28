@@ -90,9 +90,10 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   // Polling MP
   const verificarPagoMP = useCallback(async (pedidoId: string) => {
     try {
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      const { data } = await supabase.from('pedidos').select('estado, numero_pedido, codigo_retiro').eq('id', pedidoId).single()
+      // Server-side: el kiosk es anónimo y la RLS le bloquea el SELECT directo
+      const r = await fetch(`/api/pedidos/estado?pedido_id=${pedidoId}`)
+      if (!r.ok) return
+      const data = await r.json()
       if (data?.estado === 'PAID') {
         setEstadoMP('aprobado')
         onPedidoCreado(data.numero_pedido, data.codigo_retiro)
