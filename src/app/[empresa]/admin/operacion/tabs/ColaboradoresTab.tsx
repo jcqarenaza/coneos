@@ -45,16 +45,19 @@ export default function ColaboradoresTab() {
     setSaving(true)
     const supabase = createClient()
     if (editId) {
-      await supabase.from('colaboradores').update({ nombre: form.nombre, rol: form.rol }).eq('id', editId)
+      await supabase.from('colaboradores').update({ nombre: form.nombre.trim(), rol: form.rol }).eq('id', editId)
     } else {
-      await supabase.from('colaboradores').insert({ nombre: form.nombre, rol: form.rol, empresa_id: ctx.empresaId })
+      await supabase.from('colaboradores').insert({ nombre: form.nombre.trim(), rol: form.rol, empresa_id: ctx.empresaId })
     }
     setSaving(false); setModal(false); load()
   }
 
   async function toggleActivo(row: Colaborador) {
     const supabase = createClient()
-    await supabase.from('colaboradores').update({ activo: !row.activo }).eq('id', row.id)
+    const { error, data: upd } = await supabase.from('colaboradores')
+      .update({ activo: !row.activo }).eq('id', row.id).select('id')
+    if (error) { alert(`No se pudo actualizar: ${error.message}`); return }
+    if (!upd || upd.length === 0) { alert('No se pudo actualizar (sin permisos o fila no encontrada). Probá recargar la página y reintentá.'); return }
     load()
   }
 
@@ -87,13 +90,16 @@ export default function ColaboradoresTab() {
                     {ROLES.find(r => r.value === row.rol)?.label ?? row.rol}
                   </span>
                 </div>
-                <button onClick={() => toggleActivo(row)}
-                  className={`text-xs font-semibold mt-0.5 ${row.activo ? 'text-green-600' : 'text-neutral-400'}`}>
+                <span className={`text-xs font-semibold mt-0.5 ${row.activo ? 'text-green-600' : 'text-neutral-400'}`}>
                   {row.activo ? '● Activo' : '○ Inactivo'}
-                </button>
+                </span>
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button onClick={() => toggleActivo(row)} title={row.activo ? 'Desactivar' : 'Activar'}
+                className={`relative w-11 h-6 rounded-full transition-colors ${row.activo ? 'bg-green-500' : 'bg-neutral-200'}`}>
+                <span className={`absolute top-0.5 h-5 w-5 bg-white rounded-full shadow transition-all ${row.activo ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
               <button onClick={() => openEdit(row)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
               <button onClick={() => handleDelete(row)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
             </div>
