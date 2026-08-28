@@ -163,6 +163,39 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       setLoading(false)
     }
     init()
+
+    // Retorno del checkout de MP: retomar el pedido pendiente y verificar el pago
+    const raw = (() => { try { return sessionStorage.getItem('coneos_mp_pedido') } catch { return null } })()
+    if (!raw) return
+    let pendiente: { id: string; ts: number } | null = null
+    try { pendiente = JSON.parse(raw) } catch {}
+    // Descartar pendientes de más de 1 hora
+    if (!pendiente?.id || Date.now() - (pendiente.ts ?? 0) > 3600000) {
+      try { sessionStorage.removeItem('coneos_mp_pedido') } catch {}
+      return
+    }
+    let intentos = 0
+    let cancelado = false
+    async function verificar() {
+      if (cancelado || !pendiente) return
+      try {
+        const r = await fetch(`/api/pedidos/estado?pedido_id=${pendiente.id}`)
+        if (r.ok) {
+          const d = await r.json()
+          if (d.estado === 'PAID' || d.estado === 'PREPARING' || d.estado === 'READY' || d.estado === 'DELIVERED') {
+            try { sessionStorage.removeItem('coneos_mp_pedido') } catch {}
+            setPedidoCreado({ numero: d.numero_pedido, codigo: d.codigo_retiro })
+            setPaso('confirmacion')
+            return
+          }
+        }
+      } catch {}
+      intentos++
+      if (intentos < 15) setTimeout(verificar, 2000)
+      else { try { sessionStorage.removeItem('coneos_mp_pedido') } catch {} }
+    }
+    verificar()
+    return () => { cancelado = true }
   }, [params, token])
 
   const agregarAlCarrito = useCallback((item: Omit<ItemCarrito, 'id'>) => {

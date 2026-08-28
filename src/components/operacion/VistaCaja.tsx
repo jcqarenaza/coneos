@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, History, ChevronLeft, ChevronRight, CloudRain } from 'lucide-react'
+import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, History, ChevronLeft, ChevronRight, CloudRain, Trash2 } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
@@ -170,6 +170,26 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     setPedidosSeleccionados([])
     setColaboradorSeleccionado('')
     cargarPedidos()
+  }
+
+  // Borrable: todo estado salvo cobrado (PAID/DELIVERED). Server-side valida igual.
+  const [eliminando, setEliminando] = useState(false)
+  function esBorrable(p: Pedido) { return p.estado !== 'PAID' && p.estado !== 'DELIVERED' }
+  async function eliminarPedido(p: Pedido, desdeHistorial: boolean) {
+    if (!confirm(`¿Eliminar el pedido #${p.numero_pedido}? Esta acción no se puede deshacer.`)) return
+    setEliminando(true)
+    const res = await fetch('/api/pedidos/eliminar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pedido_id: p.id }),
+    })
+    setEliminando(false)
+    if (res.ok) {
+      if (desdeHistorial) { setHistorialSeleccionado(null); cargarHistorial(historialFecha) }
+      else { setSeleccionado(null); cargarPedidos() }
+    } else {
+      const d = await res.json().catch(() => null)
+      alert(d?.error ?? 'No se pudo eliminar el pedido')
+    }
   }
 
   async function imprimirComanda(pedidoId: string) {
@@ -430,6 +450,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       <p className="text-xs text-neutral-400 mt-1">Pago: {historialSeleccionado.metodo_pago ?? '—'}</p>
                       {historialSeleccionado.colaborador_nombre && <p className="text-xs text-neutral-400">🛵 {historialSeleccionado.colaborador_nombre}</p>}
                       {historialSeleccionado.notas && <p className="text-xs text-amber-600 mt-1">{historialSeleccionado.notas}</p>}
+                      {esBorrable(historialSeleccionado) && (
+                        <button onClick={() => eliminarPedido(historialSeleccionado, true)} disabled={eliminando}
+                          className="w-full mt-3 py-2 flex items-center justify-center gap-2 border border-red-200 text-red-500 rounded-xl text-sm font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
+                          <Trash2 className="h-4 w-4" /> Eliminar pedido
+                        </button>
+                      )}
                     </div>
                     {historialSeleccionado.datos_delivery && (() => {
                       const d = historialSeleccionado.datos_delivery as DatosDelivery
@@ -599,10 +625,14 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <p className="text-amber-700 text-sm">📝 {seleccionado.notas}</p>
                   </div>
                 ) : null}
-                {seleccionado.tipo_pedido === 'delivery' && (
-                  <button onClick={() => imprimirComanda(seleccionado.id)}
-                    className="w-full mb-3 py-2.5 flex items-center justify-center gap-2 border border-neutral-200 rounded-xl text-neutral-600 text-sm font-semibold hover:bg-neutral-50 transition-colors">
-                    <Printer className="h-4 w-4" /> Reimprimir comanda
+                <button onClick={() => imprimirComanda(seleccionado.id)}
+                  className="w-full mb-3 py-2.5 flex items-center justify-center gap-2 border border-neutral-200 rounded-xl text-neutral-600 text-sm font-semibold hover:bg-neutral-50 transition-colors">
+                  <Printer className="h-4 w-4" /> {seleccionado.estado === 'PENDING_PAYMENT' ? 'Imprimir comanda' : 'Reimprimir comanda'}
+                </button>
+                {esBorrable(seleccionado) && (
+                  <button onClick={() => eliminarPedido(seleccionado, false)} disabled={eliminando}
+                    className="w-full mb-3 py-2 flex items-center justify-center gap-2 border border-red-200 text-red-500 rounded-xl text-sm font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
+                    <Trash2 className="h-4 w-4" /> Eliminar pedido
                   </button>
                 )}
                 {seleccionado.tipo_pedido === 'delivery' && seleccionado.datos_delivery && (
