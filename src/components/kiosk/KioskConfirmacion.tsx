@@ -57,7 +57,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
         setPagosSucursal({ ...data, mp_access_token: data.mp_access_token })
         const metodos: MetodoPago[] = []
         if (data.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo en caja', emoji: '💵', descripcion: 'Pagás al retirar tu pedido' })
-        if (data.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia', emoji: '📲', descripcion: data.cbu_transferencia ? `Alias: ${data.cbu_transferencia}` : 'Transferencia bancaria' })
+        if (data.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia', emoji: '📲', descripcion: data.cbu_transferencia ? `Alias: ${data.cbu_transferencia}${data.titular_transferencia ? ` · a nombre de ${data.titular_transferencia}` : ''}` : 'Transferencia bancaria' })
         if (data.acepta_mp && data.acepta_mp_kiosk !== false) metodos.push({ id: 'mp', label: 'Mercado Pago', emoji: '💳', descripcion: 'Pagá con QR' })
         setMetodosDisponibles(metodos)
         if (metodos.length > 0) setMetodoPago(metodos[0].id)
@@ -257,7 +257,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
 
           {/* Campo comprobante opcional */}
           <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-4 shadow-sm">
-            <p className="text-sm font-semibold text-neutral-700 mb-2">Número de comprobante *</p>
+            <p className="text-sm font-semibold text-neutral-700 mb-2">¿Tenés el número de comprobante?</p>
             <div className="flex items-center gap-2">
               <span className="text-neutral-400 text-sm font-mono">...</span>
               <input
@@ -268,12 +268,13 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
                 className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-xl font-mono font-bold text-center tracking-widest focus:outline-none focus:border-neutral-400"
               />
             </div>
-            <p className="text-neutral-400 text-xs mt-1.5 text-center">Ingresá los últimos 3 números para continuar</p>
+            <p className="text-neutral-400 text-xs mt-1.5 text-center">Últimos 3 números — opcional</p>
           </div>
 
-          <button disabled={numComprobante.trim().length < 3} onClick={async () => {
-            if (numComprobante.trim().length < 3) return
-            try { await fetch('/api/pedidos/comprobante', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedido_id: pedidoTransferencia.id, comprobante: numComprobante.trim() }) }) } catch {}
+          <button onClick={async () => {
+            if (numComprobante.trim().length >= 1) {
+              try { await fetch('/api/pedidos/comprobante', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedido_id: pedidoTransferencia.id, comprobante: numComprobante.trim() }) }) } catch {}
+            }
             onPedidoCreado(pedidoTransferencia.numero, pedidoTransferencia.codigo)
           }}
             className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all mb-3 disabled:opacity-40 disabled:active:scale-100"
