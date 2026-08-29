@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ShoppingBag, Store, Users, Layers, TrendingUp, Clock, Loader2 } from 'lucide-react'
+import { ShoppingBag, Store, Users, Layers, TrendingUp, Clock, Loader2, Bike } from 'lucide-react'
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 function tiempoRelativo(ts: string) {
@@ -25,6 +25,10 @@ export default function AdminDashboard() {
   const [nombre, setNombre] = useState('')
   const [stats, setStats] = useState({ totalHoy: 0, totalAyer: 0, cantidadHoy: 0, sucursales: 0, productos: 0, operadores: 0 })
   const [pedidosActivos, setPedidosActivos] = useState<{ id: string; numero_pedido: number; estado: string; total: number; created_at: string }[]>([])
+  const [empresaIdState, setEmpresaIdState] = useState<string | null>(null)
+  const [periodoCadetes, setPeriodoCadetes] = useState<'hoy' | 'semana' | 'mes'>('hoy')
+  const [cadetes, setCadetes] = useState<{ nombre: string; envios: number; transportado: number; efectivo: number }[]>([])
+  const [cadetesLoading, setCadetesLoading] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -45,6 +49,7 @@ export default function AdminDashboard() {
       if (ua.nombre) setNombre(ua.nombre)
 
       const empresaId = ua.empresa_id
+      setEmpresaIdState(empresaId)
       const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
       const ayer = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
 
@@ -74,6 +79,36 @@ export default function AdminDashboard() {
       <Loader2 className="h-6 w-6 animate-spin text-neutral-300" />
     </div>
   )
+
+  useEffect(() => {
+    if (!empresaIdState) return
+    async function loadCadetes() {
+      setCadetesLoading(true)
+      const supabase = createClient()
+      const ahora = new Date()
+      const hoyStr = ahora.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+      let desde = hoyStr
+      if (periodoCadetes === 'semana') desde = new Date(ahora.getTime() - 6 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+      if (periodoCadetes === 'mes') desde = new Date(ahora.getTime() - 29 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+      const { data } = await supabase.from('pedidos')
+        .select('colaborador_nombre, total, metodo_pago')
+        .eq('empresa_id', empresaIdState).eq('tipo_pedido', 'delivery').eq('estado', 'DELIVERED')
+        .not('colaborador_nombre', 'is', null)
+        .gte('fecha_pedido', desde).lte('fecha_pedido', hoyStr)
+      const agg: Record<string, { envios: number; transportado: number; efectivo: number }> = {}
+      for (const p of data ?? []) {
+        const k = (p.colaborador_nombre ?? '').trim()
+        if (!k) continue
+        if (!agg[k]) agg[k] = { envios: 0, transportado: 0, efectivo: 0 }
+        agg[k].envios++
+        agg[k].transportado += Number(p.total)
+        if (p.metodo_pago === 'efectivo') agg[k].efectivo += Number(p.total)
+      }
+      setCadetes(Object.entries(agg).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.envios - a.envios))
+      setCadetesLoading(false)
+    }
+    loadCadetes()
+  }, [empresaIdState, periodoCadetes])
 
   const ticketPromedio = stats.cantidadHoy > 0 ? stats.totalHoy / stats.cantidadHoy : 0
 
@@ -148,6 +183,45 @@ export default function AdminDashboard() {
                   <span className="text-neutral-400 text-xs">{tiempoRelativo(p.created_at)}</span>
                   <span className="text-neutral-700 font-bold text-sm">{formatPrecio(p.total)}</span>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden mt-6">
+        <div className="px-6 py-4 border-b border-neutral-50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bike className="h-4 w-4 text-neutral-400" />
+            <h2 className="font-bold text-neutral-700">Envíos por cadete</h2>
+          </div>
+          <div className="flex gap-1">
+            {(['hoy', 'semana', 'mes'] as const).map(p => (
+              <button key={p} onClick={() => setPeriodoCadetes(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${periodoCadetes === p ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
+                {p === 'hoy' ? 'Hoy' : p === 'semana' ? '7 días' : '30 días'}
+              </button>
+            ))}
+          </div>
+        </div>
+        {cadetesLoading ? (
+          <div className="px-6 py-8 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-neutral-200" /></div>
+        ) : cadetes.length === 0 ? (
+          <div className="px-6 py-10 text-center">
+            <Bike className="h-8 w-8 text-neutral-200 mx-auto mb-2" />
+            <p className="text-neutral-400 text-sm">Sin envíos con cadete asignado en el período</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-neutral-50">
+            <div className="px-6 py-2.5 grid grid-cols-4 gap-2 text-xs text-neutral-400 font-semibold uppercase tracking-wide">
+              <span>Cadete</span><span className="text-right">Envíos</span><span className="text-right">Transportado</span><span className="text-right">En efectivo</span>
+            </div>
+            {cadetes.map(c => (
+              <div key={c.nombre} className="px-6 py-3.5 grid grid-cols-4 gap-2 items-center">
+                <span className="font-bold text-neutral-800">{c.nombre}</span>
+                <span className="text-right font-black text-neutral-800 text-lg">{c.envios}</span>
+                <span className="text-right text-neutral-600 font-semibold text-sm">{formatPrecio(c.transportado)}</span>
+                <span className="text-right text-neutral-400 text-sm">{formatPrecio(c.efectivo)}</span>
               </div>
             ))}
           </div>
