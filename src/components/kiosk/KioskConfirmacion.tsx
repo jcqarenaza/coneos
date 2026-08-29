@@ -16,7 +16,7 @@ interface Props {
 }
 
 interface MetodoPago { id: string; label: string; emoji: string; descripcion: string }
-interface PagosSucursal { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; mp_alias?: string | null; mp_access_token?: string | null }
+interface PagosSucursal { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; titular_transferencia?: string | null; mp_alias?: string | null; mp_access_token?: string | null }
 
 type EstadoMP = 'idle' | 'creando' | 'esperando' | 'aprobado' | 'rechazado'
 
@@ -243,6 +243,9 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
                       {copiado ? <><Check className="h-3.5 w-3.5" /> Copiado</> : <><Copy className="h-3.5 w-3.5" /> Copiar</>}
                     </button>
                   </div>
+                  {pagosSucursal?.titular_transferencia && (
+                    <p className="text-xs text-neutral-400 mt-2">A nombre de <span className="font-semibold text-neutral-600">{pagosSucursal.titular_transferencia}</span></p>
+                  )}
                 </div>
               )}
 

@@ -289,6 +289,9 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
                 ? <p className="text-green-600 text-sm font-bold mt-2 flex items-center gap-1"><Check className="h-4 w-4" /> ¡Copiado!</p>
                 : <p className="text-xs mt-2" style={{ color: config.primary_color }}>Tocá el alias para copiarlo</p>
               }
+              {pagosSucursal.titular_transferencia && (
+                <p className="text-xs text-neutral-400 mt-2">A nombre de <span className="font-semibold text-neutral-600">{pagosSucursal.titular_transferencia}</span></p>
+              )}
             </div>
           )}
           <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
