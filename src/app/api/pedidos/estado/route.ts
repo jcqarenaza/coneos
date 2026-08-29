@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { acreditarPuntosPedido } from '@/lib/beneficios'
 
 // GET ?pedido_id= → estado mínimo del pedido, para que kiosk/delivery (anónimos)
 // detecten el pago MP y muestren número y código de retiro.
@@ -40,6 +41,12 @@ export async function POST(request: Request) {
     estado_anterior: pedido.estado,
     estado_nuevo,
   })
+
+  // Beneficios: al cobrar/entregar, acreditar puntos si hay teléfono vinculado.
+  // Idempotente y silencioso — nunca bloquea el cambio de estado.
+  if (estado_nuevo === 'PAID' || estado_nuevo === 'DELIVERED') {
+    await acreditarPuntosPedido(pedido_id).catch(() => {})
+  }
 
   return NextResponse.json({ ok: true })
 }
