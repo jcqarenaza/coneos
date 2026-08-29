@@ -74,12 +74,6 @@ export default function AdminDashboard() {
     load()
   }, [])
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <Loader2 className="h-6 w-6 animate-spin text-neutral-300" />
-    </div>
-  )
-
   useEffect(() => {
     if (!empresaIdState) return
     async function loadCadetes() {
@@ -109,6 +103,13 @@ export default function AdminDashboard() {
     }
     loadCadetes()
   }, [empresaIdState, periodoCadetes])
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <Loader2 className="h-6 w-6 animate-spin text-neutral-300" />
+    </div>
+  )
+
 
   const ticketPromedio = stats.cantidadHoy > 0 ? stats.totalHoy / stats.cantidadHoy : 0
 
