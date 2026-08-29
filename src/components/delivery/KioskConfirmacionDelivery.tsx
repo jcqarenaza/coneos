@@ -224,7 +224,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     const mpConfigurado = mpDisponible
     const metodos: { id: string; label: string; desc: string }[] = []
     if (pagosSucursal?.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo al repartidor', desc: 'Pagás cuando llegue tu pedido' })
-    if (pagosSucursal?.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia bancaria', desc: `Alias: ${pagosSucursal.cbu_transferencia ?? ''}` })
+    if (pagosSucursal?.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia bancaria', desc: `Alias: ${pagosSucursal.cbu_transferencia ?? ''}${pagosSucursal.titular_transferencia ? ` · a nombre de ${pagosSucursal.titular_transferencia}` : ''}` })
     if (pagosSucursal?.acepta_mp && (pagosSucursal as { acepta_mp_delivery?: boolean }).acepta_mp_delivery !== false && mpConfigurado) metodos.push({ id: 'mp', label: 'Mercado Pago', desc: 'Pagá con QR o link' })
     if (!metodos.length) metodos.push({ id: 'efectivo', label: 'Efectivo al repartidor', desc: 'Pagás cuando llegue tu pedido' })
 

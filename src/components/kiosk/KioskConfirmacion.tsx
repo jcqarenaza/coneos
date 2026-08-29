@@ -257,7 +257,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
 
           {/* Campo comprobante opcional */}
           <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-4 shadow-sm">
-            <p className="text-sm font-semibold text-neutral-700 mb-2">¿Tenés el número de comprobante?</p>
+            <p className="text-sm font-semibold text-neutral-700 mb-2">Número de comprobante *</p>
             <div className="flex items-center gap-2">
               <span className="text-neutral-400 text-sm font-mono">...</span>
               <input
@@ -268,16 +268,15 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
                 className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-xl font-mono font-bold text-center tracking-widest focus:outline-none focus:border-neutral-400"
               />
             </div>
-            <p className="text-neutral-400 text-xs mt-1.5 text-center">Últimos 3 números — opcional</p>
+            <p className="text-neutral-400 text-xs mt-1.5 text-center">Ingresá los últimos 3 números para continuar</p>
           </div>
 
-          <button onClick={async () => {
-            if (numComprobante.trim()) {
-              try { await fetch('/api/pedidos/comprobante', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedido_id: pedidoTransferencia.id, comprobante: numComprobante.trim() }) }) } catch {}
-            }
+          <button disabled={numComprobante.trim().length < 3} onClick={async () => {
+            if (numComprobante.trim().length < 3) return
+            try { await fetch('/api/pedidos/comprobante', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedido_id: pedidoTransferencia.id, comprobante: numComprobante.trim() }) }) } catch {}
             onPedidoCreado(pedidoTransferencia.numero, pedidoTransferencia.codigo)
           }}
-            className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all mb-3"
+            className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all mb-3 disabled:opacity-40 disabled:active:scale-100"
             style={{ backgroundColor: config.primary_color }}>
             ✅ Ya realicé la transferencia
           </button>
