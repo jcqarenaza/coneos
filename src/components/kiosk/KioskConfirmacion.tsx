@@ -16,7 +16,7 @@ interface Props {
 }
 
 interface MetodoPago { id: string; label: string; emoji: string; descripcion: string }
-interface PagosSucursal { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; titular_transferencia?: string | null; mp_alias?: string | null; mp_access_token?: string | null }
+interface PagosSucursal { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; titular_transferencia?: string | null; mp_alias?: string | null }
 
 type EstadoMP = 'idle' | 'creando' | 'esperando' | 'aprobado' | 'rechazado'
 
@@ -54,7 +54,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     fetch(`/api/kiosk/pagos?sucursal_id=${dispositivo.sucursal_id}`)
       .then(r => r.json())
       .then(data => {
-        setPagosSucursal({ ...data, mp_access_token: data.mp_access_token })
+        setPagosSucursal(data)
         const metodos: MetodoPago[] = []
         if (data.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo en caja', emoji: '💵', descripcion: 'Pagás al retirar tu pedido' })
         if (data.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia', emoji: '📲', descripcion: data.cbu_transferencia ? `Alias: ${data.cbu_transferencia}${data.titular_transferencia ? ` · a nombre de ${data.titular_transferencia}` : ''}` : 'Transferencia bancaria' })

@@ -12,14 +12,14 @@ interface Horario { desde: string; hasta: string }
 interface DeliveryConfig { activo: boolean; costo_envio: number; horarios: Horario[]; mensaje_fuera_horario: string; pausado?: boolean; mensaje_pausa?: string; tolerancia_cierre?: number }
 interface SucursalPagos {
   acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; acepta_mp_kiosk: boolean; acepta_mp_delivery: boolean
-  cbu_transferencia: string | null; titular_transferencia: string | null; mp_access_token: string | null
+  cbu_transferencia: string | null; titular_transferencia: string | null
   mp_alias?: string | null; mp_public_key?: string | null
 }
 interface Sucursal {
   id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; pagos?: SucursalPagos; delivery?: DeliveryConfig
 }
 
-const emptyPagos = (): SucursalPagos => ({ acepta_efectivo: true, acepta_transferencia: true, acepta_mp: false, acepta_mp_kiosk: true, acepta_mp_delivery: true, cbu_transferencia: '', titular_transferencia: '', mp_access_token: '', mp_alias: '', mp_public_key: '' })
+const emptyPagos = (): SucursalPagos => ({ acepta_efectivo: true, acepta_transferencia: true, acepta_mp: false, acepta_mp_kiosk: true, acepta_mp_delivery: true, cbu_transferencia: '', titular_transferencia: '', mp_alias: '', mp_public_key: '' })
 const emptyDelivery = (): DeliveryConfig => ({ activo: false, costo_envio: 0, horarios: [{ desde: '20:00', hasta: '23:59' }], mensaje_fuera_horario: 'El delivery no está disponible en este momento. ¡Volvemos pronto!' })
 const emptySucursal = (): Partial<Sucursal> => ({ nombre: '', slug: '', direccion: '', activo: true })
 
@@ -39,7 +39,7 @@ export default function SucursalesPage() {
     const supabase = createClient()
     const { data: suc } = await supabase
       .from('sucursales')
-      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, titular_transferencia, mp_access_token), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre)')
+      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, titular_transferencia), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre)')
       .eq('empresa_id', ctx.empresaId).order('nombre')
     setData((suc ?? []).map((s: Record<string, unknown>) => ({
       ...s,

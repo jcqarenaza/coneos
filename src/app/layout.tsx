@@ -33,10 +33,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]) + '&sucursal=' + encodeURIComponent(partes[2]);
             }
 
-            var link = document.createElement('link');
-            link.rel = 'manifest';
-            link.href = href;
-            document.head.appendChild(link);
+            // Solo inyectar manifest si se resolvió uno dinámico (evita 404 de /manifest.json en caja/admin)
+            if (href.indexOf('/api/manifest') === 0) {
+              var link = document.createElement('link');
+              link.rel = 'manifest';
+              link.href = href;
+              document.head.appendChild(link);
+            }
 
             // apple-touch-icon dinamico para iOS (iOS ignora el manifest para el icono)
             if (href.indexOf('/api/manifest') === 0) {
