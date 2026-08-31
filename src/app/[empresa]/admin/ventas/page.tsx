@@ -207,16 +207,32 @@ export default function VentasPage() {
   const pedidosResumen = pedidos.filter(p => p.estado !== 'CANCELLED')
   const totalFacturacion = pedidosResumen.reduce((acc, p) => acc + Number(p.total), 0)
   const ticketPromedio = pedidosResumen.length > 0 ? totalFacturacion / pedidosResumen.length : 0
+  // Helado por kilo: desglosar por presentación; gramos por presentación para el ranking de sabores
+  const GRAMOS: Record<string, number> = { '1 Kg': 1000, '1/2 Kg': 500, '1/4 Kg': 250 }
   const porProducto: Record<string, { nombre: string; cantidad: number; total: number }> = {}
+  const porSabor: Record<string, { nombre: string; emoji: string | null; gramos: number; veces: number }> = {}
   pedidosResumen.forEach(p => {
     p.pedido_items?.forEach(item => {
-      const key = item.nombre_producto_snap
+      const esHeladoKilo = GRAMOS[item.nombre_presentacion_snap] != null
+      const key = esHeladoKilo ? `${item.nombre_producto_snap} ${item.nombre_presentacion_snap}` : item.nombre_producto_snap
       if (!porProducto[key]) porProducto[key] = { nombre: key, cantidad: 0, total: 0 }
       porProducto[key].cantidad += item.cantidad
       porProducto[key].total += Number(item.precio_snap) * item.cantidad
+      // Sabores: helado por kilo reparte gramos entre sabores; baldes/tortas cuentan por variedad elegida
+      const ops = item.pedido_item_opciones ?? []
+      if (ops.length > 0) {
+        const gPorSabor = esHeladoKilo ? (GRAMOS[item.nombre_presentacion_snap] / ops.length) * item.cantidad : 0
+        ops.forEach(op => {
+          const sk = op.nombre_snap
+          if (!porSabor[sk]) porSabor[sk] = { nombre: sk, emoji: op.emoji_snap, gramos: 0, veces: 0 }
+          porSabor[sk].gramos += gPorSabor
+          porSabor[sk].veces += item.cantidad
+        })
+      }
     })
   })
   const rankingProductos = Object.values(porProducto).sort((a, b) => b.total - a.total).slice(0, 8)
+  const rankingSabores = Object.values(porSabor).sort((a, b) => b.gramos - a.gramos || b.veces - a.veces).slice(0, 12)
   const porMetodo: Record<string, number> = {}
   pedidosResumen.forEach(p => { const m = p.metodo_pago ?? 'otro'; porMetodo[m] = (porMetodo[m] ?? 0) + Number(p.total) })
 
@@ -365,6 +381,25 @@ export default function VentasPage() {
                       <div className="text-right">
                         <p className="text-neutral-800 text-sm font-bold">{formatPrecio(p.total)}</p>
                         <p className="text-neutral-400 text-xs">{p.cantidad} unidades</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="px-5 py-4 border-y border-neutral-50 mt-2"><h3 className="font-bold text-neutral-700">Sabores más pedidos</h3><p className="text-xs text-neutral-400">Helado por kilo en gramos estimados · resto por veces elegido</p></div>
+              {rankingSabores.length === 0 ? (
+                <div className="px-5 py-6 text-center text-neutral-300 text-sm">Sin datos</div>
+              ) : (
+                <div className="divide-y divide-neutral-50">
+                  {rankingSabores.map((sb, i) => (
+                    <div key={sb.nombre} className="flex items-center justify-between px-5 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <span className="text-neutral-300 text-xs font-bold w-4">{i + 1}</span>
+                        <span className="text-neutral-700 text-sm font-medium">{sb.emoji ?? ''} {sb.nombre}</span>
+                      </div>
+                      <div className="text-right">
+                        {sb.gramos > 0 && <p className="text-neutral-800 text-sm font-bold">{sb.gramos >= 1000 ? `${(sb.gramos / 1000).toFixed(1)} kg` : `${Math.round(sb.gramos)} g`}</p>}
+                        <p className="text-neutral-400 text-xs">{sb.veces} veces</p>
                       </div>
                     </div>
                   ))}
