@@ -43,7 +43,7 @@ export default function BeneficiosPage() {
     if (grupoIds.length > 0) {
       const { data: accs } = await supabase.from('opciones')
         .select('id, nombre, emoji, imagen_url, puntos_canje')
-        .in('grupo_id', grupoIds).order('nombre')
+        .in('grupo_id', grupoIds).gt('precio_adicional', 0).order('nombre')
       setAccesorios(accs ?? [])
       const edit: Record<string, string> = {}
       for (const a of accs ?? []) edit[a.id] = a.puntos_canje != null ? String(a.puntos_canje) : ''

@@ -45,9 +45,12 @@ export async function PUT(request: Request) {
   const cfg = await getConfigBeneficios(pedido.empresa_id)
   if (!cfg.activo) return NextResponse.json({ error: 'Beneficios inactivos' }, { status: 409 })
 
+  // opcion_ids puede repetir el mismo id (canjes múltiples del mismo accesorio)
+  const conteo: Record<string, number> = {}
+  for (const oid of opcion_ids) conteo[oid] = (conteo[oid] ?? 0) + 1
   const { data: opciones } = await supabase.from('opciones')
-    .select('id, nombre, puntos_canje').in('id', opcion_ids).not('puntos_canje', 'is', null)
-  const costo = (opciones ?? []).reduce((s, o) => s + Number(o.puntos_canje), 0)
+    .select('id, nombre, puntos_canje').in('id', Object.keys(conteo)).not('puntos_canje', 'is', null)
+  const costo = (opciones ?? []).reduce((s, o) => s + Number(o.puntos_canje) * (conteo[o.id] ?? 1), 0)
   if (costo <= 0) return NextResponse.json({ error: 'Nada canjeable' }, { status: 400 })
 
   const { data: cliente } = await supabase.from('clientes_beneficios')
@@ -59,7 +62,7 @@ export async function PUT(request: Request) {
   await supabase.from('beneficios_movimientos').insert({
     empresa_id: pedido.empresa_id, cliente_id: cliente.id, pedido_id: pedido.id,
     tipo: 'canjeado', puntos: -costo,
-    detalle: `Canje: ${(opciones ?? []).map(o => o.nombre).join(', ')}`,
+    detalle: `Canje: ${(opciones ?? []).map(o => `${(conteo[o.id] ?? 1)}x ${o.nombre}`).join(', ')}`,
   })
   await supabase.from('clientes_beneficios').update({
     puntos: cliente.puntos - costo, updated_at: new Date().toISOString(),
