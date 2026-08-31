@@ -209,13 +209,13 @@ export default function VentasPage() {
   const ticketPromedio = pedidosResumen.length > 0 ? totalFacturacion / pedidosResumen.length : 0
   // Helado por kilo: desglosar por presentación; gramos por presentación para el ranking de sabores
   const GRAMOS: Record<string, number> = { '1 Kg': 1000, '1/2 Kg': 500, '1/4 Kg': 250 }
-  const porProducto: Record<string, { nombre: string; cantidad: number; total: number }> = {}
+  const porProducto: Record<string, { nombre: string; cantidad: number; total: number; sabores: Record<string, { nombre: string; emoji: string | null; gramos: number; veces: number }> }> = {}
   const porSabor: Record<string, { nombre: string; emoji: string | null; gramos: number; veces: number }> = {}
   pedidosResumen.forEach(p => {
     p.pedido_items?.forEach(item => {
       const esHeladoKilo = GRAMOS[item.nombre_presentacion_snap] != null
       const key = esHeladoKilo ? `${item.nombre_producto_snap} ${item.nombre_presentacion_snap}` : item.nombre_producto_snap
-      if (!porProducto[key]) porProducto[key] = { nombre: key, cantidad: 0, total: 0 }
+      if (!porProducto[key]) porProducto[key] = { nombre: key, cantidad: 0, total: 0, sabores: {} }
       porProducto[key].cantidad += item.cantidad
       porProducto[key].total += Number(item.precio_snap) * item.cantidad
       // Sabores: helado por kilo reparte gramos entre sabores; baldes/tortas cuentan por variedad elegida
@@ -227,12 +227,16 @@ export default function VentasPage() {
           if (!porSabor[sk]) porSabor[sk] = { nombre: sk, emoji: op.emoji_snap, gramos: 0, veces: 0 }
           porSabor[sk].gramos += gPorSabor
           porSabor[sk].veces += item.cantidad
+          if (!porProducto[key].sabores[sk]) porProducto[key].sabores[sk] = { nombre: sk, emoji: op.emoji_snap, gramos: 0, veces: 0 }
+          porProducto[key].sabores[sk].gramos += gPorSabor
+          porProducto[key].sabores[sk].veces += item.cantidad
         })
       }
     })
   })
   const rankingProductos = Object.values(porProducto).sort((a, b) => b.total - a.total).slice(0, 8)
   const rankingSabores = Object.values(porSabor).sort((a, b) => b.gramos - a.gramos || b.veces - a.veces).slice(0, 12)
+  const [prodExpandido, setProdExpandido] = useState<string | null>(null)
   const porMetodo: Record<string, number> = {}
   pedidosResumen.forEach(p => { const m = p.metodo_pago ?? 'otro'; porMetodo[m] = (porMetodo[m] ?? 0) + Number(p.total) })
 
@@ -372,18 +376,36 @@ export default function VentasPage() {
                 <div className="px-5 py-10 text-center text-neutral-300 text-sm">Sin datos</div>
               ) : (
                 <div className="divide-y divide-neutral-50">
-                  {rankingProductos.map((p, i) => (
-                    <div key={p.nombre} className="flex items-center justify-between px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-neutral-300 text-xs font-bold w-4">{i + 1}</span>
-                        <span className="text-neutral-700 text-sm font-medium">{p.nombre}</span>
+                  {rankingProductos.map((p, i) => {
+                    const sabs = Object.values(p.sabores).sort((a, b) => b.gramos - a.gramos || b.veces - a.veces).slice(0, 8)
+                    const abierto = prodExpandido === p.nombre
+                    return (
+                      <div key={p.nombre}>
+                        <button onClick={() => setProdExpandido(abierto ? null : p.nombre)}
+                          className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-neutral-50 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <span className="text-neutral-300 text-xs font-bold w-4">{i + 1}</span>
+                            <span className="text-neutral-700 text-sm font-medium">{p.nombre}</span>
+                            {sabs.length > 0 && <span className="text-neutral-300 text-xs">{abierto ? '▲' : '▼'}</span>}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-neutral-800 text-sm font-bold">{formatPrecio(p.total)}</p>
+                            <p className="text-neutral-400 text-xs">{p.cantidad} unidades</p>
+                          </div>
+                        </button>
+                        {abierto && sabs.length > 0 && (
+                          <div className="bg-neutral-50 px-5 py-2 space-y-1">
+                            {sabs.map(sb => (
+                              <div key={sb.nombre} className="flex items-center justify-between text-xs py-1">
+                                <span className="text-neutral-600">{sb.emoji ?? ''} {sb.nombre}</span>
+                                <span className="text-neutral-500 font-semibold">{sb.gramos > 0 ? (sb.gramos >= 1000 ? `${(sb.gramos / 1000).toFixed(1)} kg` : `${Math.round(sb.gramos)} g`) : `${sb.veces} veces`}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <p className="text-neutral-800 text-sm font-bold">{formatPrecio(p.total)}</p>
-                        <p className="text-neutral-400 text-xs">{p.cantidad} unidades</p>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
               <div className="px-5 py-4 border-y border-neutral-50 mt-2"><h3 className="font-bold text-neutral-700">Sabores más pedidos</h3><p className="text-xs text-neutral-400">Helado por kilo en gramos estimados · resto por veces elegido</p></div>
