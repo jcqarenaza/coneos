@@ -54,7 +54,15 @@ export default function AdminSidebarWrapper() {
         .eq('empresa_id', ua.empresa_id)
         .single()
       const mods = cfg?.modulos as Record<string, boolean> | null
-      setModulos(mods ?? { kiosk: true, caja: true, preparacion: true, display: true, delivery: false })
+      const modulosBase = mods ?? { kiosk: true, caja: true, preparacion: true, display: true, delivery: false }
+
+      // Beneficios: la fuente de verdad es beneficios_config (lo activa el panel QP)
+      const { data: benef } = await supabase
+        .from('beneficios_config')
+        .select('activo')
+        .eq('empresa_id', ua.empresa_id)
+        .maybeSingle()
+      setModulos({ ...modulosBase, beneficios: !!benef?.activo })
       setReady(true)
     }
     init()
