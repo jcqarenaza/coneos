@@ -147,6 +147,19 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       })
       const data = await res.json()
       setCreando(false)
+      // Canje de puntos elegido en el carrito: descontar server-side y limpiar
+      try {
+        const raw = sessionStorage.getItem('coneos_canje')
+        if (raw && data?.pedido?.id) {
+          const cj = JSON.parse(raw)
+          if (cj?.telefono && Array.isArray(cj.opciones) && cj.opciones.length > 0) {
+            await fetch('/api/beneficios', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pedido_id: data.pedido.id, telefono: cj.telefono, opcion_ids: cj.opciones }) })
+          }
+          sessionStorage.removeItem('coneos_canje')
+        }
+      } catch {}
+
       if (res.ok && data.init_point) {
         // Guardar pendiente para que la page lo retome al volver del checkout de MP
         try { sessionStorage.setItem('coneos_mp_pedido', JSON.stringify({ id: pedido.id, ts: Date.now() })) } catch {}

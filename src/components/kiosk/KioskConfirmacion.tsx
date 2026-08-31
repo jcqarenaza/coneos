@@ -33,6 +33,31 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   const [pedidoTransferencia, setPedidoTransferencia] = useState<{ id: string; numero: number; codigo: string } | null>(null)
   const [copiado, setCopiado] = useState(false)
   const [numComprobante, setNumComprobante] = useState('')
+  // Beneficios: guardar el id del último pedido creado para vincular teléfono en la pantalla de éxito
+  const [ultimoPedidoId, setUltimoPedidoId] = useState<string | null>(null)
+  const [beneficiosActivo, setBeneficiosActivo] = useState(false)
+  const [telBeneficios, setTelBeneficios] = useState('')
+  const [resultadoBeneficios, setResultadoBeneficios] = useState<{ sumaste?: number; tenes: number; pendiente: boolean } | null>(null)
+  const [enviandoBeneficios, setEnviandoBeneficios] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/beneficios?empresa_id=${dispositivo.empresa_id}`)
+      .then(r => r.json()).then(d => setBeneficiosActivo(!!d.activo)).catch(() => {})
+  }, [dispositivo])
+
+  async function sumarPuntos() {
+    if (!ultimoPedidoId || telBeneficios.replace(/\D/g, '').length < 8) return
+    setEnviandoBeneficios(true)
+    try {
+      const r = await fetch('/api/beneficios', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido_id: ultimoPedidoId, telefono: telBeneficios }),
+      })
+      const d = await r.json()
+      if (r.ok && d.activo) setResultadoBeneficios({ sumaste: d.sumaste, tenes: d.tenes ?? 0, pendiente: !d.acreditado })
+    } catch {}
+    setEnviandoBeneficios(false)
+  }
 
   // MP state
   const [estadoMP, setEstadoMP] = useState<EstadoMP>('idle')
@@ -72,10 +97,12 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   useEffect(() => {
     if (!pedidoCreado) return
     const interval = setInterval(() => {
+      // Pausar el regreso al inicio mientras el cliente carga su teléfono para sumar puntos
+      if (telBeneficios.length > 0 && !resultadoBeneficios) return
       setCountdown(c => { if (c <= 1) { onNuevoPedido(); return 15 } return c - 1 })
     }, 1000)
     return () => clearInterval(interval)
-  }, [pedidoCreado, onNuevoPedido])
+  }, [pedidoCreado, onNuevoPedido, telBeneficios, resultadoBeneficios])
 
   // Countdown transferencia — más largo, 3 minutos
   const [countdownTransf, setCountdownTransf] = useState(180)
@@ -135,6 +162,20 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     setCreando(false)
 
     if (!res.ok || !data.pedido) return
+
+    if (data?.pedido?.id) setUltimoPedidoId(data.pedido.id)
+      // Canje de puntos elegido en el carrito: descontar server-side y limpiar
+      try {
+        const raw = sessionStorage.getItem('coneos_canje')
+        if (raw && data?.pedido?.id) {
+          const cj = JSON.parse(raw)
+          if (cj?.telefono && Array.isArray(cj.opciones) && cj.opciones.length > 0) {
+            await fetch('/api/beneficios', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pedido_id: data.pedido.id, telefono: cj.telefono, opcion_ids: cj.opciones }) })
+          }
+          sessionStorage.removeItem('coneos_canje')
+        }
+      } catch {}
 
     if (metodo === 'transferencia') {
       // Guardar comprobante en notas si lo ingresó
@@ -199,6 +240,36 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
             <p className="text-neutral-400 text-sm mb-2 uppercase tracking-wide font-medium">Código de retiro</p>
             <p className="text-4xl font-black tracking-[0.3em] font-mono" style={{ color: config.primary_color }}>{pedidoCreado.codigo}</p>
           </div>
+          {beneficiosActivo && ultimoPedidoId && (
+            <div className="bg-white rounded-3xl p-5 shadow-md mb-6 border border-neutral-100 text-left">
+              {resultadoBeneficios ? (
+                <div className="text-center">
+                  <p className="text-2xl mb-1">🎁</p>
+                  {resultadoBeneficios.pendiente
+                    ? <p className="font-bold text-neutral-700">¡Listo! Tus puntos se suman al cobrarse el pedido</p>
+                    : <p className="font-bold text-neutral-700">¡Sumaste {resultadoBeneficios.sumaste} puntos!</p>
+                  }
+                  <p className="text-neutral-400 text-sm mt-1">Tenés <span className="font-black" style={{ color: config.primary_color }}>{resultadoBeneficios.tenes + (resultadoBeneficios.pendiente ? 0 : 0)}</span> puntos acumulados</p>
+                </div>
+              ) : (
+                <>
+                  <p className="font-bold text-neutral-700 mb-1">🎁 Sumá puntos con tu compra</p>
+                  <p className="text-neutral-400 text-xs mb-3">Ingresá tu celular y acumulá en cada pedido</p>
+                  <div className="flex gap-2">
+                    <input value={telBeneficios} inputMode="numeric"
+                      onChange={e => setTelBeneficios(e.target.value.replace(/\D/g, '').slice(0, 13))}
+                      placeholder="2302123456"
+                      className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-lg font-mono font-bold text-center focus:outline-none focus:border-neutral-400" />
+                    <button onClick={sumarPuntos} disabled={enviandoBeneficios || telBeneficios.replace(/\D/g, '').length < 8}
+                      className="px-5 py-3 rounded-xl text-white font-bold disabled:opacity-40 active:scale-95 transition-all"
+                      style={{ backgroundColor: config.primary_color }}>
+                      {enviandoBeneficios ? '...' : 'Sumar'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <p className="text-neutral-300 text-sm mb-4">Volviendo al inicio en {countdown}s...</p>
           <button onClick={onNuevoPedido} className="px-8 py-3 rounded-2xl text-white font-semibold active:scale-95 transition-all" style={{ backgroundColor: config.primary_color }}>
             Volver al inicio

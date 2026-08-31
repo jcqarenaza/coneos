@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Trash2, Plus, Minus, ShoppingBag, Truck, ArrowLeft } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito, Accesorio } from '@/app/[empresa]/delivery/[sucursal]/page'
 
@@ -20,7 +20,7 @@ interface Props {
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 
-export default function KioskCarritoDelivery({ config, carrito, setCarrito, accesorios, costoEnvio, onConfirmar, onSeguirComprando }: Props) {
+export default function KioskCarritoDelivery({ config, dispositivo, carrito, setCarrito, accesorios, costoEnvio, onConfirmar, onSeguirComprando }: Props) {
   const [cantAccesorios, setCantAccesorios] = useState<Record<string, number>>({})
 
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
@@ -35,8 +35,50 @@ export default function KioskCarritoDelivery({ config, carrito, setCarrito, acce
     setCantAccesorios(prev => ({ ...prev, [id]: Math.max(0, (prev[id] ?? 0) + delta) }))
   }
 
+
+  // ── Canje de puntos ──
+  const [benefActivo, setBenefActivo] = useState(false)
+  const [benefTel, setBenefTel] = useState('')
+  const [benefCargando, setBenefCargando] = useState(false)
+  const [benefInfo, setBenefInfo] = useState<{ puntos: number; canjeables: { id: string; nombre: string; emoji: string | null; puntos_canje: number }[] } | null>(null)
+  const [canjePuntosUsados, setCanjePuntosUsados] = useState(0)
+
+  useEffect(() => {
+    fetch(`/api/beneficios?empresa_id=${dispositivo.empresa_id}`)
+      .then(r => r.json()).then(d => setBenefActivo(!!d.activo)).catch(() => {})
+    try {
+      const prev = sessionStorage.getItem('coneos_canje')
+      if (prev) { const p = JSON.parse(prev); setCanjePuntosUsados(p.puntos ?? 0) }
+    } catch {}
+  }, [dispositivo])
+
+  async function consultarPuntos() {
+    setBenefCargando(true)
+    try {
+      const r = await fetch(`/api/beneficios?empresa_id=${dispositivo.empresa_id}&telefono=${benefTel}`)
+      const d = await r.json()
+      if (d.activo) setBenefInfo({ puntos: d.puntos ?? 0, canjeables: d.canjeables ?? [] })
+    } catch {}
+    setBenefCargando(false)
+  }
+
+  const [canjes, setCanjes] = useState<{ id: string; nombre: string; emoji: string | null; puntos_canje: number }[]>([])
+  function agregarCanje(cj: { id: string; nombre: string; emoji: string | null; puntos_canje: number }) {
+    setCanjes(prev => [...prev, cj])
+    const usados = canjePuntosUsados + cj.puntos_canje
+    setCanjePuntosUsados(usados)
+    try {
+      const prev = sessionStorage.getItem('coneos_canje')
+      const p = prev ? JSON.parse(prev) : { telefono: benefTel, opciones: [], puntos: 0 }
+      p.telefono = p.telefono || benefTel
+      p.opciones.push(cj.id); p.puntos = usados
+      sessionStorage.setItem('coneos_canje', JSON.stringify(p))
+    } catch {}
+  }
+
   function handleConfirmar() {
-    onConfirmar(accesorios.filter(a => (cantAccesorios[a.id] ?? 0) > 0).map(a => ({ accesorio: a, cantidad: cantAccesorios[a.id] ?? 0 })))
+    const extrasCanje = canjes.map(cj => ({ accesorio: { ...cj, imagen_url: null, precio_adicional: 0, grupo_id: '', nombre: `🎁 ${cj.nombre.replace(/^Toppings?\s+/i, '')} (canje)` } as Accesorio, cantidad: 1 }))
+    onConfirmar([...accesorios.filter(a => (cantAccesorios[a.id] ?? 0) > 0).map(a => ({ accesorio: a, cantidad: cantAccesorios[a.id] ?? 0 })), ...extrasCanje])
   }
 
   if (carrito.length === 0) return (
@@ -95,6 +137,52 @@ export default function KioskCarritoDelivery({ config, carrito, setCarrito, acce
           className="w-full py-3 rounded-2xl border-2 border-dashed border-neutral-200 text-neutral-400 text-sm font-semibold mb-4 active:bg-neutral-50">
           + Agregar más productos
         </button>
+
+
+            {/* ── Canje de puntos ── */}
+            {benefActivo && (
+              <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-neutral-50">
+                  <p className="font-bold text-neutral-700 text-sm">🎁 ¿Tenés puntos?</p>
+                  <p className="text-xs text-neutral-400">Ingresá tu celular y canjealos</p>
+                </div>
+                <div className="px-4 py-3">
+                  {benefInfo ? (
+                    <>
+                      <p className="text-sm font-bold text-neutral-700 mb-2">Tenés <span style={{ color: config.primary_color }}>{benefInfo.puntos - canjePuntosUsados}</span> puntos</p>
+                      {canjes.length > 0 && <p className="text-xs text-green-600 font-semibold mb-2">🎁 {canjes.length} canje{canjes.length > 1 ? 's' : ''} agregado{canjes.length > 1 ? 's' : ''} al pedido</p>}
+                      {benefInfo.canjeables.length === 0
+                        ? <p className="text-xs text-neutral-400">No hay premios canjeables por ahora</p>
+                        : <div className="space-y-1.5">
+                            {benefInfo.canjeables.map(cj => {
+                              const alcanza = benefInfo.puntos - canjePuntosUsados >= cj.puntos_canje
+                              return (
+                                <button key={cj.id} disabled={!alcanza} onClick={() => agregarCanje(cj)}
+                                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-neutral-100 text-left disabled:opacity-40 active:bg-neutral-50">
+                                  <span className="text-lg">{cj.emoji ?? '🎁'}</span>
+                                  <span className="flex-1 text-sm font-semibold text-neutral-700">{cj.nombre.replace(/^Toppings?\s+/i, '')}</span>
+                                  <span className="text-xs font-bold" style={{ color: config.primary_color }}>{cj.puntos_canje} pts</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                      }
+                    </>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input value={benefTel} inputMode="numeric" placeholder="2302123456"
+                        onChange={e => setBenefTel(e.target.value.replace(/\D/g, '').slice(0, 13))}
+                        className="flex-1 px-3 py-2.5 rounded-xl border border-neutral-200 text-base font-mono font-bold text-center focus:outline-none focus:border-neutral-400" />
+                      <button onClick={consultarPuntos} disabled={benefCargando || benefTel.length < 8}
+                        className="px-4 py-2.5 rounded-xl text-white font-bold text-sm disabled:opacity-40"
+                        style={{ backgroundColor: config.primary_color }}>
+                        {benefCargando ? '...' : 'Ver'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
         {/* Accesorios */}
         {accesorios.length > 0 && (
