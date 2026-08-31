@@ -36,13 +36,15 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   // Beneficios: guardar el id del último pedido creado para vincular teléfono en la pantalla de éxito
   const [ultimoPedidoId, setUltimoPedidoId] = useState<string | null>(null)
   const [beneficiosActivo, setBeneficiosActivo] = useState(false)
+  const [benefPPP, setBenefPPP] = useState<number | null>(null)
+  const [benefBase, setBenefBase] = useState(0)
   const [telBeneficios, setTelBeneficios] = useState('')
   const [resultadoBeneficios, setResultadoBeneficios] = useState<{ sumaste?: number; tenes: number; pendiente: boolean } | null>(null)
   const [enviandoBeneficios, setEnviandoBeneficios] = useState(false)
 
   useEffect(() => {
     fetch(`/api/beneficios?empresa_id=${dispositivo.empresa_id}`)
-      .then(r => r.json()).then(d => setBeneficiosActivo(!!d.activo)).catch(() => {})
+      .then(r => r.json()).then(d => { setBeneficiosActivo(!!d.activo); if (d.activo) setBenefPPP(Number(d.pesos_por_punto ?? 1000)) }).catch(() => {})
   }, [dispositivo])
 
   async function sumarPuntos() {
@@ -163,7 +165,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
 
     if (!res.ok || !data.pedido) return
 
-    if (data?.pedido?.id) setUltimoPedidoId(data.pedido.id)
+    if (data?.pedido?.id) { setUltimoPedidoId(data.pedido.id); setBenefBase(carrito.reduce((sm, i) => sm + (i.precio > 0 ? i.precio * i.cantidad : 0), 0)) }
       // Canje de puntos elegido en el carrito: descontar server-side y limpiar
       try {
         const raw = sessionStorage.getItem('coneos_canje')
@@ -254,7 +256,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
                 <div className="text-center">
                   <p className="text-2xl mb-1">🎁</p>
                   {resultadoBeneficios.pendiente
-                    ? <p className="font-bold text-neutral-700">¡Listo! Tus puntos se suman al cobrarse el pedido</p>
+                    ? <p className="font-bold text-neutral-700">¡Listo! Al cobrarse vas a sumar {benefPPP ? Math.floor(benefBase / benefPPP) : ''} puntos</p>
                     : <p className="font-bold text-neutral-700">¡Sumaste {resultadoBeneficios.sumaste} puntos!</p>
                   }
                   <p className="text-neutral-400 text-sm mt-1">Tenés <span className="font-black" style={{ color: config.primary_color }}>{resultadoBeneficios.tenes + (resultadoBeneficios.pendiente ? 0 : 0)}</span> puntos acumulados</p>
@@ -262,7 +264,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
               ) : (
                 <>
                   <p className="font-bold text-neutral-700 mb-1">🎁 Sumá puntos con tu compra</p>
-                  <p className="text-neutral-400 text-xs mb-3">Ingresá tu celular y acumulá en cada pedido</p>
+                  <p className="text-neutral-400 text-xs mb-3">Ingresá tu celular{benefPPP ? ` y sumá ${Math.floor(benefBase / benefPPP)} puntos con esta compra` : ' y acumulá en cada pedido'}</p>
                   <div className="space-y-2">
                     <input value={telBeneficios} inputMode="numeric"
                       onChange={e => setTelBeneficios(e.target.value.replace(/\D/g, '').slice(0, 13))}

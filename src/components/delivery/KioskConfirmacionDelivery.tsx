@@ -50,6 +50,11 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const total = subtotal + costoEnvio
 
   const [paso, setPaso] = useState<'datos' | 'pago' | 'transferencia' | 'exito'>('datos')
+  const [benefPesosPorPunto, setBenefPesosPorPunto] = useState<number | null>(null)
+  useEffect(() => {
+    fetch(`/api/beneficios?empresa_id=${dispositivo.empresa_id}`)
+      .then(r => r.json()).then(d => { if (d.activo) setBenefPesosPorPunto(Number(d.pesos_por_punto ?? 1000)) }).catch(() => {})
+  }, [dispositivo])
   const [datos, setDatos] = useState<DatosDelivery>({ nombre: '', telefono: '', direccion: '', entre_calles: '' })
   const [erroresCampos, setErroresCampos] = useState<Partial<DatosDelivery>>({})
   const [mpDisponible, setMpDisponible] = useState(false)
@@ -367,6 +372,11 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             <p className="text-sm font-bold mt-2 pt-2 border-t border-neutral-100" style={{ color: config.primary_color }}>Total: {formatPrecio(total)}</p>
             {metodoPago === 'efectivo' && <p className="text-xs text-amber-600">💵 Pagás al repartidor cuando llegue</p>}
             {metodoPago === 'transferencia' && <p className="text-xs text-blue-600">📲 Transferencia {captura ? 'enviada ✓' : 'pendiente de confirmación'}</p>}
+            {benefPesosPorPunto && (() => {
+              const base = carrito.reduce((s, i) => s + (i.precio > 0 ? i.precio * i.cantidad : 0), 0)
+              const pts = Math.floor(base / benefPesosPorPunto)
+              return pts > 0 ? <p className="text-xs text-green-600 font-semibold">🎁 Al pagar vas a sumar {pts} puntos con tu celu</p> : null
+            })()}
           </div>
         </div>
 
