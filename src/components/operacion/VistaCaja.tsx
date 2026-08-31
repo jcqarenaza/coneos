@@ -20,10 +20,7 @@ const ESTADO_LEFT: Record<string, string> = { PENDING_PAYMENT: 'border-l-red-300
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 function tiempoRelativo(ts: string) {
-  const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 60000)
-  if (diff < 1) return 'Ahora'
-  if (diff === 1) return '1 min'
-  return `${diff} min`
+  return new Date(ts).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' }) + ' hs'
 }
 
 export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispositivo; sesion: SesionOperador }) {
