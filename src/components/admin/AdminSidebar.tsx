@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, IceCream2, LogOut, Truck, Lock, X, Cherry, Gift } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, IceCream2, LogOut, Truck, Lock, X, Cherry, Gift, FileText } from 'lucide-react'
 
 interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean> }
 
@@ -13,6 +13,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
   const router = useRouter()
   const [modalDelivery, setModalDelivery] = useState(false)
   const [modalBeneficios, setModalBeneficios] = useState(false)
+  const [modalFacturacion, setModalFacturacion] = useState(false)
 
   const NAV = [
     { href: `/${slug}/admin`, label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -21,6 +22,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
     { href: `/${slug}/admin/sucursales`, label: 'Sucursales', icon: Store },
     { href: `/${slug}/admin/operacion`, label: 'Equipo', icon: Users },
     { href: `/${slug}/admin/ventas`, label: 'Ventas', icon: BarChart3 },
+    ...(modulos.facturacion === true ? [{ href: `/${slug}/admin/facturas`, label: 'Facturas', icon: FileText }] : []),
     ...(modulos.beneficios === true ? [{ href: `/${slug}/admin/beneficios`, label: 'Beneficios', icon: Gift }] : []),
     { href: `/${slug}/admin/config`, label: 'Configuración', icon: Settings },
   ]
@@ -69,6 +71,16 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             </button>
           )}
 
+          {/* Módulo Facturación — bloqueado si no está contratado */}
+          {modulos.facturacion !== true && (
+            <button onClick={() => setModalFacturacion(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-neutral-300 hover:bg-neutral-50 transition-all">
+              <FileText className="h-4 w-4 flex-shrink-0" />
+              Facturación
+              <Lock className="h-3 w-3 ml-auto" />
+            </button>
+          )}
+
           {/* Módulo Beneficios — bloqueado si no está contratado */}
           {modulos.beneficios !== true && (
             <button onClick={() => setModalBeneficios(true)}
@@ -95,6 +107,28 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
           </div>
         </div>
       </aside>
+
+      {/* Modal facturación bloqueado */}
+      {modalFacturacion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setModalFacturacion(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <button onClick={() => setModalFacturacion(false)} className="absolute top-4 right-4 p-1 text-neutral-400 hover:text-neutral-600">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="w-12 h-12 bg-neutral-100 rounded-2xl flex items-center justify-center mb-4">
+              <FileText className="h-6 w-6 text-neutral-400" />
+            </div>
+            <h3 className="font-black text-neutral-900 text-lg mb-2">Facturación Electrónica</h3>
+            <p className="text-neutral-500 text-sm mb-5">Emití Facturas C ante ARCA automáticamente al cobrar, con CAE y QR en el ticket. Incluye listado de comprobantes y notas de crédito. Cumplí con la facturación sin salir del sistema.</p>
+            <a href="https://wa.me/542302456497?text=Hola%20Juan%20Cruz%2C%20quiero%20activar%20la%20Facturaci%C3%B3n%20Electr%C3%B3nica%20en%20ConeOS"
+              target="_blank" rel="noopener noreferrer"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
+              💬 Contactar para activar
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Modal beneficios bloqueado */}
       {modalBeneficios && (
