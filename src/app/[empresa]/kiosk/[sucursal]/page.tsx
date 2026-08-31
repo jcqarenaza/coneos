@@ -172,6 +172,7 @@ export default function KioskPage() {
       {paso === 'carrito' && (
         <KioskCarrito
           config={config}
+          dispositivo={dispositivo}
           carrito={carrito}
           accesorios={accesorios}
           onQuitar={quitarItem}

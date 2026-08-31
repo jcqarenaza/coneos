@@ -12,6 +12,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
   const pathname = usePathname()
   const router = useRouter()
   const [modalDelivery, setModalDelivery] = useState(false)
+  const [modalBeneficios, setModalBeneficios] = useState(false)
 
   const NAV = [
     { href: `/${slug}/admin`, label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -67,6 +68,16 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
               <Lock className="h-3 w-3 ml-auto" />
             </button>
           )}
+
+          {/* Módulo Beneficios — bloqueado si no está contratado */}
+          {modulos.beneficios !== true && (
+            <button onClick={() => setModalBeneficios(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-neutral-300 hover:bg-neutral-50 transition-all">
+              <Gift className="h-4 w-4 flex-shrink-0" />
+              Beneficios
+              <Lock className="h-3 w-3 ml-auto" />
+            </button>
+          )}
         </nav>
 
         <div className="px-4 py-4 border-t border-neutral-100">
@@ -84,6 +95,28 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
           </div>
         </div>
       </aside>
+
+      {/* Modal beneficios bloqueado */}
+      {modalBeneficios && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setModalBeneficios(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <button onClick={() => setModalBeneficios(false)} className="absolute top-4 right-4 p-1 text-neutral-400 hover:text-neutral-600">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="w-12 h-12 bg-neutral-100 rounded-2xl flex items-center justify-center mb-4">
+              <Gift className="h-6 w-6 text-neutral-400" />
+            </div>
+            <h3 className="font-black text-neutral-900 text-lg mb-2">Programa de Beneficios</h3>
+            <p className="text-neutral-500 text-sm mb-5">Fidelizá a tus clientes con puntos por compra canjeables por premios. Sin registro ni contraseñas: solo con el celular. Incluye panel de clientes y canjes configurables.</p>
+            <a href="https://wa.me/542302456497?text=Hola%20Juan%20Cruz%2C%20quiero%20activar%20el%20Programa%20de%20Beneficios%20en%20ConeOS"
+              target="_blank" rel="noopener noreferrer"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
+              💬 Contactar para activar
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Modal delivery bloqueado */}
       {modalDelivery && (
