@@ -173,6 +173,14 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
             await fetch('/api/beneficios', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ pedido_id: data.pedido.id, telefono: cj.telefono, opcion_ids: cj.opciones }) })
           }
+          // Ya tenemos su celu: vincular para acumular sin volver a pedirlo
+          if (cj?.telefono) {
+            setTelBeneficios(cj.telefono)
+            const rv = await fetch('/api/beneficios', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pedido_id: data.pedido.id, telefono: cj.telefono }) })
+            const dv = await rv.json().catch(() => null)
+            if (rv.ok && dv?.activo) setResultadoBeneficios({ sumaste: dv.sumaste, tenes: dv.tenes ?? 0, pendiente: !dv.acreditado })
+          }
           sessionStorage.removeItem('coneos_canje')
         }
       } catch {}
