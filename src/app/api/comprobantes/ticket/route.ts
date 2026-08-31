@@ -18,9 +18,11 @@ export async function POST(request: Request) {
 
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
 
-  const [{ data: cfg }, { data: empresa }] = await Promise.all([
+  const [{ data: cfg }, { data: empresa }, { data: factura }, { data: factCfg }] = await Promise.all([
     supabase.from('empresa_config').select('primary_color, cuit, razon_social, logo_url').eq('empresa_id', pedido.empresa_id).single(),
     supabase.from('empresas').select('nombre').eq('id', pedido.empresa_id).single(),
+    supabase.from('facturas').select('tipo_cbte, punto_venta, nro_cbte, cae, cae_vencimiento, doc_tipo, doc_nro, total, created_at').eq('pedido_id', pedido_id).eq('estado', 'emitida').maybeSingle(),
+    supabase.from('facturacion_config').select('cuit, razon_social').eq('empresa_id', pedido.empresa_id).maybeSingle(),
   ])
 
   await supabase.from('comprobantes').insert({ empresa_id: pedido.empresa_id, pedido_id, tipo: 'ticket', total: pedido.total })
@@ -30,6 +32,51 @@ export async function POST(request: Request) {
   const metodoLabel: Record<string, string> = { efectivo: 'EFECTIVO', transferencia: 'TRANSFERENCIA', mp: 'MERCADO PAGO' }
   type Item = { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
   const items = (pedido.pedido_items ?? []) as Item[]
+
+  // ── Datos fiscales (solo si hay factura emitida) ──
+  const esFiscal = !!(factura && factura.cae)
+  const pad = (n: number, len: number) => String(n).padStart(len, '0')
+  let bloqueFiscalHeader = '<div class="no-fiscal">TICKET SIN VALIDEZ FISCAL</div>'
+  let bloqueFiscalFooter = ''
+  let scriptQR = ''
+  if (esFiscal && factura) {
+    const cuitNum = (factCfg?.cuit ?? cfg?.cuit ?? '').replace(/\D/g, '')
+    const tipoLabel = factura.tipo_cbte === 13 ? 'NOTA DE CRÉDITO C' : 'FACTURA C'
+    const fechaCbte = new Date(factura.created_at).toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }) // YYYY-MM-DD
+    const qrData = {
+      ver: 1,
+      fecha: fechaCbte,
+      cuit: Number(cuitNum),
+      ptoVta: factura.punto_venta,
+      tipoCmp: factura.tipo_cbte,
+      nroCmp: factura.nro_cbte,
+      importe: Number(factura.total),
+      moneda: 'PES',
+      ctz: 1,
+      tipoDocRec: factura.doc_tipo ?? 99,
+      nroDocRec: Number(factura.doc_nro ?? 0),
+      tipoCodAut: 'E',
+      codAut: Number(factura.cae),
+    }
+    const qrUrl = `https://www.afip.gob.ar/fe/qr/?p=${Buffer.from(JSON.stringify(qrData)).toString('base64')}`
+    const vto = factura.cae_vencimiento ? new Date(factura.cae_vencimiento + 'T12:00:00').toLocaleDateString('es-AR') : ''
+    const fechaCbteAR = fechaCbte.split('-').reverse().join('/')
+
+    bloqueFiscalHeader = `<div class="fiscal-tipo">${tipoLabel}</div>
+<div class="sub">Cod. ${pad(factura.tipo_cbte, 3)} &nbsp;·&nbsp; Nro: ${pad(factura.punto_venta, 5)}-${pad(factura.nro_cbte, 8)}</div>
+<div class="sub">Fecha: ${fechaCbteAR} &nbsp;·&nbsp; Consumidor Final</div>`
+
+    bloqueFiscalFooter = `<div class="linea"></div>
+<div class="sub">CAE: ${factura.cae}${vto ? ` &nbsp;·&nbsp; Vto: ${vto}` : ''}</div>
+<div id="qr-arca" class="qr-box"></div>`
+
+    scriptQR = `<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+<script>
+  try {
+    new QRCode(document.getElementById('qr-arca'), { text: ${JSON.stringify(qrUrl)}, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.L });
+  } catch (e) { console.error('QR:', e); }
+<\/script>`
+  }
 
   // Accesorios agrupados: título + subtotal, detalle en chico
   const esAccesorio = (it: Item) => it.nombre_producto_snap === 'Accesorios' || it.nombre_producto_snap === it.nombre_presentacion_snap
@@ -72,6 +119,9 @@ body { font-family: 'Calibri', Arial, sans-serif; font-size: 13px; background: w
 .empresa { font-size: 16px; font-weight: bold; text-align: center; }
 .sub { font-size: 12px; font-weight: normal; text-align: center; }
 .no-fiscal { font-size: 11px; text-align: center; border: 1px solid #000; padding: 2px; margin: 4px 0; }
+.fiscal-tipo { font-size: 15px; font-weight: bold; text-align: center; border: 1px solid #000; padding: 2px; margin: 4px 0; }
+.qr-box { display: flex; justify-content: center; margin: 6px 0 2px 0; }
+.qr-box img, .qr-box canvas { image-rendering: pixelated; }
 .pedido-num { font-size: 26px; font-weight: bold; text-align: center; margin: 4px 0; }
 .info { display: flex; justify-content: space-between; font-size: 12px; font-weight: normal; }
 .item-prod { font-size: 12px; font-weight: normal; }
@@ -94,12 +144,11 @@ body { font-family: 'Calibri', Arial, sans-serif; font-size: 13px; background: w
 <body>
 
 <div class="empresa">${empresa?.nombre ?? 'Heladeria'}</div>
-${cfg?.razon_social ? `<div class="sub">${cfg.razon_social}</div>` : ''}
-${cfg?.cuit ? `<div class="sub">CUIT: ${cfg.cuit}</div>` : ''}
+${esFiscal ? `<div class="sub">${factCfg?.razon_social ?? cfg?.razon_social ?? ''}</div><div class="sub">CUIT: ${factCfg?.cuit ?? cfg?.cuit ?? ''}</div>` : `${cfg?.razon_social ? `<div class="sub">${cfg.razon_social}</div>` : ''}${cfg?.cuit ? `<div class="sub">CUIT: ${cfg.cuit}</div>` : ''}`}
 <div class="sub">${(pedido.sucursales as { nombre: string } | null)?.nombre ?? ''}</div>
 
 <div class="linea"></div>
-<div class="no-fiscal">TICKET SIN VALIDEZ FISCAL</div>
+${bloqueFiscalHeader}
 <div class="linea"></div>
 
 <div class="pedido-num">#${pedido.numero_pedido}</div>
@@ -119,6 +168,8 @@ ${bloquesItems.join('<div class="linea"></div>')}
 
 ${nombre_cliente ? `<div class="linea"></div><div class="sub">Cliente: ${nombre_cliente}</div>` : ''}
 
+${bloqueFiscalFooter}
+
 <div class="linea"></div>
 <div class="footer">Gracias por tu compra!</div>
 
@@ -126,6 +177,7 @@ ${nombre_cliente ? `<div class="linea"></div><div class="sub">Cliente: ${nombre_
   <button class="btn" style="background:#000;color:white" onclick="window.print()">Imprimir</button>
   <button class="btn" style="background:#f1f1f1;color:#333" onclick="window.close()">Cerrar</button>
 </div>
+${scriptQR}
 </body>
 </html>`
 

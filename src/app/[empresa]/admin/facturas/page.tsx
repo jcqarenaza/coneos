@@ -1,0 +1,220 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useEmpresa } from '@/lib/useEmpresa'
+import { ConePageHeader, ConeButton, ConeModal } from '@/components/admin/ConeComponents'
+import { Loader2, FileText, XCircle, RefreshCw } from 'lucide-react'
+
+interface Factura {
+  id: string
+  pedido_id: string
+  tipo_cbte: number
+  punto_venta: number
+  nro_cbte: number | null
+  total: number
+  cae: string | null
+  cae_vencimiento: string | null
+  estado: string
+  error_msg: string | null
+  created_at: string
+  pedidos: { numero_pedido: number } | null
+}
+
+function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
+function formatFechaHora(ts: string) {
+  return new Date(ts).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+function pad(n: number, len: number) { return String(n).padStart(len, '0') }
+
+const TIPO_LABEL: Record<number, string> = { 11: 'Factura C', 13: 'Nota de Crédito C' }
+const TIPO_BADGE: Record<number, string> = { 11: 'bg-blue-50 text-blue-700', 13: 'bg-amber-50 text-amber-700' }
+const ESTADO_LABEL: Record<string, string> = { emitida: 'Emitida', anulada: 'Anulada', pendiente: 'Pendiente', error: 'Error' }
+const ESTADO_BADGE: Record<string, string> = {
+  emitida: 'bg-green-50 text-green-700', anulada: 'bg-neutral-100 text-neutral-500',
+  pendiente: 'bg-amber-50 text-amber-700', error: 'bg-red-50 text-red-700',
+}
+
+export default function FacturasPage() {
+  const { ctx } = useEmpresa()
+  const [facturas, setFacturas] = useState<Factura[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tipoFiltro, setTipoFiltro] = useState<string>('todos')
+  const [estadoFiltro, setEstadoFiltro] = useState<string>('todos')
+  const [modalNC, setModalNC] = useState(false)
+  const [facturaNC, setFacturaNC] = useState<Factura | null>(null)
+  const [emitiendo, setEmitiendo] = useState(false)
+  const [errorNC, setErrorNC] = useState<string | null>(null)
+
+  async function cargar() {
+    if (!ctx) return
+    setLoading(true)
+    const supabase = createClient()
+    let query = supabase
+      .from('facturas')
+      .select('id, pedido_id, tipo_cbte, punto_venta, nro_cbte, total, cae, cae_vencimiento, estado, error_msg, created_at, pedidos(numero_pedido)')
+      .eq('empresa_id', ctx.empresaId)
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (tipoFiltro !== 'todos') query = query.eq('tipo_cbte', Number(tipoFiltro))
+    if (estadoFiltro !== 'todos') query = query.eq('estado', estadoFiltro)
+    const { data } = await query
+    setFacturas((data ?? []) as unknown as Factura[])
+    setLoading(false)
+  }
+
+  useEffect(() => { cargar() }, [ctx, tipoFiltro, estadoFiltro])
+
+  async function emitirNC() {
+    if (!ctx || !facturaNC) return
+    setEmitiendo(true)
+    setErrorNC(null)
+    try {
+      const res = await fetch('/api/facturacion/nc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empresa_id: ctx.empresaId, pedido_id: facturaNC.pedido_id }),
+      })
+      const data = await res.json()
+      if (!data.ok) {
+        setErrorNC(data.error ?? 'Error al emitir la nota de crédito')
+        setEmitiendo(false)
+        return
+      }
+      setEmitiendo(false)
+      setModalNC(false)
+      setFacturaNC(null)
+      cargar()
+    } catch {
+      setErrorNC('Error de conexión')
+      setEmitiendo(false)
+    }
+  }
+
+  const totalEmitidas = facturas.filter(f => f.estado === 'emitida' && f.tipo_cbte === 11).length
+  const totalNC = facturas.filter(f => f.estado === 'emitida' && f.tipo_cbte === 13).length
+
+  return (
+    <div>
+      <ConePageHeader title="Facturas" description="Comprobantes electrónicos emitidos ante ARCA" />
+
+      {/* Filtros */}
+      <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-6 shadow-sm">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Tipo</p>
+            <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-neutral-200 text-xs focus:outline-none focus:border-neutral-400 bg-white">
+              <option value="todos">Todos</option>
+              <option value="11">Factura C</option>
+              <option value="13">Nota de Crédito C</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Estado</p>
+            <select value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-neutral-200 text-xs focus:outline-none focus:border-neutral-400 bg-white">
+              <option value="todos">Todos</option>
+              <option value="emitida">Emitidas</option>
+              <option value="anulada">Anuladas</option>
+              <option value="error">Con error</option>
+            </select>
+          </div>
+          <div className="ml-auto flex items-center gap-4">
+            <p className="text-xs text-neutral-400">{totalEmitidas} facturas vigentes · {totalNC} NC</p>
+            <button onClick={cargar} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors">
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
+      ) : facturas.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-neutral-100 p-12 text-center shadow-sm">
+          <FileText className="h-10 w-10 text-neutral-200 mx-auto mb-3" />
+          <p className="text-neutral-400 text-sm">Todavía no hay comprobantes emitidos</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+          {/* Header tabla */}
+          <div className="hidden md:grid grid-cols-[110px_150px_120px_80px_100px_1fr_90px_110px] gap-2 px-4 py-2.5 bg-neutral-50 border-b border-neutral-100">
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Fecha</p>
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Tipo</p>
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Número</p>
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Pedido</p>
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide text-right">Total</p>
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">CAE</p>
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Estado</p>
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide text-right">Acciones</p>
+          </div>
+          {facturas.map((f, i) => (
+            <div key={f.id} className={`px-4 py-3 ${i < facturas.length - 1 ? 'border-b border-neutral-50' : ''}`}>
+              <div className="grid grid-cols-2 md:grid-cols-[110px_150px_120px_80px_100px_1fr_90px_110px] gap-2 items-center">
+                <p className="text-neutral-500 text-xs">{formatFechaHora(f.created_at)}</p>
+                <div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${TIPO_BADGE[f.tipo_cbte] ?? 'bg-neutral-100 text-neutral-500'}`}>
+                    {TIPO_LABEL[f.tipo_cbte] ?? `Tipo ${f.tipo_cbte}`}
+                  </span>
+                </div>
+                <p className="text-neutral-800 text-sm font-semibold">
+                  {f.nro_cbte != null ? `${pad(f.punto_venta, 5)}-${pad(f.nro_cbte, 8)}` : '—'}
+                </p>
+                <p className="text-neutral-500 text-sm">{f.pedidos?.numero_pedido != null ? `#${f.pedidos.numero_pedido}` : '—'}</p>
+                <p className="text-neutral-800 font-bold text-sm md:text-right">{formatPrecio(Number(f.total))}</p>
+                <div className="min-w-0">
+                  <p className="text-neutral-500 text-xs truncate">{f.cae ?? (f.estado === 'error' ? (f.error_msg ?? 'Error') : '—')}</p>
+                  {f.cae_vencimiento && <p className="text-neutral-300 text-[11px]">Vto: {f.cae_vencimiento.split('-').reverse().join('/')}</p>}
+                </div>
+                <div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[f.estado] ?? 'bg-neutral-100 text-neutral-500'}`}>
+                    {ESTADO_LABEL[f.estado] ?? f.estado}
+                  </span>
+                </div>
+                <div className="flex md:justify-end">
+                  {f.tipo_cbte === 11 && f.estado === 'emitida' && (
+                    <button onClick={() => { setFacturaNC(f); setErrorNC(null); setModalNC(true) }}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                      <XCircle className="h-3.5 w-3.5" /> Emitir NC
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal NC */}
+      <ConeModal open={modalNC} onClose={() => { if (!emitiendo) setModalNC(false) }} title="Emitir Nota de Crédito"
+        footer={<>
+          <ConeButton variant="outline" onClick={() => setModalNC(false)}>Volver</ConeButton>
+          <ConeButton onClick={emitirNC} loading={emitiendo}>
+            <span className="text-red-500">Confirmar emisión de NC</span>
+          </ConeButton>
+        </>}>
+        {facturaNC && (
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+              <p className="text-red-700 text-sm font-semibold">
+                Factura C {pad(facturaNC.punto_venta, 5)}-{pad(facturaNC.nro_cbte ?? 0, 8)} — {formatPrecio(Number(facturaNC.total))}
+              </p>
+              <p className="text-red-500 text-xs mt-0.5">
+                Se va a emitir una Nota de Crédito C ante ARCA por el total, asociada a esta factura. La factura queda anulada. Esta acción no se puede deshacer.
+              </p>
+            </div>
+            {facturaNC.pedidos?.numero_pedido != null && (
+              <p className="text-neutral-500 text-sm">Pedido asociado: <span className="font-semibold text-neutral-700">#{facturaNC.pedidos.numero_pedido}</span></p>
+            )}
+            {errorNC && (
+              <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-xs">{errorNC}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </ConeModal>
+    </div>
+  )
+}
