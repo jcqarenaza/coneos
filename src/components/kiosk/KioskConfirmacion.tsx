@@ -255,15 +255,15 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
                 <>
                   <p className="font-bold text-neutral-700 mb-1">🎁 Sumá puntos con tu compra</p>
                   <p className="text-neutral-400 text-xs mb-3">Ingresá tu celular y acumulá en cada pedido</p>
-                  <div className="flex gap-2">
+                  <div className="space-y-2">
                     <input value={telBeneficios} inputMode="numeric"
                       onChange={e => setTelBeneficios(e.target.value.replace(/\D/g, '').slice(0, 13))}
                       placeholder="2302123456"
-                      className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-lg font-mono font-bold text-center focus:outline-none focus:border-neutral-400" />
+                      className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-lg font-mono font-bold text-center focus:outline-none focus:border-neutral-400" />
                     <button onClick={sumarPuntos} disabled={enviandoBeneficios || telBeneficios.replace(/\D/g, '').length < 8}
-                      className="px-5 py-3 rounded-xl text-white font-bold disabled:opacity-40 active:scale-95 transition-all"
+                      className="w-full py-3 rounded-xl text-white font-bold disabled:opacity-40 active:scale-95 transition-all"
                       style={{ backgroundColor: config.primary_color }}>
-                      {enviandoBeneficios ? '...' : 'Sumar'}
+                      {enviandoBeneficios ? 'Sumando...' : '🎁 Sumar mis puntos'}
                     </button>
                   </div>
                 </>

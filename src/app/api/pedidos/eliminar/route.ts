@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const supabase = createAdminClient()
 
   const { data: pedido } = await supabase.from('pedidos')
-    .select('id, estado, numero_pedido').eq('id', pedido_id).single()
+    .select('id, estado, numero_pedido, empresa_id').eq('id', pedido_id).single()
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
 
   if (pedido.estado === 'PAID' || pedido.estado === 'DELIVERED') {
@@ -22,6 +22,27 @@ export async function POST(request: Request) {
   if (factura) {
     return NextResponse.json({ error: 'El pedido tiene factura emitida — corresponde Nota de Crédito, no eliminación' }, { status: 409 })
   }
+
+  // Beneficios: revertir puntos del pedido (ganados se restan, canjes se devuelven)
+  const { data: movs } = await supabase.from('beneficios_movimientos')
+    .select('id, cliente_id, puntos, tipo').eq('pedido_id', pedido_id)
+  for (const m of movs ?? []) {
+    const { data: cli } = await supabase.from('clientes_beneficios')
+      .select('puntos, puntos_historicos').eq('id', m.cliente_id).single()
+    if (cli) {
+      await supabase.from('clientes_beneficios').update({
+        puntos: cli.puntos - m.puntos,
+        puntos_historicos: m.tipo === 'ganado' ? Math.max(0, cli.puntos_historicos - m.puntos) : cli.puntos_historicos,
+        updated_at: new Date().toISOString(),
+      }).eq('id', m.cliente_id)
+      await supabase.from('beneficios_movimientos').insert({
+        empresa_id: pedido.empresa_id,
+        cliente_id: m.cliente_id, tipo: 'reversa', puntos: -m.puntos,
+        detalle: `Reversa por eliminación del pedido #${pedido.numero_pedido}`,
+      })
+    }
+  }
+  await supabase.from('beneficios_movimientos').delete().eq('pedido_id', pedido_id)
 
   // Borrado en orden por FKs
   const { data: items } = await supabase.from('pedido_items').select('id').eq('pedido_id', pedido_id)

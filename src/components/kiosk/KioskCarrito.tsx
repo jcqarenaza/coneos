@@ -56,6 +56,24 @@ export default function KioskCarrito({ config, carrito, accesorios, onQuitar, on
   }
 
   const [canjes, setCanjes] = useState<{ id: string; nombre: string; emoji: string | null; puntos_canje: number }[]>([])
+  function quitarCanje(idx: number) {
+    const cj = canjes[idx]
+    if (!cj) return
+    setCanjes(prev => prev.filter((_, i) => i !== idx))
+    const usados = Math.max(0, canjePuntosUsados - cj.puntos_canje)
+    setCanjePuntosUsados(usados)
+    try {
+      const prev = sessionStorage.getItem('coneos_canje')
+      if (prev) {
+        const p = JSON.parse(prev)
+        const i = (p.opciones ?? []).indexOf(cj.id)
+        if (i >= 0) p.opciones.splice(i, 1)
+        p.puntos = usados
+        sessionStorage.setItem('coneos_canje', JSON.stringify(p))
+      }
+    } catch {}
+  }
+
   function agregarCanje(cj: { id: string; nombre: string; emoji: string | null; puntos_canje: number }) {
     setCanjes(prev => [...prev, cj])
     const usados = canjePuntosUsados + cj.puntos_canje
@@ -138,7 +156,16 @@ export default function KioskCarrito({ config, carrito, accesorios, onQuitar, on
                   {benefInfo ? (
                     <>
                       <p className="text-sm font-bold text-neutral-700 mb-2">Tenés <span style={{ color: config.primary_color }}>{benefInfo.puntos - canjePuntosUsados}</span> puntos</p>
-                      {canjes.length > 0 && <p className="text-xs text-green-600 font-semibold mb-2">🎁 {canjes.length} canje{canjes.length > 1 ? 's' : ''} agregado{canjes.length > 1 ? 's' : ''} al pedido</p>}
+                      {canjes.length > 0 && (
+                        <div className="mb-2 space-y-1">
+                          {canjes.map((cj, i) => (
+                            <div key={i} className="flex items-center gap-2 text-xs bg-green-50 rounded-lg px-2 py-1.5">
+                              <span className="flex-1 font-semibold text-green-700">🎁 {cj.nombre.replace(/^Toppings?\s+/i, '')} ({cj.puntos_canje} pts)</span>
+                              <button onClick={() => quitarCanje(i)} className="text-red-400 font-bold px-1.5">✕</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {benefInfo.canjeables.length === 0
                         ? <p className="text-xs text-neutral-400">No hay premios canjeables por ahora</p>
                         : <div className="space-y-1.5">
