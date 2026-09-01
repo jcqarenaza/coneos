@@ -45,6 +45,7 @@ export default function FacturasPage() {
   const [facturaNC, setFacturaNC] = useState<Factura | null>(null)
   const [emitiendo, setEmitiendo] = useState(false)
   const [errorNC, setErrorNC] = useState<string | null>(null)
+  const [factActiva, setFactActiva] = useState<boolean | null>(null)
 
   async function cargar() {
     if (!ctx) return
@@ -64,6 +65,12 @@ export default function FacturasPage() {
   }
 
   useEffect(() => { cargar() }, [ctx, tipoFiltro, estadoFiltro])
+
+  useEffect(() => {
+    if (!ctx) return
+    fetch(`/api/facturacion/emitir?empresa_id=${ctx.empresaId}`)
+      .then(r => r.json()).then(d => setFactActiva(!!d.activa)).catch(() => setFactActiva(null))
+  }, [ctx])
 
   async function emitirNC() {
     if (!ctx || !facturaNC) return
@@ -97,6 +104,29 @@ export default function FacturasPage() {
   return (
     <div>
       <ConePageHeader title="Facturas" description="Comprobantes electrónicos emitidos ante ARCA" />
+
+      {/* Aviso: facturación aún no activada — qué hace falta para el alta */}
+      {factActiva === false && (
+        <div className="bg-blue-50 rounded-2xl border border-blue-100 p-5 mb-6">
+          <p className="font-bold text-blue-900 text-sm mb-1">La facturación electrónica todavía no está activa</p>
+          <p className="text-blue-800 text-sm mb-3">
+            Para activarla necesitamos que tu contador (o el titular con su clave fiscal) gestione en ARCA
+            y nos pase estos datos:
+          </p>
+          <ol className="text-blue-800 text-sm space-y-1.5 list-decimal ml-5 mb-4">
+            <li><span className="font-semibold">Certificado digital</span> creado en ARCA (Administración de Certificados Digitales) — nos envían el archivo <span className="font-mono text-xs">.crt</span> y su clave privada <span className="font-mono text-xs">.key</span></li>
+            <li><span className="font-semibold">Certificado vinculado al servicio "Facturación Electrónica" (WSFE)</span> desde el Administrador de Relaciones de Clave Fiscal</li>
+            <li><span className="font-semibold">Punto de venta Web Services</span> creado en ARCA — nos pasan el número</li>
+            <li><span className="font-semibold">CUIT, razón social exacta y condición fiscal</span> (monotributo / responsable inscripto)</li>
+          </ol>
+          <p className="text-blue-700 text-xs mb-4">Con eso lo cargamos, probamos la conexión con ARCA y activamos. No hay que instalar nada: cada transferencia cobrada emite su Factura C automáticamente, con CAE y QR en el ticket.</p>
+          <a href="https://wa.me/542302456497?text=Hola%20Juan%20Cruz%2C%20tengo%20los%20datos%20fiscales%20para%20activar%20la%20facturaci%C3%B3n%20en%20ConeOS"
+            target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
+            💬 Enviar los datos a Juan Cruz
+          </a>
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-6 shadow-sm">
