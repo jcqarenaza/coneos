@@ -17,8 +17,12 @@ export function normalizarTelefono(raw: string): string {
 export async function getConfigBeneficios(empresaId: string) {
   const supabase = createAdminClient()
   const { data } = await supabase.from('beneficios_config')
-    .select('activo, pesos_por_punto').eq('empresa_id', empresaId).maybeSingle()
-  return { activo: !!data?.activo, pesosPorPunto: Number(data?.pesos_por_punto ?? 1000) }
+    .select('activo, habilitado_admin, pesos_por_punto').eq('empresa_id', empresaId).maybeSingle()
+  // DOBLE LLAVE: contratado en el panel QP (activo) AND encendido por el cliente
+  // en Admin→Beneficios (habilitado_admin). Con cualquiera apagada, el módulo entero
+  // queda invisible e inactivo (UI kiosk/delivery, vincular, canjear y acreditar
+  // pasan todos por acá). Bug 01/09: solo se leía activo y acreditó pausado.
+  return { activo: !!(data?.activo && data?.habilitado_admin), pesosPorPunto: Number(data?.pesos_por_punto ?? 1000) }
 }
 
 // Acredita los puntos de un pedido cobrado. Idempotente (índice único por pedido).
