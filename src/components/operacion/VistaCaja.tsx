@@ -97,6 +97,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       .select('id, nombre').eq('empresa_id', dispositivo.empresa_id)
       .eq('activo', true).eq('rol', 'cadete').order('nombre')
     setColaboradores((cols ?? []) as Colaborador[])
+    // Pedidos con comprobante fiscal (no se pueden eliminar)
+    try {
+      const rf = await fetch(`/api/facturacion/nc?empresa_id=${dispositivo.empresa_id}`)
+      const df = await rf.json()
+      if (Array.isArray(df?.pedido_ids)) setFacturados(new Set(df.pedido_ids))
+    } catch { /* si falla, el server-side de eliminar protege igual */ }
     setLoading(false)
   }, [dispositivo, verTodas])
 
@@ -169,9 +175,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     cargarPedidos()
   }
 
-  // Borrable: todo estado salvo cobrado (PAID/DELIVERED). Server-side valida igual.
+  // Borrable: todo estado salvo cobrado (PAID/DELIVERED) y salvo pedidos con comprobante
+  // fiscal (factura o NC): esos no se eliminan nunca. Server-side valida igual.
   const [eliminando, setEliminando] = useState(false)
-  function esBorrable(p: Pedido) { return p.estado !== 'PAID' && p.estado !== 'DELIVERED' }
+  const [facturados, setFacturados] = useState<Set<string>>(new Set())
+  function esBorrable(p: Pedido) { return p.estado !== 'PAID' && p.estado !== 'DELIVERED' && !facturados.has(p.id) }
   async function eliminarPedido(p: Pedido, desdeHistorial: boolean) {
     if (!confirm(`¿Eliminar el pedido #${p.numero_pedido}? Esta acción no se puede deshacer.`)) return
     setEliminando(true)
