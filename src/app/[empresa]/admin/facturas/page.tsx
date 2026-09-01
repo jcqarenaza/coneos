@@ -27,6 +27,8 @@ function formatFechaHora(ts: string) {
 }
 function pad(n: number, len: number) { return String(n).padStart(len, '0') }
 
+
+const METODO_UI: Record<string, string> = { transferencia: 'Transferencia', efectivo: 'Efectivo', mp: 'Mercado Pago' }
 const TIPO_LABEL: Record<number, string> = { 11: 'Factura C', 13: 'Nota de Crédito C' }
 const TIPO_BADGE: Record<number, string> = { 11: 'bg-blue-50 text-blue-700', 13: 'bg-amber-50 text-amber-700' }
 const ESTADO_LABEL: Record<string, string> = { emitida: 'Emitida', anulada: 'Anulada', pendiente: 'Pendiente', error: 'Error' }
@@ -46,6 +48,11 @@ export default function FacturasPage() {
   const [emitiendo, setEmitiendo] = useState(false)
   const [errorNC, setErrorNC] = useState<string | null>(null)
   const [factActiva, setFactActiva] = useState<boolean | null>(null)
+  const [factConfigurada, setFactConfigurada] = useState(false)
+  const [autoFacturar, setAutoFacturar] = useState(true)
+  const [metodosAuto, setMetodosAuto] = useState<string[]>(['transferencia'])
+  const [metodosDisp, setMetodosDisp] = useState<string[]>(['transferencia', 'efectivo'])
+  const [guardandoCfg, setGuardandoCfg] = useState(false)
 
   async function cargar() {
     if (!ctx) return
@@ -69,7 +76,12 @@ export default function FacturasPage() {
   useEffect(() => {
     if (!ctx) return
     fetch(`/api/facturacion/emitir?empresa_id=${ctx.empresaId}`)
-      .then(r => r.json()).then(d => setFactActiva(!!d.activa)).catch(() => setFactActiva(null))
+      .then(r => r.json()).then(d => {
+        setFactActiva(!!d.activa); setFactConfigurada(!!d.configurada)
+        setAutoFacturar(d.auto !== false)
+        if (Array.isArray(d.metodos)) setMetodosAuto(d.metodos)
+        if (Array.isArray(d.disponibles)) setMetodosDisp(d.disponibles)
+      }).catch(() => setFactActiva(null))
   }, [ctx])
 
   async function emitirNC() {
@@ -98,6 +110,28 @@ export default function FacturasPage() {
     }
   }
 
+  async function guardarCfg(cambios: { auto_facturar?: boolean; metodos_auto?: string[] }) {
+    if (!ctx || guardandoCfg) return
+    setGuardandoCfg(true)
+    try {
+      const res = await fetch('/api/facturacion/emitir', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empresa_id: ctx.empresaId, ...cambios }),
+      })
+      const d = await res.json()
+      if (d.ok) {
+        if (typeof cambios.auto_facturar === 'boolean') setAutoFacturar(cambios.auto_facturar)
+        if (cambios.metodos_auto) setMetodosAuto(cambios.metodos_auto)
+      }
+    } finally { setGuardandoCfg(false) }
+  }
+
+  function toggleMetodo(m: string) {
+    const nuevos = metodosAuto.includes(m) ? metodosAuto.filter(x => x !== m) : [...metodosAuto, m]
+    guardarCfg({ metodos_auto: nuevos })
+  }
+
   const totalEmitidas = facturas.filter(f => f.estado === 'emitida' && f.tipo_cbte === 11).length
   const totalNC = facturas.filter(f => f.estado === 'emitida' && f.tipo_cbte === 13).length
 
@@ -105,8 +139,47 @@ export default function FacturasPage() {
     <div>
       <ConePageHeader title="Facturas" description="Comprobantes electrónicos emitidos ante ARCA" />
 
+      {/* Config del cliente: facturación automática y métodos */}
+      {factConfigurada && (
+        <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-6 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-bold text-neutral-800 text-sm">Facturación automática</p>
+              <p className="text-neutral-400 text-xs mt-0.5">
+                {autoFacturar
+                  ? 'Los pedidos cobrados con los métodos elegidos emiten su Factura C ante ARCA, con CAE y QR en el ticket.'
+                  : 'Pausada — ningún pedido emite factura hasta reactivarla.'}
+              </p>
+            </div>
+            <button onClick={() => guardarCfg({ auto_facturar: !autoFacturar })} disabled={guardandoCfg}
+              className={`relative w-12 h-7 rounded-full transition-colors flex-shrink-0 ${autoFacturar ? 'bg-green-500' : 'bg-neutral-200'} ${guardandoCfg ? 'opacity-50' : ''}`}>
+              <span className={`absolute top-0.5 h-6 w-6 bg-white rounded-full shadow transition-all ${autoFacturar ? 'left-[22px]' : 'left-0.5'}`} />
+            </button>
+          </div>
+          {autoFacturar && (
+            <div className="mt-4 pt-4 border-t border-neutral-50">
+              <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Métodos de pago que facturan</p>
+              <div className="flex flex-wrap gap-2">
+                {metodosDisp.map(m => {
+                  const on = metodosAuto.includes(m)
+                  return (
+                    <button key={m} onClick={() => toggleMetodo(m)} disabled={guardandoCfg}
+                      className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-colors ${on ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-400 border-neutral-200 hover:border-neutral-400'} ${guardandoCfg ? 'opacity-50' : ''}`}>
+                      {on ? '✓ ' : ''}{METODO_UI[m] ?? m}
+                    </button>
+                  )
+                })}
+              </div>
+              {metodosAuto.length === 0 && (
+                <p className="text-amber-600 text-xs mt-2">Sin métodos seleccionados no se factura ningún pedido.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Aviso: facturación aún no activada — qué hace falta para el alta */}
-      {factActiva === false && (
+      {factActiva === false && !factConfigurada && (
         <div className="bg-blue-50 rounded-2xl border border-blue-100 p-5 mb-6">
           <p className="font-bold text-blue-900 text-sm mb-1">La facturación electrónica todavía no está activa</p>
           <p className="text-blue-800 text-sm mb-3">

@@ -1,26 +1,61 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// GET ?empresa_id= → { activa: boolean }  (para que la caja sepa si mostrar/disparar)
+const METODOS_VALIDOS = ['transferencia', 'efectivo', 'mp']
+
+// GET ?empresa_id= → { configurada, auto, metodos, disponibles }
+// configurada: módulo listo (activo del panel + certificados)
+// auto: interruptor maestro del cliente; metodos: cuáles se facturan solos
+// disponibles: qué métodos ofrecerle al cliente (mp solo si alguna sucursal lo acepta)
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const empresa_id = searchParams.get('empresa_id')
   if (!empresa_id) return NextResponse.json({ error: 'empresa_id requerido' }, { status: 400 })
   const supabase = createAdminClient()
-  const { data } = await supabase.from('facturacion_config')
-    .select('activo, cert_pem, key_pem').eq('empresa_id', empresa_id).maybeSingle()
-  return NextResponse.json({ activa: !!(data?.activo && data?.cert_pem && data?.key_pem) })
+  const [{ data }, { data: pagos }] = await Promise.all([
+    supabase.from('facturacion_config')
+      .select('activo, cert_pem, key_pem, auto_facturar, metodos_auto').eq('empresa_id', empresa_id).maybeSingle(),
+    supabase.from('sucursal_pagos').select('acepta_mp_kiosk, acepta_mp_delivery').eq('empresa_id', empresa_id),
+  ])
+  const configurada = !!(data?.activo && data?.cert_pem && data?.key_pem)
+  const auto = data?.auto_facturar !== false
+  const metodos = Array.isArray(data?.metodos_auto) ? (data!.metodos_auto as string[]).filter(m => METODOS_VALIDOS.includes(m)) : ['transferencia']
+  const hayMP = (pagos ?? []).some(p => p.acepta_mp_kiosk || p.acepta_mp_delivery)
+  const disponibles = hayMP ? METODOS_VALIDOS : METODOS_VALIDOS.filter(m => m !== 'mp')
+  return NextResponse.json({ configurada, auto, metodos, disponibles, activa: configurada && auto && metodos.length > 0 })
 }
 
-// POST { empresa_id, pedido_id } → emite Factura C via Edge Function
+// PUT { empresa_id, auto_facturar?, metodos_auto? } → toggles del cliente
+export async function PUT(request: Request) {
+  const { empresa_id, auto_facturar, metodos_auto } = await request.json()
+  if (!empresa_id) return NextResponse.json({ error: 'empresa_id requerido' }, { status: 400 })
+  const update: Record<string, unknown> = {}
+  if (typeof auto_facturar === 'boolean') update.auto_facturar = auto_facturar
+  if (Array.isArray(metodos_auto)) update.metodos_auto = metodos_auto.filter((m: string) => METODOS_VALIDOS.includes(m))
+  if (Object.keys(update).length === 0) return NextResponse.json({ error: 'nada para actualizar' }, { status: 400 })
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('facturacion_config').update(update).eq('empresa_id', empresa_id)
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true, ...update })
+}
+
+// POST { empresa_id, pedido_id } → emite si el método del pedido está habilitado.
+// Lo llama el hook de /api/pedidos/estado al cobrar (único punto de disparo).
 export async function POST(request: Request) {
   const { empresa_id, pedido_id } = await request.json()
   if (!empresa_id || !pedido_id) return NextResponse.json({ error: 'empresa_id y pedido_id requeridos' }, { status: 400 })
 
   const supabase = createAdminClient()
-  const { data: cfg } = await supabase.from('facturacion_config')
-    .select('activo').eq('empresa_id', empresa_id).maybeSingle()
+  const [{ data: cfg }, { data: pedido }] = await Promise.all([
+    supabase.from('facturacion_config').select('activo, auto_facturar, metodos_auto').eq('empresa_id', empresa_id).maybeSingle(),
+    supabase.from('pedidos').select('metodo_pago').eq('id', pedido_id).eq('empresa_id', empresa_id).maybeSingle(),
+  ])
   if (!cfg?.activo) return NextResponse.json({ ok: false, error: 'Facturación desactivada' }, { status: 409 })
+  if (cfg.auto_facturar === false) return NextResponse.json({ ok: false, error: 'Facturación automática pausada por el cliente' }, { status: 409 })
+  const metodos = Array.isArray(cfg.metodos_auto) ? cfg.metodos_auto as string[] : ['transferencia']
+  if (!pedido?.metodo_pago || !metodos.includes(pedido.metodo_pago)) {
+    return NextResponse.json({ ok: false, error: `Método ${pedido?.metodo_pago ?? '—'} no configurado para facturar` }, { status: 409 })
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY

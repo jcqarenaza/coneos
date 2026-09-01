@@ -19,6 +19,39 @@ export async function GET(request: Request) {
   return NextResponse.json(data)
 }
 
+// Facturación automática: al cobrar, emitir si el método del pedido está habilitado
+// por el cliente (auto_facturar + metodos_auto). Único punto de disparo — la caja ya
+// no dispara por su cuenta, así no hay carrera de doble emisión. Silencioso: nunca
+// bloquea el cambio de estado; la Edge es idempotente (rechaza pedido ya facturado).
+async function facturarSiCorresponde(pedido_id: string) {
+  try {
+    const supabase = createAdminClient()
+    const { data: pedido } = await supabase.from('pedidos')
+      .select('empresa_id, metodo_pago').eq('id', pedido_id).maybeSingle()
+    if (!pedido?.metodo_pago) return
+    const { data: cfg } = await supabase.from('facturacion_config')
+      .select('activo, auto_facturar, metodos_auto, cert_pem, key_pem')
+      .eq('empresa_id', pedido.empresa_id).maybeSingle()
+    if (!cfg?.activo || !cfg.cert_pem || !cfg.key_pem) return
+    if (cfg.auto_facturar === false) return
+    const metodos = Array.isArray(cfg.metodos_auto) ? cfg.metodos_auto as string[] : ['transferencia']
+    if (!metodos.includes(pedido.metodo_pago)) return
+
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!url || !serviceKey) return
+    const res = await fetch(`${url}/functions/v1/arca-facturar`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ empresa_id: pedido.empresa_id, pedido_id, accion: 'facturar' }),
+    })
+    const d = await res.json().catch(() => null)
+    console.log('[facturacion]', pedido_id, d?.ok ? `CAE ${d.cae} Nro ${d.nro_cbte}` : (d?.error ?? 'sin respuesta'))
+  } catch (e) {
+    console.error('[facturacion] hook error', e)
+  }
+}
+
 // POST — cambio de estado desde caja (original Sprint 3B, restaurado)
 export async function POST(request: Request) {
   const { pedido_id, estado_nuevo, operador_id } = await request.json()
@@ -46,6 +79,11 @@ export async function POST(request: Request) {
   // Idempotente y silencioso — nunca bloquea el cambio de estado.
   if (estado_nuevo === 'PAID' || estado_nuevo === 'DELIVERED') {
     await acreditarPuntosPedido(pedido_id).catch(() => {})
+    // Facturación: solo la primera vez que pasa a cobrado (si venía de un estado
+    // cobrado, ya se intentó antes; la Edge rechaza duplicados igual)
+    if (!['PAID', 'PREPARING', 'READY', 'DELIVERED'].includes(pedido.estado)) {
+      await facturarSiCorresponde(pedido_id)
+    }
   }
 
   return NextResponse.json({ ok: true })
