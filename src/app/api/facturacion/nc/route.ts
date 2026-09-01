@@ -9,9 +9,15 @@ export async function GET(request: Request) {
   if (!empresa_id) return NextResponse.json({ error: 'empresa_id requerido' }, { status: 400 })
   const supabase = createAdminClient()
   const { data } = await supabase.from('facturas')
-    .select('pedido_id').eq('empresa_id', empresa_id).neq('estado', 'error')
-  const ids = [...new Set((data ?? []).map(f => f.pedido_id).filter(Boolean))]
-  return NextResponse.json({ pedido_ids: ids })
+    .select('pedido_id, tipo_cbte, estado').eq('empresa_id', empresa_id).neq('estado', 'error')
+  // Por pedido: 'nc' si tiene nota de crédito, si no 'factura'
+  const tipos: Record<string, 'factura' | 'nc'> = {}
+  for (const f of (data ?? [])) {
+    if (!f.pedido_id) continue
+    if (f.tipo_cbte === 13) tipos[f.pedido_id] = 'nc'
+    else if (!tipos[f.pedido_id]) tipos[f.pedido_id] = 'factura'
+  }
+  return NextResponse.json({ pedido_ids: Object.keys(tipos), tipos })
 }
 
 // POST { empresa_id, pedido_id } → emite Nota de Crédito C (tipo 13) via Edge Function

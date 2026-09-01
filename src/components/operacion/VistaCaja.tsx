@@ -102,6 +102,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       const rf = await fetch(`/api/facturacion/nc?empresa_id=${dispositivo.empresa_id}`)
       const df = await rf.json()
       if (Array.isArray(df?.pedido_ids)) setFacturados(new Set(df.pedido_ids))
+      if (df?.tipos) setTiposFiscales(df.tipos)
     } catch { /* si falla, el server-side de eliminar protege igual */ }
     setLoading(false)
   }, [dispositivo, verTodas])
@@ -179,7 +180,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   // fiscal (factura o NC): esos no se eliminan nunca. Server-side valida igual.
   const [eliminando, setEliminando] = useState(false)
   const [facturados, setFacturados] = useState<Set<string>>(new Set())
+  const [tiposFiscales, setTiposFiscales] = useState<Record<string, 'factura' | 'nc'>>({})
   function esBorrable(p: Pedido) { return p.estado !== 'PAID' && p.estado !== 'DELIVERED' && !facturados.has(p.id) }
+  function BadgeFiscal({ id }: { id: string }) {
+    const t = tiposFiscales[id]
+    if (!t) return null
+    return t === 'nc'
+      ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-neutral-100 text-neutral-500">NC emitida</span>
+      : <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700">🧾 Facturado</span>
+  }
   async function eliminarPedido(p: Pedido, desdeHistorial: boolean) {
     if (!confirm(`¿Eliminar el pedido #${p.numero_pedido}? Esta acción no se puede deshacer.`)) return
     setEliminando(true)
@@ -410,7 +419,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       className={`w-full text-left px-4 py-3 border-b border-neutral-50 border-l-4 transition-colors ${historialSeleccionado?.id === p.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[p.estado] ?? 'border-l-neutral-200'}`}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-bold text-neutral-800">#{p.numero_pedido}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[p.estado]}`}>{ESTADO_LABEL[p.estado]}</span>
+                        <BadgeFiscal id={p.id} /><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[p.estado]}`}>{ESTADO_LABEL[p.estado]}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-neutral-400">{p.metodo_pago ?? '—'}</span>
@@ -434,7 +443,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-3">
                       <div className="flex items-center justify-between mb-3">
                         <h2 className="font-black text-2xl text-neutral-800">#{historialSeleccionado.numero_pedido}</h2>
-                        <span className={`text-xs px-2 py-1 rounded-full font-semibold ${ESTADO_BADGE[historialSeleccionado.estado]}`}>{ESTADO_LABEL[historialSeleccionado.estado]}</span>
+                        <BadgeFiscal id={historialSeleccionado.id} /><span className={`text-xs px-2 py-1 rounded-full font-semibold ${ESTADO_BADGE[historialSeleccionado.estado]}`}>{ESTADO_LABEL[historialSeleccionado.estado]}</span>
                       </div>
                       <div className="space-y-2 mb-3">
                         {historialSeleccionado.pedido_items.map((item, i) => (
@@ -520,7 +529,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       {pedido.tipo_pedido === 'delivery' && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">Delivery</span>}
                       {pedido.colaborador_nombre && <span className="text-xs bg-neutral-800 text-white px-1.5 py-0.5 rounded-full font-semibold">🛵 {pedido.colaborador_nombre}</span>}
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
+                    <BadgeFiscal id={pedido.id} /><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
                   </div>
                   <div className="mb-1 space-y-0.5">
                     {pedido.pedido_items.slice(0, 3).map((item, i) => (
@@ -565,7 +574,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <p className="text-neutral-400 text-sm mt-0.5">{tiempoRelativo(seleccionado.created_at)} · Código: <span className="font-mono font-bold text-neutral-600">{seleccionado.codigo_retiro}</span></p>
                     {verTodas && seleccionado.sucursales?.nombre && <p className="text-neutral-400 text-xs mt-0.5">📍 {seleccionado.sucursales.nombre}</p>}
                   </div>
-                  <span className={`px-3 py-1.5 rounded-xl text-sm font-bold ${ESTADO_BADGE[seleccionado.estado]}`}>{ESTADO_LABEL[seleccionado.estado]}</span>
+                  <BadgeFiscal id={seleccionado.id} /><span className={`px-3 py-1.5 rounded-xl text-sm font-bold ${ESTADO_BADGE[seleccionado.estado]}`}>{ESTADO_LABEL[seleccionado.estado]}</span>
                 </div>
 
                 <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden shadow-sm mb-4">
