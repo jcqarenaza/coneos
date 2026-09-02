@@ -3,6 +3,20 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 const METODOS_VALIDOS = ['transferencia', 'efectivo', 'mp']
 
+
+// Resuelve la config de facturación: fila de la sucursal si existe, si no la de la
+// empresa (sucursal_id NULL). Devuelve null si no hay ninguna.
+async function resolverFactConfig(supabase: ReturnType<typeof createAdminClient>, empresaId: string, sucursalId: string | null, columnas: string) {
+  if (sucursalId) {
+    const { data } = await supabase.from('facturacion_config')
+      .select(columnas).eq('empresa_id', empresaId).eq('sucursal_id', sucursalId).maybeSingle()
+    if (data) return data
+  }
+  const { data } = await supabase.from('facturacion_config')
+    .select(columnas).eq('empresa_id', empresaId).is('sucursal_id', null).maybeSingle()
+  return data
+}
+
 // GET ?empresa_id= → { configurada, auto, metodos, disponibles }
 // configurada: módulo listo (activo del panel + certificados)
 // auto: interruptor maestro del cliente; metodos: cuáles se facturan solos
@@ -14,7 +28,7 @@ export async function GET(request: Request) {
   const supabase = createAdminClient()
   const [{ data }, { data: pagos }] = await Promise.all([
     supabase.from('facturacion_config')
-      .select('activo, cert_pem, key_pem, auto_facturar, metodos_auto').eq('empresa_id', empresa_id).maybeSingle(),
+      .select('activo, cert_pem, key_pem, auto_facturar, metodos_auto').eq('empresa_id', empresa_id).is('sucursal_id', null).maybeSingle(),
     supabase.from('sucursal_pagos').select('acepta_mp_kiosk, acepta_mp_delivery').eq('empresa_id', empresa_id),
   ])
   const configurada = !!(data?.activo && data?.cert_pem && data?.key_pem)
@@ -34,7 +48,7 @@ export async function PUT(request: Request) {
   if (Array.isArray(metodos_auto)) update.metodos_auto = metodos_auto.filter((m: string) => METODOS_VALIDOS.includes(m))
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'nada para actualizar' }, { status: 400 })
   const supabase = createAdminClient()
-  const { error } = await supabase.from('facturacion_config').update(update).eq('empresa_id', empresa_id)
+  const { error } = await supabase.from('facturacion_config').update(update).eq('empresa_id', empresa_id).is('sucursal_id', null)
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true, ...update })
 }
@@ -46,10 +60,11 @@ export async function POST(request: Request) {
   if (!empresa_id || !pedido_id) return NextResponse.json({ error: 'empresa_id y pedido_id requeridos' }, { status: 400 })
 
   const supabase = createAdminClient()
-  const [{ data: cfg }, { data: pedido }] = await Promise.all([
-    supabase.from('facturacion_config').select('activo, auto_facturar, metodos_auto').eq('empresa_id', empresa_id).maybeSingle(),
-    supabase.from('pedidos').select('metodo_pago').eq('id', pedido_id).eq('empresa_id', empresa_id).maybeSingle(),
-  ])
+  const { data: pedido } = await supabase.from('pedidos')
+    .select('metodo_pago, sucursal_id').eq('id', pedido_id).eq('empresa_id', empresa_id).maybeSingle()
+  const cfg = await resolverFactConfig(supabase, empresa_id, pedido?.sucursal_id ?? null,
+    'activo, auto_facturar, metodos_auto') as
+    { activo: boolean; auto_facturar: boolean | null; metodos_auto: unknown } | null
   if (!cfg?.activo) return NextResponse.json({ ok: false, error: 'Facturación desactivada' }, { status: 409 })
   if (cfg.auto_facturar === false) return NextResponse.json({ ok: false, error: 'Facturación automática pausada por el cliente' }, { status: 409 })
   const metodos = Array.isArray(cfg.metodos_auto) ? cfg.metodos_auto as string[] : ['transferencia']
