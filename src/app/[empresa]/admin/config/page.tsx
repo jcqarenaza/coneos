@@ -43,7 +43,7 @@ export default function ConfigPage() {
         punto_venta: cfg.punto_venta ?? 1,
       })
     })
-    supabase.from('mp_credenciales').select('id').eq('empresa_id', ctx.empresaId).maybeSingle()
+    supabase.from('mp_credenciales').select('id').eq('empresa_id', ctx.empresaId).is('sucursal_id', null).maybeSingle()
       .then(({ data }) => setMpConectado(!!data))
   }, [ctx])
 

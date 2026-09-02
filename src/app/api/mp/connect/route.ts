@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
 
 // Inicia el flujo OAuth de Mercado Pago
-// GET /api/mp/connect?empresa_id=X&slug=Y
+// GET /api/mp/connect?empresa_id=X&slug=Y[&sucursal_id=Z]
+// Sin sucursal_id → vincula la cuenta de la MARCA (fila sucursal_id NULL).
+// Con sucursal_id → vincula la cuenta propia de esa sucursal (franquicia).
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const empresa_id = searchParams.get('empresa_id')
   const slug = searchParams.get('slug')
+  const sucursal_id = searchParams.get('sucursal_id')
 
   if (!empresa_id || !slug) {
     return NextResponse.json({ error: 'empresa_id y slug requeridos' }, { status: 400 })
@@ -14,7 +17,7 @@ export async function GET(request: Request) {
   const clientId = process.env.MP_CLIENT_ID
   if (!clientId) return NextResponse.json({ error: 'MP_CLIENT_ID no configurado' }, { status: 500 })
 
-  const state = Buffer.from(JSON.stringify({ empresa_id, slug })).toString('base64url')
+  const state = Buffer.from(JSON.stringify({ empresa_id, slug, sucursal_id: sucursal_id ?? null })).toString('base64url')
 
   const url = new URL('https://auth.mercadopago.com.ar/authorization')
   url.searchParams.set('client_id', clientId)

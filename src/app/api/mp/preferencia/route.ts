@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// Crea una preferencia de pago de MP para un pedido
+// Crea una preferencia de pago de MP para un pedido.
+// Credenciales: las de la SUCURSAL del pedido si tiene cuenta propia (franquicia),
+// si no las de la marca (fila sucursal_id NULL) — la plata cae en la cuenta correcta.
 // POST { pedido_id }
 export async function POST(request: Request) {
   const { pedido_id } = await request.json()
@@ -11,20 +13,30 @@ export async function POST(request: Request) {
 
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select('id, numero_pedido, total, empresa_id, empresas(nombre, slug)')
+    .select('id, numero_pedido, total, empresa_id, sucursal_id, empresas(nombre, slug)')
     .eq('id', pedido_id)
     .single()
 
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
 
-  // Credenciales MP de la empresa
-  const { data: cred } = await supabase
-    .from('mp_credenciales')
-    .select('access_token')
-    .eq('empresa_id', pedido.empresa_id)
-    .single()
+  // Credenciales: sucursal propia → fallback marca
+  let cred: { access_token: string } | null = null
+  if (pedido.sucursal_id) {
+    const { data } = await supabase.from('mp_credenciales')
+      .select('access_token')
+      .eq('empresa_id', pedido.empresa_id).eq('sucursal_id', pedido.sucursal_id)
+      .maybeSingle()
+    cred = data
+  }
+  if (!cred) {
+    const { data } = await supabase.from('mp_credenciales')
+      .select('access_token')
+      .eq('empresa_id', pedido.empresa_id).is('sucursal_id', null)
+      .maybeSingle()
+    cred = data
+  }
 
-  if (!cred) return NextResponse.json({ error: 'Empresa sin Mercado Pago conectado' }, { status: 400 })
+  if (!cred) return NextResponse.json({ error: 'Sin Mercado Pago conectado para esta sucursal/empresa' }, { status: 400 })
 
   const emp = Array.isArray(pedido.empresas) ? pedido.empresas[0] : pedido.empresas
 
