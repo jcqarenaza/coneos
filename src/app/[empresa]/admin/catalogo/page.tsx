@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus, Loader2, Pencil, Trash2, Upload, X, ImageIcon, ChevronDown, ChevronRight } from 'lucide-react'
-import Image from 'next/image'
 
 interface Categoria { id: string; nombre: string; orden: number; activo: boolean; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean }
@@ -40,7 +39,7 @@ function ImageUpload({ value, onChange, folder = 'productos' }: {
     <div className="space-y-2">
       {value ? (
         <div className="relative w-full h-32 rounded-xl overflow-hidden border border-neutral-200 bg-neutral-50 group">
-          <Image src={value} alt="Preview" fill className="object-cover" />
+          <img src={value} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
           <button onClick={() => onChange(null)} className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
             <X className="h-4 w-4" />
           </button>
@@ -344,7 +343,7 @@ export default function CatalogoPage() {
                     {catExpandida ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   </button>
                   <div className="w-9 h-9 rounded-xl bg-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {cat.icono_url ? <Image src={cat.icono_url} alt={cat.nombre} width={36} height={36} className="object-cover w-full h-full" /> : <span className="text-lg">📁</span>}
+                    {cat.icono_url ? <img src={cat.icono_url} alt={cat.nombre} className="object-cover w-full h-full" /> : <span className="text-lg">📁</span>}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -382,7 +381,7 @@ export default function CatalogoPage() {
                               {prodExpandido ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             </button>
                             <div className="w-8 h-8 rounded-lg bg-neutral-50 border border-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                              {prod.imagen_url ? <Image src={prod.imagen_url} alt={prod.nombre} width={32} height={32} className="object-cover w-full h-full" /> : <ImageIcon className="h-3.5 w-3.5 text-neutral-300" />}
+                              {prod.imagen_url ? <img src={prod.imagen_url} alt={prod.nombre} className="object-cover w-full h-full" /> : <ImageIcon className="h-3.5 w-3.5 text-neutral-300" />}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
@@ -409,7 +408,7 @@ export default function CatalogoPage() {
                               <div key={pres.id} className="flex items-center justify-between bg-neutral-50 rounded-xl px-4 py-2.5">
                                 <div className="flex items-center gap-3">
                                   <div className="w-7 h-7 rounded-lg bg-white border border-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                    {pres.imagen_url ? <Image src={pres.imagen_url} alt={pres.nombre} width={28} height={28} className="object-cover w-full h-full" /> : <span className="text-xs">💰</span>}
+                                    {pres.imagen_url ? <img src={pres.imagen_url} alt={pres.nombre} className="object-cover w-full h-full" /> : <span className="text-xs">💰</span>}
                                   </div>
                                   <div>
                                     <span className="text-neutral-700 text-sm font-semibold">{pres.nombre}</span>
@@ -432,7 +431,7 @@ export default function CatalogoPage() {
                                   {[...saboresProd].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(op => (
                                     <div key={op.id} className="flex items-center gap-1.5 bg-white border border-neutral-100 rounded-full px-3 py-1">
                                       {op.imagen_url
-                                        ? <Image src={op.imagen_url} alt={op.nombre} width={16} height={16} className="rounded-full object-cover" />
+                                        ? <img src={op.imagen_url} alt={op.nombre} className="rounded-full object-cover" />
                                         : <span className="text-sm">{op.emoji || '🍦'}</span>}
                                       <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
                                       <button onClick={() => openEditOp(op)} className="text-neutral-400 hover:text-neutral-700 transition-colors"><Pencil className="h-3 w-3" /></button>
@@ -490,7 +489,7 @@ export default function CatalogoPage() {
                 className="w-full flex items-center gap-2 mb-2 p-3 bg-white rounded-xl border border-neutral-100 hover:bg-neutral-50 transition-colors shadow-sm">
                 <ChevronRight className={`h-4 w-4 text-neutral-400 transition-transform ${expandida ? 'rotate-90' : ''}`} />
                 <div className="w-6 h-6 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                  {cat.icono_url ? <Image src={cat.icono_url} alt={cat.nombre} width={24} height={24} className="object-cover w-full h-full" /> : <span className="text-xs">📁</span>}
+                  {cat.icono_url ? <img src={cat.icono_url} alt={cat.nombre} className="object-cover w-full h-full" /> : <span className="text-xs">📁</span>}
                 </div>
                 <h3 className="font-bold text-neutral-700">{cat.nombre}</h3>
                 <span className="text-xs text-neutral-400">{saboresCat.length} sabores</span>
@@ -500,7 +499,7 @@ export default function CatalogoPage() {
                   <div key={op.id} className="bg-white rounded-xl border border-neutral-100 overflow-hidden shadow-sm">
                     {op.imagen_url ? (
                       <div className="w-full h-20 overflow-hidden bg-neutral-50">
-                        <Image src={op.imagen_url} alt={op.nombre} width={200} height={80} className="object-cover w-full h-full" />
+                        <img src={op.imagen_url} alt={op.nombre} className="object-cover w-full h-full" />
                       </div>
                     ) : (
                       <div className="w-full h-20 bg-neutral-50 flex items-center justify-center">
@@ -554,7 +553,7 @@ export default function CatalogoPage() {
                           <div className="flex items-center justify-between px-5 py-3 bg-neutral-50/50">
                             <div className="flex items-center gap-3">
                               <div className="w-7 h-7 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                {prod.imagen_url ? <Image src={prod.imagen_url} alt={prod.nombre} width={28} height={28} className="object-cover w-full h-full" /> : <ImageIcon className="h-3.5 w-3.5 text-neutral-300" />}
+                                {prod.imagen_url ? <img src={prod.imagen_url} alt={prod.nombre} className="object-cover w-full h-full" /> : <ImageIcon className="h-3.5 w-3.5 text-neutral-300" />}
                               </div>
                               <div>
                                 <p className="text-sm font-bold text-neutral-800">{prod.nombre}</p>
