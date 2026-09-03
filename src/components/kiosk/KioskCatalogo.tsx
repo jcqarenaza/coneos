@@ -7,7 +7,7 @@ import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empres
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string }
-interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null }
+interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null; es_novedad?: boolean }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string; precio_adicional?: number }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
@@ -80,6 +80,15 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   }
 
   function seleccionarCategoria(cat: Categoria) { setCategoriaActiva(cat); setCantidad({}); setPaso('productos') }
+  // Novedades: el banner solo NAVEGA al producto (categoría + scroll). No agrega nada al carrito.
+  function irANovedad(pres: Presentacion) {
+    const prod = productos.find(p => p.id === pres.producto_id)
+    if (!prod) return
+    const cat = categorias.find(c => c.id === prod.categoria_id)
+    if (!cat) return
+    setCategoriaActiva(cat); setCantidad({}); setPaso('productos')
+    setTimeout(() => { document.getElementById(`prod-${prod.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, 200)
+  }
 
   function agregarSinOpciones(prod: Producto, pres: Presentacion, cant: number) {
     for (let i = 0; i < cant; i++) {
@@ -158,6 +167,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   }
 
   const productosFiltrados = productos.filter(p => p.categoria_id === categoriaActiva?.id)
+  const novedades = presentaciones.filter(p => p.es_novedad === true)
+    .map(pres => ({ pres, prod: productos.find(pr => pr.id === pres.producto_id) }))
+    .filter((n): n is { pres: Presentacion; prod: Producto } => !!n.prod)
   const totalCarrito = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const actualCola = cola[colaIndex]
   const haySeleccion = productos.filter(p => p.categoria_id === categoriaActiva?.id).some(prod =>
@@ -214,6 +226,27 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         {/* Categorías */}
         {paso === 'categorias' && (
           <div className="max-w-3xl mx-auto pt-6">
+            {novedades.length > 0 && (
+              <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-3 mb-5">
+                <p className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: config.primary_color }}>✨ Novedades</p>
+                <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                  {novedades.map(({ pres, prod }) => (
+                    <button key={pres.id} onClick={() => irANovedad(pres)}
+                      className="flex items-center gap-2.5 border border-neutral-100 rounded-xl px-2.5 py-2 flex-shrink-0 active:scale-95 transition-transform bg-white text-left">
+                      {(pres.imagen_url || prod.imagen_url) && (
+                        <div className="w-11 h-11 rounded-lg overflow-hidden bg-neutral-50 flex-shrink-0">
+                          <img src={pres.imagen_url ?? prod.imagen_url!} alt="" className="object-cover w-full h-full" />
+                        </div>
+                      )}
+                      <div className="pr-1">
+                        <p className="text-sm font-semibold text-neutral-800 leading-tight whitespace-nowrap">{prod.nombre}</p>
+                        <p className="text-xs text-neutral-400 leading-tight whitespace-nowrap">{pres.nombre} · <span className="font-bold" style={{ color: config.primary_color }}>${Number(pres.precio).toLocaleString('es-AR')}</span></p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <h2 className="text-2xl font-bold mb-6 text-center" style={{ color: config.primary_color }}>¿Qué querés pedir?</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {categorias.map(cat => {
@@ -282,7 +315,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               {productosFiltrados.map(prod => {
                 const pres = presentaciones.filter(p => p.producto_id === prod.id)
                 return (
-                  <div key={prod.id} className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
+                  <div key={prod.id} id={`prod-${prod.id}`} className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
                     <div className="flex gap-4 p-4 items-center">
                       {(() => {
                         const algunaTieneImagen = pres.some(p => p.imagen_url)

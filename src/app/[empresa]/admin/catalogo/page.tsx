@@ -11,7 +11,7 @@ import { Plus, Loader2, Pencil, Trash2, Upload, X, ImageIcon, ChevronDown, Chevr
 
 interface Categoria { id: string; nombre: string; orden: number; activo: boolean; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean }
-interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null; visible_kiosk: boolean }
+interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null; visible_kiosk: boolean; es_novedad: boolean }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean; visible_kiosk: boolean }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
@@ -100,7 +100,7 @@ export default function CatalogoPage() {
 
   const [formCat, setFormCat] = useState({ nombre: '', orden: 1, activo: true, icono_url: null as string | null })
   const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true })
-  const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null, visible_kiosk: true })
+  const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null, visible_kiosk: true, es_novedad: false })
   const [gruposSeleccionados, setGruposSeleccionados] = useState<string[]>([])
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
   const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true, visible_kiosk: true })
@@ -254,13 +254,13 @@ export default function CatalogoPage() {
   }
 
   // Presentaciones
-  function openNewPres(prodId: string) { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: prodId, imagen_url: null, visible_kiosk: true }); setGruposSeleccionados([]); setEditId(null); setModalPres(true) }
-  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url, visible_kiosk: p.visible_kiosk }); setGruposSeleccionados(presGrupos.filter(pg => pg.presentacion_id === p.id).map(pg => pg.grupo_id)); setEditId(p.id); setModalPres(true) }
+  function openNewPres(prodId: string) { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: prodId, imagen_url: null, visible_kiosk: true, es_novedad: false }); setGruposSeleccionados([]); setEditId(null); setModalPres(true) }
+  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url, visible_kiosk: p.visible_kiosk, es_novedad: p.es_novedad ?? false }); setGruposSeleccionados(presGrupos.filter(pg => pg.presentacion_id === p.id).map(pg => pg.grupo_id)); setEditId(p.id); setModalPres(true) }
   async function savePres() {
     if (!ctx || !formPres.nombre || !formPres.producto_id) return
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id, imagen_url: formPres.imagen_url, visible_kiosk: formPres.visible_kiosk }
+    const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id, imagen_url: formPres.imagen_url, visible_kiosk: formPres.visible_kiosk, es_novedad: formPres.es_novedad }
     if (editId) await supabase.from('presentaciones').update(payload).eq('id', editId)
     else await supabase.from('presentaciones').insert({ ...payload, empresa_id: ctx.empresaId })
     setSaving(false); setModalPres(false); load(true)
@@ -411,7 +411,7 @@ export default function CatalogoPage() {
                                     {pres.imagen_url ? <img src={pres.imagen_url} alt={pres.nombre} className="object-cover w-full h-full" /> : <span className="text-xs">💰</span>}
                                   </div>
                                   <div>
-                                    <span className="text-neutral-700 text-sm font-semibold">{pres.nombre}</span>
+                                    <span className="text-neutral-700 text-sm font-semibold">{pres.nombre}</span>{pres.es_novedad && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-700">⭐ Novedad</span>}
                                     <span className="text-neutral-400 text-xs ml-2">${Number(pres.precio).toLocaleString('es-AR')}</span>
                                     {pres.permite_opciones && <span className="text-amber-600 text-xs ml-2">{pres.opciones_min}–{pres.opciones_max} sabores</span>}
                                   </div>
@@ -679,6 +679,10 @@ export default function CatalogoPage() {
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.visible_kiosk} onChange={e => setFormPres({ ...formPres, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" />
             <span className="text-sm text-neutral-700">Visible en kiosk</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={formPres.es_novedad} onChange={e => setFormPres({ ...formPres, es_novedad: e.target.checked })} className="w-4 h-4 rounded" />
+            <span className="text-sm text-neutral-700">⭐ Es novedad <span className="text-neutral-400">(aparece en el banner del kiosk y delivery)</span></span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.permite_opciones} onChange={e => setFormPres({ ...formPres, permite_opciones: e.target.checked, opciones_min: e.target.checked ? 1 : 0, opciones_max: e.target.checked ? 1 : 0 })} className="w-4 h-4 rounded" />
