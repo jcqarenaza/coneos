@@ -658,6 +658,7 @@ export default function CatalogoPage() {
               <SelectContent>{categorias.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
             </Select>
           </div>
+          <div className="space-y-1.5"><Label>Orden</Label><Input type="number" value={formProd.orden} onChange={e => setFormProd({ ...formProd, orden: Number(e.target.value) })} className="w-24" /><p className="text-xs text-neutral-400">1 = primero dentro de la categoría</p></div>
           <div className="space-y-1.5"><Label>Descripción</Label><Input value={formProd.descripcion} onChange={e => setFormProd({ ...formProd, descripcion: e.target.value })} /></div>
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formProd.imagen_url} onChange={url => setFormProd({ ...formProd, imagen_url: url })} /></div>
           <div className="flex gap-4">
