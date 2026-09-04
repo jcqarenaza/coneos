@@ -28,7 +28,7 @@ function formatFechaHora(ts: string) {
 function pad(n: number, len: number) { return String(n).padStart(len, '0') }
 
 
-const METODO_UI: Record<string, string> = { transferencia: 'Transferencia', efectivo: 'Efectivo', mp: 'Mercado Pago' }
+const METODO_UI: Record<string, string> = { transferencia: 'Transferencia', efectivo: 'Efectivo', mp: 'Mercado Pago', debito: 'Débito (mesas)', credito: 'Crédito (mesas)' }
 const TIPO_LABEL: Record<number, string> = { 11: 'Factura C', 13: 'Nota de Crédito C' }
 const TIPO_BADGE: Record<number, string> = { 11: 'bg-blue-50 text-blue-700', 13: 'bg-amber-50 text-amber-700' }
 const ESTADO_LABEL: Record<string, string> = { emitida: 'Emitida', anulada: 'Anulada', pendiente: 'Pendiente', error: 'Error' }
@@ -80,7 +80,7 @@ export default function FacturasPage() {
         setFactActiva(!!d.activa); setFactConfigurada(!!d.configurada)
         setAutoFacturar(d.auto !== false)
         if (Array.isArray(d.metodos)) setMetodosAuto(d.metodos)
-        if (Array.isArray(d.disponibles)) setMetodosDisp(d.disponibles)
+        if (Array.isArray(d.disponibles)) setMetodosDisp([...new Set([...d.disponibles, 'debito', 'credito'])])
       }).catch(() => setFactActiva(null))
   }, [ctx])
 
