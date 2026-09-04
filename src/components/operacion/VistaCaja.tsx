@@ -11,7 +11,7 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -26,7 +26,13 @@ function tiempoRelativo(ts: string) {
 export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispositivo; sesion: SesionOperador }) {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'activos' | 'nuevo' | 'historial'>('activos')
+  const [tab, setTab] = useState<'activos' | 'nuevo' | 'historial' | 'mesas'>('activos')
+  // ── Modo MESA (F2): cobro de cuentas ──
+  const [cobroCuenta, setCobroCuenta] = useState<string | null>(null) // mesa_cuenta_id en cobro
+  const [selPedidosCobro, setSelPedidosCobro] = useState<Record<string, boolean>>({})
+  const [metodoCobro, setMetodoCobro] = useState<'efectivo' | 'debito' | 'credito' | 'transferencia'>('efectivo')
+  const [cobrandoMesa, setCobrandoMesa] = useState(false)
+  const [errorCobroMesa, setErrorCobroMesa] = useState<string | null>(null)
   const [historialFecha, setHistorialFecha] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }))
   const [historialPedidos, setHistorialPedidos] = useState<Pedido[]>([])
   const [historialLoading, setHistorialLoading] = useState(false)
@@ -66,7 +72,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     const supabase = createClient()
     let query = supabase
       .from('pedidos')
-      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, tipo_pedido, costo_envio, datos_delivery, colaborador_nombre, pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
+      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, colaborador_nombre, pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
       .eq('empresa_id', dispositivo.empresa_id)
       .eq('fecha_pedido', fecha)
       .order('numero_pedido', { ascending: true })
@@ -81,7 +87,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
     let query = supabase
       .from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url,
+      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url,
         sucursales(nombre),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
@@ -278,6 +284,42 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     }
   }
 
+  async function cobrarMesa() {
+    const ids = Object.entries(selPedidosCobro).filter(([, v]) => v).map(([k]) => k)
+    if (ids.length === 0 || cobrandoMesa) return
+    setCobrandoMesa(true)
+    setErrorCobroMesa(null)
+    try {
+      const res = await fetch('/api/mesa/cobrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido_ids: ids, metodo_pago: metodoCobro }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setErrorCobroMesa(d.error ?? 'No se pudo cobrar'); setCobrandoMesa(false); return }
+      setCobroCuenta(null)
+      setSelPedidosCobro({})
+      setCobrandoMesa(false)
+      cargarPedidos()
+    } catch {
+      setErrorCobroMesa('Error de conexión')
+      setCobrandoMesa(false)
+    }
+  }
+
+  async function imprimirTicketCuenta(cuentaId: string) {
+    const win = window.open('about:blank', '_blank', 'width=400,height=600')
+    const res = await fetch('/api/comprobantes/ticket-cuenta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mesa_cuenta_id: cuentaId }),
+    })
+    if (res.ok) {
+      const html = await res.text()
+      if (win) { win.document.write(html); win.document.close() }
+    } else { win?.close() }
+  }
+
   const tabs = [
     { key: 'PENDING_PAYMENT', label: 'Pendientes', short: 'Pend.' },
     { key: 'PAID', label: 'Pagados', short: 'Pag.' },
@@ -287,14 +329,16 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const counts = tabs.reduce((acc, t) => ({ ...acc, [t.key]: pedidos.filter(p => p.estado === t.key).length }), {} as Record<string, number>)
   const pedidosFiltrados = filtroEstado ? pedidos.filter(p => p.estado === filtroEstado) : pedidos
 
-  // Resumen del día (siempre visible): solo pedidos cobrados/en curso, no pendientes de pago
+  // Resumen del día: solo plata COBRADA. Los pedidos de mesa "por cobrar"
+  // (pagado=false) quedan afuera del total y se muestran como pendiente aparte.
   const resumen = (() => {
-    const cobrados = pedidos.filter(p => p.estado !== 'PENDING_PAYMENT')
+    const cobrados = pedidos.filter(p => p.estado !== 'PENDING_PAYMENT' && !(p.numero_mesa != null && p.pagado === false))
     const sum = (arr: Pedido[], f: (p: Pedido) => number) => arr.reduce((a, p) => a + f(p), 0)
     const envios = sum(cobrados, p => Number(p.costo_envio ?? 0))
     const total = sum(cobrados, p => Number(p.total))
-    const kiosk = cobrados.filter(p => p.tipo_pedido !== 'delivery')
+    const kiosk = cobrados.filter(p => p.tipo_pedido !== 'delivery' && p.tipo_pedido !== 'mesa')
     const delivery = cobrados.filter(p => p.tipo_pedido === 'delivery')
+    const mesa = cobrados.filter(p => p.tipo_pedido === 'mesa')
     return {
       cantidad: cobrados.length,
       total,
@@ -302,10 +346,34 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       envios,
       kiosk: sum(kiosk, p => Number(p.total)),
       deliveryProductos: sum(delivery, p => Number(p.total) - Number(p.costo_envio ?? 0)),
+      mesa: sum(mesa, p => Number(p.total)),
+      mesaPorCobrar: sum(pedidos.filter(p => p.numero_mesa != null && p.pagado === false), p => Number(p.total)),
       efectivo: sum(cobrados.filter(p => p.metodo_pago === 'efectivo'), p => Number(p.total)),
       transferencia: sum(cobrados.filter(p => p.metodo_pago === 'transferencia'), p => Number(p.total)),
       mp: sum(cobrados.filter(p => p.metodo_pago === 'mp'), p => Number(p.total)),
+      debito: sum(cobrados.filter(p => p.metodo_pago === 'debito'), p => Number(p.total)),
+      credito: sum(cobrados.filter(p => p.metodo_pago === 'credito'), p => Number(p.total)),
     }
+  })()
+
+  // Cuentas de mesa abiertas (agrupando los pedidos del día)
+  const cuentasMesa = (() => {
+    const map = new Map<string, { cuentaId: string; numeroMesa: number; pedidos: Pedido[] }>()
+    for (const p of pedidos) {
+      if (p.mesa_cuenta_id == null || p.numero_mesa == null) continue
+      if (!map.has(p.mesa_cuenta_id)) map.set(p.mesa_cuenta_id, { cuentaId: p.mesa_cuenta_id, numeroMesa: p.numero_mesa, pedidos: [] })
+      map.get(p.mesa_cuenta_id)!.pedidos.push(p)
+    }
+    return [...map.values()]
+      .map(c => ({
+        ...c,
+        total: c.pedidos.reduce((a, p) => a + Number(p.total), 0),
+        pendiente: c.pedidos.filter(p => p.pagado === false).reduce((a, p) => a + Number(p.total), 0),
+        nombres: [...new Set(c.pedidos.map(p => p.nombre_cliente).filter(Boolean))] as string[],
+        desde: c.pedidos.reduce((min, p) => p.created_at < min ? p.created_at : min, c.pedidos[0].created_at),
+      }))
+      .filter(c => c.pendiente > 0)
+      .sort((a, b) => a.numeroMesa - b.numeroMesa)
   })()
 
   return (
@@ -326,6 +394,13 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             <span className="text-xs font-bold">{counts[t.key]}</span>
           </button>
         ))}
+        {cuentasMesa.length > 0 && (
+          <button onClick={() => { setTab('mesas'); setFiltroEstado(null) }}
+            className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'mesas' ? 'border-violet-500 text-violet-700' : 'border-transparent text-neutral-400'}`}>
+            🪑 <span className="hidden md:inline">Mesas</span>
+            <span className="text-xs font-bold bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">{cuentasMesa.length}</span>
+          </button>
+        )}
         <div className="flex-1" />
         {deliveryPausado !== null && (
           <button onClick={togglePausaDelivery}
@@ -355,10 +430,14 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumen.kiosk)}</b></span>
           <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumen.deliveryProductos)}</b></span>
           <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumen.envios)}</b></span>
+          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumen.mesa)}</b></span>}
+          {resumen.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{formatPrecio(resumen.mesaPorCobrar)}</b></span>}
           <span className="text-neutral-500">|</span>
           <span>💵 <b>{formatPrecio(resumen.efectivo)}</b></span>
           <span>📱 <b>{formatPrecio(resumen.transferencia)}</b></span>
           {resumen.mp > 0 && <span>🔵 <b>{formatPrecio(resumen.mp)}</b></span>}
+          {resumen.debito > 0 && <span>💳 <span className="text-neutral-400">Déb</span> <b>{formatPrecio(resumen.debito)}</b></span>}
+          {resumen.credito > 0 && <span>💳 <span className="text-neutral-400">Créd</span> <b>{formatPrecio(resumen.credito)}</b></span>}
         </div>
       )}
 
@@ -477,6 +556,83 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
               </div>
             </div>
           )}
+        </div>
+      ) : tab === 'mesas' ? (
+        <div className="flex-1 overflow-y-auto bg-neutral-50 p-4">
+          <div className="max-w-2xl mx-auto space-y-3">
+            {cuentasMesa.map(c => {
+              const pendientes = c.pedidos.filter(p => p.pagado === false)
+              const enCobro = cobroCuenta === c.cuentaId
+              const idsSel = Object.entries(selPedidosCobro).filter(([, v]) => v).map(([k]) => k)
+              const totalSel = pendientes.filter(p => selPedidosCobro[p.id]).reduce((a, p) => a + Number(p.total), 0)
+              return (
+                <div key={c.cuentaId} className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-lg font-black text-neutral-800">🪑 Mesa {c.numeroMesa}</p>
+                      <p className="text-sm text-neutral-400">{c.nombres.join(', ') || 'Sin nombre'} · {c.pedidos.length} pedido{c.pedidos.length > 1 ? 's' : ''} · desde {new Date(c.desde).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })} hs</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-black text-neutral-800">{formatPrecio(c.total)}</p>
+                      {c.pendiente < c.total && <p className="text-xs font-bold text-red-500">Pendiente {formatPrecio(c.pendiente)}</p>}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-1.5">
+                    {c.pedidos.map(p => (
+                      <div key={p.id} className="flex items-center gap-2.5 text-sm">
+                        {enCobro && p.pagado === false ? (
+                          <input type="checkbox" checked={!!selPedidosCobro[p.id]}
+                            onChange={e => setSelPedidosCobro(prev => ({ ...prev, [p.id]: e.target.checked }))}
+                            className="w-4 h-4 rounded flex-shrink-0" />
+                        ) : (
+                          <span className="w-4 flex-shrink-0 text-center">{p.pagado === false ? '·' : '✓'}</span>
+                        )}
+                        <span className={`flex-1 truncate ${p.pagado === false ? 'text-neutral-700 font-semibold' : 'text-neutral-400'}`}>
+                          #{p.numero_pedido}{p.nombre_cliente ? ` — ${p.nombre_cliente}` : ''}
+                          {p.pagado !== false && <span className="text-xs ml-1.5">({p.metodo_pago === 'mp' ? 'MP' : p.metodo_pago ?? 'pagado'})</span>}
+                        </span>
+                        <span className={p.pagado === false ? 'font-bold text-neutral-800' : 'text-neutral-400'}>{formatPrecio(Number(p.total))}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {enCobro ? (
+                    <div className="mt-4 border-t border-neutral-100 pt-3">
+                      <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Método de cobro</p>
+                      <div className="grid grid-cols-4 gap-1.5 mb-3">
+                        {([['efectivo', '💵 Efectivo'], ['debito', '💳 Débito'], ['credito', '💳 Crédito'], ['transferencia', '📱 Transf.']] as const).map(([m, label]) => (
+                          <button key={m} onClick={() => setMetodoCobro(m)}
+                            className={`py-2.5 rounded-xl text-xs font-bold border transition-colors ${metodoCobro === m ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-500 border-neutral-200'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {errorCobroMesa && <p className="text-red-500 text-sm mb-2">{errorCobroMesa}</p>}
+                      <div className="flex gap-2">
+                        <button onClick={() => { setCobroCuenta(null); setSelPedidosCobro({}) }}
+                          className="px-4 py-3 rounded-xl border border-neutral-200 text-neutral-500 font-semibold text-sm">Cancelar</button>
+                        <button onClick={cobrarMesa} disabled={idsSel.length === 0 || cobrandoMesa}
+                          className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">
+                          {cobrandoMesa ? 'Cobrando...' : `✓ Cobrar ${formatPrecio(totalSel)}`}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-4 flex gap-2">
+                      <button onClick={() => imprimirTicketCuenta(c.cuentaId)}
+                        className="px-4 py-3 rounded-xl border border-neutral-200 text-neutral-600 font-semibold text-sm">🖨️ Cuenta</button>
+                      <button onClick={() => { setCobroCuenta(c.cuentaId); setSelPedidosCobro(Object.fromEntries(pendientes.map(p => [p.id, true]))); setErrorCobroMesa(null) }}
+                        className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold">💰 Cobrar {formatPrecio(c.pendiente)}</button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            {cuentasMesa.length === 0 && (
+              <div className="text-center py-16 text-neutral-400">No hay mesas con cuenta abierta 🪑</div>
+            )}
+          </div>
         </div>
       ) : tab === 'nuevo' ? (
         <NuevoPedido dispositivo={dispositivo} sesion={sesion} onPedidoCreado={() => setTab('activos')} />
