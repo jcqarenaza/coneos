@@ -259,14 +259,10 @@ export default function MesaPage() {
   )
 
   // ── Paso catálogo (reutiliza el kiosk completo, novedades incluidas) ──
+  // Sin header propio: KioskCatalogo ya trae su botón de carrito (onVerCarrito).
+  // El contexto Mesa N — Nombre se ve en el carrito y en el éxito.
   return (
     <div className="relative">
-      <div className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-neutral-100 px-4 py-2 flex items-center justify-between">
-        <span className="text-sm font-bold text-neutral-600">🪑 Mesa {mesa} — {nombre}</span>
-        <button onClick={() => setPaso('carrito')} className="text-sm font-bold px-3 py-1.5 rounded-xl text-white" style={{ backgroundColor: config.primary_color }}>
-          🛒 {carrito.reduce((a, i) => a + i.cantidad, 0)} · {fmt(total)}
-        </button>
-      </div>
       <KioskCatalogo
         dispositivo={{ id: 'mesa', empresa_id: ctx.empresa_id, sucursal_id: ctx.sucursal_id, empresas: { nombre: ctx.nombre } }}
         config={config}
