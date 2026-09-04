@@ -11,7 +11,7 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -66,7 +66,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     const supabase = createClient()
     let query = supabase
       .from('pedidos')
-      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, tipo_pedido, costo_envio, datos_delivery, colaborador_nombre, pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
+      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, tipo_pedido, costo_envio, datos_delivery, colaborador_nombre, pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
       .eq('empresa_id', dispositivo.empresa_id)
       .eq('fecha_pedido', fecha)
       .order('numero_pedido', { ascending: true })
@@ -81,7 +81,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
     let query = supabase
       .from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url,
+      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url,
         sucursales(nombre),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
@@ -185,7 +185,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   function BadgeMesa({ p }: { p: Pedido }) {
     if (p.numero_mesa == null) return null
     return <>
-      <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-violet-50 text-violet-700">🪑 Mesa {p.numero_mesa}</span>
+      <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-violet-50 text-violet-700">🪑 Mesa {p.numero_mesa}{p.nombre_cliente ? ` — ${p.nombre_cliente}` : ''}</span>
       {p.pagado === false && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-50 text-red-600">Por cobrar</span>}
     </>
   }
@@ -561,7 +561,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                 <div className="flex items-start justify-between mb-5">
                   <div>
                     <h2 className="text-2xl font-black text-neutral-800">Pedido #{seleccionado.numero_pedido}</h2>
-                    <p className="text-neutral-400 text-sm mt-0.5">{tiempoRelativo(seleccionado.created_at)} · {seleccionado.numero_mesa != null ? <span className="font-bold text-neutral-600">🪑 Mesa {seleccionado.numero_mesa}</span> : <>Código: <span className="font-mono font-bold text-neutral-600">{seleccionado.codigo_retiro}</span></>}</p>
+                    <p className="text-neutral-400 text-sm mt-0.5">{tiempoRelativo(seleccionado.created_at)} · {seleccionado.numero_mesa != null ? <span className="font-bold text-neutral-600">🪑 Mesa {seleccionado.numero_mesa}{seleccionado.nombre_cliente ? ` — ${seleccionado.nombre_cliente}` : ''}</span> : <>Código: <span className="font-mono font-bold text-neutral-600">{seleccionado.codigo_retiro}</span></>}</p>
                     {verTodas && seleccionado.sucursales?.nombre && <p className="text-neutral-400 text-xs mt-0.5">📍 {seleccionado.sucursales.nombre}</p>}
                   </div>
                   <BadgeMesa p={seleccionado} /><BadgeFiscal id={seleccionado.id} /><span className={`px-3 py-1.5 rounded-xl text-sm font-bold ${ESTADO_BADGE[seleccionado.estado]}`}>{ESTADO_LABEL[seleccionado.estado]}</span>

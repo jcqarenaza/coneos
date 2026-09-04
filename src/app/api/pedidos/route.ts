@@ -113,7 +113,7 @@ export async function POST(request: Request) {
     origen, tipo_pedido: esMesa ? 'mesa' : tipo_pedido,
     costo_envio: Number(costo_envio),
     datos_delivery,
-    ...(esMesa ? { mesa_cuenta_id, numero_mesa: Number(numero_mesa), pagado: false } : {}),
+    ...(esMesa ? { mesa_cuenta_id, numero_mesa: Number(numero_mesa), pagado: false, nombre_cliente: nombre_cliente || null } : {}),
   }).select('id, numero_pedido, codigo_retiro').single()
 
   if (error || !pedido) {
