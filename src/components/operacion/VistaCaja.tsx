@@ -598,6 +598,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   </div>
 
                   <div className="mt-3 space-y-1.5">
+                    {enCobro && pendientes.length > 1 && (
+                      <p className="text-xs text-neutral-400 mb-1">Destildá los pedidos que no entran en este cobro:</p>
+                    )}
                     {c.pedidos.map(p => (
                       <div key={p.id} className="flex items-center gap-2.5 text-sm">
                         {enCobro && p.pagado === false ? (
@@ -895,6 +898,20 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <button onClick={() => imprimirTicket(seleccionado.id)}
                       className="w-full py-4 border-2 border-neutral-200 text-neutral-600 hover:bg-neutral-50 rounded-2xl font-bold text-base transition-colors flex items-center justify-center gap-2">
                       🖨️ Reimprimir ticket
+                    </button>
+                  )}
+                  {seleccionado.numero_mesa != null && seleccionado.pagado === false && seleccionado.mesa_cuenta_id && (
+                    <button onClick={() => {
+                      // Atajo: abre el cobro de la cuenta con SOLO este pedido tildado
+                      setTab('mesas'); setFiltroEstado(null)
+                      setCobroCuenta(seleccionado.mesa_cuenta_id!)
+                      setSelPedidosCobro({ [seleccionado.id]: true })
+                      setPagosCobro([{ metodo: 'efectivo', monto: '' }])
+                      setErrorCobroMesa(null)
+                      setSeleccionado(null)
+                    }}
+                      className="w-full py-4 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-bold text-base transition-colors flex items-center justify-center gap-2 shadow-sm">
+                      💰 Cobrar este pedido ({formatPrecio(Number(seleccionado.total))})
                     </button>
                   )}
                 </div>
