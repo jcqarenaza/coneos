@@ -391,9 +391,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         nombres: [...new Set(c.pedidos.map(p => p.nombre_cliente).filter(Boolean))] as string[],
         desde: c.pedidos.reduce((min, p) => p.created_at < min ? p.created_at : min, c.pedidos[0].created_at),
       }))
-      .filter(c => c.pendiente > 0)
       .sort((a, b) => a.numeroMesa - b.numeroMesa)
   })()
+  const cuentasAbiertas = cuentasMesa.filter(c => c.pendiente > 0)
+  const cuentasCerradasHoy = cuentasMesa.filter(c => c.pendiente === 0)
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden">
@@ -413,11 +414,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             <span className="text-xs font-bold">{counts[t.key]}</span>
           </button>
         ))}
-        {cuentasMesa.length > 0 && (
+        {(cuentasAbiertas.length > 0 || cuentasCerradasHoy.length > 0) && (
           <button onClick={() => { setTab('mesas'); setFiltroEstado(null) }}
             className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'mesas' ? 'border-violet-500 text-violet-700' : 'border-transparent text-neutral-400'}`}>
             🪑 <span className="hidden md:inline">Mesas</span>
-            <span className="text-xs font-bold bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">{cuentasMesa.length}</span>
+            {cuentasAbiertas.length > 0 && <span className="text-xs font-bold bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">{cuentasAbiertas.length}</span>}
           </button>
         )}
         <div className="flex-1" />
@@ -579,7 +580,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       ) : tab === 'mesas' ? (
         <div className="flex-1 overflow-y-auto bg-neutral-50 p-4">
           <div className="max-w-2xl mx-auto space-y-3">
-            {cuentasMesa.map(c => {
+            {cuentasAbiertas.map(c => {
               const pendientes = c.pedidos.filter(p => p.pagado === false)
               const enCobro = cobroCuenta === c.cuentaId
               const idsSel = Object.entries(selPedidosCobro).filter(([, v]) => v).map(([k]) => k)
@@ -667,8 +668,25 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                 </div>
               )
             })}
-            {cuentasMesa.length === 0 && (
-              <div className="text-center py-16 text-neutral-400">No hay mesas con cuenta abierta 🪑</div>
+            {cuentasAbiertas.length === 0 && (
+              <div className="text-center py-10 text-neutral-400">No hay mesas con cuenta abierta 🪑</div>
+            )}
+            {cuentasCerradasHoy.length > 0 && (
+              <div className="pt-2">
+                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Cerradas hoy</p>
+                <div className="space-y-1.5">
+                  {cuentasCerradasHoy.map(c => (
+                    <div key={c.cuentaId} className="bg-white rounded-xl border border-neutral-100 px-4 py-2.5 flex items-center gap-3">
+                      <span className="text-sm font-bold text-neutral-500">🪑 Mesa {c.numeroMesa}</span>
+                      <span className="text-xs text-neutral-400 flex-1 truncate">{c.nombres.join(', ')} · {c.pedidos.length} pedido{c.pedidos.length > 1 ? 's' : ''}</span>
+                      <span className="text-sm font-bold text-neutral-600">{formatPrecio(c.total)}</span>
+                      <span className="text-xs font-semibold text-green-600">✓ Cobrada</span>
+                      <button onClick={() => imprimirTicketCuenta(c.cuentaId)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:text-neutral-700">🖨️ Cuenta</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>
