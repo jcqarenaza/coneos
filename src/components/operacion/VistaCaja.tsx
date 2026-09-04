@@ -11,7 +11,7 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -30,7 +30,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   // ── Modo MESA (F2): cobro de cuentas ──
   const [cobroCuenta, setCobroCuenta] = useState<string | null>(null) // mesa_cuenta_id en cobro
   const [selPedidosCobro, setSelPedidosCobro] = useState<Record<string, boolean>>({})
-  const [metodoCobro, setMetodoCobro] = useState<'efectivo' | 'debito' | 'credito' | 'transferencia'>('efectivo')
+  const [pagosCobro, setPagosCobro] = useState<{ metodo: 'efectivo' | 'debito' | 'credito' | 'transferencia'; monto: string }[]>([{ metodo: 'efectivo', monto: '' }])
   const [cobrandoMesa, setCobrandoMesa] = useState(false)
   const [errorCobroMesa, setErrorCobroMesa] = useState<string | null>(null)
   const [historialFecha, setHistorialFecha] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }))
@@ -72,7 +72,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     const supabase = createClient()
     let query = supabase
       .from('pedidos')
-      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, colaborador_nombre, pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
+      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, colaborador_nombre, pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
       .eq('empresa_id', dispositivo.empresa_id)
       .eq('fecha_pedido', fecha)
       .order('numero_pedido', { ascending: true })
@@ -284,21 +284,32 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     }
   }
 
-  async function cobrarMesa() {
+  async function cobrarMesa(totalSel: number) {
     const ids = Object.entries(selPedidosCobro).filter(([, v]) => v).map(([k]) => k)
     if (ids.length === 0 || cobrandoMesa) return
+    const pagos = pagosCobro.map((pg, i) => ({
+      metodo: pg.metodo,
+      // Última línea vacía = "el resto" (comodidad para el mozo)
+      monto: pg.monto === '' && i === pagosCobro.length - 1
+        ? totalSel - pagosCobro.slice(0, -1).reduce((a, x) => a + (Number(x.monto) || 0), 0)
+        : Number(pg.monto) || 0,
+    }))
+    const suma = pagos.reduce((a, p) => a + p.monto, 0)
+    if (Math.abs(suma - totalSel) > 0.01) { setErrorCobroMesa(`Los pagos suman ${formatPrecio(suma)} y lo seleccionado es ${formatPrecio(totalSel)}`); return }
+    if (pagos.some(p => p.monto <= 0)) { setErrorCobroMesa('Hay montos en cero'); return }
     setCobrandoMesa(true)
     setErrorCobroMesa(null)
     try {
       const res = await fetch('/api/mesa/cobrar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedido_ids: ids, metodo_pago: metodoCobro }),
+        body: JSON.stringify({ pedido_ids: ids, pagos }),
       })
       const d = await res.json()
       if (!res.ok) { setErrorCobroMesa(d.error ?? 'No se pudo cobrar'); setCobrandoMesa(false); return }
       setCobroCuenta(null)
       setSelPedidosCobro({})
+      setPagosCobro([{ metodo: 'efectivo', monto: '' }])
       setCobrandoMesa(false)
       cargarPedidos()
     } catch {
@@ -348,11 +359,19 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       deliveryProductos: sum(delivery, p => Number(p.total) - Number(p.costo_envio ?? 0)),
       mesa: sum(mesa, p => Number(p.total)),
       mesaPorCobrar: sum(pedidos.filter(p => p.numero_mesa != null && p.pagado === false), p => Number(p.total)),
-      efectivo: sum(cobrados.filter(p => p.metodo_pago === 'efectivo'), p => Number(p.total)),
-      transferencia: sum(cobrados.filter(p => p.metodo_pago === 'transferencia'), p => Number(p.total)),
-      mp: sum(cobrados.filter(p => p.metodo_pago === 'mp'), p => Number(p.total)),
-      debito: sum(cobrados.filter(p => p.metodo_pago === 'debito'), p => Number(p.total)),
-      credito: sum(cobrados.filter(p => p.metodo_pago === 'credito'), p => Number(p.total)),
+      ...(() => {
+        // Por método: si el pedido tiene desglose (pago dividido de mesa), suma
+        // cada parte a su medio; si no, todo el total a su metodo_pago.
+        const por: Record<string, number> = { efectivo: 0, transferencia: 0, mp: 0, debito: 0, credito: 0 }
+        for (const p of cobrados) {
+          if (p.pedido_pagos && p.pedido_pagos.length > 0) {
+            for (const pg of p.pedido_pagos) por[pg.metodo] = (por[pg.metodo] ?? 0) + Number(pg.monto)
+          } else if (p.metodo_pago && por[p.metodo_pago] !== undefined) {
+            por[p.metodo_pago] += Number(p.total)
+          }
+        }
+        return { efectivo: por.efectivo, transferencia: por.transferencia, mp: por.mp, debito: por.debito, credito: por.credito }
+      })(),
     }
   })()
 
@@ -599,20 +618,36 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
                   {enCobro ? (
                     <div className="mt-4 border-t border-neutral-100 pt-3">
-                      <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Método de cobro</p>
-                      <div className="grid grid-cols-4 gap-1.5 mb-3">
-                        {([['efectivo', '💵 Efectivo'], ['debito', '💳 Débito'], ['credito', '💳 Crédito'], ['transferencia', '📱 Transf.']] as const).map(([m, label]) => (
-                          <button key={m} onClick={() => setMetodoCobro(m)}
-                            className={`py-2.5 rounded-xl text-xs font-bold border transition-colors ${metodoCobro === m ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-500 border-neutral-200'}`}>
-                            {label}
-                          </button>
+                      <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Cobro {pagosCobro.length > 1 ? '(dividido)' : ''}</p>
+                      <div className="space-y-2 mb-2">
+                        {pagosCobro.map((pg, i) => (
+                          <div key={i} className="flex items-center gap-1.5">
+                            <div className="grid grid-cols-4 gap-1 flex-1">
+                              {([['efectivo', '💵'], ['debito', '💳D'], ['credito', '💳C'], ['transferencia', '📱']] as const).map(([m, label]) => (
+                                <button key={m} onClick={() => setPagosCobro(prev => prev.map((x, xi) => xi === i ? { ...x, metodo: m } : x))}
+                                  className={`py-2 rounded-lg text-xs font-bold border transition-colors ${pg.metodo === m ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-400 border-neutral-200'}`}>
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            <input type="number" inputMode="decimal" placeholder={i === pagosCobro.length - 1 ? 'resto' : '$'}
+                              value={pg.monto}
+                              onChange={e => setPagosCobro(prev => prev.map((x, xi) => xi === i ? { ...x, monto: e.target.value } : x))}
+                              className="w-28 text-right font-bold rounded-lg border border-neutral-200 px-2 py-2 text-sm" />
+                            {pagosCobro.length > 1 && (
+                              <button onClick={() => setPagosCobro(prev => prev.filter((_, xi) => xi !== i))}
+                                className="text-neutral-300 hover:text-red-500 px-1 font-bold">×</button>
+                            )}
+                          </div>
                         ))}
                       </div>
+                      <button onClick={() => setPagosCobro(prev => [...prev, { metodo: 'efectivo', monto: '' }])}
+                        className="text-xs font-semibold text-neutral-400 hover:text-neutral-600 mb-3">+ Dividir en otro medio</button>
                       {errorCobroMesa && <p className="text-red-500 text-sm mb-2">{errorCobroMesa}</p>}
                       <div className="flex gap-2">
-                        <button onClick={() => { setCobroCuenta(null); setSelPedidosCobro({}) }}
+                        <button onClick={() => { setCobroCuenta(null); setSelPedidosCobro({}); setPagosCobro([{ metodo: 'efectivo', monto: '' }]); setErrorCobroMesa(null) }}
                           className="px-4 py-3 rounded-xl border border-neutral-200 text-neutral-500 font-semibold text-sm">Cancelar</button>
-                        <button onClick={cobrarMesa} disabled={idsSel.length === 0 || cobrandoMesa}
+                        <button onClick={() => cobrarMesa(totalSel)} disabled={idsSel.length === 0 || cobrandoMesa}
                           className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">
                           {cobrandoMesa ? 'Cobrando...' : `✓ Cobrar ${formatPrecio(totalSel)}`}
                         </button>
@@ -622,7 +657,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <div className="mt-4 flex gap-2">
                       <button onClick={() => imprimirTicketCuenta(c.cuentaId)}
                         className="px-4 py-3 rounded-xl border border-neutral-200 text-neutral-600 font-semibold text-sm">🖨️ Cuenta</button>
-                      <button onClick={() => { setCobroCuenta(c.cuentaId); setSelPedidosCobro(Object.fromEntries(pendientes.map(p => [p.id, true]))); setErrorCobroMesa(null) }}
+                      <button onClick={() => { setCobroCuenta(c.cuentaId); setSelPedidosCobro(Object.fromEntries(pendientes.map(p => [p.id, true]))); setPagosCobro([{ metodo: 'efectivo', monto: '' }]); setErrorCobroMesa(null) }}
                         className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold">💰 Cobrar {formatPrecio(c.pendiente)}</button>
                     </div>
                   )}

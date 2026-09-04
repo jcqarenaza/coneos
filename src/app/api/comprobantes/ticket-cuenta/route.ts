@@ -20,21 +20,21 @@ export async function POST(request: Request) {
     supabase.from('empresas').select('nombre').eq('id', cuenta.empresa_id).single(),
     supabase.from('empresa_config').select('razon_social, cuit').eq('empresa_id', cuenta.empresa_id).maybeSingle(),
     supabase.from('pedidos')
-      .select('id, numero_pedido, total, pagado, metodo_pago, nombre_cliente, created_at, pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap))')
+      .select('id, numero_pedido, total, pagado, metodo_pago, nombre_cliente, created_at, pedido_pagos(metodo, monto), pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap))')
       .eq('mesa_cuenta_id', mesa_cuenta_id).order('created_at'),
   ])
 
   const fmt = (n: number) => `$${Number(n).toLocaleString('es-AR')}`
   const metodoLabel: Record<string, string> = { efectivo: 'EFECTIVO', transferencia: 'TRANSFERENCIA', mp: 'MERCADO PAGO', debito: 'DÉBITO', credito: 'CRÉDITO' }
   type Item = { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string }[] }
-  type Ped = { id: string; numero_pedido: number; total: number; pagado: boolean; metodo_pago: string | null; nombre_cliente: string | null; created_at: string; pedido_items: Item[] }
+  type Ped = { id: string; numero_pedido: number; total: number; pagado: boolean; metodo_pago: string | null; nombre_cliente: string | null; created_at: string; pedido_pagos?: { metodo: string; monto: number }[]; pedido_items: Item[] }
   const peds = (pedidos ?? []) as Ped[]
 
   const total = peds.reduce((a, p) => a + Number(p.total), 0)
   const pendiente = peds.filter(p => !p.pagado).reduce((a, p) => a + Number(p.total), 0)
 
   const bloques = peds.map(p => `
-<div class="pedido-head">Pedido #${p.numero_pedido}${p.nombre_cliente ? ` — ${p.nombre_cliente}` : ''}${p.pagado ? ` <span class="pagado">✓ ${metodoLabel[p.metodo_pago ?? ''] ?? 'PAGADO'}</span>` : ''}</div>
+<div class="pedido-head">Pedido #${p.numero_pedido}${p.nombre_cliente ? ` — ${p.nombre_cliente}` : ''}${p.pagado ? ` <span class="pagado">✓ ${p.pedido_pagos && p.pedido_pagos.length > 1 ? p.pedido_pagos.map(pg => `${metodoLabel[pg.metodo] ?? pg.metodo} ${fmt(Number(pg.monto))}`).join(' + ') : (metodoLabel[p.metodo_pago ?? ''] ?? 'PAGADO')}</span>` : ''}</div>
 ${p.pedido_items.map(it => `<div class="item-precio"><span class="item-precio-cant">${it.cantidad}x ${it.nombre_presentacion_snap}${it.pedido_item_opciones?.length ? `<div class="item-ops">${it.pedido_item_opciones.map(o => o.nombre_snap).join(' - ')}</div>` : ''}</span><span class="item-precio-val">${fmt(Number(it.precio_snap) * it.cantidad)}</span></div>`).join('')}
 <div class="item-precio sub"><span class="item-precio-cant">Subtotal</span><span class="item-precio-val">${fmt(Number(p.total))}</span></div>`).join('<div class="linea"></div>')
 
