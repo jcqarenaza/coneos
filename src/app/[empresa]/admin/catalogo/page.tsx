@@ -296,7 +296,7 @@ export default function CatalogoPage() {
     setSaving(false); setModalOp(false); load(true)
   }
   async function deleteOp(id: string) {
-    if (!confirm('¿Eliminar sabor?')) return
+    if (!confirm('¿Eliminar opción?')) return
     await createClient().from('opciones').delete().eq('id', id)
     load(true)
   }
@@ -388,7 +388,7 @@ export default function CatalogoPage() {
                                 <span className="font-semibold text-neutral-800 text-sm">📦 {prod.nombre}</span>
                                 <ConeBadge active={prod.activo} />
                               </div>
-                              <p className="text-xs text-neutral-400">{prodPres.length} presentaciones · {saboresProd.length} sabores</p>
+                              <p className="text-xs text-neutral-400">{prodPres.length} presentaciones · {saboresProd.length} opciones</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
@@ -413,7 +413,7 @@ export default function CatalogoPage() {
                                   <div>
                                     <span className="text-neutral-700 text-sm font-semibold">{pres.nombre}</span>{pres.es_novedad && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-700">⭐ Novedad</span>}
                                     <span className="text-neutral-400 text-xs ml-2">${Number(pres.precio).toLocaleString('es-AR')}</span>
-                                    {pres.permite_opciones && <span className="text-amber-600 text-xs ml-2">{pres.opciones_min}–{pres.opciones_max} sabores</span>}
+                                    {pres.permite_opciones && <span className="text-amber-600 text-xs ml-2">{pres.opciones_min}–{pres.opciones_max} opciones</span>}
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1">
@@ -464,14 +464,14 @@ export default function CatalogoPage() {
 
       {vistaActiva === 'sabores' && <div className="mt-0">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-xs text-neutral-400">{opciones.length} sabores</p>
-          <ConeButton onClick={() => openNewOp()} icon={<Plus className="h-4 w-4" />}>Nuevo sabor</ConeButton>
+          <p className="text-xs text-neutral-400">{opciones.length} opciones</p>
+          <ConeButton onClick={() => openNewOp()} icon={<Plus className="h-4 w-4" />}>Nueva opción</ConeButton>
         </div>
         <div className="relative mb-5">
           <input
             value={busquedaSabor}
             onChange={e => setBusquedaSabor(e.target.value)}
-            placeholder="Buscar sabor..."
+            placeholder="Buscar opción..."
             className="w-full px-4 py-2.5 pl-9 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400 bg-white"
           />
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" /></svg>
@@ -492,7 +492,7 @@ export default function CatalogoPage() {
                   {cat.icono_url ? <img src={cat.icono_url} alt={cat.nombre} className="object-cover w-full h-full" /> : <span className="text-xs">📁</span>}
                 </div>
                 <h3 className="font-bold text-neutral-700">{cat.nombre}</h3>
-                <span className="text-xs text-neutral-400">{saboresCat.length} sabores</span>
+                <span className="text-xs text-neutral-400">{saboresCat.length} opciones</span>
               </button>
               {expandida && <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-3">
                 {saboresCat.map(op => (
@@ -686,7 +686,7 @@ export default function CatalogoPage() {
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.permite_opciones} onChange={e => setFormPres({ ...formPres, permite_opciones: e.target.checked, opciones_min: e.target.checked ? 1 : 0, opciones_max: e.target.checked ? 1 : 0 })} className="w-4 h-4 rounded" />
-            <span className="text-sm text-neutral-700">Permite selección de sabores</span>
+            <span className="text-sm text-neutral-700">Permite selección de opciones</span>
           </label>
           {formPres.permite_opciones && (
             <div className="space-y-3 ml-6">
@@ -695,7 +695,7 @@ export default function CatalogoPage() {
                 <div className="space-y-1.5"><Label>Máximo</Label><Input type="number" value={formPres.opciones_max} onChange={e => setFormPres({ ...formPres, opciones_max: Number(e.target.value) })} /></div>
               </div>
               <div className="space-y-1.5">
-                <Label>Grupo de sabores</Label>
+                <Label>Grupos de opciones</Label>
                 <div className="space-y-1.5 max-h-40 overflow-y-auto border border-neutral-100 rounded-xl p-2 bg-neutral-50">
                   {grupos.map(g => (
                     <label key={g.id} className="flex items-center gap-2 cursor-pointer px-2 py-1.5 hover:bg-white rounded-lg transition-colors">
@@ -704,11 +704,11 @@ export default function CatalogoPage() {
                         onChange={e => setGruposSeleccionados(prev => e.target.checked ? [...prev, g.id] : prev.filter(id => id !== g.id))}
                         className="w-4 h-4 rounded" />
                       <span className="text-sm text-neutral-700">{g.nombre}</span>
-                      <span className="text-xs text-neutral-400 ml-auto">{opciones.filter(o => o.grupo_id === g.id).length} sabores</span>
+                      <span className="text-xs text-neutral-400 ml-auto">{opciones.filter(o => o.grupo_id === g.id).length} opciones</span>
                     </label>
                   ))}
                 </div>
-                {gruposSeleccionados.length === 0 && <p className="text-xs text-amber-600">Seleccioná al menos un grupo de sabores</p>}
+                {gruposSeleccionados.length === 0 && <p className="text-xs text-amber-600">Seleccioná al menos un grupo de opciones</p>}
               </div>
             </div>
           )}
