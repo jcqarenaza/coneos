@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useEmpresa } from '@/lib/useEmpresa'
+import { createClient } from '@/lib/supabase/client'
 import { Loader2 } from 'lucide-react'
 
 // ═══════════════════════════════════════════════════════════════════
@@ -88,14 +89,19 @@ export default function TraficoPage() {
   const [loading, setLoading] = useState(true)
   const [delivery, setDelivery] = useState<Dia[]>([])
   const [mesa, setMesa] = useState<Dia[]>([])
+  const [modulos, setModulos] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (!ctx) return
-    fetch(`/api/visitas/resumen?empresa_id=${ctx.empresaId}`)
-      .then(r => r.json())
-      .then(d => {
+    const supabase = createClient()
+    Promise.all([
+      fetch(`/api/visitas/resumen?empresa_id=${ctx.empresaId}`).then(r => r.json()),
+      supabase.from('empresa_config').select('modulos').eq('empresa_id', ctx.empresaId).maybeSingle(),
+    ])
+      .then(([d, { data: cfg }]) => {
         setDelivery(d.delivery ?? [])
         setMesa(d.mesa ?? [])
+        setModulos((cfg?.modulos ?? {}) as Record<string, boolean>)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -109,8 +115,15 @@ export default function TraficoPage() {
         <h1 className="text-2xl font-black text-neutral-900">📈 Tráfico</h1>
         <p className="text-neutral-400 text-sm">Cuántos clientes entran desde el celular y cuántos terminan pidiendo — últimos 14 días</p>
       </div>
-      <CanalCard titulo="Delivery" emoji="🛵" serie={delivery} activo={delivery.length > 0} />
-      <CanalCard titulo="Mesas" emoji="🪑" serie={mesa} activo={mesa.length > 0} />
+      {/* Cada canal aparece solo si el módulo está contratado (o si tuvo datos alguna vez) */}
+      {(modulos.delivery === true || delivery.length > 0) && <CanalCard titulo="Delivery" emoji="🛵" serie={delivery} activo={delivery.length > 0} />}
+      {(modulos.mesas === true || mesa.length > 0) && <CanalCard titulo="Mesas" emoji="🪑" serie={mesa} activo={mesa.length > 0} />}
+      {modulos.delivery !== true && modulos.mesas !== true && delivery.length === 0 && mesa.length === 0 && (
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-8 text-center">
+          <span className="text-4xl block mb-2">📈</span>
+          <p className="text-neutral-500 text-sm">El tráfico se mide en los canales donde tus clientes entran desde el celular: Delivery y Mesas. Activá alguno para empezar a medir.</p>
+        </div>
+      )}
       <p className="text-xs text-neutral-300 text-center">Visitantes = celulares únicos por día (anónimo). Conversión = pedidos ÷ visitantes.</p>
     </div>
   )
