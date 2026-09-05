@@ -335,7 +335,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               <span className="text-sm font-medium">Subir captura de pantalla</span>
             </button>
           )}
-          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) handleCaptura(f); e.target.value = '' }} />
         </div>
 

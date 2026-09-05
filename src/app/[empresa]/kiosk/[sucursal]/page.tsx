@@ -7,6 +7,7 @@ import KioskInicio from '@/components/kiosk/KioskInicio'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarrito from '@/components/kiosk/KioskCarrito'
 import KioskConfirmacion from '@/components/kiosk/KioskConfirmacion'
+import LatidoDispositivo from '@/components/LatidoDispositivo'
 
 export interface EmpresaConfig {
   primary_color: string
@@ -154,6 +155,7 @@ export default function KioskPage() {
 
   return (
     <div className="min-h-screen select-none" style={{ backgroundColor: '#faf8f5' }}>
+      <LatidoDispositivo empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} dispositivoId={dispositivo.id} tipo="KIOSK" />
       {paso === 'inicio' && (
         <KioskInicio config={config} dispositivo={dispositivo} onComenzar={handleComenzar} />
       )}
