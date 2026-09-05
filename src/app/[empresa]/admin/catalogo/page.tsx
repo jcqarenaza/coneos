@@ -261,8 +261,23 @@ export default function CatalogoPage() {
     setSaving(true)
     const supabase = createClient()
     const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id, imagen_url: formPres.imagen_url, visible_kiosk: formPres.visible_kiosk, es_novedad: formPres.es_novedad }
-    if (editId) await supabase.from('presentaciones').update(payload).eq('id', editId)
-    else await supabase.from('presentaciones').insert({ ...payload, empresa_id: ctx.empresaId })
+    let presId = editId
+    if (editId) {
+      await supabase.from('presentaciones').update(payload).eq('id', editId)
+    } else {
+      const { data: nueva } = await supabase.from('presentaciones').insert({ ...payload, empresa_id: ctx.empresaId }).select('id').single()
+      presId = nueva?.id ?? null
+    }
+    // Persistir los grupos de opciones tildados (antes el checklist no se guardaba)
+    if (presId) {
+      await supabase.from('presentacion_grupos').delete().eq('presentacion_id', presId)
+      if (formPres.permite_opciones && gruposSeleccionados.length > 0) {
+        const filas = gruposSeleccionados.map(grupo_id => ({ presentacion_id: presId, grupo_id, empresa_id: ctx.empresaId }))
+        const { error } = await supabase.from('presentacion_grupos').insert(filas)
+        // Si la tabla no tiene empresa_id, reintentar sin esa columna
+        if (error) await supabase.from('presentacion_grupos').insert(gruposSeleccionados.map(grupo_id => ({ presentacion_id: presId, grupo_id })))
+      }
+    }
     setSaving(false); setModalPres(false); load(true)
   }
   async function deletePres(id: string) {
