@@ -189,7 +189,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
-      <div className="text-center"><span className="text-6xl block mb-4 animate-bounce">🍦</span><p className="text-neutral-400">Cargando catálogo...</p></div>
+      <div className="text-center"><span className="text-6xl block mb-4 animate-bounce">🛍️</span><p className="text-neutral-400">Cargando catálogo...</p></div>
     </div>
   )
 

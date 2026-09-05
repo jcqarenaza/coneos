@@ -902,7 +902,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   {seleccionado.estado === 'PAID' && (
                     <button onClick={() => cambiarEstado(seleccionado.id, 'PREPARING')} disabled={procesando}
                       className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
-                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '🍦 Enviar a preparación'}
+                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '👨‍🍳 Enviar a preparación'}
                     </button>
                   )}
                   {seleccionado.estado === 'PREPARING' && (

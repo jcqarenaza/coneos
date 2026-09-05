@@ -138,7 +138,7 @@ export default function MesaPage() {
       <div className="w-full max-w-sm text-center">
         {config.logo_url
           ? <img src={config.logo_url} alt={ctx.nombre} className="h-20 mx-auto mb-4 object-contain" />
-          : <span className="text-6xl block mb-4">🍦</span>}
+          : <div className="w-20 h-20 rounded-3xl mx-auto mb-4 flex items-center justify-center text-4xl font-black text-white" style={{ backgroundColor: config.primary_color }}>{ctx.nombre?.[0]?.toUpperCase() ?? '·'}</div>}
         <h1 className="text-2xl font-black mb-1" style={{ color: config.primary_color }}>{ctx.nombre}</h1>
         <p className="text-neutral-400 text-sm mb-8">Pedí desde tu mesa 📱</p>
 

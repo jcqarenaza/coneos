@@ -130,7 +130,7 @@ export default function DisplayPage() {
         {pedidos.length === 0 ? (
           <div className="text-center">
             <div className="w-24 h-24 rounded-3xl bg-neutral-100 flex items-center justify-center mx-auto mb-6">
-              <span className="text-5xl">🍦</span>
+              <span className="text-5xl">🛎️</span>
             </div>
             <p className="text-neutral-300 text-2xl font-medium">Sin pedidos listos</p>
             <p className="text-neutral-200 text-base mt-2">Los pedidos aparecerán aquí cuando estén listos</p>

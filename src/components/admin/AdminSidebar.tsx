@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, IceCream2, LogOut, Truck, Lock, X, Cherry, Gift, FileText, Armchair, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, Armchair, TrendingUp } from 'lucide-react'
 
 interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean> }
 
@@ -45,7 +45,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
         <div className="px-5 py-5 border-b border-neutral-100">
           <div className="flex items-center gap-2.5 mb-0.5">
             <div className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center">
-              <IceCream2 className="h-4 w-4 text-white" />
+              <Store className="h-4 w-4 text-white" />
             </div>
             <span className="font-black text-neutral-800">ConeOS</span>
           </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Loader2, LogOut, IceCream2, Coffee } from 'lucide-react'
+import { Loader2, LogOut, Store, Coffee } from 'lucide-react'
 import SeleccionOperador from '@/components/operacion/SeleccionOperador'
 import VistaCaja from '@/components/operacion/VistaCaja'
 import VistaPreparacion from '@/components/operacion/VistaPreparacion'
@@ -78,7 +78,7 @@ export default function OperacionPage() {
   if (error) return (
     <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
       <div className="text-center bg-white rounded-2xl p-8 shadow-sm">
-        <IceCream2 className="h-10 w-10 text-neutral-200 mx-auto mb-3" />
+        <Store className="h-10 w-10 text-neutral-200 mx-auto mb-3" />
         <p className="text-neutral-600 font-medium">{error}</p>
       </div>
     </div>
