@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Image from 'next/image'
 import { Loader2 } from 'lucide-react'
+import LatidoDispositivo from '@/components/LatidoDispositivo'
 
 interface Dispositivo {
   id: string; empresa_id: string; sucursal_id: string
@@ -104,6 +105,7 @@ export default function DisplayPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
+      <LatidoDispositivo empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} dispositivoId={dispositivo.id} tipo="DISPLAY" />
       <div className="bg-white border-b border-neutral-100 shadow-sm px-10 py-5 flex items-center justify-between">
         <div>
           {config.logo_url

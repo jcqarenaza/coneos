@@ -6,6 +6,7 @@ import { Loader2, LogOut, IceCream2, Coffee } from 'lucide-react'
 import SeleccionOperador from '@/components/operacion/SeleccionOperador'
 import VistaCaja from '@/components/operacion/VistaCaja'
 import VistaPreparacion from '@/components/operacion/VistaPreparacion'
+import LatidoDispositivo from '@/components/LatidoDispositivo'
 
 interface Dispositivo {
   id: string; nombre: string; tipo: string; empresa_id: string; sucursal_id: string
@@ -85,13 +86,19 @@ export default function OperacionPage() {
 
   if (!dispositivo) return null
 
-  if (!sesion) return <SeleccionOperador dispositivo={dispositivo} onLogin={handleLogin} />
+  if (!sesion) return (
+    <>
+      <LatidoDispositivo empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} dispositivoId={dispositivo.id} tipo={dispositivo.tipo} />
+      <SeleccionOperador dispositivo={dispositivo} onLogin={handleLogin} />
+    </>
+  )
 
   const { puede_cobrar, puede_preparar } = sesion.operador
   const tieneAmbos = puede_cobrar && puede_preparar
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col">
+      <LatidoDispositivo empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} dispositivoId={dispositivo.id} tipo={dispositivo.tipo} />
       {/* Header */}
       <header className="bg-white border-b border-neutral-100 px-5 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
