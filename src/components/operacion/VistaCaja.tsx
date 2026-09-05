@@ -287,16 +287,18 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   async function cobrarMesa(totalSel: number) {
     const ids = Object.entries(selPedidosCobro).filter(([, v]) => v).map(([k]) => k)
     if (ids.length === 0 || cobrandoMesa) return
-    const pagos = pagosCobro.map((pg, i) => ({
+    // Una línea vacía (cualquiera) = "el resto"; más de una vacía no se puede resolver
+    const vacias = pagosCobro.filter(pg => pg.monto === '').length
+    if (vacias > 1) { setErrorCobroMesa('Dejá vacía solo una línea (la del resto) o poné todos los montos'); return }
+    const cargado = pagosCobro.reduce((a, x) => a + (Number(x.monto) || 0), 0)
+    const resto = Math.round((totalSel - cargado) * 100) / 100
+    const pagos = pagosCobro.map(pg => ({
       metodo: pg.metodo,
-      // Última línea vacía = "el resto" (comodidad para el mozo)
-      monto: pg.monto === '' && i === pagosCobro.length - 1
-        ? totalSel - pagosCobro.slice(0, -1).reduce((a, x) => a + (Number(x.monto) || 0), 0)
-        : Number(pg.monto) || 0,
+      monto: pg.monto === '' ? resto : Number(pg.monto) || 0,
     }))
     const suma = pagos.reduce((a, p) => a + p.monto, 0)
     if (Math.abs(suma - totalSel) > 0.01) { setErrorCobroMesa(`Los pagos suman ${formatPrecio(suma)} y lo seleccionado es ${formatPrecio(totalSel)}`); return }
-    if (pagos.some(p => p.monto <= 0)) { setErrorCobroMesa('Hay montos en cero'); return }
+    if (pagos.some(p => p.monto <= 0)) { setErrorCobroMesa(vacias === 1 ? 'Los montos cargados ya cubren el total — sacá la línea vacía o bajá algún monto' : 'Hay montos en cero'); return }
     setCobrandoMesa(true)
     setErrorCobroMesa(null)
     try {
@@ -634,7 +636,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                                 </button>
                               ))}
                             </div>
-                            <input type="number" inputMode="decimal" placeholder={i === pagosCobro.length - 1 ? 'resto' : '$'}
+                            <input type="number" inputMode="decimal"
+                              placeholder={pg.monto === '' && pagosCobro.filter(x => x.monto === '').length === 1
+                                ? `${Math.max(0, totalSel - pagosCobro.reduce((a, x) => a + (Number(x.monto) || 0), 0))}`
+                                : '$'}
                               value={pg.monto}
                               onChange={e => setPagosCobro(prev => prev.map((x, xi) => xi === i ? { ...x, monto: e.target.value } : x))}
                               className="w-28 text-right font-bold rounded-lg border border-neutral-200 px-2 py-2 text-sm" />
