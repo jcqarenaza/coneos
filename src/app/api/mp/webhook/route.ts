@@ -59,10 +59,34 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient()
 
-  // Necesitamos saber de qué cuenta es el pago — probamos con todas las credenciales
-  // (ahora incluye las de sucursales/franquicias; el payment tiene
-  // external_reference = pedido_id y validamos que el pedido sea de esa empresa)
-  const { data: credenciales } = await supabase.from('mp_credenciales').select('empresa_id, access_token')
+  // CAMINO DIRECTO (escala): la preferencia firma el notification_url con
+  // ?e=<empresa>&s=<sucursal|''> → buscamos SOLO esa credencial (con fallback
+  // sucursal→marca por si la franquicia desvinculó su cuenta después).
+  // El barrido de todas las credenciales queda como fallback para preferencias
+  // viejas creadas sin la firma.
+  const { searchParams } = new URL(request.url)
+  const eParam = searchParams.get('e')
+  const sParam = searchParams.get('s')
+
+  let credenciales: { empresa_id: string; access_token: string }[] = []
+  if (eParam) {
+    if (sParam) {
+      const { data } = await supabase.from('mp_credenciales')
+        .select('empresa_id, access_token')
+        .eq('empresa_id', eParam).eq('sucursal_id', sParam).maybeSingle()
+      if (data) credenciales.push(data)
+    }
+    if (credenciales.length === 0) {
+      const { data } = await supabase.from('mp_credenciales')
+        .select('empresa_id, access_token')
+        .eq('empresa_id', eParam).is('sucursal_id', null).maybeSingle()
+      if (data) credenciales.push(data)
+    }
+  }
+  if (credenciales.length === 0) {
+    const { data } = await supabase.from('mp_credenciales').select('empresa_id, access_token')
+    credenciales = data ?? []
+  }
 
   for (const cred of credenciales ?? []) {
     const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {

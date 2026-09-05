@@ -447,16 +447,18 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                     className={`relative flex flex-col rounded-2xl border-2 bg-white transition-all active:scale-95 overflow-hidden ${sel ? 'shadow-md' : 'border-neutral-100 hover:border-neutral-200'} disabled:opacity-30`}
                     style={sel ? { borderColor: config.primary_color } : {}}>
 
-                    {/* Imagen del sabor */}
+                    {/* Visual adaptativo: foto = tile completo (heladería con fotos);
+                        emoji = tile más bajo; sin nada = card sobria solo texto
+                        (gastronómico: "Punto jugoso", "Sin sal" — nunca un 🍦 ajeno) */}
                     {tieneImagen ? (
                       <div className="w-full aspect-square overflow-hidden bg-neutral-50">
                         <img src={op.imagen_url!} alt={op.nombre} width={200} height={200} className="object-cover w-full h-full" />
                       </div>
-                    ) : (
-                      <div className="w-full aspect-square flex items-center justify-center bg-neutral-50">
-                        <span className="text-4xl">{op.emoji ?? '🍦'}</span>
+                    ) : op.emoji ? (
+                      <div className="w-full h-20 flex items-center justify-center bg-neutral-50">
+                        <span className="text-3xl">{op.emoji}</span>
                       </div>
-                    )}
+                    ) : null}
 
                     {/* Check overlay */}
                     {sel && (
@@ -466,8 +468,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                     )}
 
                     {/* Nombre */}
-                    <div className="p-2 text-center">
-                      <p className="text-neutral-800 font-semibold text-sm leading-tight">{op.nombre}</p>
+                    <div className={`p-2 text-center ${!tieneImagen && !op.emoji ? 'py-5 px-3' : ''}`}>
+                      <p className={`text-neutral-800 font-semibold leading-tight ${!tieneImagen && !op.emoji ? 'text-base' : 'text-sm'}`}>{op.nombre}</p>
                       {op.descripcion && <p className="text-neutral-400 text-xs mt-0.5 line-clamp-1">{op.descripcion}</p>}
                       {(op.precio_adicional ?? 0) > 0 && <p className="text-xs font-bold mt-0.5" style={{ color: config.primary_color }}>+${Number(op.precio_adicional).toLocaleString('es-AR')}</p>}
                     </div>

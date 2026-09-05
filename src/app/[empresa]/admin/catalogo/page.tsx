@@ -431,8 +431,8 @@ export default function CatalogoPage() {
                                   {[...saboresProd].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(op => (
                                     <div key={op.id} className="flex items-center gap-1.5 bg-white border border-neutral-100 rounded-full px-3 py-1">
                                       {op.imagen_url
-                                        ? <img src={op.imagen_url} alt={op.nombre} className="rounded-full object-cover" />
-                                        : <span className="text-sm">{op.emoji || '🍦'}</span>}
+                                        ? <img src={op.imagen_url} alt={op.nombre} className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                                        : op.emoji ? <span className="text-sm">{op.emoji}</span> : null}
                                       <span className="text-xs font-medium text-neutral-600">{op.nombre}</span>
                                       <button onClick={() => openEditOp(op)} className="text-neutral-400 hover:text-neutral-700 transition-colors"><Pencil className="h-3 w-3" /></button>
                                     </div>
@@ -503,7 +503,7 @@ export default function CatalogoPage() {
                       </div>
                     ) : (
                       <div className="w-full h-20 bg-neutral-50 flex items-center justify-center">
-                        <span className="text-3xl">{op.emoji || '🍦'}</span>
+                        {op.emoji ? <span className="text-3xl">{op.emoji}</span> : <span className="text-2xl font-black text-neutral-200">{op.nombre?.[0]?.toUpperCase() ?? '·'}</span>}
                       </div>
                     )}
                     <div className="p-2 flex items-center justify-between gap-1">

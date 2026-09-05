@@ -19,14 +19,17 @@ export async function POST(request: Request) {
 
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
 
-  // Credenciales: sucursal propia → fallback marca
+  // Credenciales: sucursal propia → fallback marca. Recordamos el alcance usado
+  // para firmarlo en el notification_url (así el webhook va directo, sin probar
+  // todas las credenciales — clave a partir de ~10 cuentas conectadas).
   let cred: { access_token: string } | null = null
+  let credScope: string = ''
   if (pedido.sucursal_id) {
     const { data } = await supabase.from('mp_credenciales')
       .select('access_token')
       .eq('empresa_id', pedido.empresa_id).eq('sucursal_id', pedido.sucursal_id)
       .maybeSingle()
-    cred = data
+    if (data) { cred = data; credScope = pedido.sucursal_id }
   }
   if (!cred) {
     const { data } = await supabase.from('mp_credenciales')
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
         currency_id: 'ARS',
       }],
       external_reference: pedido.id,
-      notification_url: 'https://coneos.vercel.app/api/mp/webhook',
+      notification_url: `https://coneos.vercel.app/api/mp/webhook?e=${pedido.empresa_id}&s=${credScope}`,
       back_urls: {
         success: `https://coneos.vercel.app/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
         failure: `https://coneos.vercel.app/${emp?.slug}/pago-error?pedido=${pedido.numero_pedido}`,
