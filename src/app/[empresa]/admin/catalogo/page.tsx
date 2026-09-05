@@ -272,10 +272,8 @@ export default function CatalogoPage() {
     if (presId) {
       await supabase.from('presentacion_grupos').delete().eq('presentacion_id', presId)
       if (formPres.permite_opciones && gruposSeleccionados.length > 0) {
-        const filas = gruposSeleccionados.map(grupo_id => ({ presentacion_id: presId, grupo_id, empresa_id: ctx.empresaId }))
-        const { error } = await supabase.from('presentacion_grupos').insert(filas)
-        // Si la tabla no tiene empresa_id, reintentar sin esa columna
-        if (error) await supabase.from('presentacion_grupos').insert(gruposSeleccionados.map(grupo_id => ({ presentacion_id: presId, grupo_id })))
+        // La tabla no lleva empresa_id; el aislamiento lo garantiza la política RLS
+        await supabase.from('presentacion_grupos').insert(gruposSeleccionados.map(grupo_id => ({ presentacion_id: presId, grupo_id })))
       }
     }
     setSaving(false); setModalPres(false); load(true)
