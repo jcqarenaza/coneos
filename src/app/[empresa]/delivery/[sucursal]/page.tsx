@@ -7,6 +7,7 @@ import KioskInicio from '@/components/kiosk/KioskInicio'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarritoDelivery from '@/components/delivery/KioskCarritoDelivery'
 import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDelivery'
+import RegistroVisita from '@/components/RegistroVisita'
 
 export interface EmpresaConfig {
   primary_color: string; secondary_color: string; logo_url: string | null
@@ -260,6 +261,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
   return (
     <div className="min-h-screen">
+      <RegistroVisita empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} canal="DELIVERY" />
       {paso === 'inicio' && (
         <KioskInicio config={config} dispositivo={dispositivo}
             onComenzar={(catId) => { setCategoriaInicial(catId); setPaso('catalogo') }} />
