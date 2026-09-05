@@ -465,7 +465,7 @@ export default function CatalogoPage() {
       {vistaActiva === 'sabores' && <div className="mt-0">
         <div className="flex items-center justify-between mb-4">
           <p className="text-xs text-neutral-400">{opciones.length} opciones</p>
-          <ConeButton onClick={() => openNewOp()} icon={<Plus className="h-4 w-4" />}>Nueva opción</ConeButton>
+          <div className="flex gap-2"><ConeButton variant="outline" onClick={() => openNewGrupo()} icon={<Plus className="h-4 w-4" />}>Nuevo grupo</ConeButton><ConeButton onClick={() => openNewOp()} icon={<Plus className="h-4 w-4" />}>Nueva opción</ConeButton></div>
         </div>
         <div className="relative mb-5">
           <input
