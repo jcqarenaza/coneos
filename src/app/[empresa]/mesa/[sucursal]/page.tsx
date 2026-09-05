@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
+import RegistroVisita from '@/components/RegistroVisita'
 
 // ═══════════════════════════════════════════════════════════════════
 // MODO MESA — F1 (núcleo)
@@ -133,6 +134,7 @@ export default function MesaPage() {
   // ── Paso 1: nombre (+ mesa si el QR es general) ──
   if (paso === 'datos') return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
+      <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id} canal="MESA" />
       <div className="w-full max-w-sm text-center">
         {config.logo_url
           ? <img src={config.logo_url} alt={ctx.nombre} className="h-20 mx-auto mb-4 object-contain" />
