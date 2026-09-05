@@ -398,7 +398,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 {actualCola.total > 1 && <span className="text-lg font-normal text-neutral-400 ml-2">#{actualCola.numero}</span>}
               </h2>
               <p className="text-neutral-500">
-                {actualCola.presentacion.opciones_max === 1 ? 'Elegí una variedad' : `Elegí entre ${actualCola.presentacion.opciones_min} y ${actualCola.presentacion.opciones_max} ${etiquetaOpciones(actualCola.presentacion.id)}`}
+                {actualCola.presentacion.opciones_max === 1 ? 'Elegí una variedad' : `Elegí entre ${actualCola.presentacion.opciones_min} y ${actualCola.presentacion.opciones_max} ${actualCola ? etiquetaOpciones(actualCola.presentacion.id) : 'opciones'}`}
                 {' '}<span className="font-bold" style={{ color: config.primary_color }}>({opcionesSeleccionadas.filter(o => { const g = grupos.find(gr => gr.id === o.grupo_id); return !g?.nombre.toLowerCase().includes('accesorio') }).length}/{actualCola.presentacion.opciones_max})</span>
               </p>
             </div>
@@ -499,7 +499,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 : productos.filter(p => p.categoria_id === categoriaActiva?.id).some(prod =>
                     presentaciones.filter(p => p.producto_id === prod.id).some(p => p.permite_opciones && getCant(prod.id, p.id) > 0)
                   )
-                  ? <>Elegir {etiquetaOpciones(actualCola.presentacion.id)} → — {formatPrecio(totalSeleccionado)}</>
+                  ? <>Elegir {actualCola ? etiquetaOpciones(actualCola.presentacion.id) : 'opciones'} → — {formatPrecio(totalSeleccionado)}</>
                   : <><ShoppingCart className="h-5 w-5" /> Agregar — {formatPrecio(totalSeleccionado)}</>}
             </button>
           </div>
