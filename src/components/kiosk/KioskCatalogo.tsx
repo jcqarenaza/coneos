@@ -181,7 +181,14 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
   const gruposDeActual = actualCola
     ? grupos.filter(g => presGrupos.some(pg => pg.presentacion_id === actualCola.presentacion.id && pg.grupo_id === g.id)).sort((a, b) => a.orden - b.orden)
-    : []
+    : []
+  // Multi-rubro F1: la etiqueta de selección usa el NOMBRE DEL GRUPO real de la
+  // presentación ("sabores", "adicionales", "salsas", "variedades"). Con varios
+  // grupos (sin contar accesorios) cae al genérico "opciones".
+  function etiquetaOpciones(presentacionId: string): string {
+    const gs = grupos.filter(g => presGrupos.some(pg => pg.presentacion_id === presentacionId && pg.grupo_id === g.id) && !g.nombre.toLowerCase().includes('accesorio'))
+    return gs.length === 1 ? gs[0].nombre.toLowerCase() : 'opciones'
+  }
   const opcionesDeActual = actualCola
     ? opciones.filter(op => presGrupos.some(pg => pg.presentacion_id === actualCola.presentacion.id && pg.grupo_id === op.grupo_id))
     : []
@@ -348,7 +355,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                             <div>
                               <p className="font-semibold text-neutral-700">{p.nombre}</p>
                               <p className="font-bold text-lg" style={{ color: config.primary_color }}>{formatPrecio(p.precio)}</p>
-                              {p.permite_opciones && <p className="text-xs text-neutral-400">{p.opciones_max === 1 ? 'Elegís variedad' : `${p.opciones_min}–${p.opciones_max} sabores`}</p>}
+                              {p.permite_opciones && <p className="text-xs text-neutral-400">{p.opciones_max === 1 ? 'Elegís variedad' : `${p.opciones_min}–${p.opciones_max} ${etiquetaOpciones(p.id)}`}</p>}
                             </div>
                             </div>
                             <div className="flex items-center gap-3">
@@ -391,7 +398,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 {actualCola.total > 1 && <span className="text-lg font-normal text-neutral-400 ml-2">#{actualCola.numero}</span>}
               </h2>
               <p className="text-neutral-500">
-                {actualCola.presentacion.opciones_max === 1 ? 'Elegí una variedad' : `Elegí entre ${actualCola.presentacion.opciones_min} y ${actualCola.presentacion.opciones_max} sabores`}
+                {actualCola.presentacion.opciones_max === 1 ? 'Elegí una variedad' : `Elegí entre ${actualCola.presentacion.opciones_min} y ${actualCola.presentacion.opciones_max} ${etiquetaOpciones(actualCola.presentacion.id)}`}
                 {' '}<span className="font-bold" style={{ color: config.primary_color }}>({opcionesSeleccionadas.filter(o => { const g = grupos.find(gr => gr.id === o.grupo_id); return !g?.nombre.toLowerCase().includes('accesorio') }).length}/{actualCola.presentacion.opciones_max})</span>
               </p>
             </div>
@@ -492,7 +499,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 : productos.filter(p => p.categoria_id === categoriaActiva?.id).some(prod =>
                     presentaciones.filter(p => p.producto_id === prod.id).some(p => p.permite_opciones && getCant(prod.id, p.id) > 0)
                   )
-                  ? <>Elegir sabores → — {formatPrecio(totalSeleccionado)}</>
+                  ? <>Elegir {etiquetaOpciones(actualCola.presentacion.id)} → — {formatPrecio(totalSeleccionado)}</>
                   : <><ShoppingCart className="h-5 w-5" /> Agregar — {formatPrecio(totalSeleccionado)}</>}
             </button>
           </div>

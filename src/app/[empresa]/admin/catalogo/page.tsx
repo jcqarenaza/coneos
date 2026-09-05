@@ -305,7 +305,7 @@ export default function CatalogoPage() {
 
   return (
     <div>
-      <ConePageHeader title="Catálogo" description="Productos, presentaciones y sabores" />
+      <ConePageHeader title="Catálogo" description="Productos, presentaciones y opciones" />
 
       {/* Tabs */}
       <div className="flex gap-1 bg-neutral-100 p-1 rounded-xl mb-6 w-fit">
@@ -315,7 +315,7 @@ export default function CatalogoPage() {
         </button>
         <button onClick={() => setVistaActiva('sabores')}
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'sabores' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
-          Sabores <span className="ml-1 text-xs opacity-60">{opciones.length}</span>
+          Opciones <span className="ml-1 text-xs opacity-60">{opciones.length}</span>
         </button>
         <button onClick={() => { setVistaActiva('disponibilidad'); cargarDisponibilidad() }}
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'disponibilidad' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
@@ -426,7 +426,7 @@ export default function CatalogoPage() {
                             {/* Sabores del producto */}
                             {saboresProd.length > 0 && (
                               <div className="mt-2">
-                                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">Sabores</p>
+                                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">Opciones</p>
                                 <div className="flex flex-wrap gap-1.5">
                                   {[...saboresProd].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(op => (
                                     <div key={op.id} className="flex items-center gap-1.5 bg-white border border-neutral-100 rounded-full px-3 py-1">
@@ -593,7 +593,7 @@ export default function CatalogoPage() {
                             return (
                               <div className="pl-16 pr-5 py-3 border-t border-neutral-50 bg-neutral-50/30">
                                 <div className="flex items-center justify-between mb-2">
-                                  <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Sabores</p>
+                                  <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Opciones</p>
                                   <p className="text-xs text-neutral-400">{saboresProd.filter(op => isDisponible(op.id)).length}/{saboresProd.length}</p>
                                 </div>
                                 <div className="flex flex-wrap gap-1.5">

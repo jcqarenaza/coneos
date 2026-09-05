@@ -2,13 +2,23 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, Armchair, TrendingUp } from 'lucide-react'
 
 interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean> }
 
 export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modulos }: Props) {
+  // Contacto comercial de los candados: partner de la empresa o QP por defecto
+  const [soporte, setSoporte] = useState<{ nombre: string; wa: string }>({ nombre: 'QP C&IA', wa: '542302456497' })
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('empresas').select('id, empresa_config(soporte_nombre, soporte_whatsapp)').eq('slug', slug).single()
+      .then(({ data }) => {
+        const cfg = Array.isArray(data?.empresa_config) ? data?.empresa_config[0] : data?.empresa_config
+        if (cfg?.soporte_whatsapp) setSoporte({ nombre: cfg.soporte_nombre ?? 'tu proveedor', wa: String(cfg.soporte_whatsapp).replace(/\D/g, '') })
+      })
+  }, [slug])
   const pathname = usePathname()
   const router = useRouter()
   const [modalDelivery, setModalDelivery] = useState(false)
@@ -134,10 +144,10 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             </div>
             <h3 className="font-black text-neutral-900 text-lg mb-2">Facturación Electrónica</h3>
             <p className="text-neutral-500 text-sm mb-5">Emití Facturas C ante ARCA automáticamente al cobrar, con CAE y QR en el ticket. Incluye listado de comprobantes y notas de crédito. Cumplí con la facturación sin salir del sistema.</p>
-            <a href="https://wa.me/542302456497?text=Hola%20Juan%20Cruz%2C%20quiero%20activar%20la%20Facturaci%C3%B3n%20Electr%C3%B3nica%20en%20ConeOS"
+            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar la Facturación Electrónica en ConeOS`)}`}
               target="_blank" rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
-              💬 Contactar para activar
+              💬 Contactar a {soporte.nombre}
             </a>
           </div>
         </div>
@@ -156,10 +166,10 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             </div>
             <h3 className="font-black text-neutral-900 text-lg mb-2">Pedidos desde la Mesa</h3>
             <p className="text-neutral-500 text-sm mb-5">Tus clientes escanean un QR en la mesa y piden desde su celular: el pedido cae directo a cocina. Cobrás en caja (incluso dividido entre varios medios) o pagan con Mercado Pago. Con generador de QRs imprimibles incluido.</p>
-            <a href="https://wa.me/542302456497?text=Hola%20Juan%20Cruz%2C%20quiero%20activar%20el%20m%C3%B3dulo%20Mesas%20en%20ConeOS"
+            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar el módulo Mesas en ConeOS`)}`}
               target="_blank" rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
-              💬 Contactar para activar
+              💬 Contactar a {soporte.nombre}
             </a>
           </div>
         </div>
@@ -178,10 +188,10 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             </div>
             <h3 className="font-black text-neutral-900 text-lg mb-2">Programa de Beneficios</h3>
             <p className="text-neutral-500 text-sm mb-5">Fidelizá a tus clientes con puntos por compra canjeables por premios. Sin registro ni contraseñas: solo con el celular. Incluye panel de clientes y canjes configurables.</p>
-            <a href="https://wa.me/542302456497?text=Hola%20Juan%20Cruz%2C%20quiero%20activar%20el%20Programa%20de%20Beneficios%20en%20ConeOS"
+            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar el Programa de Beneficios en ConeOS`)}`}
               target="_blank" rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
-              💬 Contactar para activar
+              💬 Contactar a {soporte.nombre}
             </a>
           </div>
         </div>
@@ -200,10 +210,10 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             </div>
             <h3 className="font-black text-neutral-900 text-lg mb-2">Módulo Delivery</h3>
             <p className="text-neutral-500 text-sm mb-5">El módulo de delivery no está incluido en tu plan actual. Incluye gestión de pedidos a domicilio, cadetes, comandas y seguimiento en tiempo real.</p>
-            <a href="https://wa.me/542302456497?text=Hola%20Juan%20Cruz%2C%20quiero%20activar%20el%20m%C3%B3dulo%20de%20Delivery%20en%20ConeOS"
+            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar el módulo de Delivery en ConeOS`)}`}
               target="_blank" rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
-              💬 Contactar para activar
+              💬 Contactar a {soporte.nombre}
             </a>
           </div>
         </div>

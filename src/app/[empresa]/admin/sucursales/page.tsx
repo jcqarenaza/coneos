@@ -6,6 +6,7 @@ import { useEmpresa } from '@/lib/useEmpresa'
 import { ConePageHeader, ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus, Loader2, Store, CreditCard, Banknote, Smartphone, Pencil, Trash2 } from 'lucide-react'
 
 interface Horario { desde: string; hasta: string }
@@ -16,12 +17,18 @@ interface SucursalPagos {
   mp_alias?: string | null; mp_public_key?: string | null
 }
 interface Sucursal {
-  id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; pagos?: SucursalPagos; delivery?: DeliveryConfig
+  id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; rubro?: string; pagos?: SucursalPagos; delivery?: DeliveryConfig
 }
+
+const RUBROS: [string, string][] = [
+  ['HELADERIA', '🍦 Heladería'], ['HAMBURGUESERIA', '🍔 Hamburguesería'], ['RESTAURANTE', '🍝 Restaurante'],
+  ['BAR', '🍺 Bar'], ['PIZZERIA', '🍕 Pizzería'], ['SUSHI', '🍣 Sushi'],
+  ['CAFETERIA', '☕ Cafetería'], ['PARRILLA', '🥩 Parrilla'], ['OTRO', '🏪 Otro'],
+]
 
 const emptyPagos = (): SucursalPagos => ({ acepta_efectivo: true, acepta_transferencia: true, acepta_mp: false, acepta_mp_kiosk: true, acepta_mp_delivery: true, cbu_transferencia: '', titular_transferencia: '', mp_alias: '', mp_public_key: '' })
 const emptyDelivery = (): DeliveryConfig => ({ activo: false, costo_envio: 0, horarios: [{ desde: '20:00', hasta: '23:59' }], mensaje_fuera_horario: 'El delivery no está disponible en este momento. ¡Volvemos pronto!' })
-const emptySucursal = (): Partial<Sucursal> => ({ nombre: '', slug: '', direccion: '', activo: true })
+const emptySucursal = (): Partial<Sucursal> => ({ nombre: '', slug: '', direccion: '', activo: true, rubro: 'HELADERIA' })
 
 export default function SucursalesPage() {
   const { ctx } = useEmpresa()
@@ -39,7 +46,7 @@ export default function SucursalesPage() {
     const supabase = createClient()
     const { data: suc } = await supabase
       .from('sucursales')
-      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, titular_transferencia), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre)')
+      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, titular_transferencia), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre), rubro')
       .eq('empresa_id', ctx.empresaId).order('nombre')
     setData((suc ?? []).map((s: Record<string, unknown>) => ({
       ...s,
@@ -63,10 +70,10 @@ export default function SucursalesPage() {
     setSaving(true)
     const supabase = createClient()
     if (editId) {
-      await supabase.from('sucursales').update({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: form.activo ?? true }).eq('id', editId)
+      await supabase.from('sucursales').update({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: form.activo ?? true, rubro: form.rubro ?? 'HELADERIA' }).eq('id', editId)
       await supabase.from('sucursal_pagos').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null }, { onConflict: 'sucursal_id' })
     } else {
-      const { data: nueva } = await supabase.from('sucursales').insert({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: true, empresa_id: ctx.empresaId }).select('id').single()
+      const { data: nueva } = await supabase.from('sucursales').insert({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: true, rubro: form.rubro ?? 'HELADERIA', empresa_id: ctx.empresaId }).select('id').single()
       if (nueva) await supabase.from('sucursal_pagos').insert({ sucursal_id: nueva.id, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null })
     }
     // Guardar delivery_config
@@ -159,6 +166,16 @@ export default function SucursalesPage() {
             <div className="space-y-1.5">
               <Label>Dirección</Label>
               <Input value={form.direccion ?? ''} onChange={e => setForm({ ...form, direccion: e.target.value })} placeholder="Av. San Martín 123" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tipo de negocio</Label>
+              <Select value={form.rubro ?? 'HELADERIA'} onValueChange={v => setForm({ ...form, rubro: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {RUBROS.map(([valor, etiqueta]) => <SelectItem key={valor} value={valor}>{etiqueta}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-neutral-400">El tipo de negocio nos permite adaptar la experiencia de ConeOS y sugerir categorías y configuraciones iniciales. Podés cambiar todo después.</p>
             </div>
           </div>
           <div className="space-y-3 pt-2 border-t border-neutral-100">
