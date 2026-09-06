@@ -199,6 +199,32 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
     return () => { cancelado = true }
   }, [params, token])
 
+  // Carrito persistente: si el cliente recarga o cambia de app (ej. va al home
+  // banking a hacer la transferencia), el carrito lo espera. TTL 2 horas.
+  const claveCarrito = dispositivo ? `coneos_carrito_delivery_${dispositivo.sucursal_id}` : null
+  const [carritoRestaurado, setCarritoRestaurado] = useState(false)
+  useEffect(() => {
+    if (!claveCarrito || carritoRestaurado) return
+    try {
+      const raw = localStorage.getItem(claveCarrito)
+      if (raw) {
+        const d = JSON.parse(raw)
+        if (Array.isArray(d.items) && d.items.length > 0 && Date.now() - (d.ts ?? 0) < 7200000) {
+          setCarrito(d.items)
+          setPaso('carrito')
+        } else localStorage.removeItem(claveCarrito)
+      }
+    } catch {}
+    setCarritoRestaurado(true)
+  }, [claveCarrito, carritoRestaurado])
+  useEffect(() => {
+    if (!claveCarrito || !carritoRestaurado) return
+    try {
+      if (carrito.length > 0) localStorage.setItem(claveCarrito, JSON.stringify({ items: carrito, ts: Date.now() }))
+      else localStorage.removeItem(claveCarrito)
+    } catch {}
+  }, [carrito, claveCarrito, carritoRestaurado])
+
   const agregarAlCarrito = useCallback((item: Omit<ItemCarrito, 'id'>) => {
     setCarrito(prev => [...prev, { ...item, id: generarId() }])
   }, [])
@@ -292,7 +318,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
           config={config} dispositivo={dispositivo}
           carrito={carrito} costoEnvio={costoEnvio}
           pedidoCreado={pedidoCreado}
-          onPedidoCreado={(num, cod) => setPedidoCreado({ numero: num, codigo: cod })}
+          onPedidoCreado={(num, cod) => { setPedidoCreado({ numero: num, codigo: cod }); try { if (claveCarrito) localStorage.removeItem(claveCarrito) } catch {} }}
           onNuevoPedido={nuevoPedido}
           onVolver={() => setPaso('carrito')} />
       )}

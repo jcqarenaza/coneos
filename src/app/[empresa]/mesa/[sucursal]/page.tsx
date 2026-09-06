@@ -40,6 +40,31 @@ export default function MesaPage() {
   const [mesa, setMesa] = useState(mesaQR ?? '')
   const [editandoMesa, setEditandoMesa] = useState(false)
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
+  // Carrito y nombre persistentes: si el celu recarga (volver del home banking,
+  // cambiar de app), el pedido a medias sobrevive. TTL 2 horas.
+  const claveMesa = ctx ? `coneos_carrito_mesa_${ctx.sucursal_id}` : null
+  const [restaurado, setRestaurado] = useState(false)
+  useEffect(() => {
+    if (!claveMesa || restaurado) return
+    try {
+      const raw = localStorage.getItem(claveMesa)
+      if (raw) {
+        const d = JSON.parse(raw)
+        if (Date.now() - (d.ts ?? 0) < 7200000) {
+          if (Array.isArray(d.items) && d.items.length > 0) setCarrito(d.items)
+          if (d.nombre) setNombre(d.nombre)
+        } else localStorage.removeItem(claveMesa)
+      }
+    } catch {}
+    setRestaurado(true)
+  }, [claveMesa, restaurado])
+  useEffect(() => {
+    if (!claveMesa || !restaurado) return
+    try {
+      if (carrito.length > 0 || nombre) localStorage.setItem(claveMesa, JSON.stringify({ items: carrito, nombre, ts: Date.now() }))
+      else localStorage.removeItem(claveMesa)
+    } catch {}
+  }, [carrito, nombre, claveMesa, restaurado])
   const [enviando, setEnviando] = useState(false)
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null)
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number } | null>(null)
@@ -106,6 +131,7 @@ export default function MesaPage() {
 
       setPedidoCreado({ numero: d.pedido.numero_pedido })
       setCarrito([])
+      try { if (claveMesa) localStorage.setItem(claveMesa, JSON.stringify({ items: [], nombre, ts: Date.now() })) } catch {}
       setPaso('exito')
       setEnviando(false)
     } catch {
