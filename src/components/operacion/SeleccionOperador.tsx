@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Loader2, Delete } from 'lucide-react'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string; sucursales: { nombre: string }; empresas: { nombre: string } }
@@ -28,12 +27,15 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
   }, [seleccionado, pin])
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.from('operadores').select('id, nombre')
-      .eq('empresa_id', dispositivo.empresa_id)
-      .eq('activo', true)
-      .order('nombre')
-      .then(({ data }) => { setOperadores((data ?? []) as Operador[]); setLoadingOps(false) })
+    // Server-side: no depende de sesiones de admin en el navegador (fix "sin operadores" intermitente)
+    fetch('/api/operador/lista', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dispositivo_id: dispositivo.id }),
+    })
+      .then(r => r.json())
+      .then(d => { setOperadores((d.operadores ?? []) as Operador[]); setLoadingOps(false) })
+      .catch(() => setLoadingOps(false))
   }, [dispositivo])
 
   function handlePin(digit: string) {
