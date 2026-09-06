@@ -28,7 +28,7 @@ export default function DisplayPage() {
 
   // Refs para evitar closure stale en el handler de Realtime
   const empresaIdRef = useRef<string | null>(null)
-  const sucursalIdRef = useRef<string | null>(null)
+  const sucursalIdRef = useRef<string | null>(null)  const dispositivoIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const tick = () => setHora(new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }))
@@ -38,20 +38,15 @@ export default function DisplayPage() {
   }, [])
 
   async function cargarPedidos() {
-    const empId = empresaIdRef.current
-    const sucId = sucursalIdRef.current
-    if (!empId || !sucId) return
-    const supabase = createClient()
-    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
-    const { data } = await supabase
-      .from('pedidos')
-      .select('id, numero_pedido, codigo_retiro')
-      .eq('empresa_id', empId)
-      .eq('sucursal_id', sucId)
-      .eq('fecha_pedido', hoy)
-      .eq('estado', 'READY')
-      .order('numero_pedido', { ascending: true })
-    setPedidos((data ?? []) as Pedido[])
+    const dispId = dispositivoIdRef.current
+    if (!dispId) return
+    // Server-side por dispositivo: el display no tiene sesión de auth propia
+    const res = await fetch('/api/operacion/consulta', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dispositivo_id: dispId, accion: 'display' }),
+    })
+    const d = await res.json()
+    setPedidos((d.pedidos ?? []) as Pedido[])
   }
 
   useEffect(() => {
@@ -68,7 +63,7 @@ export default function DisplayPage() {
 
         // Guardar en refs antes de suscribir Realtime
         empresaIdRef.current = data.dispositivo.empresa_id
-        sucursalIdRef.current = data.dispositivo.sucursal_id
+        sucursalIdRef.current = data.dispositivo.sucursal_id        dispositivoIdRef.current = data.dispositivo.id
 
         const res = await fetch(`/api/kiosk/config?empresa_id=${data.dispositivo.empresa_id}`)
         const cfg = await res.json()
@@ -87,6 +82,8 @@ export default function DisplayPage() {
             filter: `empresa_id=eq.${data.dispositivo.empresa_id}`,
           }, () => cargarPedidos())
           .subscribe()
+        // Respaldo sin sesión (Realtime no emite con RLS): refresco cada 15s
+        setInterval(() => cargarPedidos(), 15000)
       })
       .catch(() => { setError('Error de conexión'); setLoading(false) })
   }, [token])

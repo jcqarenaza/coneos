@@ -53,56 +53,33 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [deliveryPausado, setDeliveryPausado] = useState<boolean | null>(null)
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.from('delivery_config').select('pausado').eq('sucursal_id', dispositivo.sucursal_id).maybeSingle()
-      .then(({ data }) => setDeliveryPausado(data ? !!data.pausado : null))
-  }, [dispositivo.sucursal_id])
+    fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'delivery_pausado_get' }) })
+      .then(r => r.json())
+      .then(d => setDeliveryPausado(d.pausado ?? null))
+      .catch(() => setDeliveryPausado(null))
+  }, [dispositivo.id])
 
   async function togglePausaDelivery() {
     if (deliveryPausado === null) return
     const nuevo = !deliveryPausado
     setDeliveryPausado(nuevo)
-    const supabase = createClient()
-    await supabase.from('delivery_config').update({ pausado: nuevo }).eq('sucursal_id', dispositivo.sucursal_id)
+    await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'delivery_pausado_set', pausado: nuevo }) })
   }
 
   async function cargarHistorial(fecha: string) {
     setHistorialLoading(true)
     setHistorialSeleccionado(null)
-    const supabase = createClient()
-    let query = supabase
-      .from('pedidos')
-      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, colaborador_nombre, pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
-      .eq('empresa_id', dispositivo.empresa_id)
-      .eq('fecha_pedido', fecha)
-      .order('numero_pedido', { ascending: true })
-    if (!verTodas) query = query.eq('sucursal_id', dispositivo.sucursal_id)
-    const { data } = await query
-    setHistorialPedidos((data ?? []) as Pedido[])
+    const rh = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'historial', fecha, verTodas }) })
+    const dh = await rh.json()
+    setHistorialPedidos((dh.pedidos ?? []) as Pedido[])
     setHistorialLoading(false)
   }
 
   const cargarPedidos = useCallback(async () => {
-    const supabase = createClient()
-    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
-    let query = supabase
-      .from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url,
-        sucursales(nombre),
-        pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
-          pedido_item_opciones(nombre_snap, emoji_snap))`)
-      .eq('empresa_id', dispositivo.empresa_id)
-      .eq('fecha_pedido', hoy)
-      .in('estado', ['PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY', 'DELIVERED'])
-      .order('numero_pedido', { ascending: false })
-    if (!verTodas) query = query.eq('sucursal_id', dispositivo.sucursal_id)
-    const { data } = await query
-    setPedidos((data ?? []) as Pedido[])
-    // Cargar colaboradores
-    const { data: cols } = await supabase.from('colaboradores')
-      .select('id, nombre').eq('empresa_id', dispositivo.empresa_id)
-      .eq('activo', true).eq('rol', 'cadete').order('nombre')
-    setColaboradores((cols ?? []) as Colaborador[])
+    const rp = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'pedidos_hoy', verTodas }) })
+    const dp = await rp.json()
+    setPedidos((dp.pedidos ?? []) as Pedido[])
+    setColaboradores((dp.colaboradores ?? []) as Colaborador[])
     // Pedidos con comprobante fiscal (no se pueden eliminar)
     try {
       const rf = await fetch(`/api/facturacion/nc?empresa_id=${dispositivo.empresa_id}`)
@@ -145,7 +122,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         cargarPedidosRef.current()
       })
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    // Respaldo: sin sesión de auth en el navegador, Realtime no emite (RLS) —
+    // el polling garantiza que la caja se refresque igual
+    const poll = setInterval(() => cargarPedidosRef.current(), 15000)
+    return () => { supabase.removeChannel(channel); clearInterval(poll) }
   }, [dispositivo])
 
   useEffect(() => {
@@ -158,11 +138,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   async function asignarCadete() {
     if (!colaboradorSeleccionado || !pedidosSeleccionados.length) return
     setAsignando(true)
-    const supabase = createClient()
-    const col = colaboradores.find(c => c.id === colaboradorSeleccionado)
-    await supabase.from('pedidos')
-      .update({ colaborador_id: colaboradorSeleccionado, colaborador_nombre: col?.nombre ?? '' })
-      .in('id', pedidosSeleccionados)
+    await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'asignar_cadete', pedido_ids: pedidosSeleccionados, colaborador_id: colaboradorSeleccionado }) })
     // Imprimir comanda de cada pedido
     for (const pid of pedidosSeleccionados) {
       const res = await fetch('/api/comprobantes/comanda', {
