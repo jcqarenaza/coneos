@@ -143,7 +143,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     if (actual.presentacion.permite_opciones && saboresCount < actual.presentacion.opciones_min) return
     onAgregar({
       presentacion_id: actual.presentacion.id, nombre_producto: actual.producto.nombre,
-      nombre_presentacion: actual.presentacion.nombre, precio: actual.presentacion.precio,
+      nombre_presentacion: actual.presentacion.nombre,
+      // Precio = presentación + adicionales con precio de las opciones elegidas
+      precio: actual.presentacion.precio + opcionesSeleccionadas.reduce((a, op) => a + Number(op.precio_adicional ?? 0), 0),
       cantidad: 1, opciones: opcionesSeleccionadas.map(op => ({ opcion_id: op.id, nombre: op.nombre, emoji: op.emoji, color: op.color })),
     })
     const siguiente = colaIndex + 1
@@ -175,9 +177,10 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const haySeleccion = productos.filter(p => p.categoria_id === categoriaActiva?.id).some(prod =>
     presentaciones.filter(p => p.producto_id === prod.id).some(p => getCant(prod.id, p.id) > 0)
   )
+  const adicionalesSeleccionados = opcionesSeleccionadas.reduce((a, op) => a + Number(op.precio_adicional ?? 0), 0)
   const totalSeleccionado = productos.filter(p => p.categoria_id === categoriaActiva?.id).reduce((acc, prod) => {
     return acc + presentaciones.filter(p => p.producto_id === prod.id).reduce((a, p) => a + getCant(prod.id, p.id) * p.precio, 0)
-  }, 0)
+  }, 0) + adicionalesSeleccionados
 
   const gruposDeActual = actualCola
     ? grupos.filter(g => presGrupos.some(pg => pg.presentacion_id === actualCola.presentacion.id && pg.grupo_id === g.id)).sort((a, b) => a.orden - b.orden)
