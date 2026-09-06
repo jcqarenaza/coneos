@@ -53,6 +53,7 @@ export default function MesaPage() {
         if (Date.now() - (d.ts ?? 0) < 7200000) {
           if (Array.isArray(d.items) && d.items.length > 0) setCarrito(d.items)
           if (d.nombre) setNombre(d.nombre)
+          if (d.mesa && !mesaQR) setMesa(String(d.mesa))
         } else localStorage.removeItem(claveMesa)
       }
     } catch {}
@@ -61,10 +62,10 @@ export default function MesaPage() {
   useEffect(() => {
     if (!claveMesa || !restaurado) return
     try {
-      if (carrito.length > 0 || nombre) localStorage.setItem(claveMesa, JSON.stringify({ items: carrito, nombre, ts: Date.now() }))
+      if (carrito.length > 0 || nombre || mesa) localStorage.setItem(claveMesa, JSON.stringify({ items: carrito, nombre, mesa, ts: Date.now() }))
       else localStorage.removeItem(claveMesa)
     } catch {}
-  }, [carrito, nombre, claveMesa, restaurado])
+  }, [carrito, nombre, mesa, claveMesa, restaurado])
   const [enviando, setEnviando] = useState(false)
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null)
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number } | null>(null)
@@ -131,7 +132,7 @@ export default function MesaPage() {
 
       setPedidoCreado({ numero: d.pedido.numero_pedido })
       setCarrito([])
-      try { if (claveMesa) localStorage.setItem(claveMesa, JSON.stringify({ items: [], nombre, ts: Date.now() })) } catch {}
+      try { if (claveMesa) localStorage.setItem(claveMesa, JSON.stringify({ items: [], nombre, mesa, ts: Date.now() })) } catch {}
       setPaso('exito')
       setEnviando(false)
     } catch {
