@@ -53,6 +53,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ pedidos: data ?? [] })
   }
 
+  if (accion === 'preparacion') {
+    let query = supabase.from('pedidos')
+      .select(`id, numero_pedido, codigo_retiro, estado, notas, created_at,
+        sucursales(nombre),
+        pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, cantidad,
+          pedido_item_opciones(nombre_snap, emoji_snap))`)
+      .eq('empresa_id', disp.empresa_id)
+      .eq('fecha_pedido', hoy)
+      .in('estado', ['PAID', 'PREPARING'])
+      .order('numero_pedido', { ascending: true })
+    if (!body.verTodas) query = query.eq('sucursal_id', disp.sucursal_id)
+    const { data } = await query
+    return NextResponse.json({ pedidos: data ?? [] })
+  }
+
   if (accion === 'display') {
     const { data } = await supabase.from('pedidos')
       .select('id, numero_pedido, codigo_retiro')

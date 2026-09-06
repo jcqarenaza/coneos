@@ -25,21 +25,13 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
   const verTodas = sesion.operador.sucursal_id === null
 
   const cargarPedidos = useCallback(async () => {
-    const supabase = createClient()
-    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
-    let query = supabase
-      .from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, notas, created_at,
-        sucursales(nombre),
-        pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, cantidad,
-          pedido_item_opciones(nombre_snap, emoji_snap))`)
-      .eq('empresa_id', dispositivo.empresa_id)
-      .eq('fecha_pedido', hoy)
-      .in('estado', ['PAID', 'PREPARING'])
-      .order('numero_pedido', { ascending: true })
-    if (!verTodas) query = query.eq('sucursal_id', dispositivo.sucursal_id)
-    const { data } = await query
-    const nuevos = (data ?? []) as Pedido[]
+    // Server-side por dispositivo (la pantalla no tiene sesión de auth propia)
+    const res = await fetch('/api/operacion/consulta', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'preparacion', verTodas }),
+    })
+    const d = await res.json()
+    const nuevos = (d.pedidos ?? []) as Pedido[]
     setPedidos(nuevos)
     if (seleccionado) {
       const act = nuevos.find(p => p.id === seleccionado.id)
@@ -54,7 +46,9 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
     const channel = supabase.channel(`prep-${dispositivo.sucursal_id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, cargarPedidos)
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    // Respaldo sin sesión (Realtime no emite con RLS): refresco cada 15s
+    const poll = setInterval(() => cargarPedidos(), 15000)
+    return () => { supabase.removeChannel(channel); clearInterval(poll) }
   }, [cargarPedidos, dispositivo])
 
   async function cambiarEstado(pedidoId: string, estadoNuevo: string) {
