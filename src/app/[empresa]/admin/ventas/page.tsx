@@ -408,7 +408,7 @@ export default function VentasPage() {
                   })}
                 </div>
               )}
-              <div className="px-5 py-4 border-y border-neutral-50 mt-2"><h3 className="font-bold text-neutral-700">Sabores más pedidos</h3><p className="text-xs text-neutral-400">Helado por kilo en gramos estimados · resto por veces elegido</p></div>
+              <div className="px-5 py-4 border-y border-neutral-50 mt-2"><h3 className="font-bold text-neutral-700">Opciones más pedidas</h3><p className="text-xs text-neutral-400">Presentaciones por peso en gramos estimados · resto por veces elegido</p></div>
               {rankingSabores.length === 0 ? (
                 <div className="px-5 py-6 text-center text-neutral-300 text-sm">Sin datos</div>
               ) : (

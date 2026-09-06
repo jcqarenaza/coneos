@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     },
     body: JSON.stringify({
       items: [{
-        title: `Pedido #${pedido.numero_pedido} — ${emp?.nombre ?? 'Heladería'}`,
+        title: `Pedido #${pedido.numero_pedido}${emp?.nombre ? ` — ${emp.nombre}` : ''}`,
         quantity: 1,
         unit_price: Number(pedido.total),
         currency_id: 'ARS',

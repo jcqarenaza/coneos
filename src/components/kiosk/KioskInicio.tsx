@@ -17,9 +17,18 @@ interface Props {
 }
 
 const CATEGORIA_EMOJI: Record<string, string> = {
+  // Heladería
   'helado': '🍦', 'kilo': '🍦', 'balde': '🧊',
   'bombon': '🍫', 'envasa': '🍫', 'torta': '🎂',
   'palito': '🍡', 'copa': '🍨', 'cono': '🍦', 'bocha': '🍦',
+  // Multi-rubro (por nombre de categoría; el ícono cargado siempre gana)
+  'hamburgues': '🍔', 'burger': '🍔', 'pizza': '🍕', 'empanada': '🥟',
+  'sushi': '🍣', 'roll': '🍣', 'pieza': '🍣', 'combo': '🍱',
+  'pasta': '🍝', 'entrada': '🥗', 'ensalada': '🥗', 'carne': '🥩',
+  'parrilla': '🥩', 'papa': '🍟', 'sandwich': '🥪', 'sanguche': '🥪',
+  'picada': '🧀', 'cerveza': '🍺', 'trago': '🍸', 'vino': '🍷',
+  'bebida': '🥤', 'gaseosa': '🥤', 'cafe': '☕', 'café': '☕',
+  'postre': '🍰', 'desayuno': '🥐', 'merienda': '🥐',
 }
 
 function getEmoji(nombre: string): string {
@@ -27,7 +36,7 @@ function getEmoji(nombre: string): string {
   for (const [key, val] of Object.entries(CATEGORIA_EMOJI)) {
     if (n.includes(key)) return val
   }
-  return '🍨'
+  return '🍽️'
 }
 
 // Collage de fotos de productos de la categoría
@@ -133,7 +142,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
           <div className="h-px w-8 rounded" style={{ backgroundColor: config.secondary_color }} />
         </div>
         <h1 className="text-4xl font-bold mb-3" style={{ color: config.primary_color }}>
-          ¿Qué querés<br />disfrutar hoy?
+          {config.texto_bienvenida?.trim() ? config.texto_bienvenida : <>¿Qué querés<br />disfrutar hoy?</>}
         </h1>
         <p className="text-neutral-400 text-lg">Tocá una categoría para comenzar</p>
       </div>
