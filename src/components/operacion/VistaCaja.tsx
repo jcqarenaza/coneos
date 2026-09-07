@@ -250,6 +250,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pedido_id: pedidoId, estado_nuevo: estadoNuevo, operador_id: sesion.operador.id }),
     })
+    cargarPedidosRef.current()
     setProcesando(false)
     if (estadoNuevo === 'DELIVERED') {
       setEntregado(true)
@@ -320,8 +321,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
   // Resumen del día: solo plata COBRADA. Los pedidos de mesa "por cobrar"
   // (pagado=false) quedan afuera del total y se muestran como pendiente aparte.
-  const resumen = (() => {
-    const cobrados = pedidos.filter(p => p.estado !== 'PENDING_PAYMENT' && !(p.numero_mesa != null && p.pagado === false))
+  const calcResumen = (lista: Pedido[]) => {
+    const cobrados = lista.filter(p => p.estado !== 'PENDING_PAYMENT' && p.estado !== 'CANCELLED' && !(p.numero_mesa != null && p.pagado === false))
     const sum = (arr: Pedido[], f: (p: Pedido) => number) => arr.reduce((a, p) => a + f(p), 0)
     const envios = sum(cobrados, p => Number(p.costo_envio ?? 0))
     const total = sum(cobrados, p => Number(p.total))
@@ -336,7 +337,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       kiosk: sum(kiosk, p => Number(p.total)),
       deliveryProductos: sum(delivery, p => Number(p.total) - Number(p.costo_envio ?? 0)),
       mesa: sum(mesa, p => Number(p.total)),
-      mesaPorCobrar: sum(pedidos.filter(p => p.numero_mesa != null && p.pagado === false), p => Number(p.total)),
+      kioskCant: kiosk.length,
+      deliveryCant: delivery.length,
+      mesaCant: mesa.length,
+      mesaPorCobrar: sum(lista.filter(p => p.numero_mesa != null && p.pagado === false), p => Number(p.total)),
       ...(() => {
         // Por método: si el pedido tiene desglose (pago dividido de mesa), suma
         // cada parte a su medio; si no, todo el total a su metodo_pago.
@@ -351,7 +355,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         return { efectivo: por.efectivo, transferencia: por.transferencia, mp: por.mp, debito: por.debito, credito: por.credito }
       })(),
     }
-  })()
+  }
+  const resumen = calcResumen(pedidos)
+  const resumenHist = calcResumen(historialPedidos)
 
   // Cuentas de mesa abiertas (agrupando los pedidos del día)
   const cuentasMesa = (() => {
@@ -425,10 +431,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           <span className="font-black text-sm">{formatPrecio(resumen.total)}</span>
           <span className="text-neutral-400">{resumen.cantidad} pedidos</span>
           <span className="text-neutral-500">|</span>
-          <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumen.kiosk)}</b></span>
-          <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumen.deliveryProductos)}</b></span>
+          <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumen.kiosk)}</b> <span className="text-neutral-500">({resumen.kioskCant})</span></span>
+          <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumen.deliveryProductos)}</b> <span className="text-neutral-500">({resumen.deliveryCant})</span></span>
           <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumen.envios)}</b></span>
-          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumen.mesa)}</b></span>}
+          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumen.mesa)}</b> <span className="text-neutral-500">({resumen.mesaCant})</span></span>}
           {resumen.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{formatPrecio(resumen.mesaPorCobrar)}</b></span>}
           <span className="text-neutral-500">|</span>
           <span>💵 <b>{formatPrecio(resumen.efectivo)}</b></span>
@@ -441,6 +447,25 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
       {tab === 'historial' ? (
         <div className="flex-1 flex flex-col overflow-hidden bg-neutral-50">
+          {/* Resumen del día consultado: total y desglose por canal (cantidad y pesos) */}
+          {historialPedidos.length > 0 && (
+            <div className="bg-neutral-800 text-white px-4 py-2 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm">
+              <span className="font-black text-base">{formatPrecio(resumenHist.total)}</span>
+              <span className="text-neutral-400">{resumenHist.cantidad} pedidos</span>
+              <span className="text-neutral-600">|</span>
+              <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumenHist.kiosk)}</b> <span className="text-neutral-500">({resumenHist.kioskCant})</span></span>
+              <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumenHist.deliveryProductos)}</b> <span className="text-neutral-500">({resumenHist.deliveryCant})</span></span>
+              {resumenHist.envios > 0 && <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumenHist.envios)}</b></span>}
+              {resumenHist.mesaCant > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumenHist.mesa)}</b> <span className="text-neutral-500">({resumenHist.mesaCant})</span></span>}
+              {resumenHist.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{formatPrecio(resumenHist.mesaPorCobrar)}</b></span>}
+              <div className="flex-1" />
+              {resumenHist.efectivo > 0 && <span>💵 <b>{formatPrecio(resumenHist.efectivo)}</b></span>}
+              {resumenHist.transferencia > 0 && <span>🏦 <b>{formatPrecio(resumenHist.transferencia)}</b></span>}
+              {resumenHist.mp > 0 && <span>🔵 <b>{formatPrecio(resumenHist.mp)}</b></span>}
+              {resumenHist.debito > 0 && <span>💳 <span className="text-neutral-400">Déb</span> <b>{formatPrecio(resumenHist.debito)}</b></span>}
+              {resumenHist.credito > 0 && <span>💳 <span className="text-neutral-400">Créd</span> <b>{formatPrecio(resumenHist.credito)}</b></span>}
+            </div>
+          )}
           {/* Header historial con selector de fecha */}
           <div className="bg-white border-b border-neutral-100 px-4 py-3 flex items-center gap-3">
             <button onClick={() => { const d = new Date(historialFecha + 'T12:00:00'); d.setDate(d.getDate() - 1); const f = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }); setHistorialFecha(f); cargarHistorial(f) }}

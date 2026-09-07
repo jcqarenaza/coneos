@@ -58,6 +58,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pedido_id: pedidoId, estado_nuevo: estadoNuevo, operador_id: sesion.operador.id }),
     })
+    await cargarPedidos()
     setProcesando(null)
   }
 
