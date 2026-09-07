@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { PRESETS_RUBRO } from '@/lib/presets-rubro'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { ConePageHeader, ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
@@ -72,6 +73,9 @@ export default function CatalogoPage() {
   // Tabs
   const [vistaActiva, setVistaActiva] = useState<'catalogo' | 'sabores' | 'disponibilidad'>('catalogo')
   const [sucursales, setSucursales] = useState<{id: string; nombre: string}[]>([])
+  // Plantilla de arranque (F3): solo con catálogo vacío
+  const [plantillaRubro, setPlantillaRubro] = useState<string>('OTRO')
+  const [cargandoPlantilla, setCargandoPlantilla] = useState(false)
   const [sucursalDispo, setSucursalDispo] = useState<string>('')
   const [disponibilidad, setDisponibilidad] = useState<Record<string, boolean>>({})
   const [loadingDispo, setLoadingDispo] = useState(false)
@@ -131,9 +135,10 @@ export default function CatalogoPage() {
 
   useEffect(() => {
     if (!ctx) return
-    createClient().from('sucursales').select('id, nombre').eq('empresa_id', ctx.empresaId).eq('activo', true).order('nombre')
+    createClient().from('sucursales').select('id, nombre, rubro').eq('empresa_id', ctx.empresaId).eq('activo', true).order('nombre')
       .then(({ data }) => {
-        const suc = (data ?? []) as {id: string; nombre: string}[]
+        const suc = (data ?? []) as {id: string; nombre: string; rubro?: string}[]
+        if (suc[0]?.rubro && PRESETS_RUBRO[suc[0].rubro]) setPlantillaRubro(suc[0].rubro)
         setSucursales(suc)
         if (suc.length > 0 && !sucursalDispo) setSucursalDispo(suc[0].id)
       })
@@ -219,6 +224,35 @@ export default function CatalogoPage() {
   }
 
   // Categorías
+  async function cargarPlantilla() {
+    if (!ctx || cargandoPlantilla) return
+    if (categorias.length > 0 || grupos.length > 0) return
+    const preset = PRESETS_RUBRO[plantillaRubro]
+    if (!preset) return
+    setCargandoPlantilla(true)
+    const supabase = createClient()
+    await supabase.from('categorias').insert(preset.categorias.map((nombre, i) => ({ nombre, orden: i + 1, activo: true, empresa_id: ctx.empresaId })))
+    for (let g = 0; g < preset.grupos.length; g++) {
+      const grupo = preset.grupos[g]
+      const { data: nuevoGrupo } = await supabase.from('grupos_opciones')
+        .insert({ nombre: grupo.nombre, orden: g + 1, activo: true, empresa_id: ctx.empresaId })
+        .select('id').single()
+      if (nuevoGrupo) {
+        await supabase.from('opciones').insert(grupo.opciones.map((op, i) => ({
+          nombre: op.nombre, emoji: op.emoji ?? null, orden: i + 1, activo: true, visible_kiosk: true,
+          grupo_id: nuevoGrupo.id, empresa_id: ctx.empresaId,
+        })))
+      }
+    }
+    // Texto de bienvenida sugerido — SOLO si el comercio no configuró uno
+    const { data: cfg } = await supabase.from('empresa_config').select('id, texto_bienvenida').eq('empresa_id', ctx.empresaId).maybeSingle()
+    if (cfg && !(cfg.texto_bienvenida ?? '').trim()) {
+      await supabase.from('empresa_config').update({ texto_bienvenida: preset.texto_bienvenida }).eq('id', cfg.id)
+    }
+    setCargandoPlantilla(false)
+    load(true)
+  }
+
   function openNewCat() { setFormCat({ nombre: '', orden: categorias.length + 1, activo: true, icono_url: null }); setEditId(null); setModalCat(true) }
   function openEditCat(c: Categoria) { setFormCat({ nombre: c.nombre, orden: c.orden, activo: c.activo, icono_url: c.icono_url }); setEditId(c.id); setModalCat(true) }
   async function saveCat() {
@@ -336,6 +370,24 @@ export default function CatalogoPage() {
         </button>
       </div>
 
+      {vistaActiva === 'catalogo' && !loading && categorias.length === 0 && grupos.length === 0 && (
+        <div className="mb-4 rounded-2xl border-2 border-dashed border-neutral-200 bg-white p-6 text-center">
+          <p className="text-2xl mb-1">🚀</p>
+          <p className="font-bold text-neutral-800 mb-1">Empezá con una plantilla</p>
+          <p className="text-sm text-neutral-400 mb-4 max-w-md mx-auto">Cargamos categorías y grupos de opciones típicos de tu tipo de negocio. Todo queda editable: es un punto de partida, no una estructura fija.</p>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <select value={plantillaRubro} onChange={e => setPlantillaRubro(e.target.value)}
+              className="border border-neutral-200 rounded-xl px-3 py-2 text-sm font-semibold bg-white">
+              {Object.entries(PRESETS_RUBRO).map(([valor, p]) => <option key={valor} value={valor}>{p.etiqueta}</option>)}
+            </select>
+            <button onClick={cargarPlantilla} disabled={cargandoPlantilla}
+              className="px-4 py-2 rounded-xl bg-neutral-800 text-white text-sm font-bold hover:bg-neutral-700 disabled:opacity-50">
+              {cargandoPlantilla ? 'Cargando…' : 'Cargar plantilla'}
+            </button>
+          </div>
+          <p className="text-xs text-neutral-300 mt-3">O empezá vacío creando tu primera categoría con "+ Nueva categoría"</p>
+        </div>
+      )}
       {vistaActiva === 'catalogo' && <div>
       <div className="flex justify-end mb-4">
         <ConeButton onClick={openNewCat} icon={<Plus className="h-4 w-4" />}>Nueva categoría</ConeButton>
