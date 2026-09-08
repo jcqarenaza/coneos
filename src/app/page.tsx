@@ -386,7 +386,7 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
-          <p className="text-neutral-500 text-sm mt-8 font-semibold">{LANDING.precios.implementacion}</p>
+          <p className="text-neutral-500 text-sm mt-8 font-semibold">{LANDING.precios.mensualidad}</p>
           <div className="mt-2 text-sm text-neutral-400 space-y-1">
             {LANDING.precios.aclaraciones.map(a => <p key={a}>{a}</p>)}
           </div>
