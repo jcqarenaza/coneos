@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const { data: pedido } = await supabase
     .from('pedidos')
     .select(`id, numero_pedido, codigo_retiro, total, metodo_pago, created_at,
-      empresa_id, sucursales(nombre),
+      empresa_id, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva, receptor_razon_social, detalle_facturable, sucursales(nombre),
       pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
         pedido_item_opciones(nombre_snap, emoji_snap))`)
     .eq('id', pedido_id)
@@ -34,6 +34,15 @@ export async function POST(request: Request) {
   const items = (pedido.pedido_items ?? []) as Item[]
 
   // ── Datos fiscales (solo si hay factura emitida) ──
+  // FA-1: receptor fiscal del pedido (si existe, es completo por diseño)
+  const COND_LABEL: Record<number, string> = { 1: 'Responsable Inscripto', 4: 'IVA Exento', 5: 'Consumidor Final', 6: 'Monotributo' }
+  const receptor = pedido.receptor_doc_nro ? {
+    cuit: String(pedido.receptor_doc_nro),
+    razon: pedido.receptor_razon_social ?? '',
+    cond: COND_LABEL[pedido.receptor_cond_iva ?? 5] ?? 'Consumidor Final',
+  } : null
+  const fmtCuit = (c: string) => c.length === 11 ? `${c.slice(0,2)}-${c.slice(2,10)}-${c.slice(10)}` : c
+
   const esFiscal = !!(factura && factura.cae)
   const pad = (n: number, len: number) => String(n).padStart(len, '0')
   let bloqueFiscalHeader = '<div class="no-fiscal">TICKET SIN VALIDEZ FISCAL</div>'
@@ -64,7 +73,7 @@ export async function POST(request: Request) {
 
     bloqueFiscalHeader = `<div class="fiscal-tipo">${tipoLabel}</div>
 <div class="sub">Cod. ${pad(factura.tipo_cbte, 3)} &nbsp;·&nbsp; Nro: ${pad(factura.punto_venta, 5)}-${pad(factura.nro_cbte, 8)}</div>
-<div class="sub">Fecha: ${fechaCbteAR} &nbsp;·&nbsp; Consumidor Final</div>`
+<div class="sub">Fecha: ${fechaCbteAR} &nbsp;·&nbsp; ${receptor ? receptor.cond : 'Consumidor Final'}</div>`
 
     bloqueFiscalFooter = `<div class="linea"></div>
 <div class="sub">CAE: ${factura.cae}${vto ? ` &nbsp;·&nbsp; Vto: ${vto}` : ''}</div>
@@ -143,9 +152,12 @@ body { font-family: 'Calibri', Arial, sans-serif; font-size: 13px; background: w
 </head>
 <body>
 
-<div class="empresa">${empresa?.nombre ?? 'Heladeria'}</div>
+<div class="empresa">${empresa?.nombre ?? ''}</div>
 ${esFiscal ? `<div class="sub">${factCfg?.razon_social ?? cfg?.razon_social ?? ''}</div><div class="sub">CUIT: ${factCfg?.cuit ?? cfg?.cuit ?? ''}</div>` : `${cfg?.razon_social ? `<div class="sub">${cfg.razon_social}</div>` : ''}${cfg?.cuit ? `<div class="sub">CUIT: ${cfg.cuit}</div>` : ''}`}
 <div class="sub">${(pedido.sucursales as { nombre: string } | null)?.nombre ?? ''}</div>
+${receptor ? `<div class="linea"></div>
+<div class="sub"><b>Sr/es: ${receptor.razon}</b></div>
+<div class="sub">CUIT: ${fmtCuit(receptor.cuit)} &nbsp;·&nbsp; ${receptor.cond}</div>` : ''}
 
 <div class="linea"></div>
 ${bloqueFiscalHeader}
@@ -156,7 +168,7 @@ ${bloqueFiscalHeader}
 
 <div class="linea"></div>
 
-${bloquesItems.join('<div class="linea"></div>')}
+${pedido.detalle_facturable ? `<div><div class="item-pres">${pedido.detalle_facturable}</div></div>` : bloquesItems.join('<div class="linea"></div>')}
 
 <div class="linea"></div>
 

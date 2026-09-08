@@ -32,7 +32,13 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [selPedidosCobro, setSelPedidosCobro] = useState<Record<string, boolean>>({})
   const [pagosCobro, setPagosCobro] = useState<{ metodo: 'efectivo' | 'debito' | 'credito' | 'transferencia'; monto: string }[]>([{ metodo: 'efectivo', monto: '' }])
   const [cobrandoMesa, setCobrandoMesa] = useState(false)
-  const [errorCobroMesa, setErrorCobroMesa] = useState<string | null>(null)
+  const [errorCobroMesa, setErrorCobroMesa] = useState<string | null>(null)  // FA-1 — receptor fiscal opt-in ("Con CUIT"): sin tocarlo, flujo idéntico
+  const [conCuit, setConCuit] = useState(false)
+  const [rCuit, setRCuit] = useState('')
+  const [rRazon, setRRazon] = useState('')
+  const [rCond, setRCond] = useState(1)
+  const [rDetalle, setRDetalle] = useState('')
+  const [rCant, setRCant] = useState(1)
   const [historialFecha, setHistorialFecha] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }))
   const [historialPedidos, setHistorialPedidos] = useState<Pedido[]>([])
   const [historialLoading, setHistorialLoading] = useState(false)
@@ -242,14 +248,34 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     }
   }
 
-  async function cambiarEstado(pedidoId: string, estadoNuevo: string) {
+  // FA-1: validación de CUIT (estructural + dígito verificador)
+  function cuitValido(cuit: string): boolean {
+    const d = (cuit ?? '').replace(/\D/g, '')
+    if (d.length !== 11) return false
+    const mult = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+    const suma = mult.reduce((a, m, i) => a + m * Number(d[i]), 0)
+    const resto = 11 - (suma % 11)
+    const dv = resto === 11 ? 0 : resto === 10 ? 9 : resto
+    return dv === Number(d[10])
+  }
+  // Receptor completo o nada (doc + condición + razón social); detalle opcional
+  function receptorActivo() {
+    if (!conCuit) return null
+    if (!cuitValido(rCuit) || !rRazon.trim()) return null
+    return { doc_nro: rCuit.replace(/\D/g, ''), cond_iva: rCond, razon_social: rRazon.trim(), detalle_facturable: rDetalle.trim() || null }
+  }
+  const receptorListo = !conCuit || !!receptorActivo()
+  function resetReceptor() { setConCuit(false); setRCuit(''); setRRazon(''); setRCond(1); setRDetalle(''); setRCant(1) }
+
+  async function cambiarEstado(pedidoId: string, estadoNuevo: string, receptor?: ReturnType<typeof receptorActivo>) {
     setProcesando(true)
     if (estadoNuevo === 'DELIVERED') setEntregado(false)
     await fetch('/api/pedidos/estado', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pedido_id: pedidoId, estado_nuevo: estadoNuevo, operador_id: sesion.operador.id }),
+      body: JSON.stringify({ pedido_id: pedidoId, estado_nuevo: estadoNuevo, operador_id: sesion.operador.id, ...(receptor ? { receptor } : {}) }),
     })
+    if (receptor) resetReceptor()
     cargarPedidosRef.current()
     setProcesando(false)
     if (estadoNuevo === 'DELIVERED') {
@@ -259,6 +285,45 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         setSeleccionado(null)
       }, 1800)
     }
+  }
+
+  // FA-1: bloque "Con CUIT" (compartido por cobro de pedido y de mesa)
+  function bloqueCuit() {
+    return (
+      <div className="mb-2">
+        <button onClick={() => conCuit ? resetReceptor() : setConCuit(true)}
+          className={`text-xs font-bold px-3 py-1.5 rounded-full transition-colors ${conCuit ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
+          🧾 Con CUIT {conCuit ? '✓' : ''}
+        </button>
+        {conCuit && (
+          <div className="mt-2 space-y-2 bg-neutral-50 rounded-xl p-3 border border-neutral-100">
+            <input value={rCuit} onChange={e => setRCuit(e.target.value)} placeholder="CUIT (11 dígitos)" inputMode="numeric"
+              className={`w-full border rounded-lg px-3 py-2 text-sm ${rCuit && !cuitValido(rCuit) ? 'border-red-300 bg-red-50' : 'border-neutral-200'}`} />
+            {rCuit && !cuitValido(rCuit) && <p className="text-xs text-red-500">CUIT inválido (verificá los 11 dígitos)</p>}
+            <input value={rRazon} onChange={e => setRRazon(e.target.value)} placeholder="Razón social"
+              className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm" />
+            <select value={rCond} onChange={e => setRCond(Number(e.target.value))}
+              className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm bg-white">
+              <option value={1}>Responsable Inscripto</option>
+              <option value={6}>Monotributo</option>
+              <option value={4}>IVA Exento</option>
+              <option value={5}>Consumidor Final</option>
+            </select>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <input value={rDetalle} onChange={e => setRDetalle(e.target.value)} placeholder="Detalle resumido (opcional)"
+                className="flex-1 min-w-[140px] border border-neutral-200 rounded-lg px-3 py-2 text-sm" />
+              <input type="number" min={1} value={rCant} onChange={e => setRCant(Math.max(1, Number(e.target.value) || 1))}
+                className="w-14 border border-neutral-200 rounded-lg px-2 py-2 text-sm text-center" />
+              {['Cena', 'Almuerzo', 'Menú'].map(sug => (
+                <button key={sug} onClick={() => setRDetalle(`${sug} x${rCant}`)}
+                  className="text-xs px-2 py-1 rounded-full bg-white border border-neutral-200 text-neutral-500 hover:bg-neutral-100">{sug}</button>
+              ))}
+            </div>
+            <p className="text-xs text-neutral-400">El comprobante sale a nombre del CUIT{rDetalle.trim() ? ' y con el detalle resumido en lugar de los productos' : ''}.</p>
+          </div>
+        )}
+      </div>
+    )
   }
 
   async function cobrarMesa(totalSel: number) {
@@ -276,19 +341,22 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     const suma = pagos.reduce((a, p) => a + p.monto, 0)
     if (Math.abs(suma - totalSel) > 0.01) { setErrorCobroMesa(`Los pagos suman ${formatPrecio(suma)} y lo seleccionado es ${formatPrecio(totalSel)}`); return }
     if (pagos.some(p => p.monto <= 0)) { setErrorCobroMesa(vacias === 1 ? 'Los montos cargados ya cubren el total — sacá la línea vacía o bajá algún monto' : 'Hay montos en cero'); return }
+    const receptor = receptorActivo()
+    if (conCuit && !receptor) { setErrorCobroMesa('Completá un CUIT válido y la razón social'); return }
     setCobrandoMesa(true)
     setErrorCobroMesa(null)
     try {
       const res = await fetch('/api/mesa/cobrar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedido_ids: ids, pagos }),
+        body: JSON.stringify({ pedido_ids: ids, pagos, ...(receptor ? { receptor } : {}) }),
       })
       const d = await res.json()
       if (!res.ok) { setErrorCobroMesa(d.error ?? 'No se pudo cobrar'); setCobrandoMesa(false); return }
       setCobroCuenta(null)
       setSelPedidosCobro({})
       setPagosCobro([{ metodo: 'efectivo', monto: '' }])
+      resetReceptor()
       setCobrandoMesa(false)
       cargarPedidos()
     } catch {
@@ -653,9 +721,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       </div>
                       <button onClick={() => setPagosCobro(prev => [...prev, { metodo: 'efectivo', monto: '' }])}
                         className="text-xs font-semibold text-neutral-400 hover:text-neutral-600 mb-3">+ Dividir en otro medio</button>
+                      {bloqueCuit()}
                       {errorCobroMesa && <p className="text-red-500 text-sm mb-2">{errorCobroMesa}</p>}
                       <div className="flex gap-2">
-                        <button onClick={() => { setCobroCuenta(null); setSelPedidosCobro({}); setPagosCobro([{ metodo: 'efectivo', monto: '' }]); setErrorCobroMesa(null) }}
+                        <button onClick={() => { setCobroCuenta(null); setSelPedidosCobro({}); setPagosCobro([{ metodo: 'efectivo', monto: '' }]); setErrorCobroMesa(null); resetReceptor() }}
                           className="px-4 py-3 rounded-xl border border-neutral-200 text-neutral-500 font-semibold text-sm">Cancelar</button>
                         <button onClick={() => cobrarMesa(totalSel)} disabled={idsSel.length === 0 || cobrandoMesa}
                           className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">
@@ -887,15 +956,16 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         </span>
                       </div>
                     )}
+                    {bloqueCuit()}
                     <button onClick={async () => {
-                        await cambiarEstado(seleccionado.id, 'PAID')
+                        await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
                         await cambiarEstado(seleccionado.id, 'PREPARING')
                         imprimirTicket(seleccionado.id)
-                      }} disabled={procesando}
+                      }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
                     </button>
-                    <button onClick={async () => { await cambiarEstado(seleccionado.id, 'PAID'); setModalComprobante(true) }} disabled={procesando}
+                    <button onClick={async () => { const r = receptorActivo(); await cambiarEstado(seleccionado.id, 'PAID', r); setModalComprobante(true) }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
                       📱 Cobrar transferencia
                     </button>

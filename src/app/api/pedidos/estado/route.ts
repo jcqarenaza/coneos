@@ -19,6 +19,19 @@ export async function GET(request: Request) {
   return NextResponse.json(data)
 }
 
+// FA-1: validación de CUIT (estructural + dígito verificador). Server-side
+// también: la route rechaza receptor con CUIT inválido, no solo la UI.
+function cuitValido(cuit: string): boolean {
+  const d = (cuit ?? '').replace(/\D/g, '')
+  if (d.length !== 11) return false
+  const mult = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+  const suma = mult.reduce((a, m, i) => a + m * Number(d[i]), 0)
+  const resto = 11 - (suma % 11)
+  const dv = resto === 11 ? 0 : resto === 10 ? 9 : resto
+  return dv === Number(d[10])
+}
+const CONDS_VALIDAS = [1, 4, 5, 6] // RI, Exento, Cons. Final, Monotributo (códigos ARCA)
+
 // Facturación automática: al cobrar, emitir si el método del pedido está habilitado
 // por el cliente (auto_facturar + metodos_auto). Único punto de disparo — la caja ya
 // no dispara por su cuenta, así no hay carrera de doble emisión. Silencioso: nunca
@@ -40,7 +53,8 @@ async function facturarSiCorresponde(pedido_id: string) {
   try {
     const supabase = createAdminClient()
     const { data: pedido } = await supabase.from('pedidos')
-      .select('empresa_id, sucursal_id, metodo_pago').eq('id', pedido_id).maybeSingle()
+      .select('empresa_id, sucursal_id, metodo_pago, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva')
+      .eq('id', pedido_id).maybeSingle()
     if (!pedido?.metodo_pago) return
     const cfg = await resolverFactConfig(supabase, pedido.empresa_id, pedido.sucursal_id ?? null,
       'activo, auto_facturar, metodos_auto, cert_pem, key_pem') as
@@ -53,10 +67,16 @@ async function facturarSiCorresponde(pedido_id: string) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     if (!url || !serviceKey) return
+    // FA-1: si el pedido tiene receptor fiscal, viajan los parámetros que la
+    // Edge YA acepta (docTipo/docNro/condIvaReceptor). Sin receptor: body
+    // idéntico al de siempre.
+    const conReceptor = pedido.receptor_doc_nro
+      ? { docTipo: pedido.receptor_doc_tipo ?? 80, docNro: pedido.receptor_doc_nro, condIvaReceptor: pedido.receptor_cond_iva ?? 5 }
+      : {}
     const res = await fetch(`${url}/functions/v1/arca-facturar`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: pedido.empresa_id, pedido_id, accion: 'facturar' }),
+      body: JSON.stringify({ empresa_id: pedido.empresa_id, pedido_id, accion: 'facturar', ...conReceptor }),
     })
     const d = await res.json().catch(() => null)
     console.log('[facturacion]', pedido_id, d?.ok ? `CAE ${d.cae} Nro ${d.nro_cbte}` : (d?.error ?? 'sin respuesta'))
@@ -66,8 +86,11 @@ async function facturarSiCorresponde(pedido_id: string) {
 }
 
 // POST — cambio de estado desde caja (original Sprint 3B, restaurado)
+// FA-1: acepta `receptor` opcional { doc_nro, cond_iva, razon_social,
+// detalle_facturable } — se persiste en el pedido ANTES del cambio de estado
+// (facturarSiCorresponde lo lee después). Sin receptor: flujo byte a byte igual.
 export async function POST(request: Request) {
-  const { pedido_id, estado_nuevo, operador_id } = await request.json()
+  const { pedido_id, estado_nuevo, operador_id, receptor } = await request.json()
   const supabase = createAdminClient()
   const { data: pedido } = await supabase
     .from('pedidos')
@@ -77,6 +100,24 @@ export async function POST(request: Request) {
   if (!pedido) {
     return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
   }
+
+  // FA-1: persistir receptor fiscal (completo o nada)
+  if (receptor) {
+    const docNro = String(receptor.doc_nro ?? '').replace(/\D/g, '')
+    const condIva = Number(receptor.cond_iva)
+    const razon = String(receptor.razon_social ?? '').trim()
+    if (!cuitValido(docNro)) return NextResponse.json({ error: 'CUIT inválido' }, { status: 400 })
+    if (!CONDS_VALIDAS.includes(condIva)) return NextResponse.json({ error: 'Condición IVA inválida' }, { status: 400 })
+    if (!razon) return NextResponse.json({ error: 'Falta la razón social del receptor' }, { status: 400 })
+    await supabase.from('pedidos').update({
+      receptor_doc_tipo: 80,
+      receptor_doc_nro: docNro,
+      receptor_cond_iva: condIva,
+      receptor_razon_social: razon,
+      detalle_facturable: String(receptor.detalle_facturable ?? '').trim() || null,
+    }).eq('id', pedido_id)
+  }
+
   await supabase.from('pedidos').update({
     estado: estado_nuevo,
     updated_at: new Date().toISOString(),

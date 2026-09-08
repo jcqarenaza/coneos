@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     supabase.from('empresas').select('nombre').eq('id', cuenta.empresa_id).single(),
     supabase.from('empresa_config').select('razon_social, cuit').eq('empresa_id', cuenta.empresa_id).maybeSingle(),
     supabase.from('pedidos')
-      .select('id, numero_pedido, total, pagado, metodo_pago, nombre_cliente, created_at, pedido_pagos(metodo, monto), pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap))')
+      .select('id, numero_pedido, total, pagado, metodo_pago, nombre_cliente, created_at, receptor_doc_nro, receptor_cond_iva, receptor_razon_social, pedido_pagos(metodo, monto), pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap))')
       .eq('mesa_cuenta_id', mesa_cuenta_id).order('created_at'),
   ])
 
@@ -29,6 +29,15 @@ export async function POST(request: Request) {
   type Item = { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string }[] }
   type Ped = { id: string; numero_pedido: number; total: number; pagado: boolean; metodo_pago: string | null; nombre_cliente: string | null; created_at: string; pedido_pagos?: { metodo: string; monto: number }[]; pedido_items: Item[] }
   const peds = (pedidos ?? []) as Ped[]
+
+  // FA-1: receptor de la cuenta — solo si TODOS los pedidos con receptor
+  // comparten el mismo (decisión CTO: nunca elegir uno silenciosamente)
+  const COND_LABEL: Record<number, string> = { 1: 'Responsable Inscripto', 4: 'IVA Exento', 5: 'Consumidor Final', 6: 'Monotributo' }
+  type PedR = Ped & { receptor_doc_nro?: string | null; receptor_cond_iva?: number | null; receptor_razon_social?: string | null }
+  const conReceptor = (peds as PedR[]).filter(p => p.receptor_doc_nro)
+  const cuitsDistintos = [...new Set(conReceptor.map(p => p.receptor_doc_nro))]
+  const receptorCuenta = cuitsDistintos.length === 1 ? conReceptor[0] : null
+  const fmtCuit = (c: string) => c.length === 11 ? `${c.slice(0,2)}-${c.slice(2,10)}-${c.slice(10)}` : c
 
   const total = peds.reduce((a, p) => a + Number(p.total), 0)
   const pendiente = peds.filter(p => !p.pagado).reduce((a, p) => a + Number(p.total), 0)
@@ -76,6 +85,7 @@ ${cfg?.razon_social ? `<div class="sub">${cfg.razon_social}</div>` : ''}
 <div class="linea"></div>
 <div class="mesa-num">🪑 MESA ${cuenta.numero_mesa}</div>
 <div class="sub">${cuenta.nombre_cliente ?? ''} · Abierta ${fecha}</div>
+${receptorCuenta ? `<div class="sub"><b>Sr/es: ${receptorCuenta.receptor_razon_social ?? ''}</b> · CUIT: ${fmtCuit(String(receptorCuenta.receptor_doc_nro))} · ${COND_LABEL[receptorCuenta.receptor_cond_iva ?? 5] ?? ''}</div>` : ''}
 <div class="linea"></div>
 ${bloques}
 <div class="linea"></div>

@@ -10,10 +10,22 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 const METODOS = ['efectivo', 'debito', 'credito', 'transferencia']
 
+// FA-1: validación de CUIT (estructural + dígito verificador), server-side.
+function cuitValido(cuit: string): boolean {
+  const d = (cuit ?? '').replace(/\D/g, '')
+  if (d.length !== 11) return false
+  const mult = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+  const suma = mult.reduce((a, m, i) => a + m * Number(d[i]), 0)
+  const resto = 11 - (suma % 11)
+  const dv = resto === 11 ? 0 : resto === 10 ? 9 : resto
+  return dv === Number(d[10])
+}
+const CONDS_VALIDAS = [1, 4, 5, 6]
+
 async function facturarSiCorresponde(supabase: ReturnType<typeof createAdminClient>, pedido_id: string) {
   try {
     const { data: pedido } = await supabase.from('pedidos')
-      .select('empresa_id, sucursal_id, metodo_pago').eq('id', pedido_id).maybeSingle()
+      .select('empresa_id, sucursal_id, metodo_pago, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva').eq('id', pedido_id).maybeSingle()
     if (!pedido?.metodo_pago) return
     const cols = 'activo, auto_facturar, metodos_auto, cert_pem, key_pem'
     type Cfg = { activo: boolean; auto_facturar: boolean | null; metodos_auto: unknown; cert_pem: string | null; key_pem: string | null }
@@ -38,7 +50,7 @@ async function facturarSiCorresponde(supabase: ReturnType<typeof createAdminClie
     const res = await fetch(`${url}/functions/v1/arca-facturar`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: pedido.empresa_id, pedido_id, accion: 'facturar' }),
+      body: JSON.stringify({ empresa_id: pedido.empresa_id, pedido_id, accion: 'facturar', ...(pedido.receptor_doc_nro ? { docTipo: pedido.receptor_doc_tipo ?? 80, docNro: pedido.receptor_doc_nro, condIvaReceptor: pedido.receptor_cond_iva ?? 5 } : {}) }),
     })
     const d = await res.json().catch(() => null)
     console.log('[mesa/cobrar][facturacion]', pedido_id, d?.ok ? `CAE ${d.cae}` : (d?.error ?? 'sin respuesta'))
@@ -50,6 +62,7 @@ async function facturarSiCorresponde(supabase: ReturnType<typeof createAdminClie
 export async function POST(request: Request) {
   const body = await request.json()
   const pedido_ids: string[] = body.pedido_ids
+  const receptor = body.receptor ?? null
   let pagos: { metodo: string; monto: number }[] = body.pagos
 
   if (!Array.isArray(pedido_ids) || pedido_ids.length === 0) {
@@ -67,7 +80,7 @@ export async function POST(request: Request) {
   const supabase = createAdminClient()
 
   const { data: pendientes } = await supabase.from('pedidos')
-    .select('id, total, empresa_id, mesa_cuenta_id, created_at')
+    .select('id, total, empresa_id, mesa_cuenta_id, created_at, receptor_doc_nro')
     .in('id', pedido_ids)
     .eq('pagado', false)
     .not('mesa_cuenta_id', 'is', null)
@@ -85,6 +98,28 @@ export async function POST(request: Request) {
   }
   for (const pg of pagos) {
     if (!(Number(pg.monto) > 0)) return NextResponse.json({ error: 'Todos los montos deben ser mayores a 0' }, { status: 400 })
+  }
+
+  // ── FA-1: receptor fiscal de la operación ──
+  // Regla (decisión CTO): todos los pedidos cobrados en una misma operación
+  // llevan el MISMO receptor. Mezclas se RECHAZAN (cobro separado) — nunca se
+  // elige un receptor silenciosamente.
+  let receptorLimpio: { doc_nro: string; cond_iva: number; razon_social: string; detalle: string | null } | null = null
+  if (receptor) {
+    const docNro = String(receptor.doc_nro ?? '').replace(/\D/g, '')
+    const condIva = Number(receptor.cond_iva)
+    const razon = String(receptor.razon_social ?? '').trim()
+    if (!cuitValido(docNro)) return NextResponse.json({ error: 'CUIT inválido' }, { status: 400 })
+    if (!CONDS_VALIDAS.includes(condIva)) return NextResponse.json({ error: 'Condición IVA inválida' }, { status: 400 })
+    if (!razon) return NextResponse.json({ error: 'Falta la razón social del receptor' }, { status: 400 })
+    receptorLimpio = { doc_nro: docNro, cond_iva: condIva, razon_social: razon, detalle: String(receptor.detalle_facturable ?? '').trim() || null }
+  }
+  const receptoresExistentes = [...new Set(pendientes.map(p => p.receptor_doc_nro).filter(Boolean))] as string[]
+  if (receptoresExistentes.length > 1) {
+    return NextResponse.json({ error: 'Los pedidos seleccionados tienen receptores fiscales distintos — cobralos por separado' }, { status: 409 })
+  }
+  if (receptorLimpio && receptoresExistentes.length === 1 && receptoresExistentes[0] !== receptorLimpio.doc_nro) {
+    return NextResponse.json({ error: 'Un pedido seleccionado ya tiene otro receptor fiscal — cobralo por separado' }, { status: 409 })
   }
 
   // Asignar pagos a pedidos en orden (cascada): cada pedido consume de la cola
@@ -112,6 +147,17 @@ export async function POST(request: Request) {
 
   const { error: errPagos } = await supabase.from('pedido_pagos').insert(inserts)
   if (errPagos) return NextResponse.json({ error: errPagos.message }, { status: 500 })
+
+  // FA-1: persistir receptor ANTES del pago/facturación (orden crítico)
+  if (receptorLimpio) {
+    await supabase.from('pedidos').update({
+      receptor_doc_tipo: 80,
+      receptor_doc_nro: receptorLimpio.doc_nro,
+      receptor_cond_iva: receptorLimpio.cond_iva,
+      receptor_razon_social: receptorLimpio.razon_social,
+      detalle_facturable: receptorLimpio.detalle,
+    }).in('id', pendientes.map(ped => ped.id))
+  }
 
   for (const ped of pendientes) {
     await supabase.from('pedidos')
