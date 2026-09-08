@@ -264,7 +264,12 @@ async function consultarComprobante(cfg: FactConfig, token: string, sign: string
 
 interface CbteAsoc { tipo: number; ptoVta: number; nro: number }
 
-// FA-2: solicitarCAE recibe los importes YA calculados (calcularImportes es la
+// FA-2: orden del XML en A/B validado contra la Edge de PIAMONTE en producción
+// (Factura A con CAE real): CondicionIVAReceptorId ANTES del bloque Iva, y
+// CbtesAsoc DESPUÉS de Iva — el schema SOAP de WSFE es posicional. La rama C
+// conserva SU orden histórico propio (CbtesAsoc antes de CondIVA), también
+// con CAEs reales (facturas 115/116 de Federal por esta misma Edge).
+// solicitarCAE recibe los importes YA calculados (calcularImportes es la
 // única fuente). Rama C (conIva=false): XML idéntico al histórico — ImpNeto =
 // total, ImpIVA = 0.00, SIN bloque Iva. Rama A/B (conIva=true): ImpNeto = neto,
 // ImpIVA = iva + bloque AlicIva Id 5 (21%).
@@ -298,9 +303,12 @@ async function solicitarCAE(cfg: FactConfig, token: string, sign: string, p: {
           <ar:ImpIVA>${impIvaStr}</ar:ImpIVA>
           <ar:ImpTrib>0.00</ar:ImpTrib>
           <ar:MonId>PES</ar:MonId><ar:MonCotiz>1</ar:MonCotiz>
-          ${cbtesAsocXml}
+          ${p.conIva
+            ? `<ar:CondicionIVAReceptorId>${p.condIvaReceptor}</ar:CondicionIVAReceptorId>
           ${ivaXml}
-          <ar:CondicionIVAReceptorId>${p.condIvaReceptor}</ar:CondicionIVAReceptorId>
+          ${cbtesAsocXml}`
+            : `${cbtesAsocXml}
+          <ar:CondicionIVAReceptorId>${p.condIvaReceptor}</ar:CondicionIVAReceptorId>`}
         </ar:FECAEDetRequest></ar:FeDetReq>
       </ar:FeCAEReq>
     </ar:FECAESolicitar>`);
