@@ -47,7 +47,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, cargarPedidos)
       .subscribe()
     // Respaldo sin sesión (Realtime no emite con RLS): refresco cada 15s
-    const poll = setInterval(() => cargarPedidos(), 15000)
+    const poll = setInterval(() => cargarPedidos(), 7000)
     return () => { supabase.removeChannel(channel); clearInterval(poll) }
   }, [cargarPedidos, dispositivo])
 

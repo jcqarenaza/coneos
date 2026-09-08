@@ -130,7 +130,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       .subscribe()
     // Respaldo: sin sesión de auth en el navegador, Realtime no emite (RLS) —
     // el polling garantiza que la caja se refresque igual
-    const poll = setInterval(() => cargarPedidosRef.current(), 15000)
+    const poll = setInterval(() => cargarPedidosRef.current(), 7000)
     return () => { supabase.removeChannel(channel); clearInterval(poll) }
   }, [dispositivo])
 
