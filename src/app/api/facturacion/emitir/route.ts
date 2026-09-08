@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   const supabase = createAdminClient()
   const [{ data }, { data: pagos }] = await Promise.all([
     supabase.from('facturacion_config')
-      .select('activo, cert_pem, key_pem, auto_facturar, metodos_auto').eq('empresa_id', empresa_id).is('sucursal_id', null).maybeSingle(),
+      .select('activo, cert_pem, key_pem, auto_facturar, metodos_auto, condicion_fiscal, emite_factura_a').eq('empresa_id', empresa_id).is('sucursal_id', null).maybeSingle(),
     supabase.from('sucursal_pagos').select('acepta_mp_kiosk, acepta_mp_delivery').eq('empresa_id', empresa_id),
   ])
   const configurada = !!(data?.activo && data?.cert_pem && data?.key_pem)
@@ -36,16 +36,32 @@ export async function GET(request: Request) {
   const metodos = Array.isArray(data?.metodos_auto) ? (data!.metodos_auto as string[]).filter(m => METODOS_VALIDOS.includes(m)) : ['transferencia']
   const hayMP = (pagos ?? []).some(p => p.acepta_mp_kiosk || p.acepta_mp_delivery)
   const disponibles = hayMP ? METODOS_VALIDOS : METODOS_VALIDOS.filter(m => m !== 'mp')
-  return NextResponse.json({ configurada, auto, metodos, disponibles, activa: configurada && auto && metodos.length > 0 })
+  return NextResponse.json({ configurada, auto, metodos, disponibles, activa: configurada && auto && metodos.length > 0,
+    condicion_fiscal: (data as { condicion_fiscal?: string } | null)?.condicion_fiscal ?? 'monotributo',
+    emite_factura_a: !!(data as { emite_factura_a?: boolean } | null)?.emite_factura_a })
 }
 
 // PUT { empresa_id, auto_facturar?, metodos_auto? } → toggles del cliente
 export async function PUT(request: Request) {
-  const { empresa_id, auto_facturar, metodos_auto } = await request.json()
+  const { empresa_id, auto_facturar, metodos_auto, emite_factura_a } = await request.json()
   if (!empresa_id) return NextResponse.json({ error: 'empresa_id requerido' }, { status: 400 })
   const update: Record<string, unknown> = {}
   if (typeof auto_facturar === 'boolean') update.auto_facturar = auto_facturar
   if (Array.isArray(metodos_auto)) update.metodos_auto = metodos_auto.filter((m: string) => METODOS_VALIDOS.includes(m))
+  // FA-2: el flag solo puede ACTIVARSE si el comercio es Responsable Inscripto.
+  // (La Edge revalida por su cuenta — autoridad final — pero acá se corta
+  // antes de guardar una config incoherente.)
+  if (typeof emite_factura_a === 'boolean') {
+    if (emite_factura_a) {
+      const sb = createAdminClient()
+      const { data: cfgFiscal } = await sb.from('facturacion_config')
+        .select('condicion_fiscal').eq('empresa_id', empresa_id).is('sucursal_id', null).maybeSingle()
+      if (cfgFiscal?.condicion_fiscal !== 'ri') {
+        return NextResponse.json({ ok: false, error: 'Factura A/B disponible solo para Responsables Inscriptos' }, { status: 400 })
+      }
+    }
+    update.emite_factura_a = emite_factura_a
+  }
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'nada para actualizar' }, { status: 400 })
   const supabase = createAdminClient()
   const { error } = await supabase.from('facturacion_config').update(update).eq('empresa_id', empresa_id).is('sucursal_id', null)
@@ -61,7 +77,7 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient()
   const { data: pedido } = await supabase.from('pedidos')
-    .select('metodo_pago, sucursal_id').eq('id', pedido_id).eq('empresa_id', empresa_id).maybeSingle()
+    .select('metodo_pago, sucursal_id, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva').eq('id', pedido_id).eq('empresa_id', empresa_id).maybeSingle()
   const cfg = await resolverFactConfig(supabase, empresa_id, pedido?.sucursal_id ?? null,
     'activo, auto_facturar, metodos_auto') as
     { activo: boolean; auto_facturar: boolean | null; metodos_auto: unknown } | null
@@ -79,7 +95,7 @@ export async function POST(request: Request) {
   const res = await fetch(`${url}/functions/v1/arca-facturar`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ empresa_id, pedido_id, accion: 'facturar' }),
+    body: JSON.stringify({ empresa_id, pedido_id, accion: 'facturar', ...(pedido?.receptor_doc_nro ? { docTipo: pedido.receptor_doc_tipo ?? 80, docNro: pedido.receptor_doc_nro, condIvaReceptor: pedido.receptor_cond_iva ?? 5 } : {}) }),
   })
   const data = await res.json()
   return NextResponse.json(data, { status: res.status })

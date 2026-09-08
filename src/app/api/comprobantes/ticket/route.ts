@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const [{ data: cfg }, { data: empresa }, { data: factura }, { data: factCfg }] = await Promise.all([
     supabase.from('empresa_config').select('primary_color, cuit, razon_social, logo_url').eq('empresa_id', pedido.empresa_id).single(),
     supabase.from('empresas').select('nombre').eq('id', pedido.empresa_id).single(),
-    supabase.from('facturas').select('tipo_cbte, punto_venta, nro_cbte, cae, cae_vencimiento, doc_tipo, doc_nro, total, created_at').eq('pedido_id', pedido_id).eq('estado', 'emitida').maybeSingle(),
+    supabase.from('facturas').select('tipo_cbte, punto_venta, nro_cbte, cae, cae_vencimiento, doc_tipo, doc_nro, total, created_at, imp_neto, imp_iva').eq('pedido_id', pedido_id).eq('estado', 'emitida').maybeSingle(),
     supabase.from('facturacion_config').select('cuit, razon_social').eq('empresa_id', pedido.empresa_id).maybeSingle(),
   ])
 
@@ -50,7 +50,8 @@ export async function POST(request: Request) {
   let scriptQR = ''
   if (esFiscal && factura) {
     const cuitNum = (factCfg?.cuit ?? cfg?.cuit ?? '').replace(/\D/g, '')
-    const tipoLabel = factura.tipo_cbte === 13 ? 'NOTA DE CRÉDITO C' : 'FACTURA C'
+    const TIPO_LABELS: Record<number, string> = { 1: 'FACTURA A', 6: 'FACTURA B', 11: 'FACTURA C', 3: 'NOTA DE CRÉDITO A', 8: 'NOTA DE CRÉDITO B', 13: 'NOTA DE CRÉDITO C' }
+    const tipoLabel = TIPO_LABELS[factura.tipo_cbte] ?? 'FACTURA C'
     const fechaCbte = new Date(factura.created_at).toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }) // YYYY-MM-DD
     const qrData = {
       ver: 1,
@@ -172,6 +173,14 @@ ${pedido.detalle_facturable ? `<div><div class="item-pres">${pedido.detalle_fact
 
 <div class="linea"></div>
 
+${esFiscal && factura && (factura.tipo_cbte === 1 || factura.tipo_cbte === 3) && factura.imp_neto != null ? `<div class="fila">
+  <span class="item-precio-cant">Neto gravado</span>
+  <span class="item-precio-val">$${Number(factura.imp_neto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+</div>
+<div class="fila">
+  <span class="item-precio-cant">IVA 21%</span>
+  <span class="item-precio-val">$${Number(factura.imp_iva).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+</div>` : ''}
 <div class="fila">
   <span class="total-label">TOTAL</span>
   <span class="total-valor">${fmt(pedido.total)}</span>

@@ -52,7 +52,9 @@ export default function FacturasPage() {
   const [autoFacturar, setAutoFacturar] = useState(true)
   const [metodosAuto, setMetodosAuto] = useState<string[]>(['transferencia'])
   const [metodosDisp, setMetodosDisp] = useState<string[]>(['transferencia', 'efectivo'])
-  const [guardandoCfg, setGuardandoCfg] = useState(false)
+  const [guardandoCfg, setGuardandoCfg] = useState(false)  const [permiteA, setPermiteA] = useState(false)
+  const [condFiscal, setCondFiscal] = useState<string>('monotributo')
+  const [errorFlagA, setErrorFlagA] = useState<string | null>(null)
 
   async function cargar() {
     if (!ctx) return
@@ -80,7 +82,8 @@ export default function FacturasPage() {
         setFactActiva(!!d.activa); setFactConfigurada(!!d.configurada)
         setAutoFacturar(d.auto !== false)
         if (Array.isArray(d.metodos)) setMetodosAuto(d.metodos)
-        if (Array.isArray(d.disponibles)) setMetodosDisp([...new Set([...d.disponibles, 'debito', 'credito'])])
+        if (Array.isArray(d.disponibles)) setMetodosDisp([...new Set([...d.disponibles, 'debito', 'credito'])])        setPermiteA(!!d.emite_factura_a)
+        if (typeof d.condicion_fiscal === 'string') setCondFiscal(d.condicion_fiscal)
       }).catch(() => setFactActiva(null))
   }, [ctx])
 
@@ -110,7 +113,7 @@ export default function FacturasPage() {
     }
   }
 
-  async function guardarCfg(cambios: { auto_facturar?: boolean; metodos_auto?: string[] }) {
+  async function guardarCfg(cambios: { auto_facturar?: boolean; metodos_auto?: string[]; emite_factura_a?: boolean }) {
     if (!ctx || guardandoCfg) return
     setGuardandoCfg(true)
     try {
@@ -123,6 +126,9 @@ export default function FacturasPage() {
       if (d.ok) {
         if (typeof cambios.auto_facturar === 'boolean') setAutoFacturar(cambios.auto_facturar)
         if (cambios.metodos_auto) setMetodosAuto(cambios.metodos_auto)
+        if (typeof cambios.emite_factura_a === 'boolean') { setPermiteA(cambios.emite_factura_a); setErrorFlagA(null) }
+      } else if (typeof cambios.emite_factura_a === 'boolean') {
+        setErrorFlagA(d.error ?? 'No se pudo guardar')
       }
     } finally { setGuardandoCfg(false) }
   }
@@ -175,6 +181,24 @@ export default function FacturasPage() {
               )}
             </div>
           )}
+          {/* FA-2: Factura A/B — solo Responsables Inscriptos (la Edge revalida) */}
+          <div className="mt-4 pt-4 border-t border-neutral-50 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-bold text-neutral-800 text-sm">Permite Factura A/B <span className="font-normal text-neutral-400">(Responsable Inscripto)</span></p>
+              <p className="text-neutral-400 text-xs mt-0.5">
+                {condFiscal !== 'ri'
+                  ? 'Disponible solo para Responsables Inscriptos.'
+                  : permiteA
+                    ? 'Los comprobantes salen como Factura A o B según la condición del receptor; con CUIT de un RI o monotributista, Factura A con IVA discriminado.'
+                    : 'Apagado — todos los comprobantes salen como hasta ahora.'}
+              </p>
+              {errorFlagA && <p className="text-red-500 text-xs mt-1">{errorFlagA}</p>}
+            </div>
+            <button onClick={() => guardarCfg({ emite_factura_a: !permiteA })} disabled={guardandoCfg || condFiscal !== 'ri'}
+              className={`relative w-12 h-7 rounded-full transition-colors flex-shrink-0 ${permiteA ? 'bg-green-500' : 'bg-neutral-200'} ${(guardandoCfg || condFiscal !== 'ri') ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <span className={`absolute top-0.5 h-6 w-6 bg-white rounded-full shadow transition-all ${permiteA ? 'left-[22px]' : 'left-0.5'}`} />
+            </button>
+          </div>
         </div>
       )}
 
