@@ -35,7 +35,7 @@ export const LANDING = {
     ],
     mensualidad: 'Después de la implementación: fee mensual de USD 50, con hasta 4 dispositivos incluidos en cualquiera de los planes.',
     aclaraciones: [
-      'Precios + IVA.',
+      'Precios más impuestos.',
       'Hasta 4 dispositivos incluidos en todos los planes.',
       'Hardware no incluido.',
       '¿Necesitás más dispositivos o una configuración especial? Consultanos.',
