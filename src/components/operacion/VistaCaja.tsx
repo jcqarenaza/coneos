@@ -357,6 +357,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       setSelPedidosCobro({})
       setPagosCobro([{ metodo: 'efectivo', monto: '' }])
       resetReceptor()
+      cargarPedidosRef.current()
       setCobrandoMesa(false)
       cargarPedidos()
     } catch {
