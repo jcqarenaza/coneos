@@ -83,7 +83,7 @@ export default function DisplayPage() {
           }, () => cargarPedidos())
           .subscribe()
         // Respaldo sin sesión (Realtime no emite con RLS): refresco cada 15s
-        setInterval(() => cargarPedidos(), 15000)
+        setInterval(() => cargarPedidos(), 7000)
       })
       .catch(() => { setError('Error de conexión'); setLoading(false) })
   }, [token])
