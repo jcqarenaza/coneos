@@ -73,7 +73,11 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [mensajeFueraHorario, setMensajeFueraHorario] = useState('El delivery no está disponible en este momento. ¡Volvemos pronto!')
   const [mensajePausa, setMensajePausa] = useState('🌧️ Por el mal tiempo el delivery está pausado. ¡Ni bien mejore volvemos a repartir!')
   const [pausado, setPausado] = useState(false)
-  const [horariosConfig, setHorariosConfig] = useState<{ desde: string; hasta: string }[]>([])
+  const [horariosConfig, setHorariosConfig] = useState<{ desde: string; hasta: string }[]>([])  // Cartel de cierre: los horarios se muestran SOLOS desde la config —
+  // nunca más tipearlos a mano en el mensaje.
+  const horariosTexto = horariosConfig
+    .map(h => `${h.desde} a ${h.hasta}`)
+    .join(' y ')
   const [toleranciaCierre, setToleranciaCierre] = useState(5)
 
   // La lluvia no se negocia: chequeo cada 60s aunque el cliente esté en medio del pedido
@@ -276,6 +280,9 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       }
       <h2 className="text-2xl font-bold text-neutral-800 mb-3">Delivery cerrado</h2>
       <p className="text-neutral-500 text-base max-w-xs">{mensajeFueraHorario}</p>
+      {horariosTexto && (
+        <p className="text-neutral-700 text-sm font-semibold bg-white border border-neutral-100 rounded-2xl px-5 py-3 shadow-sm">🕗 Nuestro horario: {horariosTexto}</p>
+      )}
     </div>
   )
 
