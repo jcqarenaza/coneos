@@ -18,6 +18,22 @@ function tiempoRelativo(ts: string) {
 }
 
 export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo: Dispositivo; sesion: SesionOperador }) {
+  // Wake Lock: mientras esta pantalla de operación esté abierta, la pantalla
+  // del dispositivo NO se suspende (si se suspendiera, el navegador congela el
+  // polling y el sonido/actualización de pedidos llega tarde).
+  useEffect(() => {
+    let lock: { release: () => Promise<void> } | null = null
+    async function pedirWakeLock() {
+      try {
+        const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }
+        if (nav.wakeLock) lock = await nav.wakeLock.request('screen')
+      } catch { /* sin soporte o denegado: seguimos sin lock */ }
+    }
+    pedirWakeLock()
+    const onVis = () => { if (document.visibilityState === 'visible') pedirWakeLock() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { document.removeEventListener('visibilitychange', onVis); lock?.release().catch(() => {}) }
+  }, [])
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [procesando, setProcesando] = useState<string | null>(null)

@@ -39,6 +39,23 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [rCond, setRCond] = useState(1)
   const [rDetalle, setRDetalle] = useState('')
   const [rCant, setRCant] = useState(1)
+  // Wake Lock: mientras esta pantalla de operación esté abierta, la pantalla
+  // del dispositivo NO se suspende (si se suspendiera, el navegador congela el
+  // polling y el sonido de pedidos nuevos llega tarde). Se re-adquiere al volver
+  // de una pestaña oculta. En navegadores sin soporte, no hace nada.
+  useEffect(() => {
+    let lock: { release: () => Promise<void> } | null = null
+    async function pedirWakeLock() {
+      try {
+        const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }
+        if (nav.wakeLock) lock = await nav.wakeLock.request('screen')
+      } catch { /* sin soporte o denegado: seguimos sin lock */ }
+    }
+    pedirWakeLock()
+    const onVis = () => { if (document.visibilityState === 'visible') pedirWakeLock() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { document.removeEventListener('visibilitychange', onVis); lock?.release().catch(() => {}) }
+  }, [])
   const [historialFecha, setHistorialFecha] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }))
   const [historialPedidos, setHistorialPedidos] = useState<Pedido[]>([])
   const [historialLoading, setHistorialLoading] = useState(false)
