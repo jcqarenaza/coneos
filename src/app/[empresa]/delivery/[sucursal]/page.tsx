@@ -75,7 +75,8 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [pausado, setPausado] = useState(false)
   const [horariosConfig, setHorariosConfig] = useState<{ desde: string; hasta: string }[]>([])  // Cartel de cierre: los horarios se muestran SOLOS desde la config —
   // nunca más tipearlos a mano en el mensaje.
-  const horariosTexto = horariosConfig
+  const horariosTexto = [...horariosConfig]
+    .sort((a, b) => a.desde.localeCompare(b.desde))
     .map(h => `${h.desde} a ${h.hasta}`)
     .join(' y ')
   const [toleranciaCierre, setToleranciaCierre] = useState(5)
@@ -279,10 +280,10 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         : <div className="text-6xl mb-6">🍦</div>
       }
       <h2 className="text-2xl font-bold text-neutral-800 mb-3">Delivery cerrado</h2>
-      <p className="text-neutral-500 text-base max-w-xs">{mensajeFueraHorario}</p>
       {horariosTexto && (
         <p className="text-neutral-700 text-sm font-semibold bg-white border border-neutral-100 rounded-2xl px-5 py-3 shadow-sm">🕗 Nuestro horario: {horariosTexto}</p>
       )}
+      <p className="text-neutral-500 text-base max-w-xs">{mensajeFueraHorario}</p>
     </div>
   )
 
