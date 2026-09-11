@@ -42,8 +42,9 @@ export async function POST(request: Request) {
           const [dh, dm] = desde.split(':').map(Number)
           const [hah, ham] = hasta.split(':').map(Number)
           const minDesde = dh * 60 + dm
-          const minHasta = (hah * 60 + ham + tol) % 1440
-          const cruza = (hah * 60 + ham) < minDesde || minHasta < minDesde
+          const finCrudo = hah * 60 + ham
+          const cruza = finCrudo < minDesde
+          const minHasta = cruza ? (finCrudo + tol) % 1440 : Math.min(finCrudo + tol, 1439)
           return cruza ? (minActual >= minDesde || minActual <= minHasta) : (minActual >= minDesde && minActual <= minHasta)
         })
         if (!dentro) {
@@ -72,8 +73,9 @@ export async function POST(request: Request) {
         const [dh, dm] = desde.split(':').map(Number)
         const [hah, ham] = hasta.split(':').map(Number)
         const minDesde = dh * 60 + dm
-        const minHasta = (hah * 60 + ham + tolerancia) % 1440
-        const cruzaMedianoche = (hah * 60 + ham) < minDesde || minHasta < minDesde
+        const finCrudo = hah * 60 + ham
+        const cruzaMedianoche = finCrudo < minDesde
+        const minHasta = cruzaMedianoche ? (finCrudo + tolerancia) % 1440 : Math.min(finCrudo + tolerancia, 1439)
         if (cruzaMedianoche) return minActual >= minDesde || minActual <= minHasta
         return minActual >= minDesde && minActual <= minHasta
       })

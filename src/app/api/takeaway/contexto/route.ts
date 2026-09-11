@@ -14,8 +14,9 @@ function estaEnHorario(horarios: { desde: string; hasta: string }[], horaArg: st
     const [dh, dm] = desde.split(':').map(Number)
     const [hah, ham] = hasta.split(':').map(Number)
     const minDesde = dh * 60 + dm
-    const minHasta = (hah * 60 + ham + toleranciaMin) % 1440
-    const cruzaMedianoche = (hah * 60 + ham) < minDesde || minHasta < minDesde
+    const finCrudo = hah * 60 + ham
+    const cruzaMedianoche = finCrudo < minDesde
+    const minHasta = cruzaMedianoche ? (finCrudo + toleranciaMin) % 1440 : Math.min(finCrudo + toleranciaMin, 1439)
     if (cruzaMedianoche) return minActual >= minDesde || minActual <= minHasta
     return minActual >= minDesde && minActual <= minHasta
   })
@@ -76,6 +77,8 @@ export async function GET(request: Request) {
       acepta_efectivo: pagos?.acepta_efectivo ?? true,
       acepta_transferencia: pagos?.acepta_transferencia ?? true,
       acepta_mp: (pagos?.acepta_mp ?? false) && (pagos?.acepta_mp_takeaway ?? true),
+      cbu_transferencia: pagos?.cbu_transferencia ?? null,
+      titular_transferencia: pagos?.titular_transferencia ?? null,
     },
   })
 }
