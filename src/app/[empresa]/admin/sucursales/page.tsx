@@ -252,15 +252,6 @@ export default function SucursalesPage() {
                     <Label>Tolerancia de cierre (minutos)</Label>
                     <Input type="number" min={0} max={60} value={takeaway.tolerancia_cierre ?? 5} onChange={e => setTakeaway({ ...takeaway, tolerancia_cierre: Number(e.target.value) })} className="w-28" />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>Link del canal (QR / redes)</Label>
-                    <div className="flex items-center gap-2">
-                      <Input readOnly value={typeof window !== 'undefined' ? `${window.location.origin}/${window.location.pathname.split('/')[1]}/takeaway/${form.slug ?? ''}` : ''} className="flex-1 font-mono text-xs" />
-                      <button type="button" onClick={() => { try { navigator.clipboard.writeText(`${window.location.origin}/${window.location.pathname.split('/')[1]}/takeaway/${form.slug ?? ''}`) } catch {} }}
-                        className="text-xs text-blue-600 font-semibold whitespace-nowrap">Copiar</button>
-                    </div>
-                    <p className="text-xs text-neutral-400">Compartilo o convertilo en QR — es la puerta del canal para esta sucursal.</p>
-                  </div>
                 </div>
               )}
             </div>

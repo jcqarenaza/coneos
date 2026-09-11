@@ -54,14 +54,17 @@ export default function DispositivosTab() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
   const [urlActual, setUrlActual] = useState('')
+  const [takeawayActivo, setTakeawayActivo] = useState<Record<string, boolean>>({})
 
   async function load() {
     if (!ctx) return
     const supabase = createClient()
-    const [{ data: devs }, { data: suc }] = await Promise.all([
+    const [{ data: devs }, { data: suc }, { data: taCfg }] = await Promise.all([
       supabase.from('dispositivos').select('id, nombre, tipo, sucursal_id, device_token, activo, sucursales(nombre, slug)').eq('empresa_id', ctx.empresaId).order('nombre'),
       supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', ctx.empresaId).eq('activo', true).order('nombre'),
+      supabase.from('takeaway_config').select('sucursal_id, activo').eq('empresa_id', ctx.empresaId),
     ])
+    setTakeawayActivo(Object.fromEntries(((taCfg ?? []) as { sucursal_id: string; activo: boolean }[]).map(t => [t.sucursal_id, t.activo])))
     setData((devs ?? []).map((d: Record<string, unknown>) => {
       const suc = Array.isArray(d.sucursales)
         ? (d.sucursales as { nombre: string; slug: string }[])[0]
@@ -101,6 +104,23 @@ export default function DispositivosTab() {
     if (row.tipo === 'DISPLAY') return `${base}/${empresaSlug}/display/${sucSlug}?token=${row.device_token}`
     if (row.tipo === 'DELIVERY') return `${base}/${empresaSlug}/delivery/${sucSlug}?token=${row.device_token}`
     return `${base}/${empresaSlug}/operacion/${sucSlug}?token=${row.device_token}`
+  }
+
+  // Link público del canal TAKE AWAY por sucursal (sin token — es la puerta
+  // del canal, no un dispositivo). Reutiliza el mismo modal de QR/URL.
+  async function showTakeawayLink(suc: Sucursal) {
+    setSelectedNombre(`Take Away — ${suc.nombre}`)
+    setSelectedDispositivo({ id: `ta-${suc.id}` } as Dispositivo)
+    setQrDataUrl(null)
+    setQrLoading(true)
+    setTokenModal(true)
+    try {
+      const url = `${window.location.origin}/${ctx?.empresaSlug ?? ''}/takeaway/${suc.slug}`
+      setUrlActual(url)
+      const dataUrl = await QRCode.toDataURL(url, { width: 300, margin: 3, errorCorrectionLevel: "M" })
+      setQrDataUrl(dataUrl)
+    } catch { /* sin QR */ }
+    setQrLoading(false)
   }
 
   async function copyUrl() {
@@ -167,6 +187,29 @@ export default function DispositivosTab() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Canales por LINK (sin dispositivo): Take Away */}
+      <div className="mt-8">
+        <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Canales por link</p>
+        <div className="space-y-2">
+          {sucursales.map(suc => (
+            <div key={suc.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-xl">🥡</div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-neutral-900">Take Away</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-teal-50 text-teal-700">Link del canal</span>
+                    <ConeBadge active={takeawayActivo[suc.id] === true} />
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5">{suc.nombre}{takeawayActivo[suc.id] !== true && ' — activalo en Sucursales para que el link funcione'}</p>
+                </div>
+              </div>
+              <button onClick={() => showTakeawayLink(suc)} className="px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors">QR / Link</button>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Modal nuevo/editar */}
