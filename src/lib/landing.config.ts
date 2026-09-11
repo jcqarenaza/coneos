@@ -23,7 +23,7 @@ export const LANDING = {
         bajada: 'Sumá nuevos canales de venta',
         precio: 'USD 150', detalle: 'implementación · única vez por sucursal',
         base: 'Todo Starter +',
-        modulos: ['Delivery', 'Mesas + QR'],
+        modulos: ['Delivery', 'Mesas + QR', 'Take Away'],
       },
       {
         id: 'full', nombre: 'Full', color: '#1B2A4A', destacado: false,

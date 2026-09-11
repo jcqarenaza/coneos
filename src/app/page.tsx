@@ -24,10 +24,11 @@ const ROJO = '#EA4350'
 const MODULOS = [
   { emoji: '🛒', color: AZUL, title: 'Kiosco / Autopedido', desc: 'El cliente arma su pedido desde un celular, tablet o tótem, con fotos y opciones de cada producto.' },
   { emoji: '📱', color: VERDE, title: 'Delivery', desc: 'Pedidos online con datos del cliente, envío, cadetes con comanda, pagos y horarios por sucursal.' },
+  { emoji: '🥡', color: AMARILLO, title: 'Take Away', desc: 'El cliente pide desde su celular sin estar en el local y retira mostrando su código. Sin registro: solo el nombre.' },
   { emoji: '🍽️', color: AMARILLO, title: 'Mesas', desc: 'QR por mesa, pedidos desde el celular, cuenta abierta que suma y cobro — incluso dividido entre varios medios.' },
   { emoji: '💰', color: ROJO, title: 'Caja', desc: 'Todos los pedidos en un solo lugar: medios de pago, comprobantes, resumen del día y control por canal.' },
   { emoji: '👨‍🍳', color: AZUL, title: 'Preparación', desc: 'Los pedidos llegan automáticamente al área correspondiente, con el detalle exacto de cada unidad.' },
-  { emoji: '🖥️', color: VERDE, title: 'Display', desc: 'Pantalla de pedidos listos para organizar la preparación y la entrega en el local.' },
+  { emoji: '🖥️', color: VERDE, title: 'Display', desc: 'Pantalla de mostrador con dos zonas — en preparación y para retirar — que distingue cada canal: mostrador, delivery y take away.' },
   { emoji: '🧾', color: NAVY, title: 'Facturación', desc: 'Integración con ARCA para facturación electrónica: comprobante con CAE y QR fiscal desde la misma venta.' },
   { emoji: '💳', color: AZUL, title: 'Mercado Pago', desc: 'Cobros integrados usando la cuenta de Mercado Pago del comercio. La plata va directo a tu cuenta.' },
   { emoji: '👥', color: ROJO, title: 'Clientes y beneficios', desc: 'Identificación por teléfono, puntos por compra y canjes configurables. Sin registros ni contraseñas.' },
@@ -40,7 +41,7 @@ const RUBROS: [string, string][] = [
 ]
 
 const FLUJO = [
-  { n: '1', color: AZUL, t: 'El cliente pide', d: 'Kiosco · QR de mesa · Delivery · Pedido manual' },
+  { n: '1', color: AZUL, t: 'El cliente pide', d: 'Kiosco · QR de mesa · Delivery · Take Away' },
   { n: '2', color: VERDE, t: 'El pedido entra', d: 'Todos los canales llegan a ConeOS, con su número y detalle.' },
   { n: '3', color: AMARILLO, t: 'Se prepara', d: 'El equipo recibe exactamente qué tiene que preparar.' },
   { n: '4', color: ROJO, t: 'Se cobra', d: 'Caja registra el pago: efectivo, transferencia o Mercado Pago.' },
@@ -111,7 +112,7 @@ export default function LandingPage() {
           <div className="bg-neutral-50 border border-neutral-100 rounded-3xl p-5">
             <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-3">La caja lo ve al instante</p>
             <div className="bg-white rounded-2xl border border-neutral-100 p-4 shadow-sm space-y-2">
-              {([['#14', 'Delivery', AZUL, '$23.000'], ['#13', 'Mesa 4', AMARILLO, '$18.500'], ['#12', 'Kiosco', VERDE, '$9.000']] as [string, string, string, string][]).map(([num, canal, color, total]) => (
+              {([['#15', 'Take Away', AMARILLO, '$12.000'], ['#14', 'Delivery', AZUL, '$23.000'], ['#13', 'Mesa 4', AMARILLO, '$18.500'], ['#12', 'Kiosco', VERDE, '$9.000']] as [string, string, string, string][]).map(([num, canal, color, total]) => (
                 <div key={num} className="flex items-center justify-between text-xs">
                   <span className="font-bold">{num}</span>
                   <span className="font-semibold px-2 py-0.5 rounded-full text-[10px]" style={chip(color)}>{canal}</span>
@@ -170,7 +171,7 @@ export default function LandingPage() {
       <section id="funciones" className="px-6 md:px-8 py-20 bg-neutral-50">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl md:text-4xl font-black text-center mb-3">Todo lo que necesitás para operar</h2>
-          <p className="text-neutral-500 text-center mb-12 text-lg">Diez módulos integrados, un solo sistema.</p>
+          <p className="text-neutral-500 text-center mb-12 text-lg">Once módulos integrados, un solo sistema.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {MODULOS.map(m => (
               <div key={m.title} className="bg-white rounded-2xl border border-neutral-100 p-6 border-t-4 transition-shadow hover:shadow-md" style={{ borderTopColor: m.color }}>
