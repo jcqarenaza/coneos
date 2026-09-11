@@ -26,15 +26,21 @@ export async function GET(request: Request) {
   }
 
   // Llave MP del canal MESA (default true = comportamiento histórico intacto)
-  const { data: pagosMesa } = await supabase.from('sucursal_pagos')
-    .select('acepta_mp, acepta_mp_mesa').eq('sucursal_id', sucursal.id).maybeSingle()
+  // + conexión REAL (sin cuenta vinculada, el botón no se ofrece — antes se
+  // mostraba siempre y fallaba recién en la preferencia)
+  const [{ data: pagosMesa }, { data: mCredSuc }, { data: mCredEmp }] = await Promise.all([
+    supabase.from('sucursal_pagos').select('acepta_mp, acepta_mp_mesa').eq('sucursal_id', sucursal.id).maybeSingle(),
+    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).eq('sucursal_id', sucursal.id).maybeSingle(),
+    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).is('sucursal_id', null).maybeSingle(),
+  ])
+  const mesaMpConectado = Boolean(mCredSuc || mCredEmp)
 
   return NextResponse.json({
     empresa_id: empresa.id,
     sucursal_id: sucursal.id,
     nombre: empresa.nombre,
     sucursal_nombre: sucursal.nombre,
-    acepta_mp_mesa: (pagosMesa?.acepta_mp ?? false) && (pagosMesa?.acepta_mp_mesa ?? true),
+    acepta_mp_mesa: mesaMpConectado && (pagosMesa?.acepta_mp ?? false) && (pagosMesa?.acepta_mp_mesa ?? true),
     config: {
       primary_color: cfg?.primary_color ?? '#1E3A5F',
       secondary_color: cfg?.secondary_color ?? '#F5C842',

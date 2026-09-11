@@ -44,10 +44,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'El take away no está disponible en este local' }, { status: 403 })
   }
 
-  const [{ data: ta }, { data: pagos }] = await Promise.all([
+  const [{ data: ta }, { data: pagos }, { data: credSuc }, { data: credEmp }] = await Promise.all([
     supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre').eq('sucursal_id', sucursal.id).maybeSingle(),
     supabase.from('sucursal_pagos').select('acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_takeaway, cbu_transferencia, titular_transferencia').eq('sucursal_id', sucursal.id).maybeSingle(),
+    // Conexión REAL de MP (mismo patrón que /api/mp/preferencia: sucursal → empresa)
+    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).eq('sucursal_id', sucursal.id).maybeSingle(),
+    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).is('sucursal_id', null).maybeSingle(),
   ])
+  const mpConectado = Boolean(credSuc || credEmp)
   if (!ta?.activo) {
     return NextResponse.json({ error: 'El take away no está disponible en esta sucursal' }, { status: 403 })
   }
@@ -76,7 +80,8 @@ export async function GET(request: Request) {
     pagos: {
       acepta_efectivo: pagos?.acepta_efectivo ?? true,
       acepta_transferencia: pagos?.acepta_transferencia ?? true,
-      acepta_mp: (pagos?.acepta_mp ?? false) && (pagos?.acepta_mp_takeaway ?? true),
+      // MP se ofrece SOLO si hay cuenta conectada Y checkbox global Y llave del canal
+      acepta_mp: mpConectado && (pagos?.acepta_mp ?? false) && (pagos?.acepta_mp_takeaway ?? true),
       cbu_transferencia: pagos?.cbu_transferencia ?? null,
       titular_transferencia: pagos?.titular_transferencia ?? null,
     },
