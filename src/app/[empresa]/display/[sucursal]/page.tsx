@@ -18,9 +18,9 @@ interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; tip
 // DISPLAY V2: íconos por canal público (mesa queda excluida server-side —
 // se entrega en la mesa, no en el mostrador)
 const CANAL: Record<string, { emoji: string; label: string }> = {
-  kiosk: { emoji: '\ud83d\uded2', label: 'MOSTRADOR' },
-  delivery: { emoji: '\ud83d\udef5', label: 'DELIVERY' },
-  takeaway: { emoji: '\ud83e\udd61', label: 'TAKE AWAY' },
+  kiosk: { emoji: '🛒', label: 'MOSTRADOR' },
+  delivery: { emoji: '🛵', label: 'DELIVERY' },
+  takeaway: { emoji: '🥡', label: 'TAKE AWAY' },
 }
 
 export default function DisplayPage() {
@@ -140,7 +140,7 @@ export default function DisplayPage() {
           <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl" style={{ backgroundColor: `${config.primary_color}10` }}>
             <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: config.primary_color }} />
             <span className="text-sm font-bold tracking-widest uppercase" style={{ color: config.primary_color }}>
-              En preparaci\u00f3n y para retirar
+              En preparación y para retirar
             </span>
           </div>
         </div>
@@ -151,15 +151,15 @@ export default function DisplayPage() {
       </div>
 
       <div className="flex-1 grid grid-cols-2 gap-0 px-8 py-8 min-h-0">
-        {/* \ud83d\udd25 EN PREPARACI\u00d3N */}
+        {/* 🔥 EN PREPARACIÓN */}
         <div className="flex flex-col min-h-0 border-r border-neutral-200 pr-8">
           <div className="flex items-center gap-3 mb-6">
-            <span className="text-3xl">\ud83d\udd25</span>
-            <h2 className="text-2xl font-black tracking-widest text-neutral-400 uppercase">En preparaci\u00f3n</h2>
+            <span className="text-3xl">🔥</span>
+            <h2 className="text-2xl font-black tracking-widest text-neutral-400 uppercase">En preparación</h2>
           </div>
           <div className="flex-1 overflow-hidden">
             {preparando.length === 0 ? (
-              <p className="text-neutral-200 text-xl font-medium mt-10">Sin pedidos en preparaci\u00f3n</p>
+              <p className="text-neutral-200 text-xl font-medium mt-10">Sin pedidos en preparación</p>
             ) : (
               <div className="flex flex-wrap content-start gap-4">
                 {preparando.map(p => {
@@ -175,10 +175,10 @@ export default function DisplayPage() {
             )}
           </div>
         </div>
-        {/* \u2705 PARA RETIRAR */}
+        {/* ✅ PARA RETIRAR */}
         <div className="flex flex-col min-h-0 pl-8">
           <div className="flex items-center gap-3 mb-6">
-            <span className="text-3xl">\u2705</span>
+            <span className="text-3xl">✅</span>
             <h2 className="text-2xl font-black tracking-widest uppercase" style={{ color: config.primary_color }}>Para retirar</h2>
           </div>
           <div className="flex-1 overflow-hidden">
@@ -206,7 +206,7 @@ export default function DisplayPage() {
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
           <p className="text-neutral-300 text-xs">
-            {listos.length} para retirar \u00b7 {preparando.length} en preparaci\u00f3n
+            {listos.length} para retirar · {preparando.length} en preparación
           </p>
         </div>
       </div>

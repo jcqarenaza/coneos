@@ -189,7 +189,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   function esBorrable(p: Pedido) { return p.estado !== 'PAID' && p.estado !== 'DELIVERED' && !facturados.has(p.id) }
   function BadgeTakeaway({ p }: { p: Pedido }) {
     if (p.tipo_pedido !== 'takeaway') return null
-    return <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-teal-50 text-teal-700">\ud83e\udd61 Take Away</span>
+    return <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-teal-50 text-teal-700">🥡 Take Away</span>
   }
   function BadgeMesa({ p }: { p: Pedido }) {
     if (p.numero_mesa == null) return null
