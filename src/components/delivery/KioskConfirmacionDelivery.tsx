@@ -7,6 +7,10 @@ import { createClient } from '@/lib/supabase/client'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface Props {
+  canal?: 'delivery' | 'takeaway'
+  pagosIniciales?: PagosSucursal | null
+  mpPermitido?: boolean
+  horarioTexto?: string
   config: EmpresaConfig; dispositivo: DispositivoKiosk; carrito: ItemCarrito[]
   costoEnvio: number; pedidoCreado: { numero: number; codigo: string } | null
   onPedidoCreado: (numero: number, codigo: string) => void
@@ -26,7 +30,7 @@ function Header({ onBack, title }: { onBack?: () => void; title: string }) {
   )
 }
 
-function ResumenTotal({ subtotal, costoEnvio, total, config }: { subtotal: number; costoEnvio: number; total: number; config: EmpresaConfig }) {
+function ResumenTotal({ subtotal, costoEnvio, total, config, esTakeaway = false }: { subtotal: number; costoEnvio: number; total: number; config: EmpresaConfig; esTakeaway?: boolean }) {
   return (
     <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-4">
       <div className="flex justify-between text-sm mb-1.5">
@@ -34,8 +38,8 @@ function ResumenTotal({ subtotal, costoEnvio, total, config }: { subtotal: numbe
         <span className="font-medium text-neutral-600">{formatPrecio(subtotal)}</span>
       </div>
       <div className="flex justify-between text-sm mb-2.5">
-        <span className="text-neutral-400 flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Envío</span>
-        <span className="font-medium text-neutral-600">{formatPrecio(costoEnvio)}</span>
+        {!esTakeaway && <><span className="text-neutral-400 flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Envío</span>
+        <span className="font-medium text-neutral-600">{formatPrecio(costoEnvio)}</span></>}
       </div>
       <div className="flex justify-between border-t border-neutral-100 pt-2.5">
         <span className="font-bold text-neutral-800">Total</span>
@@ -45,9 +49,10 @@ function ResumenTotal({ subtotal, costoEnvio, total, config }: { subtotal: numbe
   )
 }
 
-export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver }: Props) {
+export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null }: Props) {
+  const esTakeaway = canal === 'takeaway'
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
-  const total = subtotal + costoEnvio
+  const total = subtotal + (canal === 'takeaway' ? 0 : costoEnvio)
 
   const [paso, setPaso] = useState<'datos' | 'pago' | 'transferencia' | 'exito'>('datos')
   const [benefPesosPorPunto, setBenefPesosPorPunto] = useState<number | null>(null)
@@ -61,6 +66,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   useEffect(() => {
     // Verificar si la empresa tiene MP conectado via OAuth
+    if (pagosIniciales) { setPagosSucursal(pagosIniciales); return }
     fetch(`/api/mp/estado?empresa_id=${dispositivo.empresa_id}`)
       .then(r => r.json())
       .then(d => setMpDisponible(!!d.conectado))
@@ -116,7 +122,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     }))
     const res = await fetch('/api/pedidos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: dispositivo.id, items, metodo_pago: metodo, origen: 'DELIVERY', tipo_pedido: 'delivery', costo_envio: costoEnvio, datos_delivery: datos }),
+      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: esTakeaway ? 0 : costoEnvio, datos_delivery: datos }),
     })
     const data = await res.json()
     setCreando(false)
@@ -131,9 +137,11 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   function confirmarDatos() {
     const errs: Partial<DatosDelivery> = {}
     if (!datos.nombre.trim()) errs.nombre = 'Ingresá tu nombre'
-    if (!datos.telefono.trim()) errs.telefono = 'Ingresá tu teléfono'
-    if (!datos.direccion.trim()) errs.direccion = 'Ingresá tu dirección'
-    if (!datos.entre_calles.trim()) errs.entre_calles = 'Ingresá las calles de referencia'
+    if (!esTakeaway) {
+      if (!datos.telefono.trim()) errs.telefono = 'Ingresá tu teléfono'
+      if (!datos.direccion.trim()) errs.direccion = 'Ingresá tu dirección'
+      if (!datos.entre_calles.trim()) errs.entre_calles = 'Ingresá las calles de referencia'
+    }
     setErroresCampos(errs)
     if (Object.keys(errs).length > 0) return
     setPaso('pago')
@@ -194,14 +202,16 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   // ── DATOS ──
   if (paso === 'datos') return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
-      <Header onBack={onVolver} title="Datos de entrega" />
+      <Header onBack={onVolver} title={esTakeaway ? 'Tu pedido para retirar' : 'Datos de entrega'} />
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-48">
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-4 space-y-4">
           {[
-            { key: 'nombre', label: 'Nombre y apellido', placeholder: 'Juan García', type: 'text', required: true },
-            { key: 'telefono', label: 'Teléfono', placeholder: '3491 123456', type: 'tel', required: true },
-            { key: 'direccion', label: 'Dirección', placeholder: 'San Martín 456', type: 'text', required: true },
-            { key: 'entre_calles', label: 'Entre calles', placeholder: '268 y 270', type: 'text', required: true },
+            { key: 'nombre', label: esTakeaway ? 'Tu nombre' : 'Nombre y apellido', placeholder: 'Juan García', type: 'text', required: true },
+            ...(esTakeaway ? [] : [
+              { key: 'telefono', label: 'Teléfono', placeholder: '3491 123456', type: 'tel', required: true },
+              { key: 'direccion', label: 'Dirección', placeholder: 'San Martín 456', type: 'text', required: true },
+              { key: 'entre_calles', label: 'Entre calles', placeholder: '268 y 270', type: 'text', required: true },
+            ] as const),
           ].map(({ key, label, placeholder, type, required }) => (
             <div key={key}>
               <label className="text-xs font-semibold text-neutral-500 mb-1 block">
@@ -227,7 +237,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-100 px-4 pt-3 pb-6 shadow-lg">
-        <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} />
+        <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} esTakeaway={esTakeaway} />
         <button onClick={confirmarDatos}
           className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all"
           style={{ backgroundColor: config.primary_color }}>
@@ -241,10 +251,10 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   if (paso === 'pago') {
     const mpConfigurado = mpDisponible
     const metodos: { id: string; label: string; desc: string }[] = []
-    if (pagosSucursal?.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo al repartidor', desc: 'Pagás cuando llegue tu pedido' })
+    if (pagosSucursal?.acepta_efectivo) metodos.push({ id: 'efectivo', label: esTakeaway ? 'Efectivo al retirar' : 'Efectivo al repartidor', desc: esTakeaway ? 'Pagás cuando retires tu pedido' : 'Pagás cuando llegue tu pedido' })
     if (pagosSucursal?.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia bancaria', desc: `Alias: ${pagosSucursal.cbu_transferencia ?? ''}${pagosSucursal.titular_transferencia ? ` · a nombre de ${pagosSucursal.titular_transferencia}` : ''}` })
-    if (pagosSucursal?.acepta_mp && (pagosSucursal as { acepta_mp_delivery?: boolean }).acepta_mp_delivery !== false && mpConfigurado) metodos.push({ id: 'mp', label: 'Mercado Pago', desc: 'Pagá con QR o link' })
-    if (!metodos.length) metodos.push({ id: 'efectivo', label: 'Efectivo al repartidor', desc: 'Pagás cuando llegue tu pedido' })
+    if (mpPermitido && pagosSucursal?.acepta_mp && (pagosSucursal as { acepta_mp_delivery?: boolean }).acepta_mp_delivery !== false && (esTakeaway ? true : mpConfigurado)) metodos.push({ id: 'mp', label: 'Mercado Pago', desc: 'Pagá con QR o link' })
+    if (!metodos.length) metodos.push({ id: 'efectivo', label: esTakeaway ? 'Efectivo al retirar' : 'Efectivo al repartidor', desc: esTakeaway ? 'Pagás cuando retires tu pedido' : 'Pagás cuando llegue tu pedido' })
 
     return (
       <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
@@ -274,7 +284,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             ))}
           </div>
 
-          <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} />
+          <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} esTakeaway={esTakeaway} />
 
           <button onClick={confirmarPago} disabled={creando}
             className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
@@ -357,20 +367,28 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           <CheckCircle className="h-9 w-9 text-white" />
         </div>
         <h1 className="text-2xl font-black text-center mb-1" style={{ color: config.primary_color }}>¡Pedido confirmado!</h1>
-        <p className="text-neutral-400 text-sm text-center mb-6">Te contactaremos al {datos.telefono}</p>
+        <p className="text-neutral-400 text-sm text-center mb-6">{esTakeaway ? 'Tu pedido quedó registrado para retirar' : `Te contactaremos al ${datos.telefono}`}</p>
 
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-5 mb-4">
           <div className="text-center mb-4">
             <p className="text-neutral-400 text-xs uppercase tracking-wide mb-1">Número de pedido</p>
             <p className="font-black" style={{ fontSize: '4rem', lineHeight: 1, color: config.primary_color }}>#{pedidoCreado?.numero ?? pedidoNum}</p>
           </div>
+          {esTakeaway && (
+            <div className="text-center mb-4 rounded-2xl py-4" style={{ backgroundColor: `${config.primary_color}0d` }}>
+              <p className="text-neutral-400 text-xs uppercase tracking-wide mb-1">Código de retiro</p>
+              <p className="font-black tracking-[0.3em]" style={{ fontSize: '3.2rem', lineHeight: 1, color: config.primary_color }}>{pedidoCreado?.codigo ?? codigoRetiro}</p>
+              <p className="text-neutral-500 text-xs mt-2 font-semibold">Mostrá este código al retirar tu pedido</p>
+              {horarioTexto && <p className="text-neutral-400 text-xs mt-1">🕗 Horario de retiro: {horarioTexto}</p>}
+            </div>
+          )}
           <div className="border-t border-neutral-100 pt-4 space-y-1.5">
             <p className="text-sm text-neutral-600"><span className="font-semibold">Nombre:</span> {datos.nombre}</p>
-            <p className="text-sm text-neutral-600"><span className="font-semibold">Dirección:</span> {datos.direccion}</p>
-            {datos.entre_calles && <p className="text-sm text-neutral-600"><span className="font-semibold">Entre:</span> {datos.entre_calles}</p>}
-            <p className="text-sm text-neutral-600"><span className="font-semibold">Tel:</span> {datos.telefono}</p>
+            {!esTakeaway && <p className="text-sm text-neutral-600"><span className="font-semibold">Dirección:</span> {datos.direccion}</p>}
+            {!esTakeaway && datos.entre_calles && <p className="text-sm text-neutral-600"><span className="font-semibold">Entre:</span> {datos.entre_calles}</p>}
+            {!esTakeaway && <p className="text-sm text-neutral-600"><span className="font-semibold">Tel:</span> {datos.telefono}</p>}
             <p className="text-sm font-bold mt-2 pt-2 border-t border-neutral-100" style={{ color: config.primary_color }}>Total: {formatPrecio(total)}</p>
-            {metodoPago === 'efectivo' && <p className="text-xs text-amber-600">💵 Pagás al repartidor cuando llegue</p>}
+            {metodoPago === 'efectivo' && <p className="text-xs text-amber-600">💵 {esTakeaway ? 'Pagás en el mostrador al retirar' : 'Pagás al repartidor cuando llegue'}</p>}
             {metodoPago === 'transferencia' && <p className="text-xs text-blue-600">📲 Transferencia {captura ? 'enviada ✓' : 'pendiente de confirmación'}</p>}
             {benefPesosPorPunto && (() => {
               const base = carrito.reduce((s, i) => s + (i.precio > 0 ? i.precio * i.cantidad : 0), 0)
