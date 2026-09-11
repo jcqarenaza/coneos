@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   if (!empresa) return NextResponse.json({ error: 'Local no encontrado' }, { status: 404 })
 
   const [{ data: cfg }, { data: sucursal }] = await Promise.all([
-    supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, modulos').eq('empresa_id', empresa.id).maybeSingle(),
+    supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, modulos, mesas_activo').eq('empresa_id', empresa.id).maybeSingle(),
     supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
   ])
   if (!sucursal) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
@@ -24,23 +24,16 @@ export async function GET(request: Request) {
   if (modulos.mesas !== true) {
     return NextResponse.json({ error: 'El pedido desde la mesa no está disponible en este local' }, { status: 403 })
   }
-
-  // Llave MP del canal MESA (default true = comportamiento histórico intacto)
-  // + conexión REAL (sin cuenta vinculada, el botón no se ofrece — antes se
-  // mostraba siempre y fallaba recién en la preferencia)
-  const [{ data: pagosMesa }, { data: mCredSuc }, { data: mCredEmp }] = await Promise.all([
-    supabase.from('sucursal_pagos').select('acepta_mp, acepta_mp_mesa').eq('sucursal_id', sucursal.id).maybeSingle(),
-    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).eq('sucursal_id', sucursal.id).maybeSingle(),
-    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).is('sucursal_id', null).maybeSingle(),
-  ])
-  const mesaMpConectado = Boolean(mCredSuc || mCredEmp)
+  // Llave del negocio (Admin→Mesas): el local puede pausar sin tocar el módulo
+  if (cfg?.mesas_activo === false) {
+    return NextResponse.json({ error: 'Los pedidos desde la mesa están pausados en este momento. ¡Llamá al mozo!' }, { status: 403 })
+  }
 
   return NextResponse.json({
     empresa_id: empresa.id,
     sucursal_id: sucursal.id,
     nombre: empresa.nombre,
     sucursal_nombre: sucursal.nombre,
-    acepta_mp_mesa: mesaMpConectado && (pagosMesa?.acepta_mp ?? false) && (pagosMesa?.acepta_mp_mesa ?? true),
     config: {
       primary_color: cfg?.primary_color ?? '#1E3A5F',
       secondary_color: cfg?.secondary_color ?? '#F5C842',
