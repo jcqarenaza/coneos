@@ -13,6 +13,7 @@ interface Props {
   setCarrito: (c: ItemCarrito[]) => void
   accesorios: Accesorio[]
   costoEnvio: number
+  canal?: 'delivery' | 'takeaway'
   onConfirmar: (extras: AccesorioExtra[]) => void
   onSeguirComprando: () => void
   onVolver: () => void
@@ -20,12 +21,13 @@ interface Props {
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 
-export default function KioskCarritoDelivery({ config, dispositivo, carrito, setCarrito, accesorios, costoEnvio, onConfirmar, onSeguirComprando }: Props) {
+export default function KioskCarritoDelivery({ config, dispositivo, carrito, setCarrito, accesorios, costoEnvio, onConfirmar, onSeguirComprando, canal = 'delivery' }: Props) {
+  const esTakeaway = canal === 'takeaway'
   const [cantAccesorios, setCantAccesorios] = useState<Record<string, number>>({})
 
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const subtotalAcc = accesorios.reduce((acc, a) => acc + (cantAccesorios[a.id] ?? 0) * a.precio_adicional, 0)
-  const total = subtotal + subtotalAcc + costoEnvio
+  const total = subtotal + subtotalAcc + (esTakeaway ? 0 : costoEnvio)
 
   function cambiarCantidad(id: string, delta: number) {
     setCarrito(carrito.map(i => i.id === id ? { ...i, cantidad: Math.max(0, i.cantidad + delta) } : i).filter(i => i.cantidad > 0))
@@ -256,10 +258,12 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
           <span className="text-neutral-400 text-sm">Subtotal</span>
           <span className="text-neutral-600 font-semibold text-sm">{formatPrecio(subtotal + subtotalAcc)}</span>
         </div>
-        <div className="flex justify-between items-center mb-3">
-          <span className="text-neutral-400 text-sm flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Envío</span>
-          <span className="text-neutral-600 font-semibold text-sm">{formatPrecio(costoEnvio)}</span>
-        </div>
+        {!esTakeaway && (
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-neutral-400 text-sm flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Envío</span>
+            <span className="text-neutral-600 font-semibold text-sm">{formatPrecio(costoEnvio)}</span>
+          </div>
+        )}
         <div className="flex justify-between items-center mb-3">
           <span className="font-bold text-neutral-800">Total</span>
           <span className="font-black text-xl" style={{ color: config.primary_color }}>{formatPrecio(total)}</span>

@@ -42,13 +42,48 @@ export async function POST(request: Request) {
           const [dh, dm] = desde.split(':').map(Number)
           const [hah, ham] = hasta.split(':').map(Number)
           const minDesde = dh * 60 + dm
-          const minHasta = (hah * 60 + ham + tol) % 1440
-          const cruza = (hah * 60 + ham) < minDesde || minHasta < minDesde
+          const finCrudo = hah * 60 + ham
+          const cruza = finCrudo < minDesde
+          const minHasta = cruza ? (finCrudo + tol) % 1440 : Math.min(finCrudo + tol, 1439)
           return cruza ? (minActual >= minDesde || minActual <= minHasta) : (minActual >= minDesde && minActual <= minHasta)
         })
         if (!dentro) {
           return NextResponse.json({ error: dc.mensaje_fuera_horario ?? 'El delivery ya cerró por hoy.' }, { status: 409 })
         }
+
+  // Validación server-side para pedidos TAKE AWAY: horario propio del canal
+  // (mismo motor que delivery, leyendo takeaway_config — decisión CTO: horarios
+  // independientes; sin pausa ni costo de envío, el canal no los tiene)
+  if (tipo_pedido === 'takeaway') {
+    const { data: tc } = await supabase
+      .from('takeaway_config')
+      .select('activo, horarios, tolerancia_cierre, mensaje_fuera_horario')
+      .eq('sucursal_id', sucursal_id)
+      .maybeSingle()
+    if (!tc?.activo) {
+      return NextResponse.json({ error: 'El take away no está disponible en esta sucursal.' }, { status: 409 })
+    }
+    const horariosTa = (tc.horarios as { desde: string; hasta: string }[] | null) ?? []
+    if (horariosTa.length > 0) {
+      const tolerancia = Number(tc.tolerancia_cierre ?? 5)
+      const horaArg = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())
+      const [hh, mm] = horaArg.split(':').map(Number)
+      const minActual = hh * 60 + mm
+      const dentro = horariosTa.some(({ desde, hasta }) => {
+        const [dh, dm] = desde.split(':').map(Number)
+        const [hah, ham] = hasta.split(':').map(Number)
+        const minDesde = dh * 60 + dm
+        const finCrudo = hah * 60 + ham
+        const cruzaMedianoche = finCrudo < minDesde
+        const minHasta = cruzaMedianoche ? (finCrudo + tolerancia) % 1440 : Math.min(finCrudo + tolerancia, 1439)
+        if (cruzaMedianoche) return minActual >= minDesde || minActual <= minHasta
+        return minActual >= minDesde && minActual <= minHasta
+      })
+      if (!dentro) {
+        return NextResponse.json({ error: tc.mensaje_fuera_horario ?? 'El take away ya cerró por hoy.' }, { status: 409 })
+      }
+    }
+  }
       }
     }
   }
@@ -63,6 +98,12 @@ export async function POST(request: Request) {
     .limit(1)
 
   const numero_pedido = (maxData?.[0]?.numero_pedido ?? 0) + 1
+  // Blindaje: dispositivo_id solo si es un UUID real. Los canales sin
+  // dispositivo (mesa, takeaway) usan pseudo-ids en el cliente — jamás deben
+  // llegar a la columna uuid (error 22P02).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const dispositivoIdSano = typeof dispositivo_id === 'string' && UUID_RE.test(dispositivo_id) ? dispositivo_id : null
+
   const codigo_retiro = Math.random().toString(36).substring(2, 6).toUpperCase()
 
   const total = items.reduce((acc: number, item: { precio_snap: number; cantidad: number }) =>
@@ -104,7 +145,7 @@ export async function POST(request: Request) {
   const esMesa = origen === 'MESA'
   const { data: pedido, error } = await supabase.from('pedidos').insert({
     empresa_id, sucursal_id,
-    dispositivo_id: dispositivo_id || null,
+    dispositivo_id: dispositivoIdSano,
     numero_pedido, codigo_retiro,
     estado: esMesa && !pago_mp ? 'PREPARING' : 'PENDING_PAYMENT',
     metodo_pago: esMesa && !pago_mp ? null : metodo_pago,
@@ -114,6 +155,8 @@ export async function POST(request: Request) {
     costo_envio: Number(costo_envio),
     datos_delivery,
     ...(esMesa ? { mesa_cuenta_id, numero_mesa: Number(numero_mesa), pagado: false, nombre_cliente: nombre_cliente || null } : {}),
+    // Take Away: el nombre del cliente viaja en datos_delivery.nombre (checkout solo-nombre)
+    ...(tipo_pedido === 'takeaway' && datos_delivery?.nombre ? { nombre_cliente: datos_delivery.nombre } : {}),
   }).select('id, numero_pedido, codigo_retiro').single()
 
   if (error || !pedido) {

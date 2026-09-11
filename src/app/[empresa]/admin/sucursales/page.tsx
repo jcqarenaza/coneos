@@ -11,13 +11,14 @@ import { Plus, Loader2, Store, CreditCard, Banknote, Smartphone, Pencil, Trash2 
 
 interface Horario { desde: string; hasta: string }
 interface DeliveryConfig { activo: boolean; costo_envio: number; horarios: Horario[]; mensaje_fuera_horario: string; pausado?: boolean; mensaje_pausa?: string; tolerancia_cierre?: number }
+interface TakeawayConfig { activo: boolean; horarios: Horario[]; mensaje_fuera_horario: string; tolerancia_cierre?: number }
 interface SucursalPagos {
-  acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; acepta_mp_kiosk: boolean; acepta_mp_delivery: boolean
+  acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; acepta_mp_kiosk: boolean; acepta_mp_delivery: boolean; acepta_mp_mesa: boolean; acepta_mp_takeaway: boolean
   cbu_transferencia: string | null; titular_transferencia: string | null
   mp_alias?: string | null; mp_public_key?: string | null
 }
 interface Sucursal {
-  id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; rubro?: string; pagos?: SucursalPagos; delivery?: DeliveryConfig
+  id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; rubro?: string; pagos?: SucursalPagos; delivery?: DeliveryConfig; takeaway?: TakeawayConfig
 }
 
 const RUBROS: [string, string][] = [
@@ -26,8 +27,9 @@ const RUBROS: [string, string][] = [
   ['CAFETERIA', '☕ Cafetería'], ['PARRILLA', '🥩 Parrilla'], ['OTRO', '🏪 Otro'],
 ]
 
-const emptyPagos = (): SucursalPagos => ({ acepta_efectivo: true, acepta_transferencia: true, acepta_mp: false, acepta_mp_kiosk: true, acepta_mp_delivery: true, cbu_transferencia: '', titular_transferencia: '', mp_alias: '', mp_public_key: '' })
+const emptyPagos = (): SucursalPagos => ({ acepta_efectivo: true, acepta_transferencia: true, acepta_mp: false, acepta_mp_kiosk: true, acepta_mp_delivery: true, acepta_mp_mesa: true, acepta_mp_takeaway: true, cbu_transferencia: '', titular_transferencia: '', mp_alias: '', mp_public_key: '' })
 const emptyDelivery = (): DeliveryConfig => ({ activo: false, costo_envio: 0, horarios: [{ desde: '20:00', hasta: '23:59' }], mensaje_fuera_horario: 'El delivery no está disponible en este momento. ¡Volvemos pronto!' })
+const emptyTakeaway = (): TakeawayConfig => ({ activo: false, horarios: [{ desde: '19:00', hasta: '23:30' }], mensaje_fuera_horario: 'El take away no está disponible en este momento. ¡Volvemos pronto!', tolerancia_cierre: 5 })
 const emptySucursal = (): Partial<Sucursal> => ({ nombre: '', slug: '', direccion: '', activo: true, rubro: 'HELADERIA' })
 
 export default function SucursalesPage() {
@@ -40,18 +42,20 @@ export default function SucursalesPage() {
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [delivery, setDelivery] = useState<DeliveryConfig>(emptyDelivery())
+  const [takeaway, setTakeaway] = useState<TakeawayConfig>(emptyTakeaway())
 
   async function load() {
     if (!ctx) return
     const supabase = createClient()
     const { data: suc } = await supabase
       .from('sucursales')
-      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, cbu_transferencia, titular_transferencia), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre), rubro')
+      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, acepta_mp_mesa, acepta_mp_takeaway, cbu_transferencia, titular_transferencia), takeaway_config(activo, horarios, mensaje_fuera_horario, tolerancia_cierre), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre), rubro')
       .eq('empresa_id', ctx.empresaId).order('nombre')
     setData((suc ?? []).map((s: Record<string, unknown>) => ({
       ...s,
       pagos: Array.isArray(s.sucursal_pagos) ? (s.sucursal_pagos[0] ?? emptyPagos()) : (s.sucursal_pagos ?? emptyPagos()),
       delivery: Array.isArray(s.delivery_config) ? (s.delivery_config[0] ?? emptyDelivery()) : (s.delivery_config ?? emptyDelivery()),
+      takeaway: Array.isArray(s.takeaway_config) ? (s.takeaway_config[0] ?? emptyTakeaway()) : (s.takeaway_config ?? emptyTakeaway()),
     })) as Sucursal[])
     setLoading(false)
   }
@@ -63,7 +67,7 @@ export default function SucursalesPage() {
   }
 
   function openNew() { setForm(emptySucursal()); setPagos(emptyPagos()); setDelivery(emptyDelivery()); setEditId(null); setModal(true) }
-  function openEdit(s: Sucursal) { setForm({ nombre: s.nombre, slug: s.slug, direccion: s.direccion, activo: s.activo }); setPagos(s.pagos ?? emptyPagos()); setDelivery(s.delivery ?? emptyDelivery()); setEditId(s.id); setModal(true) }
+  function openEdit(s: Sucursal) { setForm({ nombre: s.nombre, slug: s.slug, direccion: s.direccion, activo: s.activo }); setPagos(s.pagos ?? emptyPagos()); setDelivery(s.delivery ?? emptyDelivery()); setTakeaway(s.takeaway ?? emptyTakeaway()); setEditId(s.id); setModal(true) }
 
   async function handleSave() {
     if (!ctx || !form.nombre || !form.slug) return
@@ -71,7 +75,8 @@ export default function SucursalesPage() {
     const supabase = createClient()
     if (editId) {
       await supabase.from('sucursales').update({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: form.activo ?? true, rubro: form.rubro ?? 'HELADERIA' }).eq('id', editId)
-      await supabase.from('sucursal_pagos').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null }, { onConflict: 'sucursal_id' })
+      await supabase.from('sucursal_pagos').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, acepta_mp_mesa: pagos.acepta_mp_mesa, acepta_mp_takeaway: pagos.acepta_mp_takeaway, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null }, { onConflict: 'sucursal_id' })
+      await supabase.from('takeaway_config').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, activo: takeaway.activo, horarios: takeaway.horarios, mensaje_fuera_horario: takeaway.mensaje_fuera_horario, tolerancia_cierre: takeaway.tolerancia_cierre ?? 5 }, { onConflict: 'sucursal_id' })
     } else {
       const { data: nueva } = await supabase.from('sucursales').insert({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: true, rubro: form.rubro ?? 'HELADERIA', empresa_id: ctx.empresaId }).select('id').single()
       if (nueva) await supabase.from('sucursal_pagos').insert({ sucursal_id: nueva.id, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null })
@@ -198,10 +203,59 @@ export default function SucursalesPage() {
                     <input type="checkbox" id="mp-delivery" checked={pagos.acepta_mp_delivery} onChange={e => setPagos({ ...pagos, acepta_mp_delivery: e.target.checked })} className="w-4 h-4 rounded" />
                     <Label htmlFor="mp-delivery" className="cursor-pointer text-sm">Habilitar en Delivery</Label>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="mp-mesa" checked={pagos.acepta_mp_mesa} onChange={e => setPagos({ ...pagos, acepta_mp_mesa: e.target.checked })} className="w-4 h-4 rounded" />
+                    <Label htmlFor="mp-mesa" className="cursor-pointer text-sm">Habilitar en Mesas</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="mp-ta" checked={pagos.acepta_mp_takeaway} onChange={e => setPagos({ ...pagos, acepta_mp_takeaway: e.target.checked })} className="w-4 h-4 rounded" />
+                    <Label htmlFor="mp-ta" className="cursor-pointer text-sm">Habilitar en Take Away</Label>
+                  </div>
                 </div>
               )}
             </div>
           </div>
+
+          {editId && (
+            <div className="space-y-3 pt-2 border-t border-neutral-100">
+              <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Take Away 🥡</p>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="ta" checked={takeaway.activo} onChange={e => setTakeaway({ ...takeaway, activo: e.target.checked })} className="w-4 h-4 rounded" />
+                <Label htmlFor="ta" className="cursor-pointer">Take Away activo</Label>
+              </div>
+              {takeaway.activo && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Horarios de take away</Label>
+                      <button type="button" onClick={() => setTakeaway({ ...takeaway, horarios: [...takeaway.horarios, { desde: '19:00', hasta: '23:30' }] })}
+                        className="text-xs text-blue-600 font-semibold">+ Agregar franja</button>
+                    </div>
+                    {takeaway.horarios.map((h, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Input type="time" value={h.desde} onChange={e => { const hs = [...takeaway.horarios]; hs[i] = { ...hs[i], desde: e.target.value }; setTakeaway({ ...takeaway, horarios: hs }) }} className="flex-1 text-sm" />
+                        <span className="text-neutral-400 text-sm">a</span>
+                        <Input type="time" value={h.hasta} onChange={e => { const hs = [...takeaway.horarios]; hs[i] = { ...hs[i], hasta: e.target.value }; setTakeaway({ ...takeaway, horarios: hs }) }} className="flex-1 text-sm" />
+                        {takeaway.horarios.length > 1 && (
+                          <button type="button" onClick={() => setTakeaway({ ...takeaway, horarios: takeaway.horarios.filter((_, j) => j !== i) })}
+                            className="text-red-400 text-xs font-semibold">✕</button>
+                        )}
+                      </div>
+                    ))}
+                    <p className="text-xs text-neutral-400">Horarios propios del canal, independientes del delivery. Para cruces de medianoche usá la hora de cierre (ej: 01:00).</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Mensaje fuera de horario</Label>
+                    <textarea value={takeaway.mensaje_fuera_horario} onChange={e => setTakeaway({ ...takeaway, mensaje_fuera_horario: e.target.value })} rows={2} className="w-full rounded-md border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-y" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Tolerancia de cierre (minutos)</Label>
+                    <Input type="number" min={0} max={60} value={takeaway.tolerancia_cierre ?? 5} onChange={e => setTakeaway({ ...takeaway, tolerancia_cierre: Number(e.target.value) })} className="w-28" />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {editId && (
             <div className="space-y-3 pt-2 border-t border-neutral-100">

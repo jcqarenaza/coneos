@@ -15,7 +15,7 @@ import RegistroVisita from '@/components/RegistroVisita'
 // ═══════════════════════════════════════════════════════════════════
 
 interface EmpresaConfig { primary_color: string; secondary_color: string; logo_url: string | null }
-interface Contexto { empresa_id: string; sucursal_id: string; nombre: string; sucursal_nombre: string; config: EmpresaConfig }
+interface Contexto { empresa_id: string; sucursal_id: string; nombre: string; sucursal_nombre: string; config: EmpresaConfig; acepta_mp_mesa?: boolean }
 interface ItemCarrito {
   id: string; presentacion_id: string; nombre_producto: string
   nombre_presentacion: string; precio: number; cantidad: number
@@ -275,11 +275,13 @@ export default function MesaPage() {
                 style={{ backgroundColor: config.primary_color }}>
                 {enviando ? 'Enviando...' : '🤝 Pedir y pagar al mozo'}
               </button>
-              <button onClick={() => enviarPedido(true)} disabled={enviando}
-                className="w-full py-4 rounded-2xl font-bold text-lg border-2 disabled:opacity-50 active:scale-95 transition-all bg-white"
-                style={{ borderColor: config.primary_color, color: config.primary_color }}>
-                💳 Pagar ahora con Mercado Pago
-              </button>
+              {ctx.acepta_mp_mesa !== false && (
+                <button onClick={() => enviarPedido(true)} disabled={enviando}
+                  className="w-full py-4 rounded-2xl font-bold text-lg border-2 disabled:opacity-50 active:scale-95 transition-all bg-white"
+                  style={{ borderColor: config.primary_color, color: config.primary_color }}>
+                  💳 Pagar ahora con Mercado Pago
+                </button>
+              )}
             </div>
           </>
         )}

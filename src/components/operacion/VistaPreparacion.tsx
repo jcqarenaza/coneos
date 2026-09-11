@@ -8,7 +8,7 @@ interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string; sucursal_id: string | null } }
 interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; cantidad: number; pedido_item_opciones: OpcionItem[] }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; notas: string | null; created_at: string; sucursales?: { nombre: string }; pedido_items: PedidoItem[] }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; tipo_pedido?: string; notas: string | null; created_at: string; sucursales?: { nombre: string }; pedido_items: PedidoItem[] }
 
 function tiempoRelativo(ts: string) {
   const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 60000)
@@ -118,7 +118,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                       className={`bg-white rounded-2xl border-2 border-blue-100 shadow-sm overflow-hidden cursor-pointer transition-all hover:shadow-md ${seleccionado?.id === pedido.id ? 'ring-2 ring-blue-300' : ''}`}>
                       <div className="bg-blue-50 px-4 py-3 flex items-center justify-between border-b border-blue-100">
                         <div className="flex items-center gap-2">
-                          <span className="text-blue-700 font-black text-xl">#{pedido.numero_pedido}</span>
+                          <span className="text-blue-700 font-black text-xl">#{pedido.numero_pedido}</span> {pedido.tipo_pedido === 'takeaway' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 align-middle">🥡 TAKE AWAY</span>}{pedido.tipo_pedido === 'delivery' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 align-middle">🛵 DELIVERY</span>}
                           <span className="text-xs bg-blue-200 text-blue-700 px-2 py-0.5 rounded-full font-bold">NUEVO</span>
                         </div>
                         <div className="flex items-center gap-1 text-blue-400 text-xs font-medium">
@@ -157,7 +157,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                     <div key={pedido.id} onClick={() => setSeleccionado(s => s?.id === pedido.id ? null : pedido)}
                       className={`bg-white rounded-2xl border-2 border-amber-100 shadow-sm overflow-hidden cursor-pointer transition-all hover:shadow-md ${seleccionado?.id === pedido.id ? 'ring-2 ring-amber-300' : ''}`}>
                       <div className="bg-amber-50 px-4 py-3 flex items-center justify-between border-b border-amber-100">
-                        <span className="text-amber-700 font-black text-xl">#{pedido.numero_pedido}</span>
+                        <span className="text-amber-700 font-black text-xl">#{pedido.numero_pedido}</span> {pedido.tipo_pedido === 'takeaway' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 align-middle">🥡 TAKE AWAY</span>}{pedido.tipo_pedido === 'delivery' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 align-middle">🛵 DELIVERY</span>}
                         <div className="flex items-center gap-2">
                           {verTodas && pedido.sucursales?.nombre && <span className="text-xs bg-white px-2 py-0.5 rounded-full text-neutral-400 font-medium">{pedido.sucursales.nombre}</span>}
                           <span className="text-amber-500 text-sm font-mono font-bold">{pedido.codigo_retiro}</span>

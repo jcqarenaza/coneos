@@ -187,6 +187,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [facturados, setFacturados] = useState<Set<string>>(new Set())
   const [tiposFiscales, setTiposFiscales] = useState<Record<string, 'factura' | 'nc'>>({})
   function esBorrable(p: Pedido) { return p.estado !== 'PAID' && p.estado !== 'DELIVERED' && !facturados.has(p.id) }
+  function BadgeTakeaway({ p }: { p: Pedido }) {
+    if (p.tipo_pedido !== 'takeaway') return null
+    return <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-teal-50 text-teal-700">🥡 Take Away</span>
+  }
   function BadgeMesa({ p }: { p: Pedido }) {
     if (p.numero_mesa == null) return null
     return <>
@@ -412,7 +416,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     const sum = (arr: Pedido[], f: (p: Pedido) => number) => arr.reduce((a, p) => a + f(p), 0)
     const envios = sum(cobrados, p => Number(p.costo_envio ?? 0))
     const total = sum(cobrados, p => Number(p.total))
-    const kiosk = cobrados.filter(p => p.tipo_pedido !== 'delivery' && p.tipo_pedido !== 'mesa')
+    const kiosk = cobrados.filter(p => p.tipo_pedido !== 'delivery' && p.tipo_pedido !== 'mesa' && p.tipo_pedido !== 'takeaway')
+    const takeaway = cobrados.filter(p => p.tipo_pedido === 'takeaway')
     const delivery = cobrados.filter(p => p.tipo_pedido === 'delivery')
     const mesa = cobrados.filter(p => p.tipo_pedido === 'mesa')
     return {
@@ -426,6 +431,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       kioskCant: kiosk.length,
       deliveryCant: delivery.length,
       mesaCant: mesa.length,
+      takeaway: sum(takeaway, p => Number(p.total)),
+      takeawayCant: takeaway.length,
       mesaPorCobrar: sum(lista.filter(p => p.numero_mesa != null && p.pagado === false), p => Number(p.total)),
       ...(() => {
         // Por método: si el pedido tiene desglose (pago dividido de mesa), suma
@@ -520,7 +527,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumen.kiosk)}</b> <span className="text-neutral-500">({resumen.kioskCant})</span></span>
           <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumen.deliveryProductos)}</b> <span className="text-neutral-500">({resumen.deliveryCant})</span></span>
           <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumen.envios)}</b></span>
-          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumen.mesa)}</b> <span className="text-neutral-500">({resumen.mesaCant})</span></span>}
+          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumen.mesa)}</b> <span className="text-neutral-500">({resumen.mesaCant})</span></span>}{resumen.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{formatPrecio(resumen.takeaway)}</b> <span className="text-neutral-500">({resumen.takeawayCant})</span></span>}
           {resumen.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{formatPrecio(resumen.mesaPorCobrar)}</b></span>}
           <span className="text-neutral-500">|</span>
           <span>💵 <b>{formatPrecio(resumen.efectivo)}</b></span>
@@ -542,7 +549,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
               <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumenHist.kiosk)}</b> <span className="text-neutral-500">({resumenHist.kioskCant})</span></span>
               <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumenHist.deliveryProductos)}</b> <span className="text-neutral-500">({resumenHist.deliveryCant})</span></span>
               {resumenHist.envios > 0 && <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumenHist.envios)}</b></span>}
-              {resumenHist.mesaCant > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumenHist.mesa)}</b> <span className="text-neutral-500">({resumenHist.mesaCant})</span></span>}
+              {resumenHist.mesaCant > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumenHist.mesa)}</b> <span className="text-neutral-500">({resumenHist.mesaCant})</span></span>}{resumenHist.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{formatPrecio(resumenHist.takeaway)}</b> <span className="text-neutral-500">({resumenHist.takeawayCant})</span></span>}
               {resumenHist.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{formatPrecio(resumenHist.mesaPorCobrar)}</b></span>}
               <div className="flex-1" />
               {resumenHist.efectivo > 0 && <span>💵 <b>{formatPrecio(resumenHist.efectivo)}</b></span>}
@@ -597,7 +604,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       className={`w-full text-left px-4 py-3 border-b border-neutral-50 border-l-4 transition-colors ${historialSeleccionado?.id === p.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[p.estado] ?? 'border-l-neutral-200'}`}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-bold text-neutral-800">#{p.numero_pedido}</span>
-                        <BadgeMesa p={p} /><BadgeFiscal id={p.id} /><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[p.estado]}`}>{ESTADO_LABEL[p.estado]}</span>
+                        <BadgeMesa p={p} /><BadgeTakeaway p={p} /><BadgeFiscal id={p.id} /><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[p.estado]}`}>{ESTADO_LABEL[p.estado]}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-neutral-400">{p.metodo_pago ?? '—'}</span>
@@ -621,7 +628,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-3">
                       <div className="flex items-center justify-between mb-3">
                         <h2 className="font-black text-2xl text-neutral-800">#{historialSeleccionado.numero_pedido}</h2>
-                        <BadgeMesa p={historialSeleccionado} /><BadgeFiscal id={historialSeleccionado.id} /><span className={`text-xs px-2 py-1 rounded-full font-semibold ${ESTADO_BADGE[historialSeleccionado.estado]}`}>{ESTADO_LABEL[historialSeleccionado.estado]}</span>
+                        <BadgeMesa p={historialSeleccionado} /><BadgeTakeaway p={historialSeleccionado} /><BadgeFiscal id={historialSeleccionado.id} /><span className={`text-xs px-2 py-1 rounded-full font-semibold ${ESTADO_BADGE[historialSeleccionado.estado]}`}>{ESTADO_LABEL[historialSeleccionado.estado]}</span>
                       </div>
                       <div className="space-y-2 mb-3">
                         {historialSeleccionado.pedido_items.map((item, i) => (

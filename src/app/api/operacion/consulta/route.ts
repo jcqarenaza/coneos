@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
   if (accion === 'preparacion') {
     let query = supabase.from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, notas, created_at,
+      .select(`id, numero_pedido, codigo_retiro, estado, notas, created_at, tipo_pedido,
         sucursales(nombre),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
@@ -69,14 +69,22 @@ export async function POST(request: Request) {
   }
 
   if (accion === 'display') {
-    const { data } = await supabase.from('pedidos')
-      .select('id, numero_pedido, codigo_retiro')
+    // DISPLAY V2: dos zonas (en preparación / para retirar) para los canales
+    // PÚBLICOS de mostrador: kiosk, delivery y takeaway. MESA se excluye —
+    // se entrega en la mesa, su número en el mostrador es ruido (decisión CTO).
+    const base = () => supabase.from('pedidos')
+      .select('id, numero_pedido, codigo_retiro, tipo_pedido')
       .eq('empresa_id', disp.empresa_id)
       .eq('sucursal_id', disp.sucursal_id)
       .eq('fecha_pedido', hoy)
-      .eq('estado', 'READY')
+      .neq('tipo_pedido', 'mesa')
       .order('numero_pedido', { ascending: true })
-    return NextResponse.json({ pedidos: data ?? [] })
+    const [{ data: preparando }, { data: listos }] = await Promise.all([
+      base().eq('estado', 'PREPARING'),
+      base().eq('estado', 'READY'),
+    ])
+    // pedidos: compat con clientes viejos del display (solo listos)
+    return NextResponse.json({ preparando: preparando ?? [], listos: listos ?? [], pedidos: listos ?? [] })
   }
 
   if (accion === 'delivery_pausado_get') {
