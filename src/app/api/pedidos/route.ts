@@ -96,6 +96,12 @@ export async function POST(request: Request) {
     .limit(1)
 
   const numero_pedido = (maxData?.[0]?.numero_pedido ?? 0) + 1
+  // Blindaje: dispositivo_id solo si es un UUID real. Los canales sin
+  // dispositivo (mesa, takeaway) usan pseudo-ids en el cliente — jamás deben
+  // llegar a la columna uuid (error 22P02).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const dispositivoIdSano = typeof dispositivo_id === 'string' && UUID_RE.test(dispositivo_id) ? dispositivo_id : null
+
   const codigo_retiro = Math.random().toString(36).substring(2, 6).toUpperCase()
 
   const total = items.reduce((acc: number, item: { precio_snap: number; cantidad: number }) =>
@@ -137,7 +143,7 @@ export async function POST(request: Request) {
   const esMesa = origen === 'MESA'
   const { data: pedido, error } = await supabase.from('pedidos').insert({
     empresa_id, sucursal_id,
-    dispositivo_id: dispositivo_id || null,
+    dispositivo_id: dispositivoIdSano,
     numero_pedido, codigo_retiro,
     estado: esMesa && !pago_mp ? 'PREPARING' : 'PENDING_PAYMENT',
     metodo_pago: esMesa && !pago_mp ? null : metodo_pago,
