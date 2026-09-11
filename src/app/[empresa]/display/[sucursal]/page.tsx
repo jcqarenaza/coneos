@@ -13,7 +13,15 @@ interface Dispositivo {
   sucursales: { nombre: string }
 }
 interface EmpresaConfig { primary_color: string; secondary_color: string; logo_url: string | null }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; tipo_pedido?: string }
+
+// DISPLAY V2: íconos por canal público (mesa queda excluida server-side —
+// se entrega en la mesa, no en el mostrador)
+const CANAL: Record<string, { emoji: string; label: string }> = {
+  kiosk: { emoji: '\ud83d\uded2', label: 'MOSTRADOR' },
+  delivery: { emoji: '\ud83d\udef5', label: 'DELIVERY' },
+  takeaway: { emoji: '\ud83e\udd61', label: 'TAKE AWAY' },
+}
 
 export default function DisplayPage() {
   // Wake Lock: mientras esta pantalla de operación esté abierta, la pantalla
@@ -37,7 +45,8 @@ export default function DisplayPage() {
 
   const [dispositivo, setDispositivo] = useState<Dispositivo | null>(null)
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
+  const [preparando, setPreparando] = useState<Pedido[]>([])
+  const [listos, setListos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hora, setHora] = useState('')
@@ -61,8 +70,10 @@ export default function DisplayPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dispositivo_id: dispId, accion: 'display' }),
     })
-    const d = await res.json()
-    setPedidos((d.pedidos ?? []) as Pedido[])
+    const d = await res.json().catch(() => null)
+    if (!d) return
+    setPreparando(d.preparando ?? [])
+    setListos(d.listos ?? d.pedidos ?? [])
   }
 
   useEffect(() => {
@@ -129,7 +140,7 @@ export default function DisplayPage() {
           <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl" style={{ backgroundColor: `${config.primary_color}10` }}>
             <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: config.primary_color }} />
             <span className="text-sm font-bold tracking-widest uppercase" style={{ color: config.primary_color }}>
-              Pedidos listos
+              En preparaci\u00f3n y para retirar
             </span>
           </div>
         </div>
@@ -139,35 +150,55 @@ export default function DisplayPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-10 py-12">
-        {pedidos.length === 0 ? (
-          <div className="text-center">
-            <div className="w-24 h-24 rounded-3xl bg-neutral-100 flex items-center justify-center mx-auto mb-6">
-              <span className="text-5xl">🛎️</span>
-            </div>
-            <p className="text-neutral-300 text-2xl font-medium">Sin pedidos listos</p>
-            <p className="text-neutral-200 text-base mt-2">Los pedidos aparecerán aquí cuando estén listos</p>
+      <div className="flex-1 grid grid-cols-2 gap-0 px-8 py-8 min-h-0">
+        {/* \ud83d\udd25 EN PREPARACI\u00d3N */}
+        <div className="flex flex-col min-h-0 border-r border-neutral-200 pr-8">
+          <div className="flex items-center gap-3 mb-6">
+            <span className="text-3xl">\ud83d\udd25</span>
+            <h2 className="text-2xl font-black tracking-widest text-neutral-400 uppercase">En preparaci\u00f3n</h2>
           </div>
-        ) : (
-          <div className="w-full max-w-5xl">
-            <div className="flex flex-wrap justify-center gap-6">
-              {pedidos.map(pedido => (
-                <div key={pedido.id} className="flex flex-col items-center justify-center bg-white rounded-3xl shadow-md border border-neutral-100"
-                  style={{ minWidth: 220, minHeight: 220, padding: '2.5rem' }}>
-                  <p className="font-black text-neutral-200 text-lg mb-1 tracking-wide">PEDIDO</p>
-                  <p className="font-black leading-none mb-4" style={{ fontSize: '7rem', color: config.primary_color }}>
-                    #{pedido.numero_pedido}
-                  </p>
-                  <div className="h-px w-16 rounded mb-4 bg-neutral-100" />
-                  <p className="text-xs font-semibold tracking-widest uppercase text-neutral-300 mb-1">Código</p>
-                  <p className="font-black text-3xl tracking-[0.25em] font-mono" style={{ color: config.secondary_color }}>
-                    {pedido.codigo_retiro}
-                  </p>
-                </div>
-              ))}
-            </div>
+          <div className="flex-1 overflow-hidden">
+            {preparando.length === 0 ? (
+              <p className="text-neutral-200 text-xl font-medium mt-10">Sin pedidos en preparaci\u00f3n</p>
+            ) : (
+              <div className="flex flex-wrap content-start gap-4">
+                {preparando.map(p => {
+                  const c = CANAL[p.tipo_pedido ?? 'kiosk'] ?? CANAL.kiosk
+                  return (
+                    <div key={p.id} className="flex flex-col items-center bg-white rounded-2xl shadow-sm border border-neutral-100 px-6 py-4" style={{ minWidth: 150 }}>
+                      <p className="font-black leading-none text-neutral-700" style={{ fontSize: '3.2rem' }}>#{p.numero_pedido}</p>
+                      <p className="text-xs font-black tracking-wider text-neutral-400 mt-2">{c.emoji} {c.label}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
-        )}
+        </div>
+        {/* \u2705 PARA RETIRAR */}
+        <div className="flex flex-col min-h-0 pl-8">
+          <div className="flex items-center gap-3 mb-6">
+            <span className="text-3xl">\u2705</span>
+            <h2 className="text-2xl font-black tracking-widest uppercase" style={{ color: config.primary_color }}>Para retirar</h2>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            {listos.length === 0 ? (
+              <p className="text-neutral-200 text-xl font-medium mt-10">Sin pedidos listos</p>
+            ) : (
+              <div className="flex flex-wrap content-start gap-5">
+                {listos.map(p => {
+                  const c = CANAL[p.tipo_pedido ?? 'kiosk'] ?? CANAL.kiosk
+                  return (
+                    <div key={p.id} className="flex flex-col items-center bg-white rounded-3xl shadow-md border-2 px-8 py-6" style={{ minWidth: 190, borderColor: `${config.primary_color}30` }}>
+                      <p className="font-black leading-none" style={{ fontSize: '4.5rem', color: config.primary_color }}>#{p.numero_pedido}</p>
+                      <p className="text-sm font-black tracking-wider text-neutral-500 mt-3">{c.emoji} {c.label}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="bg-white border-t border-neutral-100 px-10 py-4 flex items-center justify-between">
