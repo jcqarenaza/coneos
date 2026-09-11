@@ -18,7 +18,7 @@ interface SucursalPagos {
   mp_alias?: string | null; mp_public_key?: string | null
 }
 interface Sucursal {
-  id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; rubro?: string; pagos?: SucursalPagos; delivery?: DeliveryConfig
+  id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; rubro?: string; pagos?: SucursalPagos; delivery?: DeliveryConfig; takeaway?: TakeawayConfig
 }
 
 const RUBROS: [string, string][] = [
