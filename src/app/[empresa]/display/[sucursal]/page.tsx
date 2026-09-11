@@ -206,7 +206,7 @@ export default function DisplayPage() {
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
           <p className="text-neutral-300 text-xs">
-            {pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''} listo{pedidos.length !== 1 ? 's' : ''}
+            {listos.length} para retirar \u00b7 {preparando.length} en preparaci\u00f3n
           </p>
         </div>
       </div>

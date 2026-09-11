@@ -8,6 +8,7 @@ import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empres
 
 interface Props {
   canal?: 'delivery' | 'takeaway'
+  pagosIniciales?: PagosSucursal | null
   mpPermitido?: boolean
   horarioTexto?: string
   config: EmpresaConfig; dispositivo: DispositivoKiosk; carrito: ItemCarrito[]
@@ -29,7 +30,7 @@ function Header({ onBack, title }: { onBack?: () => void; title: string }) {
   )
 }
 
-function ResumenTotal({ subtotal, costoEnvio, total, config }: { subtotal: number; costoEnvio: number; total: number; config: EmpresaConfig }) {
+function ResumenTotal({ subtotal, costoEnvio, total, config, esTakeaway = false }: { subtotal: number; costoEnvio: number; total: number; config: EmpresaConfig; esTakeaway?: boolean }) {
   return (
     <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-4">
       <div className="flex justify-between text-sm mb-1.5">
@@ -37,8 +38,8 @@ function ResumenTotal({ subtotal, costoEnvio, total, config }: { subtotal: numbe
         <span className="font-medium text-neutral-600">{formatPrecio(subtotal)}</span>
       </div>
       <div className="flex justify-between text-sm mb-2.5">
-        <span className="text-neutral-400 flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Envío</span>
-        <span className="font-medium text-neutral-600">{formatPrecio(costoEnvio)}</span>
+        {!esTakeaway && <><span className="text-neutral-400 flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Envío</span>
+        <span className="font-medium text-neutral-600">{formatPrecio(costoEnvio)}</span></>}
       </div>
       <div className="flex justify-between border-t border-neutral-100 pt-2.5">
         <span className="font-bold text-neutral-800">Total</span>
@@ -48,10 +49,10 @@ function ResumenTotal({ subtotal, costoEnvio, total, config }: { subtotal: numbe
   )
 }
 
-export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto }: Props) {
+export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null }: Props) {
   const esTakeaway = canal === 'takeaway'
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
-  const total = subtotal + costoEnvio
+  const total = subtotal + (canal === 'takeaway' ? 0 : costoEnvio)
 
   const [paso, setPaso] = useState<'datos' | 'pago' | 'transferencia' | 'exito'>('datos')
   const [benefPesosPorPunto, setBenefPesosPorPunto] = useState<number | null>(null)
@@ -65,6 +66,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   useEffect(() => {
     // Verificar si la empresa tiene MP conectado via OAuth
+    if (pagosIniciales) { setPagosSucursal(pagosIniciales); return }
     fetch(`/api/mp/estado?empresa_id=${dispositivo.empresa_id}`)
       .then(r => r.json())
       .then(d => setMpDisponible(!!d.conectado))
@@ -120,7 +122,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     }))
     const res = await fetch('/api/pedidos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: esTakeaway ? 0 : costoEnvio, datos_delivery: datos }),
+      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: esTakeaway ? 0 : costoEnvio, datos_delivery: datos }),
     })
     const data = await res.json()
     setCreando(false)
@@ -200,7 +202,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   // ── DATOS ──
   if (paso === 'datos') return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
-      <Header onBack={onVolver} title="Datos de entrega" />
+      <Header onBack={onVolver} title={esTakeaway ? 'Tu pedido para retirar' : 'Datos de entrega'} />
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-48">
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-4 space-y-4">
           {[
@@ -235,7 +237,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-100 px-4 pt-3 pb-6 shadow-lg">
-        <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} />
+        <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} esTakeaway={esTakeaway} />
         <button onClick={confirmarDatos}
           className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all"
           style={{ backgroundColor: config.primary_color }}>
@@ -282,7 +284,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             ))}
           </div>
 
-          <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} />
+          <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} esTakeaway={esTakeaway} />
 
           <button onClick={confirmarPago} disabled={creando}
             className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
