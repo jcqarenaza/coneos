@@ -88,27 +88,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
-
-  const { data: maxData } = await supabase.from('pedidos')
-    .select('numero_pedido')
-    .eq('sucursal_id', sucursal_id)
-    .eq('fecha_pedido', hoy)
-    .order('numero_pedido', { ascending: false })
-    .limit(1)
-
-  const numero_pedido = (maxData?.[0]?.numero_pedido ?? 0) + 1
-  // Blindaje: dispositivo_id solo si es un UUID real. Los canales sin
-  // dispositivo (mesa, takeaway) usan pseudo-ids en el cliente — jamás deben
-  // llegar a la columna uuid (error 22P02).
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  const dispositivoIdSano = typeof dispositivo_id === 'string' && UUID_RE.test(dispositivo_id) ? dispositivo_id : null
-
-  const codigo_retiro = Math.random().toString(36).substring(2, 6).toUpperCase()
-
-  const total = items.reduce((acc: number, item: { precio_snap: number; cantidad: number }) =>
-    acc + Number(item.precio_snap) * item.cantidad, 0) + Number(costo_envio)
-
   // ── MESA: resolver la cuenta (regla de Juan Cruz: si hay cuenta abierta con
   // saldo pendiente, el pedido SUMA a esa cuenta; si lo anterior está todo pago,
   // se cierra y se abre cuenta nueva) ──
@@ -139,66 +118,63 @@ export async function POST(request: Request) {
     }
   }
 
-  // MESA con "pagar al mozo": va DIRECTO a cocina (PREPARING) sin cobrar — queda
-  // pagado=false ("por cobrar" en caja). MESA con MP: PENDING_PAYMENT hasta el
-  // webhook, como kiosk. Resto: comportamiento de siempre (pagado default true).
+
+  // ── Creación TRANSACCIONAL vía RPC crear_pedido_stock (Stock V1) ──
+  // Numeración serializada + descuento atómico de stock + pedido + items +
+  // opciones en un solo COMMIT. Con controla_stock=false en todos los
+  // productos la RPC no toca stock y el resultado es idéntico al histórico.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const dispositivoIdSano = typeof dispositivo_id === 'string' && UUID_RE.test(dispositivo_id) ? dispositivo_id : null
+
+  const codigo_retiro = Math.random().toString(36).substring(2, 6).toUpperCase()
   const esMesa = origen === 'MESA'
-  const { data: pedido, error } = await supabase.from('pedidos').insert({
-    empresa_id, sucursal_id,
-    dispositivo_id: dispositivoIdSano,
-    numero_pedido, codigo_retiro,
-    estado: esMesa && !pago_mp ? 'PREPARING' : 'PENDING_PAYMENT',
-    metodo_pago: esMesa && !pago_mp ? null : metodo_pago,
-    total,
-    fecha_pedido: hoy,
-    origen, tipo_pedido: esMesa ? 'mesa' : tipo_pedido,
-    costo_envio: Number(costo_envio),
-    datos_delivery,
-    ...(esMesa ? { mesa_cuenta_id, numero_mesa: Number(numero_mesa), pagado: false, nombre_cliente: nombre_cliente || null } : {}),
-    // Take Away: el nombre del cliente viaja en datos_delivery.nombre (checkout solo-nombre)
-    ...(tipo_pedido === 'takeaway' && datos_delivery?.nombre ? { nombre_cliente: datos_delivery.nombre } : {}),
-  }).select('id, numero_pedido, codigo_retiro').single()
 
-  if (error || !pedido) {
-    console.error('[pedidos] Error creando pedido:', error)
-    return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
-  }
-
-  const itemsInsert = items.map((item: {
+  const itemsRpc = items.map((item: {
     presentacion_id: string; nombre_producto_snap: string; nombre_presentacion_snap: string
     precio_snap: number; cantidad: number; opciones?: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }[]
   }) => ({
-    pedido_id: pedido.id,
     presentacion_id: item.presentacion_id || null,
     nombre_producto_snap: item.nombre_producto_snap,
     nombre_presentacion_snap: item.nombre_presentacion_snap,
     precio_snap: item.precio_snap,
     cantidad: item.cantidad,
+    opciones: (item.opciones ?? []).map(op => ({
+      opcion_id: op.opcion_id, nombre_snap: op.nombre_snap,
+      emoji_snap: op.emoji_snap, color_snap: op.color_snap,
+    })),
   }))
 
-  const { data: itemsCreados, error: errorItems } = await supabase
-    .from('pedido_items').insert(itemsInsert).select('id, presentacion_id')
+  const { data: pedido, error } = await supabase.rpc('crear_pedido_stock', {
+    p_empresa_id: empresa_id,
+    p_sucursal_id: sucursal_id,
+    p_dispositivo_id: dispositivoIdSano,
+    p_items: itemsRpc,
+    p_metodo_pago: esMesa && !pago_mp ? null : metodo_pago,
+    p_origen: origen,
+    p_tipo_pedido: esMesa ? 'mesa' : tipo_pedido,
+    p_costo_envio: Number(costo_envio),
+    p_datos_delivery: datos_delivery,
+    p_estado: esMesa && !pago_mp ? 'PREPARING' : 'PENDING_PAYMENT',
+    p_codigo_retiro: codigo_retiro,
+    p_mesa_cuenta_id: mesa_cuenta_id,
+    p_numero_mesa: esMesa ? Number(numero_mesa) : null,
+    p_pagado: esMesa ? false : null,
+    p_nombre_cliente: esMesa
+      ? (nombre_cliente || null)
+      : (tipo_pedido === 'takeaway' && datos_delivery?.nombre ? datos_delivery.nombre : null),
+  })
 
-  if (errorItems) {
-    console.error('[pedidos] Error insertando items:', errorItems)
-    return NextResponse.json({ error: 'Pedido creado pero error en items: ' + errorItems.message, pedido }, { status: 500 })
-  }
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i]
-    const itemCreado = itemsCreados?.[i]
-    if (!itemCreado || !item.opciones?.length) continue
-    const { error: errorOpciones } = await supabase.from('pedido_item_opciones').insert(
-      item.opciones.map((op: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }) => ({
-        pedido_item_id: itemCreado.id,
-        opcion_id: op.opcion_id,
-        nombre_snap: op.nombre_snap,
-        emoji_snap: op.emoji_snap,
-        color_snap: op.color_snap,
-      }))
-    )
-    if (errorOpciones) console.error('[pedidos] Error insertando opciones item', i, ':', errorOpciones)
+  if (error || !pedido) {
+    // Rechazo limpio por falta de stock (RAISE de la RPC): 409 con el producto
+    const msg = error?.message ?? ''
+    if (msg.includes('SIN_STOCK:')) {
+      const producto = msg.split('SIN_STOCK:')[1]?.split('\n')[0]?.trim() ?? 'un producto'
+      return NextResponse.json({ error: `No queda stock de ${producto}. Sacalo del carrito e intentá de nuevo.` }, { status: 409 })
+    }
+    console.error('[pedidos] Error creando pedido (RPC):', error)
+    return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
   }
 
   return NextResponse.json({ pedido })
 }
+
