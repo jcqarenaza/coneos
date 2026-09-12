@@ -6,9 +6,9 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, Armchair, TrendingUp } from 'lucide-react'
 
-interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean> }
+interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean>; logoUrl?: string | null }
 
-export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modulos }: Props) {
+export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modulos, logoUrl }: Props) {
   // Contacto comercial de los candados: partner de la empresa o QP por defecto
   const [soporte, setSoporte] = useState<{ nombre: string; wa: string }>({ nombre: 'QP C&IA', wa: '542302456497' })
   useEffect(() => {
@@ -54,12 +54,17 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
       <aside className="w-56 bg-white border-r border-neutral-100 flex flex-col min-h-screen shadow-sm">
         <div className="px-5 py-5 border-b border-neutral-100">
           <div className="flex items-center gap-2.5 mb-0.5">
-            <div className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center">
-              <Store className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-black text-neutral-800">ConeOS</span>
+            {logoUrl ? (
+              <img src={logoUrl} alt={empresaNombre}
+                className="w-7 h-7 rounded-lg object-cover bg-white border border-neutral-100 flex-shrink-0" />
+            ) : (
+              <div className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center">
+                <Store className="h-4 w-4 text-white" />
+              </div>
+            )}
+            <span className="font-black text-neutral-800 truncate">{empresaNombre || 'ConeOS'}</span>
           </div>
-          <p className="text-xs text-neutral-400 ml-9 truncate">{empresaNombre}</p>
+          <p className="text-xs text-neutral-400 ml-9 truncate">ConeOS</p>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-0.5">

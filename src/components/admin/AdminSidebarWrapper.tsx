@@ -11,6 +11,7 @@ export default function AdminSidebarWrapper() {
   const router = useRouter()
   const [usuarioNombre, setUsuarioNombre] = useState('')
   const [empresaNombre, setEmpresaNombre] = useState('')
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [modulos, setModulos] = useState<Record<string, boolean>>({})
   const [ready, setReady] = useState(false)
 
@@ -47,14 +48,15 @@ export default function AdminSidebarWrapper() {
       const empNombre = (ua.empresas as { nombre: string; slug: string } | null)?.nombre
       if (empNombre) setEmpresaNombre(empNombre)
 
-      // Cargar módulos habilitados
+      // Cargar módulos habilitados + logo del comercio
       const { data: cfg } = await supabase
         .from('empresa_config')
-        .select('modulos')
+        .select('modulos, logo_url')
         .eq('empresa_id', ua.empresa_id)
         .single()
       const mods = cfg?.modulos as Record<string, boolean> | null
       const modulosBase = mods ?? { kiosk: true, caja: true, preparacion: true, display: true, delivery: false }
+      if (cfg?.logo_url) setLogoUrl(cfg.logo_url)
 
       // Beneficios: la fuente de verdad es beneficios_config (lo activa el panel QP)
       const { data: benef } = await supabase
@@ -74,5 +76,5 @@ export default function AdminSidebarWrapper() {
     </div>
   )
 
-  return <AdminSidebar usuarioNombre={usuarioNombre} empresaNombre={empresaNombre} slug={slug} modulos={modulos} />
+  return <AdminSidebar usuarioNombre={usuarioNombre} empresaNombre={empresaNombre} slug={slug} modulos={modulos} logoUrl={logoUrl} />
 }
