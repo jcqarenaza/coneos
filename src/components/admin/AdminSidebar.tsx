@@ -58,9 +58,8 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
               <img src={logoUrl} alt={empresaNombre}
                 className="w-7 h-7 rounded-lg object-cover bg-white border border-neutral-100 flex-shrink-0" />
             ) : (
-              <div className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center">
-                <Store className="h-4 w-4 text-white" />
-              </div>
+              <img src="/icon.png" alt="ConeOS"
+                className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
             )}
             <span className="font-black text-neutral-800 truncate">{empresaNombre || 'ConeOS'}</span>
           </div>

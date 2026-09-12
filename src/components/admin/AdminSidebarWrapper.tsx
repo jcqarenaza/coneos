@@ -48,15 +48,15 @@ export default function AdminSidebarWrapper() {
       const empNombre = (ua.empresas as { nombre: string; slug: string } | null)?.nombre
       if (empNombre) setEmpresaNombre(empNombre)
 
-      // Cargar módulos habilitados + logo del comercio
+      // Cargar módulos habilitados + ícono del comercio (el de la PWA; fallback al logo)
       const { data: cfg } = await supabase
         .from('empresa_config')
-        .select('modulos, logo_url')
+        .select('modulos, logo_url, pwa_icono_url')
         .eq('empresa_id', ua.empresa_id)
         .single()
       const mods = cfg?.modulos as Record<string, boolean> | null
       const modulosBase = mods ?? { kiosk: true, caja: true, preparacion: true, display: true, delivery: false }
-      if (cfg?.logo_url) setLogoUrl(cfg.logo_url)
+      if (cfg?.pwa_icono_url || cfg?.logo_url) setLogoUrl(cfg.pwa_icono_url ?? cfg.logo_url)
 
       // Beneficios: la fuente de verdad es beneficios_config (lo activa el panel QP)
       const { data: benef } = await supabase
