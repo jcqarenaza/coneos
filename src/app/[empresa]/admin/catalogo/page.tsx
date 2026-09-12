@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Loader2, Pencil, Trash2, Upload, X, ImageIcon, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface Categoria { id: string; nombre: string; orden: number; activo: boolean; icono_url: string | null }
-interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean }
+interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean; controla_stock?: boolean }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null; visible_kiosk: boolean; es_novedad: boolean }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean; visible_kiosk: boolean }
@@ -80,6 +80,11 @@ export default function CatalogoPage() {
   const [disponibilidad, setDisponibilidad] = useState<Record<string, boolean>>({})
   const [loadingDispo, setLoadingDispo] = useState(false)
   const [savingDispo, setSavingDispo] = useState<string | null>(null)
+  // STOCK V1: cantidades por producto de la sucursal seleccionada
+  const [stockSuc, setStockSuc] = useState<Record<string, { cantidad: number; stock_minimo: number }>>({})
+  const [modalStock, setModalStock] = useState<Producto | null>(null)
+  const [stockForm, setStockForm] = useState({ controla: false, cantidad: '', minimo: '0' })
+  const [savingStock, setSavingStock] = useState(false)
   const [busquedaDispo, setBusquedaDispo] = useState('')
   const [saboresCatExpandidas, setSaboresCatExpandidas] = useState<Set<string>>(new Set())
   const [busquedaSabor, setBusquedaSabor] = useState('')
@@ -150,10 +155,14 @@ export default function CatalogoPage() {
     if (!sid) return
     setLoadingDispo(true)
     const supabase = createClient()
-    const [{ data: config }, { data: inv }] = await Promise.all([
+    const [{ data: config }, { data: inv }, { data: stk }] = await Promise.all([
       supabase.from('sucursal_catalogo_config').select('entidad_id, disponible').eq('empresa_id', ctx.empresaId).eq('sucursal_id', sid),
       supabase.from('inventario_opciones').select('opcion_id, disponible').eq('empresa_id', ctx.empresaId).eq('sucursal_id', sid),
+      supabase.from('producto_stock').select('producto_id, cantidad, stock_minimo').eq('empresa_id', ctx.empresaId).eq('sucursal_id', sid),
     ])
+    const sm: Record<string, { cantidad: number; stock_minimo: number }> = {}
+    ;(stk ?? []).forEach((r: { producto_id: string; cantidad: number; stock_minimo: number }) => { sm[r.producto_id] = { cantidad: r.cantidad, stock_minimo: r.stock_minimo } })
+    setStockSuc(sm)
     const map: Record<string, boolean> = {}
     ;(config ?? []).forEach((r: {entidad_id: string; disponible: boolean}) => { map[r.entidad_id] = r.disponible })
     ;(inv ?? []).forEach((r: {opcion_id: string; disponible: boolean}) => { map[r.opcion_id] = r.disponible })
@@ -190,6 +199,46 @@ export default function CatalogoPage() {
     }, { onConflict: 'sucursal_id,opcion_id' })
     setDisponibilidad(prev => ({ ...prev, [opcionId]: nuevo }))
     setSavingDispo(null)
+  }
+
+  // STOCK V1: abrir editor y guardar (toggle a nivel producto, cantidad por sucursal)
+  function abrirStock(prod: Producto) {
+    const st = stockSuc[prod.id]
+    setStockForm({
+      controla: prod.controla_stock === true,
+      cantidad: st ? String(st.cantidad) : '',
+      minimo: st ? String(st.stock_minimo) : '0',
+    })
+    setModalStock(prod)
+  }
+
+  async function guardarStock() {
+    if (!ctx || !modalStock || !sucursalDispo) return
+    const activando = stockForm.controla
+    const cant = parseInt(stockForm.cantidad, 10)
+    const min = parseInt(stockForm.minimo, 10)
+    // Regla CTO: activar EXIGE cargar el stock actual (jamás asumir 0)
+    if (activando && (stockForm.cantidad.trim() === '' || isNaN(cant) || cant < 0)) {
+      alert('Para activar el control de stock cargá la cantidad actual (0 o más).')
+      return
+    }
+    setSavingStock(true)
+    const supabase = createClient()
+    if (activando) {
+      const { error: e1 } = await supabase.from('producto_stock').upsert({
+        empresa_id: ctx.empresaId, producto_id: modalStock.id, sucursal_id: sucursalDispo,
+        cantidad: cant, stock_minimo: isNaN(min) || min < 0 ? 0 : min,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'producto_id,sucursal_id' })
+      if (e1) { alert('No se pudo guardar el stock: ' + e1.message); setSavingStock(false); return }
+    }
+    const { error: e2 } = await supabase.from('productos')
+      .update({ controla_stock: activando }).eq('id', modalStock.id).eq('empresa_id', ctx.empresaId)
+    if (e2) { alert('No se pudo guardar: ' + e2.message); setSavingStock(false); return }
+    setProductos(prev => prev.map(p => p.id === modalStock.id ? { ...p, controla_stock: activando } : p))
+    if (activando) setStockSuc(prev => ({ ...prev, [modalStock.id]: { cantidad: cant, stock_minimo: isNaN(min) || min < 0 ? 0 : min } }))
+    setSavingStock(false)
+    setModalStock(null)
   }
 
   function isDisponible(id: string): boolean {
@@ -625,12 +674,30 @@ export default function CatalogoPage() {
                                 <p className="text-xs text-neutral-400">{cat.nombre}</p>
                               </div>
                             </div>
-                            <button
-                              onClick={() => toggleDisponibilidad(prod.id, 'producto', isDisponible(prod.id))}
-                              disabled={savingDispo === prod.id}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isDisponible(prod.id) ? 'bg-green-500' : 'bg-neutral-200'} disabled:opacity-50`}>
-                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isDisponible(prod.id) ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                              {prod.controla_stock === true ? (() => {
+                                const st = stockSuc[prod.id]
+                                const cant = st?.cantidad ?? 0
+                                const alerta = !st || cant <= (st?.stock_minimo ?? 0)
+                                return (
+                                  <button onClick={() => abrirStock(prod)}
+                                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${alerta ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'}`}>
+                                    📦 {st ? cant : 'sin stock acá'}{alerta && st ? ' ⚠️' : ''}
+                                  </button>
+                                )
+                              })() : (
+                                <button onClick={() => abrirStock(prod)}
+                                  className="px-2.5 py-1 rounded-lg text-xs font-semibold text-neutral-300 hover:text-neutral-500 hover:bg-neutral-100 transition-colors">
+                                  📦 Stock
+                                </button>
+                              )}
+                              <button
+                                onClick={() => toggleDisponibilidad(prod.id, 'producto', isDisponible(prod.id))}
+                                disabled={savingDispo === prod.id}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isDisponible(prod.id) ? 'bg-green-500' : 'bg-neutral-200'} disabled:opacity-50`}>
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isDisponible(prod.id) ? 'translate-x-6' : 'translate-x-1'}`} />
+                              </button>
+                            </div>
                           </div>
                           {/* Presentaciones */}
                           {prodPres.map(pres => (
@@ -701,6 +768,43 @@ export default function CatalogoPage() {
       )}
 
       {/* Modal Categoría */}
+      {/* STOCK V1: editor de stock por producto y sucursal */}
+      {modalStock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setModalStock(null)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <button onClick={() => setModalStock(null)} className="absolute top-4 right-4 p-1 text-neutral-400 hover:text-neutral-600"><X className="h-5 w-5" /></button>
+            <h3 className="font-black text-neutral-900 text-lg mb-1">📦 Stock — {modalStock.nombre}</h3>
+            <p className="text-xs text-neutral-400 mb-4">Cantidad para la sucursal <b>{sucursales.find(s => s.id === sucursalDispo)?.nombre ?? ''}</b>. El interruptor aplica al producto en todas las sucursales.</p>
+            <label className="flex items-center justify-between mb-4">
+              <span className="text-sm font-semibold text-neutral-700">Controlar stock de este producto</span>
+              <button onClick={() => setStockForm(f => ({ ...f, controla: !f.controla }))}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${stockForm.controla ? 'bg-green-500' : 'bg-neutral-200'}`}>
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${stockForm.controla ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </label>
+            {stockForm.controla && (
+              <div className="grid grid-cols-2 gap-3 mb-2">
+                <div>
+                  <Label className="text-xs">Cantidad actual *</Label>
+                  <Input type="number" min="0" value={stockForm.cantidad}
+                    onChange={e => setStockForm(f => ({ ...f, cantidad: e.target.value }))} placeholder="Ej: 24" />
+                </div>
+                <div>
+                  <Label className="text-xs">Avisar cuando quede</Label>
+                  <Input type="number" min="0" value={stockForm.minimo}
+                    onChange={e => setStockForm(f => ({ ...f, minimo: e.target.value }))} placeholder="0" />
+                </div>
+              </div>
+            )}
+            {stockForm.controla && <p className="text-xs text-neutral-400 mb-4">Con cantidad 0 el producto se oculta solo en los canales de venta. Al vender descuenta, al eliminar un pedido devuelve.</p>}
+            <ConeButton onClick={guardarStock} disabled={savingStock} className="w-full">
+              {savingStock ? 'Guardando…' : 'Guardar'}
+            </ConeButton>
+          </div>
+        </div>
+      )}
+
       <ConeModal open={modalCat} onClose={() => setModalCat(false)} title={editId ? 'Editar categoría' : 'Nueva categoría'}
         footer={<><ConeButton variant="outline" onClick={() => setModalCat(false)}>Cancelar</ConeButton><ConeButton onClick={saveCat} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
