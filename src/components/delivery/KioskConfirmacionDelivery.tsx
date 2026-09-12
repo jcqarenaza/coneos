@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from 'react'
 
 import { Loader2, CheckCircle, Copy, Check, Truck, Upload, X, ArrowLeft } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface Props {
@@ -100,14 +99,14 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   async function subirCaptura(pid: string): Promise<string | null> {
     if (!captura) return null
     setSubiendoCaptura(true)
-    const supabase = createClient()
-    const ext = captura.name.split('.').pop()
-    const path = `pedidos/${pid}.${ext}`
-    const { error } = await supabase.storage.from('capturas').upload(path, captura, { upsert: true })
-    if (error) { setSubiendoCaptura(false); return null }
-    const { data } = supabase.storage.from('capturas').getPublicUrl(path)
+    const form = new FormData()
+    form.append('pedido_id', pid)
+    form.append('archivo', captura)
+    const res = await fetch('/api/pedidos/comprobante', { method: 'POST', body: form })
+    const data = await res.json().catch(() => null)
     setSubiendoCaptura(false)
-    return data.publicUrl
+    if (!res.ok || !data?.url) { console.error('[comprobante]', data?.error ?? res.status); return null }
+    return data.url as string
   }
 
   async function crearPedido(metodo: string) {
@@ -189,12 +188,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   async function confirmarTransferencia() {
     const p = pedidoRef.current
     if (!p) return
-    if (captura) {
-      const url = await subirCaptura(p.id)
-      if (url) {
-        await createClient().from('pedidos').update({ captura_transferencia_url: url }).eq('id', p.id)
-      }
-    }
+    if (captura) await subirCaptura(p.id) // la API sube y guarda la URL en el pedido
     onPedidoCreado(p.numero, p.codigo)
     setPaso('exito')
   }
