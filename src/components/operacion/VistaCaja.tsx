@@ -32,7 +32,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [selPedidosCobro, setSelPedidosCobro] = useState<Record<string, boolean>>({})
   const [pagosCobro, setPagosCobro] = useState<{ metodo: 'efectivo' | 'debito' | 'credito' | 'transferencia'; monto: string }[]>([{ metodo: 'efectivo', monto: '' }])
   const [cobrandoMesa, setCobrandoMesa] = useState(false)
-  const [errorCobroMesa, setErrorCobroMesa] = useState<string | null>(null)  // FA-1 — receptor fiscal opt-in ("Con CUIT"): sin tocarlo, flujo idéntico
+  const [errorCobroMesa, setErrorCobroMesa] = useState<string | null>(null)
+  // FA-1 — receptor fiscal opt-in ("Con CUIT"): sin tocarlo, flujo idéntico
   const [conCuit, setConCuit] = useState(false)
   const [rCuit, setRCuit] = useState('')
   const [rRazon, setRRazon] = useState('')
@@ -840,7 +841,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       {pedido.tipo_pedido === 'delivery' && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">Delivery</span>}
                       {pedido.colaborador_nombre && <span className="text-xs bg-neutral-800 text-white px-1.5 py-0.5 rounded-full font-semibold">🛵 {pedido.colaborador_nombre}</span>}
                     </div>
-                    <BadgeMesa p={pedido} /><BadgeFiscal id={pedido.id} /><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
+                    <BadgeMesa p={pedido} /><BadgeTakeaway p={pedido} /><BadgeFiscal id={pedido.id} /><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
                   </div>
                   <div className="mb-1 space-y-0.5">
                     {pedido.pedido_items.slice(0, 3).map((item, i) => (
@@ -885,7 +886,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <p className="text-neutral-400 text-sm mt-0.5">{tiempoRelativo(seleccionado.created_at)} · {seleccionado.numero_mesa != null ? <span className="font-bold text-neutral-600">🪑 Mesa {seleccionado.numero_mesa}{seleccionado.nombre_cliente ? ` — ${seleccionado.nombre_cliente}` : ''}</span> : <>Código: <span className="font-mono font-bold text-neutral-600">{seleccionado.codigo_retiro}</span></>}</p>
                     {verTodas && seleccionado.sucursales?.nombre && <p className="text-neutral-400 text-xs mt-0.5">📍 {seleccionado.sucursales.nombre}</p>}
                   </div>
-                  <BadgeMesa p={seleccionado} /><BadgeFiscal id={seleccionado.id} /><span className={`px-3 py-1.5 rounded-xl text-sm font-bold ${ESTADO_BADGE[seleccionado.estado]}`}>{ESTADO_LABEL[seleccionado.estado]}</span>
+                  <BadgeMesa p={seleccionado} /><BadgeTakeaway p={seleccionado} /><BadgeFiscal id={seleccionado.id} /><span className={`px-3 py-1.5 rounded-xl text-sm font-bold ${ESTADO_BADGE[seleccionado.estado]}`}>{ESTADO_LABEL[seleccionado.estado]}</span>
                 </div>
 
                 <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden shadow-sm mb-4">
