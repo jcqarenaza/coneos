@@ -9,7 +9,7 @@ export async function POST(request: Request) {
 
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select(`id, numero_pedido, total, metodo_pago, datos_delivery, costo_envio, colaborador_nombre,
+    .select(`id, numero_pedido, total, metodo_pago, datos_delivery, costo_envio, colaborador_nombre, created_at,
       pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
         pedido_item_opciones(nombre_snap, emoji_snap))`)
     .eq('id', pedido_id)
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   const datos = pedido.datos_delivery as { nombre?: string; telefono?: string; direccion?: string; entre_calles?: string } | null
   const metodoLabel: Record<string, string> = { efectivo: 'EFECTIVO', transferencia: 'TRANSFERENCIA', mp: 'MERCADO PAGO' }
   const fmt = (n: number) => `$${Number(n).toLocaleString('es-AR')}`
-  const fecha = new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  const fecha = new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
   const bloquesItems = normales.map(item => {
     const prod = (item.nombre_producto_snap ?? '').toLowerCase()
