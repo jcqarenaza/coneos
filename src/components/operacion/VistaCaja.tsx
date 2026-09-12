@@ -656,6 +656,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         </button>
                       )}
                     </div>
+                    {historialSeleccionado.captura_transferencia_url && (
+                      <div className="mb-3 bg-blue-50 rounded-2xl border border-blue-100 p-4">
+                        <p className="text-xs text-blue-500 font-semibold mb-1">📎 Comprobante de transferencia</p>
+                        <a href={historialSeleccionado.captura_transferencia_url} target="_blank" rel="noopener noreferrer">
+                          <img src={historialSeleccionado.captura_transferencia_url} alt="Comprobante"
+                            className="w-full max-h-64 object-contain rounded-xl border border-blue-100 bg-white cursor-zoom-in" />
+                        </a>
+                      </div>
+                    )}
                     {historialSeleccionado.datos_delivery && (() => {
                       const d = historialSeleccionado.datos_delivery as DatosDelivery
                       return (
@@ -959,15 +968,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <p className="text-purple-600 text-sm"><span className="font-semibold">Dirección:</span> {seleccionado.datos_delivery.direccion}</p>
                     {seleccionado.datos_delivery.entre_calles && <p className="text-purple-600 text-sm"><span className="font-semibold">Entre:</span> {seleccionado.datos_delivery.entre_calles}</p>}
                     {seleccionado.costo_envio ? <p className="text-purple-600 text-sm"><span className="font-semibold">Envío:</span> ${Number(seleccionado.costo_envio).toLocaleString('es-AR')}</p> : null}
-                    {seleccionado.captura_transferencia_url && (
-                      <div className="mt-2">
-                        <p className="text-xs text-purple-500 font-semibold mb-1">📎 Comprobante de transferencia</p>
-                        <a href={seleccionado.captura_transferencia_url} target="_blank" rel="noopener noreferrer">
-                          <img src={seleccionado.captura_transferencia_url} alt="Comprobante"
-                            className="w-full max-h-64 object-contain rounded-xl border border-purple-100 bg-white cursor-zoom-in" />
-                        </a>
-                      </div>
-                    )}
+                  </div>
+                )}
+                {seleccionado.captura_transferencia_url && (
+                  <div className="mb-4 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                    <p className="text-xs text-blue-500 font-semibold mb-1">📎 Comprobante de transferencia</p>
+                    <a href={seleccionado.captura_transferencia_url} target="_blank" rel="noopener noreferrer">
+                      <img src={seleccionado.captura_transferencia_url} alt="Comprobante"
+                        className="w-full max-h-64 object-contain rounded-xl border border-blue-100 bg-white cursor-zoom-in" />
+                    </a>
                   </div>
                 )}
 

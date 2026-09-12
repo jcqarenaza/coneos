@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   if (accion === 'historial') {
     if (!body.fecha) return NextResponse.json({ error: 'fecha requerida' }, { status: 400 })
     let query = supabase.from('pedidos')
-      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, colaborador_nombre, pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
+      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_nombre, pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
       .eq('empresa_id', disp.empresa_id)
       .eq('fecha_pedido', body.fecha)
       .order('numero_pedido', { ascending: true })

@@ -69,7 +69,8 @@ export async function POST(request: Request) {
     }
     const qrUrl = `https://www.afip.gob.ar/fe/qr/?p=${Buffer.from(JSON.stringify(qrData)).toString('base64')}`
     const vto = factura.cae_vencimiento ? new Date(factura.cae_vencimiento + 'T12:00:00').toLocaleDateString('es-AR') : ''
-    const fechaCbteAR = fechaCbte.split('-').reverse().join('/')
+    const horaCbte = new Date(factura.created_at).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    const fechaCbteAR = `${fechaCbte.split('-').reverse().join('/')} ${horaCbte}`
 
     bloqueFiscalHeader = `<div class="fiscal-tipo">${tipoLabel}</div>
 <div class="sub">Cod. ${pad(factura.tipo_cbte, 3)} &nbsp;·&nbsp; Nro: ${pad(factura.punto_venta, 5)}-${pad(factura.nro_cbte, 8)}</div>
