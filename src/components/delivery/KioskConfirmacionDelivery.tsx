@@ -61,6 +61,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   }, [dispositivo])
   const [datos, setDatos] = useState<DatosDelivery>({ nombre: '', telefono: '', direccion: '', entre_calles: '' })
   const [erroresCampos, setErroresCampos] = useState<Partial<DatosDelivery>>({})
+  const [errorPedido, setErrorPedido] = useState<string | null>(null)
   const [mpDisponible, setMpDisponible] = useState(false)
 
   useEffect(() => {
@@ -123,9 +124,13 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: esTakeaway ? 0 : costoEnvio, datos_delivery: datos }),
     })
-    const data = await res.json()
+    const data = await res.json().catch(() => null)
     setCreando(false)
-    if (!res.ok || !data.pedido) return null
+    if (!res.ok || !data?.pedido) {
+      setErrorPedido(data?.error ?? 'No pudimos crear tu pedido. Probá de nuevo.')
+      return null
+    }
+    setErrorPedido(null)
     setPedidoId(data.pedido.id)
     setPedidoNum(data.pedido.numero_pedido)
     setCodigoRetiro(data.pedido.codigo_retiro)
@@ -147,6 +152,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   }
 
   async function confirmarPago() {
+    setErrorPedido(null)
     const pedido = await crearPedido(metodoPago)
     if (!pedido) return
     if (metodoPago === 'transferencia') { setPaso('transferencia') }
@@ -279,6 +285,12 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           </div>
 
           <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} esTakeaway={esTakeaway} />
+
+          {errorPedido && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-600 font-semibold">
+              {errorPedido}
+            </div>
+          )}
 
           <button onClick={confirmarPago} disabled={creando}
             className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
