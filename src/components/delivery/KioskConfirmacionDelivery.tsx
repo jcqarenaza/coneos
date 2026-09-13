@@ -287,8 +287,9 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} esTakeaway={esTakeaway} />
 
           {errorPedido && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-600 font-semibold">
-              {errorPedido}
+            <div className="bg-red-600 rounded-2xl px-4 py-4 text-white font-bold text-base flex items-center gap-3 shadow-md">
+              <span className="text-2xl">⚠️</span>
+              <span>{errorPedido}</span>
             </div>
           )}
 

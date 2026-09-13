@@ -265,8 +265,9 @@ export default function MesaPage() {
               <span className="font-black text-lg" style={{ color: config.primary_color }}>{fmt(total)}</span>
             </div>
             {errorEnvio && (
-              <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 mb-4">
-                <p className="text-red-600 text-sm">{errorEnvio}</p>
+              <div className="bg-red-600 rounded-2xl px-4 py-4 mb-4 text-white font-bold text-base flex items-center gap-3 shadow-md">
+                <span className="text-2xl">⚠️</span>
+                <span>{errorEnvio}</span>
               </div>
             )}
             <div className="space-y-2.5 pb-6">

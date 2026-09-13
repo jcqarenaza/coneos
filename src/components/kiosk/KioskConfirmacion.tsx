@@ -27,6 +27,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   const [pagosSucursal, setPagosSucursal] = useState<PagosSucursal | null>(null)
   const [metodoPago, setMetodoPago] = useState<string>('')
   const [creando, setCreando] = useState(false)
+  const [errorPedido, setErrorPedido] = useState<string | null>(null)
   const [countdown, setCountdown] = useState(15)
 
   // Estado transferencia
@@ -160,10 +161,14 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
       }),
     })
 
-    const data = await res.json()
+    const data = await res.json().catch(() => null)
     setCreando(false)
 
-    if (!res.ok || !data.pedido) return
+    if (!res.ok || !data?.pedido) {
+      setErrorPedido(data?.error ?? 'No pudimos crear tu pedido. Probá de nuevo.')
+      return
+    }
+    setErrorPedido(null)
 
     if (data?.pedido?.id) { setUltimoPedidoId(data.pedido.id); setBenefBase(carrito.reduce((sm, i) => sm + (i.precio > 0 ? i.precio * i.cantidad : 0), 0)) }
       // Canje de puntos elegido en el carrito: descontar server-side y limpiar
@@ -481,6 +486,13 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
               </button>
             ))}
           </div>
+
+          {errorPedido && (
+            <div className="bg-red-600 rounded-2xl px-4 py-4 text-white font-bold text-base flex items-center gap-3 shadow-md mb-3">
+              <span className="text-2xl">⚠️</span>
+              <span>{errorPedido}</span>
+            </div>
+          )}
 
           <button onClick={() => crearPedido(metodoPago)} disabled={!metodoPago || creando || estadoMP === 'creando'}
             className="w-full py-4 rounded-2xl text-white font-bold text-lg shadow-lg active:scale-98 transition-all disabled:opacity-40 flex items-center justify-center gap-3"
