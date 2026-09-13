@@ -265,10 +265,19 @@ export default function MesaPage() {
               <span className="font-black text-lg" style={{ color: config.primary_color }}>{fmt(total)}</span>
             </div>
             {errorEnvio && (
-              <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 mb-4">
-                <p className="text-red-600 text-sm">{errorEnvio}</p>
-              </div>
-            )}
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+                          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setErrorEnvio(null)} />
+                          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 text-center">
+                            <div className="text-5xl mb-3">⚠️</div>
+                            <h3 className="font-black text-neutral-900 text-xl mb-2">No pudimos crear tu pedido</h3>
+                            <p className="text-neutral-500 text-sm mb-6">{errorEnvio}</p>
+                            <button onClick={() => setErrorEnvio(null)}
+                              className="w-full py-3.5 rounded-2xl bg-neutral-900 text-white font-bold text-base active:scale-98 transition-all">
+                              Entendido
+                            </button>
+                          </div>
+                        </div>
+                      )}
             <div className="space-y-2.5 pb-6">
               <button onClick={() => enviarPedido(false)} disabled={enviando}
                 className="w-full py-4 rounded-2xl text-white font-bold text-lg disabled:opacity-50 active:scale-95 transition-all"

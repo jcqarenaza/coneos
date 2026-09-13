@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const supabase = createAdminClient()
 
   const { data: pedido } = await supabase.from('pedidos')
-    .select('id, estado, numero_pedido, empresa_id').eq('id', pedido_id).single()
+    .select('id, estado, numero_pedido, empresa_id, sucursal_id, stock_descontado').eq('id', pedido_id).single()
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
 
   if (pedido.estado === 'PAID' || pedido.estado === 'DELIVERED') {
@@ -21,6 +21,40 @@ export async function POST(request: Request) {
     .select('id').eq('pedido_id', pedido_id).eq('estado', 'emitida').maybeSingle()
   if (factura) {
     return NextResponse.json({ error: 'El pedido tiene factura emitida — corresponde Nota de Crédito, no eliminación' }, { status: 409 })
+  }
+
+  // ── STOCK V1: devolución IDEMPOTENTE ──
+  // Flip atómico del flag ANTES de devolver: solo la llamada que logra pasar
+  // stock_descontado true→false devuelve cantidades. Reintentos del endpoint
+  // (o doble click) no afectan fila → no devuelven nada. Jamás doble devolución.
+  if (pedido.stock_descontado) {
+    const { data: flip } = await supabase.from('pedidos')
+      .update({ stock_descontado: false })
+      .eq('id', pedido_id).eq('stock_descontado', true)
+      .select('id')
+    if (flip && flip.length > 0) {
+      // Cantidades a devolver: items del pedido → presentación → producto contable
+      const { data: itemsStock } = await supabase.from('pedido_items')
+        .select('cantidad, presentacion_id, presentaciones(producto_id, productos(id, controla_stock))')
+        .eq('pedido_id', pedido_id)
+        .not('presentacion_id', 'is', null)
+      const porProducto = new Map<string, number>()
+      for (const it of itemsStock ?? []) {
+        const pres = it.presentaciones as unknown as { producto_id: string; productos: { id: string; controla_stock: boolean } | null } | null
+        if (!pres?.productos?.controla_stock) continue
+        porProducto.set(pres.producto_id, (porProducto.get(pres.producto_id) ?? 0) + it.cantidad)
+      }
+      for (const [productoId, q] of porProducto) {
+        const { data: stk } = await supabase.from('producto_stock')
+          .select('id, cantidad').eq('producto_id', productoId)
+          .eq('sucursal_id', pedido.sucursal_id).maybeSingle()
+        if (stk) {
+          await supabase.from('producto_stock')
+            .update({ cantidad: stk.cantidad + q, updated_at: new Date().toISOString() })
+            .eq('id', stk.id)
+        }
+      }
+    }
   }
 
   // Beneficios: revertir puntos del pedido (ganados se restan, canjes se devuelven)
