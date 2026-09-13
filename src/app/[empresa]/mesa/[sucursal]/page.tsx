@@ -266,12 +266,12 @@ export default function MesaPage() {
             </div>
             {errorEnvio && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-                          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => SETerrorEnvio(null)} />
+                          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setErrorEnvio(null)} />
                           <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 text-center">
                             <div className="text-5xl mb-3">⚠️</div>
                             <h3 className="font-black text-neutral-900 text-xl mb-2">No pudimos crear tu pedido</h3>
                             <p className="text-neutral-500 text-sm mb-6">{errorEnvio}</p>
-                            <button onClick={() => SETerrorEnvio(null)}
+                            <button onClick={() => setErrorEnvio(null)}
                               className="w-full py-3.5 rounded-2xl bg-neutral-900 text-white font-bold text-base active:scale-98 transition-all">
                               Entendido
                             </button>
