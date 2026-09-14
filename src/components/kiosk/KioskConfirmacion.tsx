@@ -65,28 +65,26 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   // MP state
   const [estadoMP, setEstadoMP] = useState<EstadoMP>('idle')
   const [mpInitPoint, setMpInitPoint] = useState<string | null>(null)
+  // FASE 4: la disponibilidad de MP la decide el SERVER (resolver del canal
+  // KIOSK en /api/kiosk/pagos) — ya no se consulta /api/mp/estado ni se
+  // combina nada client-side. mpDisponible refleja el flag resuelto.
   const [mpDisponible, setMpDisponible] = useState(false)
-
-  useEffect(() => {
-    fetch(`/api/mp/estado?empresa_id=${dispositivo.empresa_id}`)
-      .then(r => r.json())
-      .then(d => setMpDisponible(!!d.conectado))
-      .catch(() => setMpDisponible(false))
-  }, [dispositivo.empresa_id])
   const [pedidoIdPendiente, setPedidoIdPendiente] = useState<string | null>(null)
   const [pollingCount, setPollingCount] = useState(0)
 
   const total = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
 
   useEffect(() => {
-    fetch(`/api/kiosk/pagos?sucursal_id=${dispositivo.sucursal_id}`)
+    fetch(`/api/kiosk/pagos?sucursal_id=${dispositivo.sucursal_id}&canal=KIOSK`)
       .then(r => r.json())
       .then(data => {
         setPagosSucursal(data)
+        setMpDisponible(data.acepta_mp === true)
         const metodos: MetodoPago[] = []
         if (data.acepta_efectivo) metodos.push({ id: 'efectivo', label: 'Efectivo en caja', emoji: '💵', descripcion: 'Pagás al retirar tu pedido' })
         if (data.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia', emoji: '📲', descripcion: data.cbu_transferencia ? `Alias: ${data.cbu_transferencia}${data.titular_transferencia ? ` · a nombre de ${data.titular_transferencia}` : ''}` : 'Transferencia bancaria' })
-        if (data.acepta_mp && data.acepta_mp_kiosk !== false) metodos.push({ id: 'mp', label: 'Mercado Pago', emoji: '💳', descripcion: 'Pagá con QR' })
+        // FASE 4: acepta_mp llega RESUELTO del server (credencial usable + checkbox + llave del canal)
+        if (data.acepta_mp) metodos.push({ id: 'mp', label: 'Mercado Pago', emoji: '💳', descripcion: 'Pagá con QR' })
         setMetodosDisponibles(metodos)
         if (metodos.length > 0) setMetodoPago(metodos[0].id)
       })
