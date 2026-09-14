@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolverPago } from '@/lib/pagos/resolver'
 
 // Cobro de pedidos de MESA (F2.5): admite PAGO DIVIDIDO entre varios medios.
 // POST { pedido_ids: string[], pagos: [{ metodo, monto }] }
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
   const supabase = createAdminClient()
 
   const { data: pendientes } = await supabase.from('pedidos')
-    .select('id, total, empresa_id, mesa_cuenta_id, created_at, receptor_doc_nro')
+    .select('id, total, empresa_id, sucursal_id, mesa_cuenta_id, created_at, receptor_doc_nro')
     .in('id', pedido_ids)
     .eq('pagado', false)
     .not('mesa_cuenta_id', 'is', null)
@@ -159,9 +160,24 @@ export async function POST(request: Request) {
     }).in('id', pendientes.map(ped => ped.id))
   }
 
+  // FASE 4 — SNAPSHOT TRANSFERENCIA: si parte del cobro fue por transferencia,
+  // resolver la cuenta efectiva del canal MESA y congelarla en los pedidos que
+  // recibieron ese medio. Solo con mapeo explícito (cuenta real); en legacy no
+  // hay entidad cuenta (id null) y el snapshot queda null = comportamiento actual.
+  let transferenciaCuentaId: string | null = null
+  if (inserts.some(i => i.metodo === 'transferencia')) {
+    const res = await resolverPago(pendientes[0].empresa_id, pendientes[0].sucursal_id, 'MESA', 'TRANSFERENCIA')
+    if (res.ok && res.medio === 'TRANSFERENCIA' && res.cuenta?.id) transferenciaCuentaId = res.cuenta.id
+  }
+  const pedidosConTransfer = new Set(inserts.filter(i => i.metodo === 'transferencia').map(i => i.pedido_id))
+
   for (const ped of pendientes) {
     await supabase.from('pedidos')
-      .update({ pagado: true, metodo_pago: metodoPrincipal[ped.id] })
+      .update({
+        pagado: true,
+        metodo_pago: metodoPrincipal[ped.id],
+        ...(transferenciaCuentaId && pedidosConTransfer.has(ped.id) ? { transferencia_cuenta_id: transferenciaCuentaId } : {}),
+      })
       .eq('id', ped.id)
   }
 

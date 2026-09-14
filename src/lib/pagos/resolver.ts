@@ -38,6 +38,7 @@ export type ResolucionPago =
         access_token: string
         public_key: string | null
         expires_at: string | null
+        activo: boolean              // Fase 4 (aditivo): los contextos necesitan saber si es utilizable
         empresa_id: string
         sucursal_id: string | null   // null = cuenta de la marca
       } | null                       // null = sin credencial (ni sucursal ni marca)
@@ -97,7 +98,7 @@ export async function resolverPago(
     if (!cred.activo) return { ok: false, error: 'CUENTA_INACTIVA' }
     return {
       ok: true, medio, origen: 'explicito',
-      credencial: { id: cred.id, mp_user_id: cred.mp_user_id, access_token: cred.access_token, public_key: cred.public_key, expires_at: cred.expires_at, empresa_id: cred.empresa_id, sucursal_id: cred.sucursal_id },
+      credencial: { id: cred.id, mp_user_id: cred.mp_user_id, access_token: cred.access_token, public_key: cred.public_key, expires_at: cred.expires_at, activo: cred.activo, empresa_id: cred.empresa_id, sucursal_id: cred.sucursal_id },
     }
   }
 
@@ -124,14 +125,14 @@ export async function resolverPago(
 
   // MERCADO_PAGO legacy: cascada sucursal → marca, idéntica a /api/mp/preferencia.
   const { data: credSuc } = await supabase.from('mp_credenciales')
-    .select('id, mp_user_id, access_token, public_key, expires_at, empresa_id, sucursal_id')
+    .select('id, mp_user_id, access_token, public_key, expires_at, activo, empresa_id, sucursal_id')
     .eq('empresa_id', empresa_id).eq('sucursal_id', sucursal_id).maybeSingle()
   const cred = credSuc ?? (await supabase.from('mp_credenciales')
-    .select('id, mp_user_id, access_token, public_key, expires_at, empresa_id, sucursal_id')
+    .select('id, mp_user_id, access_token, public_key, expires_at, activo, empresa_id, sucursal_id')
     .eq('empresa_id', empresa_id).is('sucursal_id', null).maybeSingle()).data
   if (!cred) return { ok: true, medio, origen: 'legacy', credencial: null }
   return {
     ok: true, medio, origen: 'legacy',
-    credencial: { id: cred.id, mp_user_id: cred.mp_user_id, access_token: cred.access_token, public_key: cred.public_key, expires_at: cred.expires_at, empresa_id: cred.empresa_id, sucursal_id: cred.sucursal_id },
+    credencial: { id: cred.id, mp_user_id: cred.mp_user_id, access_token: cred.access_token, public_key: cred.public_key, expires_at: cred.expires_at, activo: cred.activo, empresa_id: cred.empresa_id, sucursal_id: cred.sucursal_id },
   }
 }

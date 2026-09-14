@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolverPago } from '@/lib/pagos/resolver'
 
 // Contexto público del modo MESA (el QR lo abre cualquier celular, sin token).
 // GET ?empresa=<slug>&sucursal=<slug> → ids + branding, gated por modulos.mesas
+// FASE 4: la disponibilidad de MP pasa por resolverPago() — mapeo explícito del
+// canal MESA o legacy exacto (cascada sucursal→marca). Los flags del comercio
+// (acepta_mp + acepta_mp_mesa) siguen respetándose; la credencial además debe
+// ser utilizable (activa). Server-side siempre; el checkbox jamás alcanza solo.
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const empresaSlug = searchParams.get('empresa')
@@ -25,22 +30,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'El pedido desde la mesa no está disponible en este local' }, { status: 403 })
   }
 
-  // Llave MP del canal MESA (default true = comportamiento histórico intacto)
-  // + conexión REAL (sin cuenta vinculada, el botón no se ofrece — antes se
-  // mostraba siempre y fallaba recién en la preferencia)
-  const [{ data: pagosMesa }, { data: mCredSuc }, { data: mCredEmp }] = await Promise.all([
+  // Llaves del comercio (default true = comportamiento histórico intacto)
+  // + credencial resuelta por el canal MESA (mapeo explícito o legacy) y utilizable
+  const [{ data: pagosMesa }, resolucion] = await Promise.all([
     supabase.from('sucursal_pagos').select('acepta_mp, acepta_mp_mesa').eq('sucursal_id', sucursal.id).maybeSingle(),
-    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).eq('sucursal_id', sucursal.id).maybeSingle(),
-    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).is('sucursal_id', null).maybeSingle(),
+    resolverPago(empresa.id, sucursal.id, 'MESA', 'MERCADO_PAGO'),
   ])
-  const mesaMpConectado = Boolean(mCredSuc || mCredEmp)
+  const mesaMpUsable = resolucion.ok && resolucion.medio === 'MERCADO_PAGO'
+    && !!resolucion.credencial && resolucion.credencial.activo !== false
 
   return NextResponse.json({
     empresa_id: empresa.id,
     sucursal_id: sucursal.id,
     nombre: empresa.nombre,
     sucursal_nombre: sucursal.nombre,
-    acepta_mp_mesa: mesaMpConectado && (pagosMesa?.acepta_mp ?? false) && (pagosMesa?.acepta_mp_mesa ?? true),
+    acepta_mp_mesa: mesaMpUsable && (pagosMesa?.acepta_mp ?? false) && (pagosMesa?.acepta_mp_mesa ?? true),
     config: {
       primary_color: cfg?.primary_color ?? '#1E3A5F',
       secondary_color: cfg?.secondary_color ?? '#F5C842',
