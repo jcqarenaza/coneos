@@ -44,16 +44,32 @@ export async function GET(request: Request) {
   const supabase = createAdminClient()
   const expires_at = new Date(Date.now() + (data.expires_in ?? 15552000) * 1000).toISOString()
 
-  await supabase.from('mp_credenciales').upsert({
-    empresa_id,
-    sucursal_id,
-    mp_user_id: String(data.user_id),
+  // MICRO-FIX 1.1 (Fase 1): el UNIQUE viejo (empresa_id, sucursal_id) ya no
+  // existe — la identidad de una cuenta es ahora (empresa, sucursal, mp_user_id).
+  // Reconectar la MISMA cuenta MP actualiza su fila; una cuenta DISTINTA crea
+  // fila nueva (compatible con multi-cuenta sin implementar OAuth completo).
+  const mpUserId = String(data.user_id)
+  let existente = supabase.from('mp_credenciales')
+    .select('id')
+    .eq('empresa_id', empresa_id)
+    .eq('mp_user_id', mpUserId)
+  existente = sucursal_id === null ? existente.is('sucursal_id', null) : existente.eq('sucursal_id', sucursal_id)
+  const { data: cred } = await existente.maybeSingle()
+
+  const tokens = {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     public_key: data.public_key ?? null,
     expires_at,
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'empresa_id,sucursal_id' })
+  }
+  if (cred) {
+    await supabase.from('mp_credenciales').update(tokens).eq('id', cred.id)
+  } else {
+    await supabase.from('mp_credenciales').insert({
+      empresa_id, sucursal_id, mp_user_id: mpUserId, ...tokens,
+    })
+  }
 
   return NextResponse.redirect(`https://coneos.vercel.app/${slug}/admin/config?mp=ok`)
 }
