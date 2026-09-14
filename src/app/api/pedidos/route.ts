@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolverPago, type CanalPago } from '@/lib/pagos/resolver'
+import { resolverPago } from '@/lib/pagos/resolver'
+import { canalDePedido } from '@/lib/pagos/mp'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -183,10 +184,10 @@ export async function POST(request: Request) {
   // la RPC de stock no se toca; un fallo acá jamás voltea el pedido.
   if (metodo_pago === 'transferencia') {
     try {
-      const canal: CanalPago = origen === 'MESA' ? 'MESA'
-        : tipo_pedido === 'delivery' ? 'DELIVERY'
-        : tipo_pedido === 'takeaway' ? 'TAKEAWAY'
-        : 'KIOSK'
+      // FASE 5 fix: canal por canalDePedido() — ÚNICA fuente (el mapeo inline
+      // anterior duplicaba la lógica y no conocía 'caja' → snapshot de KIOSK
+      // en ventas de mostrador; cazado por el test crítico de la matriz)
+      const canal = canalDePedido(esMesa ? 'mesa' : tipo_pedido)
       const res = await resolverPago(empresa_id, sucursal_id, canal, 'TRANSFERENCIA')
       if (res.ok && res.medio === 'TRANSFERENCIA' && res.cuenta?.id) {
         const pedidoId = (pedido as { id?: string })?.id
