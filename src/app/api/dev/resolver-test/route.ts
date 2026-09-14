@@ -22,9 +22,21 @@ export async function GET(request: Request) {
   const r: { test: string; pass: boolean; detail: string }[] = []
   const chk = (test: string, pass: boolean, detail: string) => r.push({ test, pass, detail })
 
-  // Federal (test A) por slug
-  const { data: fedEmp } = await db.from('empresas').select('id').eq('slug', 'federal').single()
-  const { data: fedSuc } = await db.from('sucursales').select('id').eq('empresa_id', fedEmp!.id).limit(1).single()
+  try {
+
+  // Federal (test A) — lookup defensivo: slug 'federal' o nombre
+  let { data: fedEmp } = await db.from('empresas').select('id, slug, nombre').eq('slug', 'federal').maybeSingle()
+  if (!fedEmp) {
+    const { data: porNombre } = await db.from('empresas').select('id, slug, nombre').ilike('nombre', '%federal%')
+    fedEmp = porNombre?.[0] ?? null
+  }
+  if (!fedEmp) {
+    const { data: todas } = await db.from('empresas').select('slug, nombre')
+    return NextResponse.json({ error: 'No encuentro la empresa Federal', empresas_disponibles: todas })
+  }
+  const { data: fedSucs } = await db.from('sucursales').select('id, nombre').eq('empresa_id', fedEmp.id)
+  const fedSuc = fedSucs?.[0] ?? null
+  if (!fedSuc) return NextResponse.json({ error: 'Federal sin sucursales', empresa: fedEmp })
 
   // Foto para K (el resolver no modifica DB)
   const foto = async () => {
@@ -43,8 +55,8 @@ export async function GET(request: Request) {
   try {
     // ── A: Federal sin mapeos → legacy exacto ──
     const antesA = await foto()
-    const aT = await resolverPago(fedEmp!.id, fedSuc!.id, 'DELIVERY', 'TRANSFERENCIA')
-    const aM = await resolverPago(fedEmp!.id, fedSuc!.id, 'DELIVERY', 'MERCADO_PAGO')
+    const aT = await resolverPago(fedEmp.id, fedSuc.id, 'DELIVERY', 'TRANSFERENCIA')
+    const aM = await resolverPago(fedEmp.id, fedSuc.id, 'DELIVERY', 'MERCADO_PAGO')
     chk('A legacy Federal', aT.ok && aT.origen === 'legacy' && aM.ok && aM.origen === 'legacy'
       && aT.medio === 'TRANSFERENCIA' && !!aT.cuenta && aM.medio === 'MERCADO_PAGO' && !!aM.credencial,
       `transf origen=${aT.ok ? aT.origen : (aT as { error: string }).error} datos=${aT.ok && aT.medio === 'TRANSFERENCIA' && aT.cuenta ? [aT.cuenta.alias, aT.cuenta.cbu, aT.cuenta.titular].filter(Boolean).length + ' campos' : 'sin datos'} · mp origen=${aM.ok ? aM.origen : (aM as { error: string }).error} cred=${aM.ok && aM.medio === 'MERCADO_PAGO' && aM.credencial ? 'sí' : 'no'}`)
@@ -96,13 +108,13 @@ export async function GET(request: Request) {
 
     // ── E: cuenta exclusiva de OTRA sucursal → rechazo ──
     // El arnés simula el drift: reasigna la cuenta test a la sucursal de Federal.
-    await db.from('cuentas_transferencia').update({ sucursal_id: fedSuc!.id }).eq('id', ctaTestId)
+    await db.from('cuentas_transferencia').update({ sucursal_id: fedSuc.id }).eq('id', ctaTestId)
     const e = await resolverPago(EMPRESA_LAB, SUCURSAL_LAB, 'DELIVERY', 'TRANSFERENCIA')
     chk('E cuenta de otra sucursal', !e.ok && e.error === 'CUENTA_OTRA_SUCURSAL', e.ok ? 'NO rechazó' : `error=${e.error}`)
     await db.from('cuentas_transferencia').update({ sucursal_id: SUCURSAL_LAB }).eq('id', ctaTestId)
 
     // ── F: cuenta de OTRA empresa → la DB lo rechaza (FK compuesta) ──
-    const { data: ctaFed } = await db.from('cuentas_transferencia').select('id').eq('empresa_id', fedEmp!.id).limit(1).single()
+    const { data: ctaFed } = await db.from('cuentas_transferencia').select('id').eq('empresa_id', fedEmp.id).limit(1).single()
     const f = await db.from('canales_medios_pago').insert({
       empresa_id: EMPRESA_LAB, sucursal_id: SUCURSAL_LAB, canal: 'TAKEAWAY', medio: 'TRANSFERENCIA',
       transferencia_cuenta_id: ctaFed!.id,
@@ -138,4 +150,12 @@ export async function GET(request: Request) {
     resumen: `${r.filter(x => x.pass).length}/${r.length} PASS`,
     resultados: r,
   })
+
+  } catch (e) {
+    return NextResponse.json({
+      error: 'CRASH del arnés (no del resolver)',
+      detalle: e instanceof Error ? `${e.message}\n${e.stack?.split('\n').slice(0, 5).join('\n')}` : String(e),
+      resultados_parciales: r,
+    }, { status: 200 })
+  }
 }
