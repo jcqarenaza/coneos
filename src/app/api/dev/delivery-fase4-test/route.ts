@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     // ── B: sin parámetro canal → respuesta LEGACY EXACTA (Kiosk no se entera) ──
     const bSin = await pagos()
     const { data: spRaw } = await db.from('sucursal_pagos')
-      .select('acepta_mp, cbu_transferencia, titular_transferencia').eq('sucursal_id', SUCURSAL_LAB).single()
+      .select('acepta_mp, acepta_mp_delivery, cbu_transferencia, titular_transferencia').eq('sucursal_id', SUCURSAL_LAB).single()
     chk('B sin canal = legacy crudo', bSin.acepta_mp === spRaw!.acepta_mp && bSin.cbu_transferencia === spRaw!.cbu_transferencia && bSin.titular_transferencia === spRaw!.titular_transferencia && !('empresa_id' in bSin),
       `acepta_mp=${bSin.acepta_mp} transfer="${bSin.cbu_transferencia}" (crudo de sucursal_pagos, sin empresa_id filtrado ✓)`)
 
@@ -78,12 +78,22 @@ export async function GET(request: Request) {
     chk('D mapeo transfer en el route', d.cbu_transferencia === 'delivery.cuenta.mp' && d.titular_transferencia === 'Titular Delivery',
       `muestra="${d.cbu_transferencia}" titular="${d.titular_transferencia}"`)
 
-    // ── E: mapeo MP con credencial usable → el flag del canal depende del checkbox real ──
+    // ── E: mapeo MP con credencial usable → el flag del canal combina las 3 condiciones REALES ──
     await mapear('MERCADO_PAGO', 'mp_credencial_id', credSimId)
     const e = await pagos('DELIVERY')
-    const esperadoMp = (spRaw!.acepta_mp ?? false) === true // llave delivery default true
-    chk('E mapeo MP + flags del comercio', e.acepta_mp === esperadoMp,
-      `flag=${e.acepta_mp} (checkbox acepta_mp=${spRaw!.acepta_mp}, llave delivery default, credencial usable) — el server combina las 3`)
+    const llaveReal = (spRaw as { acepta_mp_delivery?: boolean | null }).acepta_mp_delivery ?? true
+    const esperadoMp = (spRaw!.acepta_mp ?? false) && llaveReal
+    chk('E flags reales del comercio', e.acepta_mp === esperadoMp,
+      `flag=${e.acepta_mp} esperado=${esperadoMp} (acepta_mp=${spRaw!.acepta_mp}, llave delivery=${(spRaw as { acepta_mp_delivery?: boolean | null }).acepta_mp_delivery}, credencial usable)`)
+
+    // ── E2: toggle completo de la llave del canal (ON muestra, OFF esconde) ──
+    await db.from('sucursal_pagos').update({ acepta_mp_delivery: true }).eq('sucursal_id', SUCURSAL_LAB)
+    const e2on = await pagos('DELIVERY')
+    await db.from('sucursal_pagos').update({ acepta_mp_delivery: false }).eq('sucursal_id', SUCURSAL_LAB)
+    const e2off = await pagos('DELIVERY')
+    await db.from('sucursal_pagos').update({ acepta_mp_delivery: (spRaw as { acepta_mp_delivery?: boolean | null }).acepta_mp_delivery ?? null }).eq('sucursal_id', SUCURSAL_LAB)
+    chk('E2 toggle llave del canal', e2on.acepta_mp === ((spRaw!.acepta_mp ?? false) === true) && e2off.acepta_mp === false,
+      `ON=${e2on.acepta_mp} OFF=${e2off.acepta_mp} (llave restaurada al valor original)`)
 
     // ── F: credencial inactiva → MP desaparece del canal ──
     await db.from('mp_credenciales').update({ activo: false }).eq('id', credSimId)
