@@ -125,6 +125,7 @@ export function canalDePedido(tipo_pedido: string | null): CanalPago {
     case 'delivery': return 'DELIVERY'
     case 'mesa': return 'MESA'
     case 'takeaway': return 'TAKEAWAY'
+    case 'caja': return 'CAJA' // Fase 5: venta manual de mostrador
     default: return 'KIOSK'
   }
 }

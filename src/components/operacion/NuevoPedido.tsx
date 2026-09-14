@@ -165,6 +165,10 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
         empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
         dispositivo_id: dispositivo.id, session_id: sesion.session_id,
         items, metodo_pago: metodoPago, notas: notas || null,
+        // FASE 5: la venta de MOSTRADOR declara su identidad real — canal CAJA
+        // (antes caía en los defaults KIOSK de /api/pedidos y quedaba disfrazada
+        // de autoservicio). El pedido TELEFÓNICO con reparto sigue siendo un
+        // DELIVERY real: solo cambia quién lo tipeó.
         ...(esDelivery ? {
           tipo_pedido: 'delivery',
           costo_envio: Number(costoEnvio),
@@ -172,7 +176,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
             nombre: datosDelivery.nombre.trim(), telefono: datosDelivery.telefono.trim(),
             direccion: datosDelivery.direccion.trim(), entre_calles: datosDelivery.entre_calles.trim() || null,
           },
-        } : {}),
+        } : { origen: 'CAJA', tipo_pedido: 'caja' }),
       }),
     })
     setGuardando(false)
