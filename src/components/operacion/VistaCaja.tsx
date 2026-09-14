@@ -417,10 +417,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     const sum = (arr: Pedido[], f: (p: Pedido) => number) => arr.reduce((a, p) => a + f(p), 0)
     const envios = sum(cobrados, p => Number(p.costo_envio ?? 0))
     const total = sum(cobrados, p => Number(p.total))
-    const kiosk = cobrados.filter(p => p.tipo_pedido !== 'delivery' && p.tipo_pedido !== 'mesa' && p.tipo_pedido !== 'takeaway')
+    const kiosk = cobrados.filter(p => p.tipo_pedido !== 'delivery' && p.tipo_pedido !== 'mesa' && p.tipo_pedido !== 'takeaway' && p.tipo_pedido !== 'caja')
     const takeaway = cobrados.filter(p => p.tipo_pedido === 'takeaway')
     const delivery = cobrados.filter(p => p.tipo_pedido === 'delivery')
     const mesa = cobrados.filter(p => p.tipo_pedido === 'mesa')
+    const caja = cobrados.filter(p => p.tipo_pedido === 'caja') // Fase 5: venta manual de mostrador
     return {
       cantidad: cobrados.length,
       total,
@@ -434,6 +435,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       mesaCant: mesa.length,
       takeaway: sum(takeaway, p => Number(p.total)),
       takeawayCant: takeaway.length,
+      caja: sum(caja, p => Number(p.total)),
+      cajaCant: caja.length,
       mesaPorCobrar: sum(lista.filter(p => p.numero_mesa != null && p.pagado === false), p => Number(p.total)),
       ...(() => {
         // Por método: si el pedido tiene desglose (pago dividido de mesa), suma
@@ -528,7 +531,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumen.kiosk)}</b> <span className="text-neutral-500">({resumen.kioskCant})</span></span>
           <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumen.deliveryProductos)}</b> <span className="text-neutral-500">({resumen.deliveryCant})</span></span>
           <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumen.envios)}</b></span>
-          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumen.mesa)}</b> <span className="text-neutral-500">({resumen.mesaCant})</span></span>}{resumen.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{formatPrecio(resumen.takeaway)}</b> <span className="text-neutral-500">({resumen.takeawayCant})</span></span>}
+          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumen.mesa)}</b> <span className="text-neutral-500">({resumen.mesaCant})</span></span>}{resumen.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{formatPrecio(resumen.takeaway)}</b> <span className="text-neutral-500">({resumen.takeawayCant})</span></span>}{resumen.cajaCant > 0 && <span><span className="text-neutral-400">🧾 Caja</span> <b>{formatPrecio(resumen.caja)}</b> <span className="text-neutral-500">({resumen.cajaCant})</span></span>}
           {resumen.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{formatPrecio(resumen.mesaPorCobrar)}</b></span>}
           <span className="text-neutral-500">|</span>
           <span>💵 <b>{formatPrecio(resumen.efectivo)}</b></span>
@@ -550,7 +553,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
               <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumenHist.kiosk)}</b> <span className="text-neutral-500">({resumenHist.kioskCant})</span></span>
               <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumenHist.deliveryProductos)}</b> <span className="text-neutral-500">({resumenHist.deliveryCant})</span></span>
               {resumenHist.envios > 0 && <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumenHist.envios)}</b></span>}
-              {resumenHist.mesaCant > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumenHist.mesa)}</b> <span className="text-neutral-500">({resumenHist.mesaCant})</span></span>}{resumenHist.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{formatPrecio(resumenHist.takeaway)}</b> <span className="text-neutral-500">({resumenHist.takeawayCant})</span></span>}
+              {resumenHist.mesaCant > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumenHist.mesa)}</b> <span className="text-neutral-500">({resumenHist.mesaCant})</span></span>}{resumenHist.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{formatPrecio(resumenHist.takeaway)}</b> <span className="text-neutral-500">({resumenHist.takeawayCant})</span></span>}{resumenHist.cajaCant > 0 && <span><span className="text-neutral-400">🧾 Caja</span> <b>{formatPrecio(resumenHist.caja)}</b> <span className="text-neutral-500">({resumenHist.cajaCant})</span></span>}
               {resumenHist.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{formatPrecio(resumenHist.mesaPorCobrar)}</b></span>}
               <div className="flex-1" />
               {resumenHist.efectivo > 0 && <span>💵 <b>{formatPrecio(resumenHist.efectivo)}</b></span>}
