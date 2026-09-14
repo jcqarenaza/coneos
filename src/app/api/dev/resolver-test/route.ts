@@ -63,27 +63,31 @@ export async function GET(request: Request) {
     chk('K resolver no escribe (A)', antesA === await foto(), `conteos ${antesA} sin cambios`)
 
     // ── Fixtures en el LAB ──
-    const { data: cta } = await db.from('cuentas_transferencia').insert({
+    const ctaIns = await db.from('cuentas_transferencia').insert({
       empresa_id: EMPRESA_LAB, sucursal_id: SUCURSAL_LAB, nombre: 'Cuenta 2 TEST',
       alias: 'test.cuenta2.mp', cbu: '0000003100010000000001', titular: 'Titular Test', activo: true,
     }).select('id').single()
-    ctaTestId = cta!.id
-    const { data: cred } = await db.from('mp_credenciales').insert({
+    if (ctaIns.error || !ctaIns.data) return NextResponse.json({ error: 'FIXTURE cuenta transferencia falló', detalle: ctaIns.error, resultados_parciales: r })
+    ctaTestId = ctaIns.data.id
+    const credIns = await db.from('mp_credenciales').insert({
       empresa_id: EMPRESA_LAB, sucursal_id: null, mp_user_id: 'TEST-FASE2',
       access_token: 'TEST-TOKEN', public_key: 'TEST-PK', nombre: 'MP marca TEST', activo: true,
     }).select('id').single()
-    credTestId = cred!.id
+    if (credIns.error || !credIns.data) { await db.from('cuentas_transferencia').delete().eq('id', ctaTestId); return NextResponse.json({ error: 'FIXTURE credencial MP falló', detalle: credIns.error, resultados_parciales: r }) }
+    credTestId = credIns.data.id
 
-    const { data: m1 } = await db.from('canales_medios_pago').insert({
+    const m1 = await db.from('canales_medios_pago').insert({
       empresa_id: EMPRESA_LAB, sucursal_id: SUCURSAL_LAB, canal: 'DELIVERY', medio: 'TRANSFERENCIA',
       transferencia_cuenta_id: ctaTestId,
     }).select('id').single()
-    mapeosCreados.push(m1!.id)
-    const { data: m2 } = await db.from('canales_medios_pago').insert({
+    if (m1.error || !m1.data) return NextResponse.json({ error: 'FIXTURE mapeo transferencia falló', detalle: m1.error, resultados_parciales: r })
+    mapeosCreados.push(m1.data.id)
+    const m2 = await db.from('canales_medios_pago').insert({
       empresa_id: EMPRESA_LAB, sucursal_id: SUCURSAL_LAB, canal: 'MESA', medio: 'MERCADO_PAGO',
       mp_credencial_id: credTestId,
     }).select('id').single()
-    mapeosCreados.push(m2!.id)
+    if (m2.error || !m2.data) return NextResponse.json({ error: 'FIXTURE mapeo MP falló', detalle: m2.error, resultados_parciales: r })
+    mapeosCreados.push(m2.data.id)
 
     // ── B: mapeo explícito Delivery → Cuenta 2 ──
     const b = await resolverPago(EMPRESA_LAB, SUCURSAL_LAB, 'DELIVERY', 'TRANSFERENCIA')
@@ -114,11 +118,12 @@ export async function GET(request: Request) {
     await db.from('cuentas_transferencia').update({ sucursal_id: SUCURSAL_LAB }).eq('id', ctaTestId)
 
     // ── F: cuenta de OTRA empresa → la DB lo rechaza (FK compuesta) ──
-    const { data: ctaFed } = await db.from('cuentas_transferencia').select('id').eq('empresa_id', fedEmp.id).limit(1).single()
-    const f = await db.from('canales_medios_pago').insert({
+    const { data: ctaFeds } = await db.from('cuentas_transferencia').select('id').eq('empresa_id', fedEmp.id)
+    const ctaFed = ctaFeds?.[0]
+    const f = ctaFed ? await db.from('canales_medios_pago').insert({
       empresa_id: EMPRESA_LAB, sucursal_id: SUCURSAL_LAB, canal: 'TAKEAWAY', medio: 'TRANSFERENCIA',
-      transferencia_cuenta_id: ctaFed!.id,
-    })
+      transferencia_cuenta_id: ctaFed.id,
+    }) : { error: { code: 'SIN_CUENTA_FEDERAL_PARA_EL_TEST' } }
     chk('F cross-empresa imposible', !!f.error, f.error ? `DB rechazó: ${f.error.code}` : 'INSERTÓ — FALLO GRAVE')
 
     // ── I: medio MP con cuenta de transferencia → CHECK lo impide ──
