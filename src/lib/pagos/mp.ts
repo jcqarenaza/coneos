@@ -189,17 +189,22 @@ export async function credencialesParaWebhook(
   }
 
   // 2. Legacy firmado e+s (sucursal → marca), idéntico al comportamiento actual
+  // Con multi-cuenta puede haber VARIAS credenciales por alcance: el fallback
+  // legacy elige determinístico (la más recientemente actualizada). maybeSingle()
+  // acá rompería con >1 filas — hallazgo de la batería K.
   const candidatas: Pick<CredencialMP, 'id' | 'empresa_id' | 'access_token'>[] = []
   if (eParam) {
     if (sParam) {
       const { data } = await db.from('mp_credenciales').select('id, empresa_id, access_token')
-        .eq('empresa_id', eParam).eq('sucursal_id', sParam).maybeSingle()
-      if (data) candidatas.push(data)
+        .eq('empresa_id', eParam).eq('sucursal_id', sParam)
+        .order('updated_at', { ascending: false }).limit(1)
+      if (data?.[0]) candidatas.push(data[0])
     }
     if (candidatas.length === 0) {
       const { data } = await db.from('mp_credenciales').select('id, empresa_id, access_token')
-        .eq('empresa_id', eParam).is('sucursal_id', null).maybeSingle()
-      if (data) candidatas.push(data)
+        .eq('empresa_id', eParam).is('sucursal_id', null)
+        .order('updated_at', { ascending: false }).limit(1)
+      if (data?.[0]) candidatas.push(data[0])
     }
     if (candidatas.length > 0) return { candidatas, via: 'legacy-firma' }
   }
