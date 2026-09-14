@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolverPago, type CanalPago } from '@/lib/pagos/resolver'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -173,6 +174,27 @@ export async function POST(request: Request) {
     }
     console.error('[pedidos] Error creando pedido (RPC):', error)
     return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
+  }
+
+  // ── FASE 4 — SNAPSHOT TRANSFERENCIA al crear ──
+  // Pedido creado con método transferencia → resolver la cuenta efectiva del
+  // canal y congelarla. Solo mapeo explícito graba id (en legacy no existe
+  // entidad cuenta: snapshot null = comportamiento actual). Post-RPC adrede:
+  // la RPC de stock no se toca; un fallo acá jamás voltea el pedido.
+  if (metodo_pago === 'transferencia') {
+    try {
+      const canal: CanalPago = origen === 'MESA' ? 'MESA'
+        : tipo_pedido === 'delivery' ? 'DELIVERY'
+        : tipo_pedido === 'takeaway' ? 'TAKEAWAY'
+        : 'KIOSK'
+      const res = await resolverPago(empresa_id, sucursal_id, canal, 'TRANSFERENCIA')
+      if (res.ok && res.medio === 'TRANSFERENCIA' && res.cuenta?.id) {
+        const pedidoId = (pedido as { id?: string })?.id
+        if (pedidoId) await supabase.from('pedidos').update({ transferencia_cuenta_id: res.cuenta.id }).eq('id', pedidoId)
+      }
+    } catch (e) {
+      console.error('[pedidos] snapshot transferencia falló (pedido intacto):', e)
+    }
   }
 
   return NextResponse.json({ pedido })

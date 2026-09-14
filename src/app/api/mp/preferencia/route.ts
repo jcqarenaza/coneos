@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { credencialParaPedido } from '@/lib/pagos/mp'
 
-// Crea una preferencia de pago de MP para un pedido.
-// Credenciales: las de la SUCURSAL del pedido si tiene cuenta propia (franquicia),
-// si no las de la marca (fila sucursal_id NULL) — la plata cae en la cuenta correcta.
+// Crea una preferencia de pago de MP para un pedido (Fase 3).
+// La cuenta la decide resolverPago() vía credencialParaPedido():
+// mapeo explícito del canal → esa cuenta; sin mapeo → legacy exacto
+// (cascada sucursal → marca). Refresh on-demand incluido.
+// SNAPSHOT: pedidos.mp_credencial_id queda grabado con la cuenta REAL
+// usada — cambios de mapeo posteriores no afectan pedidos ya creados.
 // POST { pedido_id }
 export async function POST(request: Request) {
   const { pedido_id } = await request.json()
@@ -13,35 +17,22 @@ export async function POST(request: Request) {
 
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select('id, numero_pedido, total, empresa_id, sucursal_id, empresas(nombre, slug)')
+    .select('id, numero_pedido, total, empresa_id, sucursal_id, tipo_pedido, empresas(nombre, slug)')
     .eq('id', pedido_id)
     .single()
 
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
 
-  // Credenciales: sucursal propia → fallback marca. Recordamos el alcance usado
-  // para firmarlo en el notification_url (así el webhook va directo, sin probar
-  // todas las credenciales — clave a partir de ~10 cuentas conectadas).
-  let cred: { access_token: string } | null = null
-  let credScope: string = ''
-  if (pedido.sucursal_id) {
-    const { data } = await supabase.from('mp_credenciales')
-      .select('access_token')
-      .eq('empresa_id', pedido.empresa_id).eq('sucursal_id', pedido.sucursal_id)
-      .maybeSingle()
-    if (data) { cred = data; credScope = pedido.sucursal_id }
+  const cred = await credencialParaPedido(supabase, pedido)
+  if (!cred.ok) {
+    console.error('[mp/preferencia] Sin credencial usable:', cred.error, 'pedido', pedido_id)
+    return NextResponse.json({ error: 'Sin Mercado Pago conectado para esta sucursal/empresa' }, { status: 400 })
   }
-  if (!cred) {
-    const { data } = await supabase.from('mp_credenciales')
-      .select('access_token')
-      .eq('empresa_id', pedido.empresa_id).is('sucursal_id', null)
-      .maybeSingle()
-    cred = data
-  }
-
-  if (!cred) return NextResponse.json({ error: 'Sin Mercado Pago conectado para esta sucursal/empresa' }, { status: 400 })
 
   const emp = Array.isArray(pedido.empresas) ? pedido.empresas[0] : pedido.empresas
+
+  // Firma del webhook: credencial exacta (?c=) + firma legacy (?e=&s=) para transición
+  const notification = `https://coneos.vercel.app/api/mp/webhook?c=${cred.credencial_id}&e=${pedido.empresa_id}&s=${cred.sucursal_scope ?? ''}`
 
   const res = await fetch('https://api.mercadopago.com/checkout/preferences', {
     method: 'POST',
@@ -57,7 +48,7 @@ export async function POST(request: Request) {
         currency_id: 'ARS',
       }],
       external_reference: pedido.id,
-      notification_url: `https://coneos.vercel.app/api/mp/webhook?e=${pedido.empresa_id}&s=${credScope}`,
+      notification_url: notification,
       back_urls: {
         success: `https://coneos.vercel.app/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
         failure: `https://coneos.vercel.app/${emp?.slug}/pago-error?pedido=${pedido.numero_pedido}`,

@@ -16,7 +16,7 @@ interface Props {
   onNuevoPedido: () => void; onVolver: () => void
 }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles: string }
-interface PagosSucursal { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; mp_access_token: string | null }
+interface PagosSucursal { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; titular_transferencia?: string | null }
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 
@@ -62,16 +62,12 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const [datos, setDatos] = useState<DatosDelivery>({ nombre: '', telefono: '', direccion: '', entre_calles: '' })
   const [erroresCampos, setErroresCampos] = useState<Partial<DatosDelivery>>({})
   const [errorPedido, setErrorPedido] = useState<string | null>(null)
-  const [mpDisponible, setMpDisponible] = useState(false)
-
+  // FASE 4: la disponibilidad de MP la decide el SERVER (resolver del canal
+  // en /api/kiosk/pagos?canal=DELIVERY o en el contexto de takeaway) — acá ya
+  // no se consulta /api/mp/estado ni se combina nada client-side.
   useEffect(() => {
-    // Verificar si la empresa tiene MP conectado via OAuth
     if (pagosIniciales) { setPagosSucursal(pagosIniciales); return }
-    fetch(`/api/mp/estado?empresa_id=${dispositivo.empresa_id}`)
-      .then(r => r.json())
-      .then(d => setMpDisponible(!!d.conectado))
-      .catch(() => setMpDisponible(false))
-  }, [dispositivo.empresa_id])
+  }, [pagosIniciales])
   const [metodoPago, setMetodoPago] = useState('efectivo')
   const [pagosSucursal, setPagosSucursal] = useState<PagosSucursal | null>(null)
   const [creando, setCreando] = useState(false)
@@ -86,9 +82,10 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    fetch(`/api/kiosk/pagos?sucursal_id=${dispositivo.sucursal_id}`)
+    if (pagosIniciales) return
+    fetch(`/api/kiosk/pagos?sucursal_id=${dispositivo.sucursal_id}&canal=DELIVERY`)
       .then(r => r.json()).then(data => { setPagosSucursal(data) })
-  }, [dispositivo])
+  }, [dispositivo, pagosIniciales])
 
   function handleCaptura(file: File) {
     setCaptura(file)
@@ -249,11 +246,11 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   // ── PAGO ──
   if (paso === 'pago') {
-    const mpConfigurado = mpDisponible
     const metodos: { id: string; label: string; desc: string }[] = []
     if (pagosSucursal?.acepta_efectivo) metodos.push({ id: 'efectivo', label: esTakeaway ? 'Efectivo al retirar' : 'Efectivo al repartidor', desc: esTakeaway ? 'Pagás cuando retires tu pedido' : 'Pagás cuando llegue tu pedido' })
     if (pagosSucursal?.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia bancaria', desc: `Alias: ${pagosSucursal.cbu_transferencia ?? ''}${pagosSucursal.titular_transferencia ? ` · a nombre de ${pagosSucursal.titular_transferencia}` : ''}` })
-    if (mpPermitido && pagosSucursal?.acepta_mp && (pagosSucursal as { acepta_mp_delivery?: boolean }).acepta_mp_delivery !== false && (esTakeaway ? true : mpConfigurado)) metodos.push({ id: 'mp', label: 'Mercado Pago', desc: 'Pagá con QR o link' })
+    // FASE 4: acepta_mp llega RESUELTO del server (credencial usable + checkbox + llave del canal)
+    if (mpPermitido && pagosSucursal?.acepta_mp) metodos.push({ id: 'mp', label: 'Mercado Pago', desc: 'Pagá con QR o link' })
     if (!metodos.length) metodos.push({ id: 'efectivo', label: esTakeaway ? 'Efectivo al retirar' : 'Efectivo al repartidor', desc: esTakeaway ? 'Pagás cuando retires tu pedido' : 'Pagás cuando llegue tu pedido' })
 
     return (

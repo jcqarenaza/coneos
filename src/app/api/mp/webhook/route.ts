@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { credencialesParaWebhook } from '@/lib/pagos/mp'
 
-// Webhook de Mercado Pago — confirma pagos.
-// Además, al confirmar dispara la facturación automática (mismo criterio que el hook
-// de /api/pedidos/estado): los pagos MP no pasan por la route de estado, así que sin
-// esto facturaban recién al marcar entregado.
+// Webhook de Mercado Pago — confirma pagos (Fase 3 multi-cuenta).
+// Resolución de credencial: ?c= (exacta, con refresh on-demand) →
+// ?e=&s= (firma legacy) → barrido total (preferencias antiguas).
+// TODAS las validaciones previas se conservan: el payment se consulta
+// a MP con la credencial (jamás se confía en el browser), el pedido
+// se matchea por external_reference Y por empresa de la credencial,
+// solo transiciona PENDING_PAYMENT→PAID (idempotencia), y al confirmar
+// dispara la facturación ARCA exactamente como antes.
 
 async function facturarSiCorresponde(supabase: ReturnType<typeof createAdminClient>, pedido_id: string) {
   try {
@@ -59,36 +64,10 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient()
 
-  // CAMINO DIRECTO (escala): la preferencia firma el notification_url con
-  // ?e=<empresa>&s=<sucursal|''> → buscamos SOLO esa credencial (con fallback
-  // sucursal→marca por si la franquicia desvinculó su cuenta después).
-  // El barrido de todas las credenciales queda como fallback para preferencias
-  // viejas creadas sin la firma.
   const { searchParams } = new URL(request.url)
-  const eParam = searchParams.get('e')
-  const sParam = searchParams.get('s')
+  const { candidatas, via } = await credencialesParaWebhook(supabase, searchParams)
 
-  let credenciales: { empresa_id: string; access_token: string }[] = []
-  if (eParam) {
-    if (sParam) {
-      const { data } = await supabase.from('mp_credenciales')
-        .select('empresa_id, access_token')
-        .eq('empresa_id', eParam).eq('sucursal_id', sParam).maybeSingle()
-      if (data) credenciales.push(data)
-    }
-    if (credenciales.length === 0) {
-      const { data } = await supabase.from('mp_credenciales')
-        .select('empresa_id, access_token')
-        .eq('empresa_id', eParam).is('sucursal_id', null).maybeSingle()
-      if (data) credenciales.push(data)
-    }
-  }
-  if (credenciales.length === 0) {
-    const { data } = await supabase.from('mp_credenciales').select('empresa_id, access_token')
-    credenciales = data ?? []
-  }
-
-  for (const cred of credenciales ?? []) {
+  for (const cred of candidatas) {
     const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: { 'Authorization': `Bearer ${cred.access_token}` },
     })
@@ -99,6 +78,8 @@ export async function POST(request: Request) {
     if (!pedidoId) continue
 
     if (payment.status === 'approved') {
+      // El pedido debe pertenecer a la MISMA empresa que la credencial que
+      // reconoció el payment — una credencial jamás confirma pedidos ajenos.
       const { data: pedido } = await supabase
         .from('pedidos')
         .select('id, estado, empresa_id')
@@ -110,7 +91,7 @@ export async function POST(request: Request) {
         await supabase.from('pedidos')
           .update({ estado: 'PAID', pagado: true, notas: `MP payment ${paymentId}` })
           .eq('id', pedido.id)
-        console.log(`[mp/webhook] Pedido ${pedidoId} pagado via MP ${paymentId}`)
+        console.log(`[mp/webhook] Pedido ${pedidoId} pagado via MP ${paymentId} (via ${via})`)
         await facturarSiCorresponde(supabase, pedido.id)
       }
     }

@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolverPago } from '@/lib/pagos/resolver'
 
 // Contexto público del canal TAKE AWAY (el link/QR lo abre cualquier celular).
 // GET ?empresa=<slug>&sucursal=<slug> → ids + branding + config del canal,
 // gated por empresa_config.modulos.takeaway Y takeaway_config.activo.
-// Calca el patrón de /api/mesa/contexto (server-side, admin client, sin RLS de cliente).
+// FASE 4: MP y TRANSFERENCIA se resuelven por resolverPago() — mapeo explícito
+// del canal TAKEAWAY o legacy exacto. Flags del comercio respetados; la
+// credencial además debe ser utilizable. Server-side siempre.
 
 function estaEnHorario(horarios: { desde: string; hasta: string }[], horaArg: string, toleranciaMin = 0): boolean {
   if (!horarios || horarios.length === 0) return true
@@ -44,17 +47,25 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'El take away no está disponible en este local' }, { status: 403 })
   }
 
-  const [{ data: ta }, { data: pagos }, { data: credSuc }, { data: credEmp }] = await Promise.all([
+  const [{ data: ta }, { data: pagos }, resMp, resTransfer] = await Promise.all([
     supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre').eq('sucursal_id', sucursal.id).maybeSingle(),
-    supabase.from('sucursal_pagos').select('acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_takeaway, cbu_transferencia, titular_transferencia').eq('sucursal_id', sucursal.id).maybeSingle(),
-    // Conexión REAL de MP (mismo patrón que /api/mp/preferencia: sucursal → empresa)
-    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).eq('sucursal_id', sucursal.id).maybeSingle(),
-    supabase.from('mp_credenciales').select('id').eq('empresa_id', empresa.id).is('sucursal_id', null).maybeSingle(),
+    supabase.from('sucursal_pagos').select('acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_takeaway').eq('sucursal_id', sucursal.id).maybeSingle(),
+    resolverPago(empresa.id, sucursal.id, 'TAKEAWAY', 'MERCADO_PAGO'),
+    resolverPago(empresa.id, sucursal.id, 'TAKEAWAY', 'TRANSFERENCIA'),
   ])
-  const mpConectado = Boolean(credSuc || credEmp)
   if (!ta?.activo) {
     return NextResponse.json({ error: 'El take away no está disponible en esta sucursal' }, { status: 403 })
   }
+
+  const mpUsable = resMp.ok && resMp.medio === 'MERCADO_PAGO' && !!resMp.credencial && resMp.credencial.activo !== false
+  // Datos de transferencia de la cuenta resuelta (explícita) o legacy crudo.
+  // Compatibilidad de respuesta: mismos campos que consumen las Confirmaciones
+  // hoy (cbu_transferencia se exhibe como "Alias"); con cuenta explícita se
+  // sirve alias (o CBU si la cuenta solo tiene CBU). UI diferenciada: Fase 6.
+  const cuenta = resTransfer.ok && resTransfer.medio === 'TRANSFERENCIA' ? resTransfer.cuenta : null
+  const transferMostrar = cuenta
+    ? (resTransfer.ok && resTransfer.origen === 'explicito' ? (cuenta.alias ?? cuenta.cbu) : cuenta.cbu)
+    : null
 
   // Hora argentina server-side (misma zona que usa la validación de /api/pedidos)
   const hora = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())
@@ -80,10 +91,10 @@ export async function GET(request: Request) {
     pagos: {
       acepta_efectivo: pagos?.acepta_efectivo ?? true,
       acepta_transferencia: pagos?.acepta_transferencia ?? true,
-      // MP se ofrece SOLO si hay cuenta conectada Y checkbox global Y llave del canal
-      acepta_mp: mpConectado && (pagos?.acepta_mp ?? false) && (pagos?.acepta_mp_takeaway ?? true),
-      cbu_transferencia: pagos?.cbu_transferencia ?? null,
-      titular_transferencia: pagos?.titular_transferencia ?? null,
+      // MP solo si: credencial resuelta y utilizable Y checkbox global Y llave del canal
+      acepta_mp: mpUsable && (pagos?.acepta_mp ?? false) && (pagos?.acepta_mp_takeaway ?? true),
+      cbu_transferencia: transferMostrar,
+      titular_transferencia: cuenta?.titular ?? null,
     },
   })
 }
