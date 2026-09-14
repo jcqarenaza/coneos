@@ -71,7 +71,7 @@ export async function GET(request: Request) {
     ctaTestId = ctaIns.data.id
     const credIns = await db.from('mp_credenciales').insert({
       empresa_id: EMPRESA_LAB, sucursal_id: null, mp_user_id: 'TEST-FASE2',
-      access_token: 'TEST-TOKEN', public_key: 'TEST-PK', nombre: 'MP marca TEST', activo: true,
+      access_token: 'TEST-TOKEN', refresh_token: 'TEST-REFRESH', public_key: 'TEST-PK', nombre: 'MP marca TEST', activo: true,
     }).select('id').single()
     if (credIns.error || !credIns.data) { await db.from('cuentas_transferencia').delete().eq('id', ctaTestId); return NextResponse.json({ error: 'FIXTURE credencial MP falló', detalle: credIns.error, resultados_parciales: r }) }
     credTestId = credIns.data.id
