@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolverPago } from '@/lib/pagos/resolver'
+import { GET as contextoGET } from '@/app/api/takeaway/contexto/route'
 
 // ============================================================
 // RUTA TEMPORAL — FASE 4 / CANAL TAKE AWAY (batería equivalente)
@@ -26,10 +27,11 @@ export async function GET(request: Request) {
   // Slugs del lab para pegarle al contexto real
   const { data: empLab } = await db.from('empresas').select('slug').eq('id', EMPRESA_LAB).single()
   const { data: sucLab } = await db.from('sucursales').select('slug').eq('id', SUCURSAL_LAB).single()
-  const ctxUrl = `${url.origin}/api/takeaway/contexto?empresa=${empLab!.slug}&sucursal=${sucLab!.slug}`
+  // Invocación DIRECTA del handler (sin HTTP: el SSO de Vercel sobre previews
+  // intercepta los fetch internos) — mismo código real del contexto.
   const leerCtx = async () => {
-    const res = await fetch(ctxUrl)
-    return res.ok ? await res.json() : { error: res.status }
+    const res = await contextoGET(new Request(`http://local/api/takeaway/contexto?empresa=${empLab!.slug}&sucursal=${sucLab!.slug}`))
+    return await res.json()
   }
 
   const mapear = async (medio: string, campo: string, id: string | null) => {
