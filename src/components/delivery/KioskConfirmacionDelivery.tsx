@@ -10,6 +10,7 @@ interface Props {
   pagosIniciales?: PagosSucursal | null
   mpPermitido?: boolean
   horarioTexto?: string
+  slotsRetiro?: { iso: string; label: string }[]
   config: EmpresaConfig; dispositivo: DispositivoKiosk; carrito: ItemCarrito[]
   costoEnvio: number; pedidoCreado: { numero: number; codigo: string } | null
   onPedidoCreado: (numero: number, codigo: string) => void
@@ -48,8 +49,12 @@ function ResumenTotal({ subtotal, costoEnvio, total, config, esTakeaway = false 
   )
 }
 
-export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null }: Props) {
+export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null, slotsRetiro = [] }: Props) {
   const esTakeaway = canal === 'takeaway'
+  // V1.5: hora de retiro elegida. null = ⚡ Lo antes posible (default histórico)
+  const [horaRetiro, setHoraRetiro] = useState<string | null>(null)
+  // Hora CONFIRMADA por el server (viaja en la respuesta solo si quedó guardada)
+  const [horaConfirmada, setHoraConfirmada] = useState<string | null>(null)
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const total = subtotal + (canal === 'takeaway' ? 0 : costoEnvio)
 
@@ -119,7 +124,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     }))
     const res = await fetch('/api/pedidos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: esTakeaway ? 0 : costoEnvio, datos_delivery: datos }),
+      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: esTakeaway ? 0 : costoEnvio, datos_delivery: datos, ...(esTakeaway && horaRetiro ? { hora_retiro: horaRetiro } : {}) }),
     })
     const data = await res.json().catch(() => null)
     setCreando(false)
@@ -130,6 +135,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     setErrorPedido(null)
     setPedidoId(data.pedido.id)
     setPedidoNum(data.pedido.numero_pedido)
+    setHoraConfirmada((data.pedido as { hora_retiro?: string | null }).hora_retiro ?? null)
     setCodigoRetiro(data.pedido.codigo_retiro)
     pedidoRef.current = { id: data.pedido.id, numero: data.pedido.numero_pedido, codigo: data.pedido.codigo_retiro }
     return data.pedido
@@ -231,6 +237,26 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             </div>
           ))}
         </div>
+
+        {esTakeaway && slotsRetiro.length > 0 && (
+          <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-4">
+            <p className="text-xs font-semibold text-neutral-500 mb-2">¿Cuándo lo retirás?</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => setHoraRetiro(null)}
+                className={`px-3.5 py-2 rounded-xl text-sm font-bold border transition-colors ${horaRetiro === null ? 'text-white border-transparent' : 'bg-white text-neutral-500 border-neutral-200'}`}
+                style={horaRetiro === null ? { backgroundColor: config.primary_color } : undefined}>
+                ⚡ Lo antes posible
+              </button>
+              {slotsRetiro.map(s => (
+                <button key={s.iso} type="button" onClick={() => setHoraRetiro(s.iso)}
+                  className={`px-3.5 py-2 rounded-xl text-sm font-bold border transition-colors ${horaRetiro === s.iso ? 'text-white border-transparent' : 'bg-white text-neutral-500 border-neutral-200'}`}
+                  style={horaRetiro === s.iso ? { backgroundColor: config.primary_color } : undefined}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-100 px-4 pt-3 pb-6 shadow-lg">
@@ -379,7 +405,12 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           <CheckCircle className="h-9 w-9 text-white" />
         </div>
         <h1 className="text-2xl font-black text-center mb-1" style={{ color: config.primary_color }}>¡Pedido confirmado!</h1>
-        <p className="text-neutral-400 text-sm text-center mb-6">{esTakeaway ? 'Tu pedido quedó registrado para retirar' : `Te contactaremos al ${datos.telefono}`}</p>
+        <p className="text-neutral-400 text-sm text-center mb-6">{esTakeaway ? (() => {
+          // Condición CTO: mostrar SOLO la hora confirmada por el server (viaja
+          // en la respuesta únicamente si quedó guardada; fallo = ASAP honesto)
+          const horaConf = horaConfirmada
+          return horaConf ? 'Tu pedido quedó registrado' : 'Tu pedido quedó registrado para retirar'
+        })() : `Te contactaremos al ${datos.telefono}`}</p>
 
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-5 mb-4">
           <div className="text-center mb-4">
@@ -391,7 +422,13 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               <p className="text-neutral-400 text-xs uppercase tracking-wide mb-1">Código de retiro</p>
               <p className="font-black tracking-[0.3em]" style={{ fontSize: '3.2rem', lineHeight: 1, color: config.primary_color }}>{pedidoCreado?.codigo ?? codigoRetiro}</p>
               <p className="text-neutral-500 text-xs mt-2 font-semibold">Mostrá este código al retirar tu pedido</p>
-              {horarioTexto && <p className="text-neutral-400 text-xs mt-1">🕗 Horario de retiro: {horarioTexto}</p>}
+              {horaConfirmada ? (
+                <p className="inline-block mt-3 px-4 py-2 rounded-xl text-white font-bold text-base" style={{ backgroundColor: config.primary_color }}>
+                  🕐 Retiralo a las {new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConfirmada))}
+                </p>
+              ) : (
+                horarioTexto && <p className="text-neutral-400 text-xs mt-1">🕗 Horario de retiro: {horarioTexto}</p>
+              )}
             </div>
           )}
           <div className="border-t border-neutral-100 pt-4 space-y-1.5">

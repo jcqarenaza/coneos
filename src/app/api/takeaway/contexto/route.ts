@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolverPago } from '@/lib/pagos/resolver'
+import { generarSlots } from '@/lib/takeaway/slots'
 
 // Contexto público del canal TAKE AWAY (el link/QR lo abre cualquier celular).
 // GET ?empresa=<slug>&sucursal=<slug> → ids + branding + config del canal,
@@ -87,6 +88,9 @@ export async function GET(request: Request) {
       horarios,
       mensaje_fuera_horario: ta.mensaje_fuera_horario ?? 'El take away no está disponible en este momento. ¡Volvemos pronto!',
       tolerancia_cierre: Number(ta.tolerancia_cierre ?? 5),
+      // V1.5: slots de retiro del día (15' fijos, margen 15'), server-side de
+      // la MISMA fuente que valida /api/pedidos. Vacío si sin franjas o cerrado.
+      slots_retiro: abierto ? generarSlots(horarios) : [],
     },
     pagos: {
       acepta_efectivo: pagos?.acepta_efectivo ?? true,

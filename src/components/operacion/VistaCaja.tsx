@@ -11,7 +11,7 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -21,6 +21,11 @@ const ESTADO_LEFT: Record<string, string> = { PENDING_PAYMENT: 'border-l-red-300
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 // Fase 6.5: nombre de la cuenta receptora DEL SNAPSHOT del pedido (identidad
 // histórica congelada al cobrar) — jamás se reconstruye desde la config actual.
+function horaRetiroDe(p: Pedido): string | null {
+  if (p.tipo_pedido !== 'takeaway' || !p.hora_retiro) return null
+  return new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(p.hora_retiro))
+}
+
 function cuentaDe(p: Pedido): string | null {
   if (p.metodo_pago === 'transferencia') return p.cuenta_transfer?.nombre ?? null
   if (p.metodo_pago === 'mp') return p.cuenta_mp?.nombre ?? null
@@ -686,7 +691,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       <div className="flex justify-between font-bold">
                         <span>Total</span><span>{formatPrecio(historialSeleccionado.total)}</span>
                       </div>
-                      <p className="text-xs text-neutral-400 mt-1">Pago: {historialSeleccionado.metodo_pago ?? '—'}{cuentaDe(historialSeleccionado) ? ` · ${cuentaDe(historialSeleccionado)}` : ''}</p>
+                      <p className="text-xs text-neutral-400 mt-1">Pago: {historialSeleccionado.metodo_pago ?? '—'}{cuentaDe(historialSeleccionado) ? ` · ${cuentaDe(historialSeleccionado)}` : ''}{horaRetiroDe(historialSeleccionado) ? ` · 🕐 ${horaRetiroDe(historialSeleccionado)}` : ''}</p>
                       {historialSeleccionado.colaborador_nombre && <p className="text-xs text-neutral-400">🛵 {historialSeleccionado.colaborador_nombre}</p>}
                       {historialSeleccionado.notas && <p className="text-xs text-amber-600 mt-1">{historialSeleccionado.notas}</p>}
                       {esBorrable(historialSeleccionado) && (
@@ -1026,7 +1031,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       <div className="flex items-center gap-2 mb-2 px-1">
                         <span className="text-xs text-neutral-400">Cliente eligió:</span>
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${seleccionado.metodo_pago === 'efectivo' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                          {seleccionado.metodo_pago === 'efectivo' ? '💵 Efectivo' : seleccionado.metodo_pago === 'transferencia' ? '📲 Transferencia' : '📱 Mercado Pago'}{cuentaDe(seleccionado) ? ` · ${cuentaDe(seleccionado)}` : ''}
+                          {seleccionado.metodo_pago === 'efectivo' ? '💵 Efectivo' : seleccionado.metodo_pago === 'transferencia' ? '📲 Transferencia' : '📱 Mercado Pago'}{cuentaDe(seleccionado) ? ` · ${cuentaDe(seleccionado)}` : ''}{horaRetiroDe(seleccionado) ? ` · 🕐 Retira ${horaRetiroDe(seleccionado)}` : ''}
                         </span>
                       </div>
                     )}
