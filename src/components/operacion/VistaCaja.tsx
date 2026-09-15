@@ -514,9 +514,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         )}
         <div className="flex-1" />
         {stockAlertas && (stockAlertas.agotados > 0 || stockAlertas.bajos > 0) && (
-          <div className="relative hidden sm:block mr-2">
+          <div className="relative hidden sm:flex self-center">
             <button onClick={() => setStockAbierto(v => !v)}
-              className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
               title="Ver qué productos hay que reponer">
               📦 {stockAlertas.agotados > 0 ? `${stockAlertas.agotados} sin stock` : ''}{stockAlertas.agotados > 0 && stockAlertas.bajos > 0 ? ' · ' : ''}{stockAlertas.bajos > 0 ? `${stockAlertas.bajos} bajo` : ''}
             </button>
