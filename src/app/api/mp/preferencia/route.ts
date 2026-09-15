@@ -31,6 +31,24 @@ export async function POST(request: Request) {
 
   const emp = Array.isArray(pedido.empresas) ? pedido.empresas[0] : pedido.empresas
 
+  // HOTFIX retorno MP: las back_urls se arman con el DOMINIO REAL donde navega
+  // el cliente (antes hardcodeadas a coneos.vercel.app → quien pagaba desde
+  // coneos.com.ar volvía a otro origen y "la app" no se enteraba — caso #13).
+  // Whitelist estricta (condición CTO): jamás un dominio externo fabricado.
+  // Prioridad: Origin permitido → Host permitido → fallback dominio conocido.
+  // notification_url NO se toca: server-to-server, absoluta y estable.
+  const hostPermitido = (h: string | null): string | null => {
+    if (!h) return null
+    const host = h.replace(/^https?:\/\//, '').split('/')[0].toLowerCase()
+    const ok = host === 'coneos.com.ar' || host === 'www.coneos.com.ar'
+      || host === 'coneos.vercel.app'
+      || /^coneos(-[a-z0-9-]+)?\.vercel\.app$/.test(host) // previews del proyecto
+    return ok ? `https://${host}` : null
+  }
+  const base = hostPermitido(request.headers.get('origin'))
+    ?? hostPermitido(request.headers.get('host'))
+    ?? 'https://coneos.vercel.app'
+
   // Firma del webhook: credencial exacta (?c=) + firma legacy (?e=&s=) para transición
   const notification = `https://coneos.vercel.app/api/mp/webhook?c=${cred.credencial_id}&e=${pedido.empresa_id}&s=${cred.sucursal_scope ?? ''}`
 
@@ -50,9 +68,9 @@ export async function POST(request: Request) {
       external_reference: pedido.id,
       notification_url: notification,
       back_urls: {
-        success: `https://coneos.vercel.app/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
-        failure: `https://coneos.vercel.app/${emp?.slug}/pago-error?pedido=${pedido.numero_pedido}`,
-        pending: `https://coneos.vercel.app/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
+        success: `${base}/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
+        failure: `${base}/${emp?.slug}/pago-error?pedido=${pedido.numero_pedido}`,
+        pending: `${base}/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
       },
       auto_return: 'approved',
       statement_descriptor: emp?.nombre?.substring(0, 22) ?? 'ConeOS',
