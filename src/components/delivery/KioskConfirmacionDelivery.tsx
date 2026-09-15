@@ -409,9 +409,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           // Condición CTO: mostrar SOLO la hora confirmada por el server (viaja
           // en la respuesta únicamente si quedó guardada; fallo = ASAP honesto)
           const horaConf = horaConfirmada
-          return horaConf
-            ? `Tu pedido quedó registrado — retiralo a las ${new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConf))}`
-            : 'Tu pedido quedó registrado para retirar'
+          return horaConf ? 'Tu pedido quedó registrado' : 'Tu pedido quedó registrado para retirar'
         })() : `Te contactaremos al ${datos.telefono}`}</p>
 
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-5 mb-4">
@@ -424,7 +422,13 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               <p className="text-neutral-400 text-xs uppercase tracking-wide mb-1">Código de retiro</p>
               <p className="font-black tracking-[0.3em]" style={{ fontSize: '3.2rem', lineHeight: 1, color: config.primary_color }}>{pedidoCreado?.codigo ?? codigoRetiro}</p>
               <p className="text-neutral-500 text-xs mt-2 font-semibold">Mostrá este código al retirar tu pedido</p>
-              {horarioTexto && <p className="text-neutral-400 text-xs mt-1">🕗 Horario de retiro: {horarioTexto}</p>}
+              {horaConfirmada ? (
+                <p className="inline-block mt-3 px-4 py-2 rounded-xl text-white font-bold text-base" style={{ backgroundColor: config.primary_color }}>
+                  🕐 Retiralo a las {new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConfirmada))}
+                </p>
+              ) : (
+                horarioTexto && <p className="text-neutral-400 text-xs mt-1">🕗 Horario de retiro: {horarioTexto}</p>
+              )}
             </div>
           )}
           <div className="border-t border-neutral-100 pt-4 space-y-1.5">
