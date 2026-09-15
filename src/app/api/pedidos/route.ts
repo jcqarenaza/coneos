@@ -191,10 +191,15 @@ export async function POST(request: Request) {
   // ── V1.5 — HORA DE RETIRO (solo takeaway, ya validada) ──
   // Post-RPC adrede: la RPC de stock no se toca (regla STOP del CTO). Un fallo
   // acá degrada a "lo antes posible" — jamás voltea el pedido.
+  let horaRetiroConfirmada: string | null = null
   if (tipo_pedido === 'takeaway' && hora_retiro) {
     try {
       const pedidoId = (pedido as { id?: string })?.id
-      if (pedidoId) await supabase.from('pedidos').update({ hora_retiro }).eq('id', pedidoId)
+      if (pedidoId) {
+        const { error: eHora } = await supabase.from('pedidos').update({ hora_retiro }).eq('id', pedidoId)
+        if (!eHora) horaRetiroConfirmada = String(hora_retiro)
+        else console.error('[pedidos] hora_retiro no persistida (pedido intacto):', eHora)
+      }
     } catch (e) {
       console.error('[pedidos] hora_retiro no persistida (pedido intacto):', e)
     }
@@ -221,6 +226,6 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ pedido })
+  return NextResponse.json({ pedido: { ...(pedido as object), hora_retiro: horaRetiroConfirmada } })
 }
 

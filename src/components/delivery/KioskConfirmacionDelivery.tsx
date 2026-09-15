@@ -402,7 +402,14 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           <CheckCircle className="h-9 w-9 text-white" />
         </div>
         <h1 className="text-2xl font-black text-center mb-1" style={{ color: config.primary_color }}>¡Pedido confirmado!</h1>
-        <p className="text-neutral-400 text-sm text-center mb-6">{esTakeaway ? (horaRetiro ? `Tu pedido quedó registrado — retiralo a las ${slotsRetiro.find(s => s.iso === horaRetiro)?.label ?? ''}` : 'Tu pedido quedó registrado para retirar') : `Te contactaremos al ${datos.telefono}`}</p>
+        <p className="text-neutral-400 text-sm text-center mb-6">{esTakeaway ? (() => {
+          // Condición CTO: mostrar SOLO la hora confirmada por el server (viaja
+          // en la respuesta únicamente si quedó guardada; fallo = ASAP honesto)
+          const horaConf = (pedidoCreado as { hora_retiro?: string | null } | null)?.hora_retiro ?? null
+          return horaConf
+            ? `Tu pedido quedó registrado — retiralo a las ${new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConf))}`
+            : 'Tu pedido quedó registrado para retirar'
+        })() : `Te contactaremos al ${datos.telefono}`}</p>
 
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-5 mb-4">
           <div className="text-center mb-4">
