@@ -123,7 +123,9 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                       className={`bg-white rounded-2xl border-2 border-blue-100 shadow-sm overflow-hidden cursor-pointer transition-all hover:shadow-md ${seleccionado?.id === pedido.id ? 'ring-2 ring-blue-300' : ''}`}>
                       <div className="bg-blue-50 px-4 py-3 flex items-center justify-between border-b border-blue-100">
                         <div className="flex items-center gap-2">
-                          <span className="text-blue-700 font-black text-xl">#{pedido.numero_pedido}</span> {pedido.tipo_pedido === 'takeaway' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 align-middle">🥡 TAKE AWAY</span>}{pedido.tipo_pedido === 'takeaway' && horaRetiroLabel(pedido.hora_retiro) && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-neutral-800 text-white align-middle">🕐 {horaRetiroLabel(pedido.hora_retiro)}</span>}{pedido.tipo_pedido === 'delivery' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 align-middle">🛵 DELIVERY</span>}
+                          <span className="text-blue-700 font-black text-xl">#{pedido.numero_pedido}</span> {pedido.tipo_pedido === 'takeaway' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 align-middle">🥡 TAKE AWAY</span>}{pedido.tipo_pedido === 'takeaway' && (horaRetiroLabel(pedido.hora_retiro)
+                            ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-neutral-800 text-white align-middle">🕐 {horaRetiroLabel(pedido.hora_retiro)}</span>
+                            : <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-green-50 text-green-700 align-middle">⚡ Lo antes posible</span>)}{pedido.tipo_pedido === 'delivery' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 align-middle">🛵 DELIVERY</span>}
                           <span className="text-xs bg-blue-200 text-blue-700 px-2 py-0.5 rounded-full font-bold">NUEVO</span>
                         </div>
                         <div className="flex items-center gap-1 text-blue-400 text-xs font-medium">
@@ -162,7 +164,9 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                     <div key={pedido.id} onClick={() => setSeleccionado(s => s?.id === pedido.id ? null : pedido)}
                       className={`bg-white rounded-2xl border-2 border-amber-100 shadow-sm overflow-hidden cursor-pointer transition-all hover:shadow-md ${seleccionado?.id === pedido.id ? 'ring-2 ring-amber-300' : ''}`}>
                       <div className="bg-amber-50 px-4 py-3 flex items-center justify-between border-b border-amber-100">
-                        <span className="text-amber-700 font-black text-xl">#{pedido.numero_pedido}</span> {pedido.tipo_pedido === 'takeaway' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 align-middle">🥡 TAKE AWAY</span>}{pedido.tipo_pedido === 'takeaway' && horaRetiroLabel(pedido.hora_retiro) && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-neutral-800 text-white align-middle">🕐 {horaRetiroLabel(pedido.hora_retiro)}</span>}{pedido.tipo_pedido === 'delivery' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 align-middle">🛵 DELIVERY</span>}
+                        <span className="text-amber-700 font-black text-xl">#{pedido.numero_pedido}</span> {pedido.tipo_pedido === 'takeaway' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 align-middle">🥡 TAKE AWAY</span>}{pedido.tipo_pedido === 'takeaway' && (horaRetiroLabel(pedido.hora_retiro)
+                            ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-neutral-800 text-white align-middle">🕐 {horaRetiroLabel(pedido.hora_retiro)}</span>
+                            : <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-green-50 text-green-700 align-middle">⚡ Lo antes posible</span>)}{pedido.tipo_pedido === 'delivery' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 align-middle">🛵 DELIVERY</span>}
                         <div className="flex items-center gap-2">
                           {verTodas && pedido.sucursales?.nombre && <span className="text-xs bg-white px-2 py-0.5 rounded-full text-neutral-400 font-medium">{pedido.sucursales.nombre}</span>}
                           <span className="text-amber-500 text-sm font-mono font-bold">{pedido.codigo_retiro}</span>
@@ -202,7 +206,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
             <button onClick={() => setSeleccionado(null)} className="text-neutral-300 hover:text-neutral-500 transition-colors text-xl">✕</button>
           </div>
           <p className="text-neutral-400 text-xs mb-0.5">Código: <span className="font-mono font-bold text-neutral-700">{seleccionado.codigo_retiro}</span></p>
-          {seleccionado.tipo_pedido === 'takeaway' && horaRetiroLabel(seleccionado.hora_retiro) && <p className="text-neutral-700 text-xs font-bold mb-0.5">🕐 Retira {horaRetiroLabel(seleccionado.hora_retiro)}</p>}
+          {seleccionado.tipo_pedido === 'takeaway' && <p className="text-neutral-700 text-xs font-bold mb-0.5">{horaRetiroLabel(seleccionado.hora_retiro) ? `🕐 Retira ${horaRetiroLabel(seleccionado.hora_retiro)}` : '⚡ Lo antes posible'}</p>}
           <p className="text-neutral-300 text-xs mb-5">{tiempoRelativo(seleccionado.created_at)}</p>
           <div className="space-y-3">
             {seleccionado.pedido_items.map(item => (
