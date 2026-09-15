@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ShoppingBag, Store, Users, Layers, TrendingUp, Clock, Loader2, Bike } from 'lucide-react'
+import { ShoppingBag, Store, Users, Layers, TrendingUp, Clock, Loader2, Bike, Package } from 'lucide-react'
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 function tiempoRelativo(ts: string) {
@@ -29,6 +29,8 @@ export default function AdminDashboard() {
   const [periodoCadetes, setPeriodoCadetes] = useState<'hoy' | 'semana' | 'mes'>('hoy')
   const [cadetes, setCadetes] = useState<{ nombre: string; envios: number; transportado: number; efectivo: number }[]>([])
   const [cadetesLoading, setCadetesLoading] = useState(false)
+  // Alertas de stock: productos contables agotados o en/bajo el mínimo, por sucursal
+  const [stockAlertas, setStockAlertas] = useState<{ producto: string; sucursal: string; cantidad: number; stock_minimo: number }[]>([])
 
   useEffect(() => {
     async function load() {
@@ -69,6 +71,22 @@ export default function AdminDashboard() {
       const totalAyer = (pedidosAyer ?? []).reduce((acc, p) => acc + Number(p.total), 0)
       setStats({ totalHoy, totalAyer, cantidadHoy: pedidosHoy?.length ?? 0, sucursales: sucursales ?? 0, productos: productos ?? 0, operadores: operadores ?? 0 })
       setPedidosActivos(activos ?? [])
+
+      // Stock en alerta (cantidad <= mínimo; incluye agotados). Solo filas de
+      // producto_stock = solo productos con control activado; sin control, la
+      // card ni aparece. Lectura bajo RLS del admin, patrón de la casa.
+      const { data: st } = await supabase.from('producto_stock')
+        .select('cantidad, stock_minimo, productos(nombre), sucursales(nombre)')
+        .eq('empresa_id', empresaId)
+      const alertas = (st ?? [])
+        .filter(r => Number(r.cantidad) <= Number(r.stock_minimo))
+        .map(r => ({
+          producto: (Array.isArray(r.productos) ? r.productos[0] : r.productos)?.nombre ?? '—',
+          sucursal: (Array.isArray(r.sucursales) ? r.sucursales[0] : r.sucursales)?.nombre ?? '—',
+          cantidad: Number(r.cantidad), stock_minimo: Number(r.stock_minimo),
+        }))
+        .sort((a, b) => a.cantidad - b.cantidad)
+      setStockAlertas(alertas)
       setLoading(false)
     }
     load()
@@ -158,6 +176,38 @@ export default function AdminDashboard() {
           <p className="text-xs mt-1 text-neutral-400">Productos activos</p>
         </div>
       </div>
+
+      {stockAlertas.length > 0 && (
+        <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-amber-50 flex items-center justify-between bg-amber-50/50">
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-amber-600" />
+              <h2 className="font-bold text-neutral-700">Stock por reponer</h2>
+            </div>
+            <span className="text-xs font-semibold text-amber-700">
+              {stockAlertas.filter(a => a.cantidad === 0).length > 0 && `${stockAlertas.filter(a => a.cantidad === 0).length} agotados`}
+              {stockAlertas.filter(a => a.cantidad === 0).length > 0 && stockAlertas.filter(a => a.cantidad > 0).length > 0 && ' · '}
+              {stockAlertas.filter(a => a.cantidad > 0).length > 0 && `${stockAlertas.filter(a => a.cantidad > 0).length} bajos`}
+            </span>
+          </div>
+          <div className="divide-y divide-neutral-50">
+            {stockAlertas.slice(0, 6).map((a, i) => (
+              <div key={i} className="px-6 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${a.cantidad === 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {a.cantidad === 0 ? 'Agotado' : `${a.cantidad} u.`}
+                  </span>
+                  <span className="font-semibold text-neutral-700 text-sm truncate">{a.producto}</span>
+                </div>
+                <span className="text-xs text-neutral-400 flex-shrink-0">{a.sucursal}</span>
+              </div>
+            ))}
+            {stockAlertas.length > 6 && (
+              <p className="px-6 py-2.5 text-xs text-neutral-400">y {stockAlertas.length - 6} más — el detalle completo está en Catálogo (📦 de cada producto)</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-neutral-50 flex items-center justify-between">
