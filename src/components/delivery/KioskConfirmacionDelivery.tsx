@@ -53,6 +53,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const esTakeaway = canal === 'takeaway'
   // V1.5: hora de retiro elegida. null = ⚡ Lo antes posible (default histórico)
   const [horaRetiro, setHoraRetiro] = useState<string | null>(null)
+  // Hora CONFIRMADA por el server (viaja en la respuesta solo si quedó guardada)
+  const [horaConfirmada, setHoraConfirmada] = useState<string | null>(null)
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const total = subtotal + (canal === 'takeaway' ? 0 : costoEnvio)
 
@@ -133,6 +135,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     setErrorPedido(null)
     setPedidoId(data.pedido.id)
     setPedidoNum(data.pedido.numero_pedido)
+    setHoraConfirmada((data.pedido as { hora_retiro?: string | null }).hora_retiro ?? null)
     setCodigoRetiro(data.pedido.codigo_retiro)
     pedidoRef.current = { id: data.pedido.id, numero: data.pedido.numero_pedido, codigo: data.pedido.codigo_retiro }
     return data.pedido
@@ -405,7 +408,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
         <p className="text-neutral-400 text-sm text-center mb-6">{esTakeaway ? (() => {
           // Condición CTO: mostrar SOLO la hora confirmada por el server (viaja
           // en la respuesta únicamente si quedó guardada; fallo = ASAP honesto)
-          const horaConf = (pedidoCreado as { hora_retiro?: string | null } | null)?.hora_retiro ?? null
+          const horaConf = horaConfirmada
           return horaConf
             ? `Tu pedido quedó registrado — retiralo a las ${new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConf))}`
             : 'Tu pedido quedó registrado para retirar'
