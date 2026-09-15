@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, Armchair, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, Armchair, TrendingUp, CreditCard } from 'lucide-react'
 
 interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean>; logoUrl?: string | null }
 
@@ -33,6 +33,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
     { href: `/${slug}/admin/sucursales`, label: 'Sucursales', icon: Store },
     { href: `/${slug}/admin/operacion`, label: 'Equipo', icon: Users },
     { href: `/${slug}/admin/ventas`, label: 'Ventas', icon: BarChart3 },
+    { href: `/${slug}/admin/cuentas`, label: 'Cuentas y cobros', icon: CreditCard },
     ...(modulos.facturacion === true ? [{ href: `/${slug}/admin/facturas`, label: 'Facturas', icon: FileText }] : []),
     ...(modulos.beneficios === true ? [{ href: `/${slug}/admin/beneficios`, label: 'Beneficios', icon: Gift }] : []),
     ...(modulos.mesas === true ? [{ href: `/${slug}/admin/mesas`, label: 'Mesas', icon: Armchair }] : []),
