@@ -82,6 +82,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [asignando, setAsignando] = useState(false)
   const verTodas = sesion.operador.sucursal_id === null
   const [deliveryPausado, setDeliveryPausado] = useState<boolean | null>(null)
+  const [stockAlertas, setStockAlertas] = useState<{ agotados: number; bajos: number } | null>(null)
 
   useEffect(() => {
     fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'delivery_pausado_get' }) })
@@ -109,6 +110,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const cargarPedidos = useCallback(async () => {
     const rp = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'pedidos_hoy', verTodas }) })
     const dp = await rp.json()
+    if (dp?.stock_alertas) setStockAlertas(dp.stock_alertas)
     setPedidos((dp.pedidos ?? []) as Pedido[])
     setColaboradores((dp.colaboradores ?? []) as Colaborador[])
     // Pedidos con comprobante fiscal (no se pueden eliminar)
@@ -510,6 +512,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </button>
         )}
         <div className="flex-1" />
+        {stockAlertas && (stockAlertas.agotados > 0 || stockAlertas.bajos > 0) && (
+          <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 mr-2" title="Stock por reponer — el detalle está en el admin (Dashboard / Catálogo)">
+            📦 {stockAlertas.agotados > 0 ? `${stockAlertas.agotados} sin stock` : ''}{stockAlertas.agotados > 0 && stockAlertas.bajos > 0 ? ' · ' : ''}{stockAlertas.bajos > 0 ? `${stockAlertas.bajos} bajo` : ''}
+          </span>
+        )}
         {deliveryPausado !== null && (
           <button onClick={togglePausaDelivery}
             title={deliveryPausado ? 'Reactivar delivery' : 'Pausar delivery (mal tiempo)'}

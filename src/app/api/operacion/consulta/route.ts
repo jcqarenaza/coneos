@@ -38,7 +38,14 @@ export async function POST(request: Request) {
     const { data: colaboradores } = await supabase.from('colaboradores')
       .select('id, nombre').eq('empresa_id', disp.empresa_id)
       .eq('activo', true).eq('rol', 'cadete').order('nombre')
-    return NextResponse.json({ pedidos: pedidos ?? [], colaboradores: colaboradores ?? [] })
+    // Alertas de stock de la sucursal del dispositivo (viaja con el polling de
+    // caja, costo ínfimo): agotados y bajos para el aviso del header.
+    const { data: st } = await supabase.from('producto_stock')
+      .select('cantidad, stock_minimo')
+      .eq('sucursal_id', disp.sucursal_id)
+    const stockAgotados = (st ?? []).filter(r => Number(r.cantidad) === 0).length
+    const stockBajos = (st ?? []).filter(r => Number(r.cantidad) > 0 && Number(r.cantidad) <= Number(r.stock_minimo)).length
+    return NextResponse.json({ pedidos: pedidos ?? [], colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos } })
   }
 
   if (accion === 'historial') {
