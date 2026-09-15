@@ -54,8 +54,14 @@ export async function POST(request: Request) {
         if (!dentro) {
           return NextResponse.json({ error: dc.mensaje_fuera_horario ?? 'El delivery ya cerró por hoy.' }, { status: 409 })
         }
+      }
+    }
+  }
 
   // Validación server-side para pedidos TAKE AWAY: horario propio del canal
+  // FIX V1.5 (bug preexistente cazado por la matriz): esta rama vivía ANIDADA
+  // dentro de la rama delivery — takeaway ≠ delivery, jamás corría. Ahora es
+  // hermana: la validación de horario del canal TA corre de verdad.
   // (mismo motor que delivery, leyendo takeaway_config — decisión CTO: horarios
   // independientes; sin pausa ni costo de envío, el canal no los tiene)
   if (tipo_pedido === 'takeaway') {
@@ -92,9 +98,6 @@ export async function POST(request: Request) {
     // vencido o inventado = 409 amable; sin hora = lo antes posible.
     if (hora_retiro && !esSlotValido((tc.horarios as Franja[] | null) ?? [], String(hora_retiro))) {
       return NextResponse.json({ error: 'Ese horario de retiro ya no está disponible — elegí otro.' }, { status: 409 })
-    }
-  }
-      }
     }
   }
 
