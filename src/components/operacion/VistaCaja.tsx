@@ -82,7 +82,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [asignando, setAsignando] = useState(false)
   const verTodas = sesion.operador.sucursal_id === null
   const [deliveryPausado, setDeliveryPausado] = useState<boolean | null>(null)
-  const [stockAlertas, setStockAlertas] = useState<{ agotados: number; bajos: number } | null>(null)
+  const [stockAlertas, setStockAlertas] = useState<{ agotados: number; bajos: number; items?: { nombre: string; cantidad: number }[] } | null>(null)
+  const [stockAbierto, setStockAbierto] = useState(false)
 
   useEffect(() => {
     fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'delivery_pausado_get' }) })
@@ -513,9 +514,30 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         )}
         <div className="flex-1" />
         {stockAlertas && (stockAlertas.agotados > 0 || stockAlertas.bajos > 0) && (
-          <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 mr-2" title="Stock por reponer — el detalle está en el admin (Dashboard / Catálogo)">
-            📦 {stockAlertas.agotados > 0 ? `${stockAlertas.agotados} sin stock` : ''}{stockAlertas.agotados > 0 && stockAlertas.bajos > 0 ? ' · ' : ''}{stockAlertas.bajos > 0 ? `${stockAlertas.bajos} bajo` : ''}
-          </span>
+          <div className="relative hidden sm:block mr-2">
+            <button onClick={() => setStockAbierto(v => !v)}
+              className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+              title="Ver qué productos hay que reponer">
+              📦 {stockAlertas.agotados > 0 ? `${stockAlertas.agotados} sin stock` : ''}{stockAlertas.agotados > 0 && stockAlertas.bajos > 0 ? ' · ' : ''}{stockAlertas.bajos > 0 ? `${stockAlertas.bajos} bajo` : ''}
+            </button>
+            {stockAbierto && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setStockAbierto(false)} />
+                <div className="absolute right-0 top-full mt-2 z-50 w-64 bg-white rounded-xl border border-neutral-200 shadow-lg overflow-hidden">
+                  <p className="px-4 py-2.5 text-xs font-bold text-neutral-500 border-b border-neutral-100 bg-neutral-50">📦 Para reponer</p>
+                  {(stockAlertas.items ?? []).map((it, i) => (
+                    <div key={i} className="px-4 py-2.5 flex items-center justify-between border-b border-neutral-50 last:border-0">
+                      <span className="text-sm font-semibold text-neutral-700 truncate">{it.nombre}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0 ml-2 ${it.cantidad === 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {it.cantidad === 0 ? 'Agotado' : `${it.cantidad} u.`}
+                      </span>
+                    </div>
+                  ))}
+                  <p className="px-4 py-2 text-[11px] text-neutral-400 bg-neutral-50">La reposición se carga desde el admin (Catálogo → 📦)</p>
+                </div>
+              </>
+            )}
+          </div>
         )}
         {deliveryPausado !== null && (
           <button onClick={togglePausaDelivery}
