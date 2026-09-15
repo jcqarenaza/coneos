@@ -214,3 +214,65 @@ export async function credencialesParaWebhook(
   const { data } = await db.from('mp_credenciales').select('id, empresa_id, access_token')
   return { candidatas: data ?? [], via: 'barrido' }
 }
+
+// ============================================================
+// AUDITORÍA B — buscarPaymentPorPedido (validación manual de MP)
+// Consulta a MP si existe UN pago approved de monto EXACTO para el
+// pedido (external_reference = pedido.id, sembrado por la preferencia
+// desde F3). Reglas CTO: múltiples approved = ambiguo = rechazo;
+// monto exacto sin tolerancia; MP inalcanzable = 'inaccesible'
+// (fail-open controlado lo decide el caller con marca de auditoría).
+// ============================================================
+export type ResultadoBusquedaPayment =
+  | { resultado: 'aprobado'; payment_id: string }
+  | { resultado: 'sin_pago' }
+  | { resultado: 'monto_distinto'; monto_mp: number }
+  | { resultado: 'ambiguo'; candidatos: number }
+  | { resultado: 'inaccesible' }
+
+export async function buscarPaymentPorPedido(
+  supabase: SupabaseClient,
+  pedido: { id: string; empresa_id: string; sucursal_id: string | null; mp_credencial_id: string | null; total: number },
+): Promise<ResultadoBusquedaPayment> {
+  try {
+    // Credencial: snapshot del pedido (F3) → fallback cascada legacy (fix K)
+    let cred: { id: string; access_token: string; refresh_token: string; expires_at: string | null; activo: boolean } | null = null
+    if (pedido.mp_credencial_id) {
+      const { data } = await supabase.from('mp_credenciales')
+        .select('id, access_token, refresh_token, expires_at, activo')
+        .eq('id', pedido.mp_credencial_id).eq('empresa_id', pedido.empresa_id).maybeSingle()
+      cred = data
+    }
+    if (!cred) {
+      const { data } = await supabase.from('mp_credenciales')
+        .select('id, access_token, refresh_token, expires_at, activo')
+        .eq('empresa_id', pedido.empresa_id)
+        .or(pedido.sucursal_id ? `sucursal_id.eq.${pedido.sucursal_id},sucursal_id.is.null` : 'sucursal_id.is.null')
+        .order('updated_at', { ascending: false }).limit(1).maybeSingle()
+      cred = data
+    }
+    if (!cred) return { resultado: 'inaccesible' }
+
+    const token = await conTokenFresco(supabase, cred)
+    if (!token) return { resultado: 'inaccesible' }
+
+    const res = await fetch(
+      `https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(pedido.id)}&sort=date_created&criteria=desc`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (!res.ok) return { resultado: 'inaccesible' }
+    const data = await res.json()
+    const aprobados = ((data?.results ?? []) as { id: number | string; status: string; transaction_amount: number }[])
+      .filter(p => p.status === 'approved')
+
+    if (aprobados.length === 0) return { resultado: 'sin_pago' }
+    if (aprobados.length > 1) return { resultado: 'ambiguo', candidatos: aprobados.length } // regla CTO: jamás elegir arbitrario
+    const unico = aprobados[0]
+    if (Number(unico.transaction_amount) !== Number(pedido.total)) {
+      return { resultado: 'monto_distinto', monto_mp: Number(unico.transaction_amount) }
+    }
+    return { resultado: 'aprobado', payment_id: String(unico.id) }
+  } catch {
+    return { resultado: 'inaccesible' }
+  }
+}
