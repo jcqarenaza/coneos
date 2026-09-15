@@ -19,9 +19,6 @@ interface Empresa { nombre: string; slug: string; plan: string }
 
 export default function ConfigPage() {
   const { ctx, loading: ctxLoading } = useEmpresa()
-  const [mpConectado, setMpConectado] = useState<boolean | null>(null)
-  const [sucursalesMP, setSucursalesMP] = useState<{ id: string; nombre: string; propio: boolean }[]>([])
-  const [linkCopiado, setLinkCopiado] = useState<string | null>(null)
   const [empresa, setEmpresa] = useState<Empresa | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [saving, setSaving] = useState(false)
@@ -45,25 +42,7 @@ export default function ConfigPage() {
         punto_venta: cfg.punto_venta ?? 1,
       })
     })
-    supabase.from('mp_credenciales').select('id').eq('empresa_id', ctx.empresaId).is('sucursal_id', null).maybeSingle()
-      .then(({ data }) => setMpConectado(!!data))
-    // Sucursales con su estado de MP propio (para el vínculo por franquicia)
-    Promise.all([
-      supabase.from('sucursales').select('id, nombre').eq('empresa_id', ctx.empresaId).order('nombre'),
-      supabase.from('mp_credenciales').select('sucursal_id').eq('empresa_id', ctx.empresaId).not('sucursal_id', 'is', null),
-    ]).then(([{ data: sucs }, { data: creds }]) => {
-      const conCuenta = new Set((creds ?? []).map(c => c.sucursal_id))
-      setSucursalesMP((sucs ?? []).map(su => ({ id: su.id, nombre: su.nombre, propio: conCuenta.has(su.id) })))
-    })
   }, [ctx])
-
-  function copiarLinkMP(sucursalId: string) {
-    const link = `https://coneos.vercel.app/api/mp/connect?empresa_id=${ctx?.empresaId}&slug=${empresa?.slug ?? ''}&sucursal_id=${sucursalId}`
-    navigator.clipboard.writeText(link).then(() => {
-      setLinkCopiado(sucursalId)
-      setTimeout(() => setLinkCopiado(null), 2500)
-    })
-  }
 
   async function handleLogoUpload(file: File) {
     if (!ctx) return
@@ -230,56 +209,14 @@ export default function ConfigPage() {
           </div>
         </ConeCard>
 
-        {/* Mercado Pago */}
-        <ConeCard title="Mercado Pago">
-          <div className="space-y-3">
-            {mpConectado === null ? (
-              <div className="flex items-center gap-2 text-neutral-400 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Verificando conexión...</div>
-            ) : mpConectado ? (
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
-                  <Check className="h-5 w-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-neutral-800 text-sm">Cuenta conectada</p>
-                  <p className="text-xs text-neutral-400">Los pagos online se acreditan directo en tu cuenta de Mercado Pago.</p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-neutral-500">Conectá tu cuenta de Mercado Pago para recibir pagos online de tus clientes. El dinero va directo a tu cuenta.</p>
-                <a href={`/api/mp/connect?empresa_id=${ctx?.empresaId}&slug=${empresa?.slug ?? ''}`}
-                  className="inline-flex items-center gap-2 px-5 py-3 bg-[#009EE3] hover:bg-[#008ACB] text-white font-bold rounded-xl text-sm transition-colors">
-                  Conectar Mercado Pago →
-                </a>
-              </div>
-            )}
-
-            {/* Cuenta propia por sucursal (franquicias): el link lo abre el dueño
-                de esa sucursal y autoriza con SU cuenta de MP. Sin cuenta propia,
-                la sucursal cobra en la cuenta de la marca. */}
-            {sucursalesMP.length > 1 && (
-              <div className="pt-3 border-t border-neutral-100 space-y-2">
-                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Cuenta propia por sucursal</p>
-                <p className="text-xs text-neutral-400">Para que una sucursal (franquicia) cobre en su propia cuenta: copiá su link y envíaselo al responsable — lo abre, ingresa con su Mercado Pago y queda vinculado. Sin cuenta propia, cobra en la cuenta de la marca.</p>
-                {sucursalesMP.map(su => (
-                  <div key={su.id} className="flex items-center justify-between gap-3 py-1.5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-semibold text-neutral-700 truncate">{su.nombre}</span>
-                      {su.propio ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-50 text-green-700">Cuenta propia</span>
-                      ) : (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-neutral-100 text-neutral-500">{mpConectado ? 'Usa la de la marca' : 'Sin cuenta'}</span>
-                      )}
-                    </div>
-                    <button onClick={() => copiarLinkMP(su.id)}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 transition-colors flex-shrink-0">
-                      {linkCopiado === su.id ? '✓ Copiado' : su.propio ? 'Copiar link (revincular)' : 'Copiar link de vínculo'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Mercado Pago — migrado a 💳 Cuentas y cobros (Fase 6.4) */}
+        <ConeCard title="Mercado Pago y cuentas de cobro">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-neutral-500">Las cuentas de Mercado Pago, las cuentas de transferencia y qué cuenta cobra cada canal se administran en su propia sección.</p>
+            <a href={`/${empresa?.slug ?? ''}/admin/cuentas`}
+              className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-bold rounded-xl text-sm transition-colors">
+              💳 Cuentas y cobros →
+            </a>
           </div>
         </ConeCard>
 
