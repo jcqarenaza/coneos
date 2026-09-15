@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   if (accion === 'pedidos_hoy') {
     let query = supabase.from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre),
+      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, hora_retiro, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre),
         sucursales(nombre),
         pedido_pagos(metodo, monto),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   if (accion === 'historial') {
     if (!body.fecha) return NextResponse.json({ error: 'fecha requerida' }, { status: 400 })
     let query = supabase.from('pedidos')
-      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_nombre, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre), pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
+      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_nombre, hora_retiro, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre), pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
       .eq('empresa_id', disp.empresa_id)
       .eq('fecha_pedido', body.fecha)
       .order('numero_pedido', { ascending: true })
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
 
   if (accion === 'preparacion') {
     let query = supabase.from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, notas, created_at, tipo_pedido,
+      .select(`id, numero_pedido, codigo_retiro, estado, notas, created_at, tipo_pedido, hora_retiro,
         sucursales(nombre),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
@@ -76,7 +76,15 @@ export async function POST(request: Request) {
       .order('numero_pedido', { ascending: true })
     if (!body.verTodas) query = query.eq('sucursal_id', disp.sucursal_id)
     const { data } = await query
-    return NextResponse.json({ pedidos: data ?? [] })
+    // V1.5: RÍO ÚNICO por hora efectiva — un TA con hora de retiro se ordena
+    // por esa hora; el resto (y los TA "lo antes posible") por llegada. La
+    // cocina mira UNA cola y el pedido de las 20:00 no molesta antes de tiempo.
+    const ordenados = (data ?? []).sort((a, b) => {
+      const ta = Date.parse((a as { hora_retiro?: string | null }).hora_retiro ?? a.created_at)
+      const tb = Date.parse((b as { hora_retiro?: string | null }).hora_retiro ?? b.created_at)
+      return ta - tb
+    })
+    return NextResponse.json({ pedidos: ordenados })
   }
 
   if (accion === 'display') {

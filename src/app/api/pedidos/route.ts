@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolverPago } from '@/lib/pagos/resolver'
+import { esSlotValido, type Franja } from '@/lib/takeaway/slots'
 import { canalDePedido } from '@/lib/pagos/mp'
 
 export async function POST(request: Request) {
@@ -12,6 +13,7 @@ export async function POST(request: Request) {
     // MESA: número de mesa + nombre del cliente; pago_mp true = paga ya con MP,
     // false = "pagar al mozo" (va a cocina sin cobrar, queda por cobrar en caja)
     numero_mesa = null, nombre_cliente = null, pago_mp = false,
+    hora_retiro = null, // V1.5: solo takeaway; null = lo antes posible
   } = body
 
   console.log('[pedidos] body recibido:', JSON.stringify({ empresa_id, sucursal_id, items_length: items?.length, origen }))
@@ -84,6 +86,12 @@ export async function POST(request: Request) {
       if (!dentro) {
         return NextResponse.json({ error: tc.mensaje_fuera_horario ?? 'El take away ya cerró por hoy.' }, { status: 409 })
       }
+    }
+    // V1.5: hora de retiro elegida — validación server con la MISMA fuente que
+    // genera los slots del contexto (jamás confiar el slot del cliente). Slot
+    // vencido o inventado = 409 amable; sin hora = lo antes posible.
+    if (hora_retiro && !esSlotValido((tc.horarios as Franja[] | null) ?? [], String(hora_retiro))) {
+      return NextResponse.json({ error: 'Ese horario de retiro ya no está disponible — elegí otro.' }, { status: 409 })
     }
   }
       }
@@ -175,6 +183,18 @@ export async function POST(request: Request) {
     }
     console.error('[pedidos] Error creando pedido (RPC):', error)
     return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
+  }
+
+  // ── V1.5 — HORA DE RETIRO (solo takeaway, ya validada) ──
+  // Post-RPC adrede: la RPC de stock no se toca (regla STOP del CTO). Un fallo
+  // acá degrada a "lo antes posible" — jamás voltea el pedido.
+  if (tipo_pedido === 'takeaway' && hora_retiro) {
+    try {
+      const pedidoId = (pedido as { id?: string })?.id
+      if (pedidoId) await supabase.from('pedidos').update({ hora_retiro }).eq('id', pedidoId)
+    } catch (e) {
+      console.error('[pedidos] hora_retiro no persistida (pedido intacto):', e)
+    }
   }
 
   // ── FASE 4 — SNAPSHOT TRANSFERENCIA al crear ──
