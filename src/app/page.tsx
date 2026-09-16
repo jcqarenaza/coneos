@@ -161,7 +161,7 @@ export default function LandingPage() {
         <h2 className="text-3xl md:text-4xl font-black mb-6">Tu negocio no debería funcionar<br />con cinco sistemas distintos.</h2>
         <div className="flex flex-wrap justify-center gap-2 mb-6 text-sm text-slate-400">
           {['Pedidos por WhatsApp', 'Mesas por un lado', 'Caja por otro', 'Delivery manual', 'Comandas impresas', 'Pagos difíciles de controlar'].map(p => (
-            <span key={p} className="px-3 py-1.5 bg-[#EAF4FC] border border-[#CFE4F5] rounded-full">{p}</span>
+            <span key={p} className="px-3 py-1.5 bg-white/[.06] border border-white/15 rounded-full">{p}</span>
           ))}
         </div>
         <p className="text-slate-300 text-lg leading-relaxed">
@@ -177,10 +177,10 @@ export default function LandingPage() {
           <p className="text-slate-400 text-center mb-12 text-lg">Once módulos integrados, un solo sistema.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {MODULOS.map(m => (
-              <div key={m.title} className="bg-[#EAF4FC] text-neutral-900 rounded-2xl border border-[#D6E7F5] p-6 border-t-4 transition-shadow hover:shadow-md" style={{ borderTopColor: m.color }}>
+              <div key={m.title} className="bg-[#0F2440] text-white rounded-2xl border border-[#24466E] p-6 border-t-4 transition-shadow hover:shadow-md" style={{ borderTopColor: m.color }}>
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-4" style={{ backgroundColor: m.color + '14' }}>{m.emoji}</div>
                 <h3 className="font-bold mb-2">{m.title}</h3>
-                <p className="text-neutral-500 text-sm leading-relaxed">{m.desc}</p>
+                <p className="text-slate-400 text-sm leading-relaxed">{m.desc}</p>
               </div>
             ))}
           </div>
@@ -193,7 +193,7 @@ export default function LandingPage() {
         <p className="text-slate-300 text-lg mb-10">Una misma plataforma, configurable. No son productos distintos: es tu catálogo y tu operación, con tus nombres.</p>
         <div className="flex flex-wrap justify-center gap-3">
           {RUBROS.map(([emoji, nombre], i) => (
-            <span key={nombre} className="flex items-center gap-2 px-4 py-2.5 bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-2xl text-sm font-semibold shadow-sm border-b-2" style={{ borderBottomColor: [AZUL, VERDE, AMARILLO, ROJO, NAVY][i % 5] }}>
+            <span key={nombre} className="flex items-center gap-2 px-4 py-2.5 bg-[#0F2440] text-white border border-[#24466E] rounded-2xl text-sm font-semibold shadow-sm border-b-2" style={{ borderBottomColor: [AZUL, VERDE, AMARILLO, ROJO, NAVY][i % 5] }}>
               <span className="text-xl">{emoji}</span>{nombre}
             </span>
           ))}
@@ -228,7 +228,7 @@ export default function LandingPage() {
         <p className="text-slate-300 text-lg mb-8">Porque en gastronomía cada segundo cuenta.</p>
         <div className="flex flex-wrap justify-center gap-2 mb-10 text-sm">
           {['Interfaz táctil', 'Celular', 'Tablet', 'Tótem', 'Pantallas horizontales', 'Responsive', 'Instalable como app (PWA)', 'Operación simple'].map(t => (
-            <span key={t} className="px-3.5 py-2 bg-[#EAF4FC] border border-[#CFE4F5] rounded-full font-semibold text-neutral-600">{t}</span>
+            <span key={t} className="px-3.5 py-2 bg-white/[.06] border border-white/15 rounded-full font-semibold text-slate-300">{t}</span>
           ))}
         </div>
         <div className="rounded-3xl border-2 p-8 md:p-10" style={{ borderColor: AZUL, backgroundColor: 'rgba(56,189,248,.08)' }}>
@@ -244,21 +244,21 @@ export default function LandingPage() {
           <div>
             <h2 className="text-3xl md:text-4xl font-black mb-4">Vos controlás el negocio.</h2>
             <p className="text-slate-300 mb-6 leading-relaxed">Toda la configuración de tu negocio desde un único lugar.</p>
-            <div className="flex flex-wrap gap-2 text-xs font-semibold text-neutral-600">
+            <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-300">
               {['Ventas', 'Productos', 'Categorías', 'Sucursales', 'Usuarios', 'Dispositivos', 'Mesas', 'Beneficios', 'Facturación', 'Configuración'].map(t => (
-                <span key={t} className="px-3 py-1.5 bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-full">{t}</span>
+                <span key={t} className="px-3 py-1.5 bg-[#0F2440] text-white border border-[#24466E] rounded-full">{t}</span>
               ))}
             </div>
           </div>
-          <div className="bg-[#EAF4FC] text-neutral-900 rounded-3xl border border-[#D6E7F5] shadow-sm overflow-hidden">
-            <div className="border-b border-[#D6E7F5] px-4 py-2.5 flex items-center gap-2">
+          <div className="bg-[#0F2440] text-white rounded-3xl border border-[#24466E] shadow-sm overflow-hidden">
+            <div className="border-b border-[#24466E] px-4 py-2.5 flex items-center gap-2">
               <img src="/aoki-logo-navy.png" alt="" className="h-4 w-auto" />
               <span className="text-xs font-bold">Gastr<span style={{ color: AZUL }}>OS</span> · Dashboard</span>
             </div>
             <div className="p-4 grid grid-cols-2 gap-3">
               {([['Ventas de hoy', '$486.000', VERDE], ['Pedidos', '92', AZUL], ['Ticket promedio', '$5.280', AMARILLO], ['Por canal', 'K 41 · D 32 · M 19', ROJO]] as [string, string, string][]).map(([l, v, c]) => (
-                <div key={l} className="rounded-2xl border border-[#D6E7F5] p-3">
-                  <p className="text-[10px] text-neutral-400 font-semibold">{l}</p>
+                <div key={l} className="rounded-2xl border border-[#24466E] p-3">
+                  <p className="text-[10px] text-slate-500 font-semibold">{l}</p>
                   <p className="font-black text-sm" style={{ color: c }}>{v}</p>
                 </div>
               ))}
@@ -276,7 +276,7 @@ export default function LandingPage() {
           <div className="w-px h-6 bg-neutral-200" />
           <div className="flex flex-wrap justify-center gap-3">
             {['Sucursal 1', 'Sucursal 2', 'Sucursal 3', 'Sucursal 4'].map((s, i) => (
-              <div key={s} className="px-5 py-3 bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-2xl text-sm font-semibold shadow-sm border-t-4" style={{ borderTopColor: [AZUL, VERDE, AMARILLO, ROJO][i] }}>🏪 {s}</div>
+              <div key={s} className="px-5 py-3 bg-[#0F2440] text-white border border-[#24466E] rounded-2xl text-sm font-semibold shadow-sm border-t-4" style={{ borderTopColor: [AZUL, VERDE, AMARILLO, ROJO][i] }}>🏪 {s}</div>
             ))}
           </div>
         </div>
@@ -288,9 +288,9 @@ export default function LandingPage() {
           <h2 className="text-3xl md:text-4xl font-black mb-10">Tu negocio, separado y protegido</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             {([['🔐', 'Datos separados por comercio'], ['👤', 'Usuarios y permisos'], ['🔑', 'Acceso seguro'], ['☁️', 'Infraestructura cloud'], ['💾', 'Copias de seguridad'], ['🤝', 'Integraciones seguras con pagos y servicios fiscales']] as [string, string][]).map(([e, t]) => (
-              <div key={t} className="bg-[#EAF4FC] text-neutral-900 rounded-2xl border border-[#D6E7F5] p-5">
+              <div key={t} className="bg-[#0F2440] text-white rounded-2xl border border-[#24466E] p-5">
                 <div className="text-2xl mb-2">{e}</div>
-                <p className="font-semibold text-neutral-700">{t}</p>
+                <p className="font-semibold text-slate-200">{t}</p>
               </div>
             ))}
           </div>
@@ -314,15 +314,15 @@ export default function LandingPage() {
               ))}
             </ul>
           </div>
-          <div className="bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-3xl p-6 shadow-sm font-mono text-xs leading-relaxed max-w-xs mx-auto w-full">
+          <div className="bg-[#0F2440] text-white border border-[#24466E] rounded-3xl p-6 shadow-sm font-mono text-xs leading-relaxed max-w-xs mx-auto w-full">
             <p className="text-center font-black">TU COMERCIO</p>
-            <p className="text-center text-[10px] text-neutral-400 border-b border-dashed border-neutral-300 pb-2 mb-2">FACTURA · 00003-00000116</p>
+            <p className="text-center text-[10px] text-slate-500 border-b border-dashed border-[#2B4E77] pb-2 mb-2">FACTURA · 00003-00000116</p>
             <div className="flex justify-between"><span>Almuerzo x4</span><span>$48.000</span></div>
-            <div className="flex justify-between font-black border-t border-dashed border-neutral-300 mt-2 pt-2"><span>TOTAL</span><span>$48.000</span></div>
-            <p className="text-[10px] text-neutral-400 mt-2">CAE: 86361990251606</p>
-            <div className="w-16 h-16 mx-auto mt-2 rounded-lg border border-[#C4DCEF] grid grid-cols-4 grid-rows-4 gap-0.5 p-1">
+            <div className="flex justify-between font-black border-t border-dashed border-[#2B4E77] mt-2 pt-2"><span>TOTAL</span><span>$48.000</span></div>
+            <p className="text-[10px] text-slate-500 mt-2">CAE: 86361990251606</p>
+            <div className="w-16 h-16 mx-auto mt-2 rounded-lg border border-[#2B4E77] grid grid-cols-4 grid-rows-4 gap-0.5 p-1">
               {[0, 1, 3, 4, 6, 7, 9, 10, 12, 13, 15].map(i => (
-                <div key={i} className="bg-neutral-800 rounded-[1px]" style={{ gridColumnStart: (i % 4) + 1, gridRowStart: Math.floor(i / 4) + 1 }} />
+                <div key={i} className="bg-slate-300 rounded-[1px]" style={{ gridColumnStart: (i % 4) + 1, gridRowStart: Math.floor(i / 4) + 1 }} />
               ))}
             </div>
           </div>
@@ -335,10 +335,10 @@ export default function LandingPage() {
           <h2 className="text-3xl font-black mb-8">Cobrá como tus clientes prefieren</h2>
           <div className="flex flex-wrap justify-center gap-4">
             {([['💳', 'Mercado Pago', 'con la cuenta del comercio'], ['🏦', 'Transferencia', 'con alias copiable'], ['💵', 'Efectivo', 'con control en caja']] as [string, string, string][]).map(([e, t, d]) => (
-              <div key={t} className="bg-[#EAF4FC] text-neutral-900 rounded-2xl border border-[#D6E7F5] px-6 py-5 shadow-sm">
+              <div key={t} className="bg-[#0F2440] text-white rounded-2xl border border-[#24466E] px-6 py-5 shadow-sm">
                 <div className="text-2xl mb-1">{e}</div>
                 <p className="font-bold text-sm">{t}</p>
-                <p className="text-neutral-400 text-xs">{d}</p>
+                <p className="text-slate-500 text-xs">{d}</p>
               </div>
             ))}
           </div>
@@ -351,10 +351,10 @@ export default function LandingPage() {
         <p className="text-slate-300 text-lg mb-12">Vos conocés tu negocio. Nosotros nos encargamos de convertirlo en una operación conectada.</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 text-left">
           {([['01', AZUL, 'Configuramos tu negocio', 'Productos, precios, categorías, sucursal y dispositivos.'], ['02', VERDE, 'Ponemos GastrOS a funcionar', 'Kiosco, mesas, delivery, caja y operación según corresponda.'], ['03', AMARILLO, 'Te acompañamos', 'Capacitación y puesta en marcha, con soporte cercano.']] as [string, string, string, string][]).map(([n, c, t, d]) => (
-            <div key={n} className="bg-[#EAF4FC] text-neutral-900 rounded-2xl border border-[#D6E7F5] p-6 shadow-sm">
+            <div key={n} className="bg-[#0F2440] text-white rounded-2xl border border-[#24466E] p-6 shadow-sm">
               <p className="font-black text-3xl mb-3" style={{ color: c }}>{n}</p>
               <h3 className="font-bold mb-1.5">{t}</h3>
-              <p className="text-neutral-500 text-sm">{d}</p>
+              <p className="text-slate-400 text-sm">{d}</p>
             </div>
           ))}
         </div>
@@ -368,24 +368,24 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch text-left">
             {LANDING.precios.planes.map(plan => (
               <div key={plan.id}
-                className={`bg-[#EAF4FC] text-neutral-900 rounded-3xl p-7 shadow-sm border-t-4 relative flex flex-col ${plan.destacado ? 'border border-[#C4DCEF] shadow-md md:-translate-y-2' : 'border border-[#D6E7F5]'}`}
+                className={`bg-[#0F2440] text-white rounded-3xl p-7 shadow-sm border-t-4 relative flex flex-col ${plan.destacado ? 'border border-[#2B4E77] shadow-md md:-translate-y-2' : 'border border-[#24466E]'}`}
                 style={{ borderTopColor: plan.color }}>
                 {'badge' in plan && plan.badge && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-bold text-white px-3 py-1 rounded-full" style={{ backgroundColor: plan.color }}>{plan.badge}</span>
                 )}
                 <p className="text-sm font-black uppercase tracking-wide mb-1" style={{ color: plan.color }}>{plan.nombre}</p>
-                <p className="text-neutral-500 text-sm mb-4">{plan.bajada}</p>
+                <p className="text-slate-400 text-sm mb-4">{plan.bajada}</p>
                 <p className="text-2xl font-black mb-0.5">{plan.precio}</p>
-                <p className="text-neutral-400 text-xs mb-5">{plan.detalle}</p>
-                {plan.base && <p className="text-xs font-bold text-neutral-400 uppercase tracking-wide mb-2">{plan.base}</p>}
-                <ul className="space-y-2 text-sm text-neutral-600 flex-1">
+                <p className="text-slate-500 text-xs mb-5">{plan.detalle}</p>
+                {plan.base && <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{plan.base}</p>}
+                <ul className="space-y-2 text-sm text-slate-300 flex-1">
                   {plan.modulos.map(m => (
                     <li key={m} className="flex items-center gap-2.5">
                       <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] flex-shrink-0" style={{ backgroundColor: plan.color + '14', color: plan.color }}>✓</span>{m}
                     </li>
                   ))}
                 </ul>
-                <a href="#contacto" className={`mt-6 text-center text-sm font-bold rounded-xl py-3 transition-colors ${plan.destacado ? 'text-white' : 'border border-[#C4DCEF] text-neutral-600 hover:bg-neutral-50'}`}
+                <a href="#contacto" className={`mt-6 text-center text-sm font-bold rounded-xl py-3 transition-colors ${plan.destacado ? 'text-white' : 'border border-[#2B4E77] text-slate-300 hover:bg-neutral-50'}`}
                   style={plan.destacado ? { backgroundColor: plan.color } : undefined}>Quiero este plan</a>
               </div>
             ))}
@@ -414,12 +414,12 @@ export default function LandingPage() {
         <h2 className="text-3xl font-black text-center mb-10">Preguntas frecuentes</h2>
         <div className="space-y-3">
           {FAQ.map(([q, a]) => (
-            <details key={q} className="group bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-2xl px-5 py-4 shadow-sm">
+            <details key={q} className="group bg-[#0F2440] text-white border border-[#24466E] rounded-2xl px-5 py-4 shadow-sm">
               <summary className="font-bold text-sm cursor-pointer list-none flex items-center justify-between gap-3">
                 {q}
                 <span className="text-neutral-300 group-open:rotate-45 transition-transform text-lg leading-none">+</span>
               </summary>
-              <p className="text-neutral-500 text-sm mt-3 leading-relaxed">{a}</p>
+              <p className="text-slate-400 text-sm mt-3 leading-relaxed">{a}</p>
             </details>
           ))}
         </div>
