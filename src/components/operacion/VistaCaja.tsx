@@ -126,10 +126,30 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       const d = await r.json(); return !!d?.claimed
     } catch { return false }
   }
+  // Vía AUTOMÁTICA: imprime por iframe oculto — window.open sin click del
+  // usuario lo bloquea el popup blocker; el print() de un iframe NO. La vía
+  // manual conserva su ventana con vista previa.
+  async function imprimirComandaSilenciosa(pedidoId: string) {
+    const res = await fetch('/api/comprobantes/comanda', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pedido_id: pedidoId }),
+    })
+    if (!res.ok) return
+    const html = await res.text()
+    const frame = document.createElement('iframe')
+    frame.style.position = 'fixed'; frame.style.right = '0'; frame.style.bottom = '0'
+    frame.style.width = '0'; frame.style.height = '0'; frame.style.border = '0'
+    document.body.appendChild(frame)
+    const doc = frame.contentWindow?.document
+    if (!doc) { frame.remove(); return }
+    doc.open(); doc.write(html); doc.close()
+    frame.contentWindow?.focus()
+    setTimeout(() => { try { frame.contentWindow?.print() } catch {} ; setTimeout(() => frame.remove(), 60000) }, 350)
+  }
   async function comandaAutomatica(pedidoId: string) {
     if (comandaEnCurso.current.has(pedidoId)) return
     comandaEnCurso.current.add(pedidoId)
-    try { if (await marcarComanda(pedidoId)) await imprimirComanda(pedidoId) }
+    try { if (await marcarComanda(pedidoId)) await imprimirComandaSilenciosa(pedidoId) }
     finally { comandaEnCurso.current.delete(pedidoId) }
   }
 
