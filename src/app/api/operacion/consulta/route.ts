@@ -112,6 +112,16 @@ export async function POST(request: Request) {
   if (accion === 'comanda_auto_set') {
     await supabase.from('sucursales')
       .update({ comanda_auto: !!body.valor }).eq('id', disp.sucursal_id)
+    // Línea de base al ACTIVAR: lo que ya estaba en preparación queda marcado
+    // como visto — el automático aplica solo hacia adelante (prender el switch
+    // a mitad del día no escupe el backlog histórico de comandas).
+    if (body.valor) {
+      await supabase.from('pedidos')
+        .update({ comanda_impresa_at: new Date().toISOString() })
+        .eq('sucursal_id', disp.sucursal_id)
+        .eq('estado', 'PREPARING')
+        .is('comanda_impresa_at', null)
+    }
     return NextResponse.json({ ok: true, comanda_auto: !!body.valor })
   }
   // Claim idempotente de impresión (a prueba de polling: el UPDATE
