@@ -231,7 +231,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [eliminando, setEliminando] = useState(false)
   const [facturados, setFacturados] = useState<Set<string>>(new Set())
   const [tiposFiscales, setTiposFiscales] = useState<Record<string, 'factura' | 'nc'>>({})
-  function esBorrable(p: Pedido) { return p.estado !== 'PAID' && p.estado !== 'DELIVERED' && !facturados.has(p.id) }
+  // E1: espejo EXACTO de la regla del server (/api/pedidos/eliminar, post-9c):
+  // solo lo NO cobrado se borra — pendiente, o mesa aún sin pagar. El server
+  // sigue siendo la autoridad; esto solo evita ofrecer un botón que rebota.
+  function esBorrable(p: Pedido) {
+    return (p.estado === 'PENDING_PAYMENT' || (p.numero_mesa != null && p.pagado === false)) && !facturados.has(p.id)
+  }
   function BadgeTakeaway({ p }: { p: Pedido }) {
     if (p.tipo_pedido !== 'takeaway') return null
     return <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-teal-50 text-teal-700">🥡 Take Away</span>
@@ -1188,13 +1193,13 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </div>
           <div className="space-y-2">
             <button
-              onClick={async () => { await imprimirTicket(seleccionado.id, nombreCliente); cambiarEstado(seleccionado.id, 'PREPARING') }}
+              onClick={async () => { await imprimirTicket(seleccionado.id, nombreCliente); setModalComprobante(false); setNombreCliente('') }}
               disabled={generandoTicket}
               className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
               {generandoTicket ? <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</> : '🖨️ Generar ticket'}
             </button>
             <button
-              onClick={() => { setModalComprobante(false); setNombreCliente(''); cambiarEstado(seleccionado.id, 'PREPARING') }}
+              onClick={() => { setModalComprobante(false); setNombreCliente('') }}
               className="w-full py-3 text-neutral-500 hover:text-neutral-700 rounded-xl text-sm transition-colors">
               No necesita comprobante → Preparación
             </button>
