@@ -5,8 +5,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 export const LANDING = {
-  whatsapp: '542302456497', // solo dígitos, con código de país
-  demoMensaje: 'Hola, quiero una demo de ConeOS para mi negocio',
+  whatsapp: '5492236807302', // solo dígitos, con código de país
+  demoMensaje: 'Hola, quiero una demo de GastrOS para mi negocio',
 
   precios: {
     fraseEscalera: 'Empezá con lo esencial. Sumá herramientas cuando tu negocio crece.',
@@ -19,14 +19,14 @@ export const LANDING = {
         modulos: ['Kiosco', 'Caja', 'Preparación', 'Display', 'Programa de beneficios'],
       },
       {
-        id: 'pro', nombre: 'Pro', color: '#2F7DE1', destacado: true, badge: 'Más elegido',
+        id: 'pro', nombre: 'Pro', color: '#38BDF8', destacado: true, badge: 'Más elegido',
         bajada: 'Sumá nuevos canales de venta',
         precio: 'USD 150', detalle: 'implementación · única vez por sucursal',
         base: 'Todo Starter +',
         modulos: ['Delivery', 'Mesas + QR', 'Take Away'],
       },
       {
-        id: 'full', nombre: 'Full', color: '#1B2A4A', destacado: false,
+        id: 'full', nombre: 'Full', color: '#0A1F35', destacado: false,
         bajada: 'Toda tu operación integrada',
         precio: 'USD 200', detalle: 'implementación · única vez por sucursal',
         base: 'Todo Pro +',
@@ -43,9 +43,9 @@ export const LANDING = {
   },
 
   empresa: {
-    nombre: 'ConeOS',
-    bajada: 'La plataforma de gestión y operación para negocios gastronómicos.',
-    copyright: '© QP Cloud & Inteligencia Artificial',
+    nombre: 'GastrOS',
+    bajada: 'El sistema operativo para negocios gastronómicos, by Aoki.',
+    copyright: '© Aoki',
   },
 } as const
 
