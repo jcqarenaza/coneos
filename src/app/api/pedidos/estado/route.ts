@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { acreditarPuntosPedido } from '@/lib/beneficios'
+import { buscarPaymentPorPedido } from '@/lib/pagos/mp'
 
 // GET ?pedido_id= → estado mínimo del pedido, para que kiosk/delivery (anónimos)
 // detecten el pago MP y muestren número y código de retiro.
@@ -94,11 +95,40 @@ export async function POST(request: Request) {
   const supabase = createAdminClient()
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select('estado')
+    .select('estado, metodo_pago, pagado, total, notas, empresa_id, sucursal_id, mp_credencial_id')
     .eq('id', pedido_id)
     .single()
   if (!pedido) {
     return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
+  }
+
+  // ══ AUDITORÍA B — VALIDACIÓN MANUAL DE MP (decisiones CTO a-d) ══
+  // Transición manual a cobrado de un pedido MP que el webhook NO confirmó:
+  // consultar a Mercado Pago antes de aceptar. Efectivo/transferencia y pedidos
+  // ya pagados (webhook) ni pasan por acá. Sin override (b), monto exacto (c),
+  // múltiples approved = ambiguo = rechazo (regla adicional), MP caído =
+  // fail-open CON marca inequívoca (a). Histórico intocable (d).
+  let mpExtras: { pagado: boolean; notas: string } | null = null
+  if ((estado_nuevo === 'PAID' || estado_nuevo === 'DELIVERED') && pedido.metodo_pago === 'mp' && !pedido.pagado) {
+    const busq = await buscarPaymentPorPedido(supabase, {
+      id: pedido_id, empresa_id: pedido.empresa_id, sucursal_id: pedido.sucursal_id,
+      mp_credencial_id: pedido.mp_credencial_id, total: Number(pedido.total),
+    })
+    const conNota = (nota: string) => pedido.notas ? `${pedido.notas} · ${nota}` : nota
+    if (busq.resultado === 'aprobado') {
+      // El pago existe: dejar pasar y completar lo que el webhook habría hecho
+      mpExtras = { pagado: true, notas: conNota(`MP payment ${busq.payment_id}`) }
+    } else if (busq.resultado === 'sin_pago') {
+      return NextResponse.json({ error: 'Mercado Pago no registra este pago. Si el cliente te muestra el comprobante, verificá el importe — o cobralo por otro medio.' }, { status: 409 })
+    } else if (busq.resultado === 'monto_distinto') {
+      return NextResponse.json({ error: `El pago en Mercado Pago es de $${busq.monto_mp.toLocaleString('es-AR')} y el pedido vale $${Number(pedido.total).toLocaleString('es-AR')}. No coinciden — verificá antes de confirmar.` }, { status: 409 })
+    } else if (busq.resultado === 'ambiguo') {
+      return NextResponse.json({ error: `Hay ${busq.candidatos} pagos aprobados para este pedido en Mercado Pago. Verificá en tu panel de MP antes de confirmar.` }, { status: 409 })
+    } else {
+      // inaccesible → fail-open controlado (a): MP caído no frena la caja,
+      // pero la marca queda para siempre (operador ya queda en el log)
+      mpExtras = { pagado: true, notas: conNota('MP payment manual — no verificado por Mercado Pago') }
+    }
   }
 
   // FA-1: persistir receptor fiscal (completo o nada)
@@ -121,6 +151,7 @@ export async function POST(request: Request) {
   await supabase.from('pedidos').update({
     estado: estado_nuevo,
     updated_at: new Date().toISOString(),
+    ...(mpExtras ?? {}),
   }).eq('id', pedido_id)
   await supabase.from('pedido_estados_log').insert({
     pedido_id,
