@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const supabase = createAdminClient()
 
   const { data: pedido } = await supabase.from('pedidos')
-    .select('id, estado, numero_pedido, empresa_id, sucursal_id, stock_descontado, numero_mesa, pagado').eq('id', pedido_id).single()
+    .select('id, estado, numero_pedido, empresa_id, sucursal_id, stock_descontado, numero_mesa, pagado, tipo_pedido').eq('id', pedido_id).single()
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
 
   // ── STOCK V1 REAL: regla de borrado post-9c ──
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
           p_empresa_id: pedido.empresa_id, p_sucursal_id: pedido.sucursal_id,
           p_producto_id: productoId, p_valor: q, p_modo: 'delta',
           p_motivo: 'devolucion', p_pedido_id: pedido_id,
-          p_detalle: `Devolución por eliminación del pedido #${pedido.numero_pedido}`,
+          p_detalle: `Devolución por eliminación del pedido #${pedido.numero_pedido} · ${pedido.numero_mesa != null ? `Mesa ${pedido.numero_mesa}` : pedido.tipo_pedido === 'takeaway' ? 'Take Away' : pedido.tipo_pedido === 'delivery' ? 'Delivery' : 'Kiosco/Caja'}`,
         })
       }
     }
