@@ -98,8 +98,8 @@ export default function LandingPage() {
             <p className="mt-5 text-sm text-slate-400">Operando hoy en gastronómicos de Argentina, con facturación ARCA automática.</p>
           </div>
           <div className="relative h-[440px] hidden sm:block">
-            <div className="absolute top-0 right-4 w-[320px] rotate-2 bg-white text-neutral-800 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden z-30">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
+            <div className="absolute top-0 right-4 w-[320px] rotate-2 bg-[#EAF4FC] text-neutral-800 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden z-30">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[#D6E7F5]">
                 <b className="text-sm">Caja · Casa Central</b>
                 <span className="text-[10px] font-black px-2.5 py-1 rounded-full" style={{ backgroundColor: AZUL, color: NAVY }}>EN VIVO</span>
               </div>
@@ -122,7 +122,7 @@ export default function LandingPage() {
                 <span className="bg-[#17351F] text-green-400 font-black rounded-lg px-3 py-2">#12</span>
               </div>
             </div>
-            <div className="absolute bottom-0 right-0 w-[290px] rotate-1 bg-white text-neutral-800 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden z-10">
+            <div className="absolute bottom-0 right-0 w-[290px] rotate-1 bg-[#EAF4FC] text-neutral-800 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden z-10">
               <table className="w-full text-[11px]">
                 <thead><tr className="bg-slate-50 text-slate-500 text-left"><th className="px-3 py-2">Canal</th><th className="px-3 py-2">Transferencia</th><th className="px-3 py-2">Mercado Pago</th></tr></thead>
                 <tbody>
@@ -161,7 +161,7 @@ export default function LandingPage() {
         <h2 className="text-3xl md:text-4xl font-black mb-6">Tu negocio no debería funcionar<br />con cinco sistemas distintos.</h2>
         <div className="flex flex-wrap justify-center gap-2 mb-6 text-sm text-slate-400">
           {['Pedidos por WhatsApp', 'Mesas por un lado', 'Caja por otro', 'Delivery manual', 'Comandas impresas', 'Pagos difíciles de controlar'].map(p => (
-            <span key={p} className="px-3 py-1.5 bg-neutral-50 border border-neutral-100 rounded-full">{p}</span>
+            <span key={p} className="px-3 py-1.5 bg-[#EAF4FC] border border-[#CFE4F5] rounded-full">{p}</span>
           ))}
         </div>
         <p className="text-slate-300 text-lg leading-relaxed">
@@ -177,7 +177,7 @@ export default function LandingPage() {
           <p className="text-slate-400 text-center mb-12 text-lg">Once módulos integrados, un solo sistema.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {MODULOS.map(m => (
-              <div key={m.title} className="bg-white text-neutral-900 rounded-2xl border border-neutral-100 p-6 border-t-4 transition-shadow hover:shadow-md" style={{ borderTopColor: m.color }}>
+              <div key={m.title} className="bg-[#EAF4FC] text-neutral-900 rounded-2xl border border-[#D6E7F5] p-6 border-t-4 transition-shadow hover:shadow-md" style={{ borderTopColor: m.color }}>
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-4" style={{ backgroundColor: m.color + '14' }}>{m.emoji}</div>
                 <h3 className="font-bold mb-2">{m.title}</h3>
                 <p className="text-neutral-500 text-sm leading-relaxed">{m.desc}</p>
@@ -193,7 +193,7 @@ export default function LandingPage() {
         <p className="text-slate-300 text-lg mb-10">Una misma plataforma, configurable. No son productos distintos: es tu catálogo y tu operación, con tus nombres.</p>
         <div className="flex flex-wrap justify-center gap-3">
           {RUBROS.map(([emoji, nombre], i) => (
-            <span key={nombre} className="flex items-center gap-2 px-4 py-2.5 bg-white text-neutral-900 border border-neutral-100 rounded-2xl text-sm font-semibold shadow-sm border-b-2" style={{ borderBottomColor: [AZUL, VERDE, AMARILLO, ROJO, NAVY][i % 5] }}>
+            <span key={nombre} className="flex items-center gap-2 px-4 py-2.5 bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-2xl text-sm font-semibold shadow-sm border-b-2" style={{ borderBottomColor: [AZUL, VERDE, AMARILLO, ROJO, NAVY][i % 5] }}>
               <span className="text-xl">{emoji}</span>{nombre}
             </span>
           ))}
@@ -228,7 +228,7 @@ export default function LandingPage() {
         <p className="text-slate-300 text-lg mb-8">Porque en gastronomía cada segundo cuenta.</p>
         <div className="flex flex-wrap justify-center gap-2 mb-10 text-sm">
           {['Interfaz táctil', 'Celular', 'Tablet', 'Tótem', 'Pantallas horizontales', 'Responsive', 'Instalable como app (PWA)', 'Operación simple'].map(t => (
-            <span key={t} className="px-3.5 py-2 bg-neutral-50 border border-neutral-100 rounded-full font-semibold text-neutral-600">{t}</span>
+            <span key={t} className="px-3.5 py-2 bg-[#EAF4FC] border border-[#CFE4F5] rounded-full font-semibold text-neutral-600">{t}</span>
           ))}
         </div>
         <div className="rounded-3xl border-2 p-8 md:p-10" style={{ borderColor: AZUL, backgroundColor: 'rgba(56,189,248,.08)' }}>
@@ -246,18 +246,18 @@ export default function LandingPage() {
             <p className="text-slate-300 mb-6 leading-relaxed">Toda la configuración de tu negocio desde un único lugar.</p>
             <div className="flex flex-wrap gap-2 text-xs font-semibold text-neutral-600">
               {['Ventas', 'Productos', 'Categorías', 'Sucursales', 'Usuarios', 'Dispositivos', 'Mesas', 'Beneficios', 'Facturación', 'Configuración'].map(t => (
-                <span key={t} className="px-3 py-1.5 bg-white text-neutral-900 border border-neutral-100 rounded-full">{t}</span>
+                <span key={t} className="px-3 py-1.5 bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-full">{t}</span>
               ))}
             </div>
           </div>
-          <div className="bg-white text-neutral-900 rounded-3xl border border-neutral-100 shadow-sm overflow-hidden">
-            <div className="border-b border-neutral-100 px-4 py-2.5 flex items-center gap-2">
+          <div className="bg-[#EAF4FC] text-neutral-900 rounded-3xl border border-[#D6E7F5] shadow-sm overflow-hidden">
+            <div className="border-b border-[#D6E7F5] px-4 py-2.5 flex items-center gap-2">
               <img src="/aoki-logo-navy.png" alt="" className="h-4 w-auto" />
               <span className="text-xs font-bold">Gastr<span style={{ color: AZUL }}>OS</span> · Dashboard</span>
             </div>
             <div className="p-4 grid grid-cols-2 gap-3">
               {([['Ventas de hoy', '$486.000', VERDE], ['Pedidos', '92', AZUL], ['Ticket promedio', '$5.280', AMARILLO], ['Por canal', 'K 41 · D 32 · M 19', ROJO]] as [string, string, string][]).map(([l, v, c]) => (
-                <div key={l} className="rounded-2xl border border-neutral-100 p-3">
+                <div key={l} className="rounded-2xl border border-[#D6E7F5] p-3">
                   <p className="text-[10px] text-neutral-400 font-semibold">{l}</p>
                   <p className="font-black text-sm" style={{ color: c }}>{v}</p>
                 </div>
@@ -276,7 +276,7 @@ export default function LandingPage() {
           <div className="w-px h-6 bg-neutral-200" />
           <div className="flex flex-wrap justify-center gap-3">
             {['Sucursal 1', 'Sucursal 2', 'Sucursal 3', 'Sucursal 4'].map((s, i) => (
-              <div key={s} className="px-5 py-3 bg-white text-neutral-900 border border-neutral-100 rounded-2xl text-sm font-semibold shadow-sm border-t-4" style={{ borderTopColor: [AZUL, VERDE, AMARILLO, ROJO][i] }}>🏪 {s}</div>
+              <div key={s} className="px-5 py-3 bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-2xl text-sm font-semibold shadow-sm border-t-4" style={{ borderTopColor: [AZUL, VERDE, AMARILLO, ROJO][i] }}>🏪 {s}</div>
             ))}
           </div>
         </div>
@@ -288,7 +288,7 @@ export default function LandingPage() {
           <h2 className="text-3xl md:text-4xl font-black mb-10">Tu negocio, separado y protegido</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             {([['🔐', 'Datos separados por comercio'], ['👤', 'Usuarios y permisos'], ['🔑', 'Acceso seguro'], ['☁️', 'Infraestructura cloud'], ['💾', 'Copias de seguridad'], ['🤝', 'Integraciones seguras con pagos y servicios fiscales']] as [string, string][]).map(([e, t]) => (
-              <div key={t} className="bg-white text-neutral-900 rounded-2xl border border-neutral-100 p-5">
+              <div key={t} className="bg-[#EAF4FC] text-neutral-900 rounded-2xl border border-[#D6E7F5] p-5">
                 <div className="text-2xl mb-2">{e}</div>
                 <p className="font-semibold text-neutral-700">{t}</p>
               </div>
@@ -314,13 +314,13 @@ export default function LandingPage() {
               ))}
             </ul>
           </div>
-          <div className="bg-white text-neutral-900 border border-neutral-100 rounded-3xl p-6 shadow-sm font-mono text-xs leading-relaxed max-w-xs mx-auto w-full">
+          <div className="bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-3xl p-6 shadow-sm font-mono text-xs leading-relaxed max-w-xs mx-auto w-full">
             <p className="text-center font-black">TU COMERCIO</p>
             <p className="text-center text-[10px] text-neutral-400 border-b border-dashed border-neutral-300 pb-2 mb-2">FACTURA · 00003-00000116</p>
             <div className="flex justify-between"><span>Almuerzo x4</span><span>$48.000</span></div>
             <div className="flex justify-between font-black border-t border-dashed border-neutral-300 mt-2 pt-2"><span>TOTAL</span><span>$48.000</span></div>
             <p className="text-[10px] text-neutral-400 mt-2">CAE: 86361990251606</p>
-            <div className="w-16 h-16 mx-auto mt-2 rounded-lg border border-neutral-200 grid grid-cols-4 grid-rows-4 gap-0.5 p-1">
+            <div className="w-16 h-16 mx-auto mt-2 rounded-lg border border-[#C4DCEF] grid grid-cols-4 grid-rows-4 gap-0.5 p-1">
               {[0, 1, 3, 4, 6, 7, 9, 10, 12, 13, 15].map(i => (
                 <div key={i} className="bg-neutral-800 rounded-[1px]" style={{ gridColumnStart: (i % 4) + 1, gridRowStart: Math.floor(i / 4) + 1 }} />
               ))}
@@ -335,7 +335,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-black mb-8">Cobrá como tus clientes prefieren</h2>
           <div className="flex flex-wrap justify-center gap-4">
             {([['💳', 'Mercado Pago', 'con la cuenta del comercio'], ['🏦', 'Transferencia', 'con alias copiable'], ['💵', 'Efectivo', 'con control en caja']] as [string, string, string][]).map(([e, t, d]) => (
-              <div key={t} className="bg-white text-neutral-900 rounded-2xl border border-neutral-100 px-6 py-5 shadow-sm">
+              <div key={t} className="bg-[#EAF4FC] text-neutral-900 rounded-2xl border border-[#D6E7F5] px-6 py-5 shadow-sm">
                 <div className="text-2xl mb-1">{e}</div>
                 <p className="font-bold text-sm">{t}</p>
                 <p className="text-neutral-400 text-xs">{d}</p>
@@ -351,7 +351,7 @@ export default function LandingPage() {
         <p className="text-slate-300 text-lg mb-12">Vos conocés tu negocio. Nosotros nos encargamos de convertirlo en una operación conectada.</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 text-left">
           {([['01', AZUL, 'Configuramos tu negocio', 'Productos, precios, categorías, sucursal y dispositivos.'], ['02', VERDE, 'Ponemos GastrOS a funcionar', 'Kiosco, mesas, delivery, caja y operación según corresponda.'], ['03', AMARILLO, 'Te acompañamos', 'Capacitación y puesta en marcha, con soporte cercano.']] as [string, string, string, string][]).map(([n, c, t, d]) => (
-            <div key={n} className="bg-white text-neutral-900 rounded-2xl border border-neutral-100 p-6 shadow-sm">
+            <div key={n} className="bg-[#EAF4FC] text-neutral-900 rounded-2xl border border-[#D6E7F5] p-6 shadow-sm">
               <p className="font-black text-3xl mb-3" style={{ color: c }}>{n}</p>
               <h3 className="font-bold mb-1.5">{t}</h3>
               <p className="text-neutral-500 text-sm">{d}</p>
@@ -368,7 +368,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch text-left">
             {LANDING.precios.planes.map(plan => (
               <div key={plan.id}
-                className={`bg-white text-neutral-900 rounded-3xl p-7 shadow-sm border-t-4 relative flex flex-col ${plan.destacado ? 'border border-neutral-200 shadow-md md:-translate-y-2' : 'border border-neutral-100'}`}
+                className={`bg-[#EAF4FC] text-neutral-900 rounded-3xl p-7 shadow-sm border-t-4 relative flex flex-col ${plan.destacado ? 'border border-[#C4DCEF] shadow-md md:-translate-y-2' : 'border border-[#D6E7F5]'}`}
                 style={{ borderTopColor: plan.color }}>
                 {'badge' in plan && plan.badge && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-bold text-white px-3 py-1 rounded-full" style={{ backgroundColor: plan.color }}>{plan.badge}</span>
@@ -385,7 +385,7 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <a href="#contacto" className={`mt-6 text-center text-sm font-bold rounded-xl py-3 transition-colors ${plan.destacado ? 'text-white' : 'border border-neutral-200 text-neutral-600 hover:bg-neutral-50'}`}
+                <a href="#contacto" className={`mt-6 text-center text-sm font-bold rounded-xl py-3 transition-colors ${plan.destacado ? 'text-white' : 'border border-[#C4DCEF] text-neutral-600 hover:bg-neutral-50'}`}
                   style={plan.destacado ? { backgroundColor: plan.color } : undefined}>Quiero este plan</a>
               </div>
             ))}
@@ -414,7 +414,7 @@ export default function LandingPage() {
         <h2 className="text-3xl font-black text-center mb-10">Preguntas frecuentes</h2>
         <div className="space-y-3">
           {FAQ.map(([q, a]) => (
-            <details key={q} className="group bg-white text-neutral-900 border border-neutral-100 rounded-2xl px-5 py-4 shadow-sm">
+            <details key={q} className="group bg-[#EAF4FC] text-neutral-900 border border-[#D6E7F5] rounded-2xl px-5 py-4 shadow-sm">
               <summary className="font-bold text-sm cursor-pointer list-none flex items-center justify-between gap-3">
                 {q}
                 <span className="text-neutral-300 group-open:rotate-45 transition-transform text-lg leading-none">+</span>
