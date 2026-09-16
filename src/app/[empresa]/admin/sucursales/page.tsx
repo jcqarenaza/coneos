@@ -71,6 +71,33 @@ export default function SucursalesPage() {
   function openNew() { setForm(emptySucursal()); setPagos(emptyPagos()); setDelivery(emptyDelivery()); setEditId(null); setModal(true) }
   function openEdit(s: Sucursal) { setForm({ nombre: s.nombre, slug: s.slug, direccion: s.direccion, activo: s.activo }); setPagos(s.pagos ?? emptyPagos()); setDelivery(s.delivery ?? emptyDelivery()); setTakeaway(s.takeaway ?? emptyTakeaway()); const sx = s as Sucursal & { horario_general?: Horario[] | null; mensaje_cerrado?: string | null; tolerancia_cierre?: number | null }; setHorarioGeneral(sx.horario_general ?? null); setMensajeCerrado(sx.mensaje_cerrado ?? ''); setTolGeneral(sx.tolerancia_cierre ?? 0); setEditId(s.id); setModal(true) }
 
+  // CICLO A — coherencia canal vs techo (aviso, jamás bloqueo: el techo manda)
+  function minutosAbiertos(franjas: Horario[]): boolean[] {
+    const m = new Array<boolean>(1440).fill(false)
+    for (const { desde, hasta } of franjas) {
+      const [dh, dm] = desde.split(':').map(Number)
+      const [hh2, hm2] = hasta.split(':').map(Number)
+      const d = dh * 60 + dm
+      let h = hh2 * 60 + hm2
+      if (h <= d) h += 1440 // cruza medianoche: pertenece al día de inicio
+      for (let i = d; i < h; i++) m[i % 1440] = true
+    }
+    return m
+  }
+  function canalFueraDeTecho(canal: Horario[]): boolean {
+    if (!horarioGeneral || horarioGeneral.length === 0) return false
+    const techo = minutosAbiertos(horarioGeneral)
+    const c = minutosAbiertos(canal)
+    for (let i = 0; i < 1440; i++) if (c[i] && !techo[i]) return true
+    return false
+  }
+  const AvisoTecho = ({ canal }: { canal: string }) => (
+    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+      ⚠️ Parte del horario de {canal} queda FUERA del horario del local — en ese rango el local
+      cerrado manda y no van a entrar pedidos. Ajustá el canal o ampliá el horario del local.
+    </p>
+  )
+
   // CICLO A — estado del techo
   const [horarioGeneral, setHorarioGeneral] = useState<Horario[] | null>(null)
   const [mensajeCerrado, setMensajeCerrado] = useState('')
@@ -292,6 +319,7 @@ export default function SucursalesPage() {
                       </div>
                     ))}
                     <p className="text-xs text-neutral-400">Horarios propios del canal, independientes del delivery. Para cruces de medianoche usá la hora de cierre (ej: 01:00).</p>
+                    {takeaway.activo && canalFueraDeTecho(takeaway.horarios) && <AvisoTecho canal="take away" />}
                   </div>
                   <div className="space-y-1.5">
                     <Label>Mensaje fuera de horario</Label>
@@ -337,6 +365,7 @@ export default function SucursalesPage() {
                       </div>
                     ))}
                     <p className="text-xs text-neutral-400">Para horarios que cruzan la medianoche (ej: 20:00 a 01:00) usá 01:00 como hora de cierre.</p>
+                    {delivery.activo && canalFueraDeTecho(delivery.horarios) && <AvisoTecho canal="delivery" />}
                   </div>
                   <div className="space-y-1.5">
                     <Label>Mensaje fuera de horario</Label>
