@@ -141,14 +141,14 @@ export default function LandingPage() {
       </section>
 
       {/* BARRA DE CONFIANZA */}
-      <section className="px-6 md:px-8 py-10 border-y border-white/10">
+      <section className="px-6 md:px-8 py-10">
         <div className="max-w-4xl mx-auto text-center">
           <p className="font-black text-lg mb-5">Una plataforma. Toda la operación.</p>
           <div className="flex items-center justify-center gap-2 flex-wrap text-xs font-bold mb-4">
             {['KIOSCO', 'PEDIDOS', 'CAJA', 'PREPARACIÓN', 'ENTREGA'].map((p, i, arr) => (
               <span key={p} className="flex items-center gap-2">
                 <span className="px-3 py-1.5 rounded-full text-white" style={{ backgroundColor: [AZUL, VERDE, ROJO, AMARILLO, NAVY][i] }}>{p}</span>
-                {i < arr.length - 1 && <span className="text-neutral-300">→</span>}
+                {i < arr.length - 1 && <span className="text-slate-500">→</span>}
               </span>
             ))}
           </div>
@@ -164,8 +164,8 @@ export default function LandingPage() {
             <span key={p} className="px-3 py-1.5 bg-neutral-50 border border-neutral-100 rounded-full">{p}</span>
           ))}
         </div>
-        <p className="text-neutral-600 text-lg leading-relaxed">
-          GastrOS unifica la operación para que cada pedido tenga <b>trazabilidad desde que entra
+        <p className="text-slate-300 text-lg leading-relaxed">
+          GastrOS unifica la operación para que cada pedido tenga <b className="text-white">trazabilidad desde que entra
           hasta que se cobra y se entrega</b>.
         </p>
       </section>
@@ -174,7 +174,7 @@ export default function LandingPage() {
       <section id="funciones" className="px-6 md:px-8 py-20">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl md:text-4xl font-black text-center mb-3">Todo lo que necesitás para operar</h2>
-          <p className="text-neutral-500 text-center mb-12 text-lg">Once módulos integrados, un solo sistema.</p>
+          <p className="text-slate-400 text-center mb-12 text-lg">Once módulos integrados, un solo sistema.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {MODULOS.map(m => (
               <div key={m.title} className="bg-white text-neutral-900 rounded-2xl border border-neutral-100 p-6 border-t-4 transition-shadow hover:shadow-md" style={{ borderTopColor: m.color }}>
@@ -202,7 +202,7 @@ export default function LandingPage() {
       </section>
 
       {/* FLUJO */}
-      <section id="flujo" className="px-6 md:px-8 py-20" style={{ backgroundColor: NAVY }}>
+      <section id="flujo" className="px-6 md:px-8 py-20">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-3xl md:text-4xl font-black text-white text-center mb-12">Del pedido a la entrega,<br />sin perder el control</h2>
           <div>
@@ -398,8 +398,8 @@ export default function LandingPage() {
       </section>
 
       {/* DEMO / CTA */}
-      <section id="contacto" className="px-6 md:px-8 py-20" style={{ backgroundColor: NAVY }}>
-        <div className="max-w-2xl mx-auto text-center">
+      <section id="contacto" className="px-6 md:px-8 py-20">
+        <div className="max-w-3xl mx-auto text-center rounded-[2rem] border border-white/10 bg-white/[.05] px-8 py-14">
           <h2 className="text-3xl md:text-4xl font-black text-white mb-4">¿Querés ver GastrOS funcionando<br />en tu negocio?</h2>
           <p className="text-white/60 text-lg mb-8">Coordinemos una demo y te mostramos cómo podría funcionar en tu operación.</p>
           <div className="flex items-center justify-center gap-3 flex-wrap">
