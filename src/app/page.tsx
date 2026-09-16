@@ -81,19 +81,53 @@ export default function Landing() {
           <p className="mt-5 text-sm text-slate-400">Operando hoy en gastronómicos de Argentina, con facturación ARCA automática.</p>
         </div>
 
-        {/* Paneles REALES del producto (capturas), estilo de la casa Aoki */}
-        <div className="relative h-[470px] hidden sm:block">
-          {/* Dashboard — fondo */}
-          <div className="absolute top-6 right-0 w-[430px] rotate-[1.5deg] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden z-10 border border-white/10">
-            <Image src="/landing/hero-dashboard.png" alt="Panel de administración GastrOS" width={860} height={470} className="w-full h-auto" />
+        {/* Paneles del producto — recortes nítidos estilo Aoki (legibles a este tamaño) */}
+        <div className="relative h-[460px] hidden sm:block">
+          {/* Caja en vivo — frente */}
+          <div className="absolute top-0 right-6 w-[330px] rotate-2 bg-white text-neutral-800 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden z-30">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
+              <b className="text-sm">Caja · Casa Central</b>
+              <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full" style={{ backgroundColor: CIAN, color: NAVY }}>EN VIVO</span>
+            </div>
+            {[
+              ['#15', '🍽️ MESA 15', null, '$9.000'],
+              ['#14', '🥡 TAKE AWAY', '🕐 16:45', '$9.000'],
+              ['#13', '🧾 CAJA', null, '$12.500'],
+              ['#10', '🥡 TAKE AWAY', '🕐 16:15', '$8.500'],
+            ].map(([n, tag, hora, monto]) => (
+              <div key={n as string} className="flex items-center justify-between px-4 py-2.5 border-b border-neutral-50 last:border-0 text-[13px]">
+                <div className="flex items-center gap-2">
+                  <b>{n}</b>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700">{tag}</span>
+                  {hora && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-900 text-white">{hora}</span>}
+                </div>
+                <b>{monto}</b>
+              </div>
+            ))}
           </div>
-          {/* Preparación — medio */}
-          <div className="absolute bottom-0 right-52 w-[400px] -rotate-[2.5deg] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden z-20 border border-white/10">
-            <Image src="/landing/hero-preparacion.png" alt="Display de preparación con horarios de retiro" width={800} height={360} className="w-full h-auto" />
+          {/* Display de cocina — medio */}
+          <div className="absolute bottom-24 right-56 w-[270px] -rotate-3 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden z-20 bg-[#151A21]">
+            <p className="px-4 pt-3 pb-2 text-[10px] font-bold tracking-widest text-slate-400">DISPLAY DE COCINA</p>
+            <div className="flex gap-2 px-4 pb-4">
+              <span className="bg-[#1F2630] text-amber-400 font-extrabold rounded-lg px-3 py-2">#13</span>
+              <span className="bg-[#1F2630] text-amber-400 font-extrabold rounded-lg px-3 py-2">#14</span>
+              <span className="bg-[#17351F] text-green-400 font-extrabold rounded-lg px-3 py-2">#12</span>
+            </div>
           </div>
-          {/* Caja — frente */}
-          <div className="absolute top-0 right-64 w-[360px] rotate-[3deg] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden z-30 border border-white/10">
-            <Image src="/landing/hero-caja.png" alt="Caja: pedidos de todos los canales" width={720} height={350} className="w-full h-auto" />
+          {/* Matriz de cuentas — fondo */}
+          <div className="absolute bottom-0 right-0 w-[300px] rotate-1 bg-white text-neutral-800 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden z-10">
+            <table className="w-full text-[11px]">
+              <thead><tr className="bg-slate-50 text-slate-500 text-left"><th className="px-3 py-2">Canal</th><th className="px-3 py-2">Transferencia</th><th className="px-3 py-2">Mercado Pago</th></tr></thead>
+              <tbody>
+                {[['🛵 Delivery', 'Cuenta local', 'MP Delivery'], ['🛒 Kiosco', 'Cuenta local', 'MP Mostrador'], ['🥡 Take Away', 'Cuenta 2', 'MP Mostrador']].map(([c, t, m2]) => (
+                  <tr key={c} className="border-t border-slate-100">
+                    <td className="px-3 py-2 font-bold whitespace-nowrap">{c}</td>
+                    <td className="px-3 py-2"><span className="bg-slate-100 rounded-md px-2 py-0.5 whitespace-nowrap">{t}</span></td>
+                    <td className="px-3 py-2"><span className="bg-sky-50 text-sky-700 rounded-md px-2 py-0.5 whitespace-nowrap">{m2}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </header>
