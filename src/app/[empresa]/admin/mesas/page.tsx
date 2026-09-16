@@ -52,7 +52,10 @@ export default function MesasPage() {
   }, [ctx])
 
   const suc = sucursales.find(s => s.id === sucursalSel)
-  const baseUrl = suc ? `https://coneos.vercel.app/${empresaSlug}/mesa/${suc.slug}` : ''
+  // Dominio CANÓNICO de producción, SIEMPRE — estos QR se imprimen y viven
+  // pegados en mesas físicas: generados desde un preview igual deben apuntar
+  // a producción (window.location.origin acá sería un bug de papel eterno).
+  const baseUrl = suc ? `https://coneos.com.ar/${empresaSlug}/mesa/${suc.slug}` : ''
 
   async function toggleRecibir() {
     if (!ctx || guardando) return
