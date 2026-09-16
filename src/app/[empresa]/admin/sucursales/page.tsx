@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Loader2, Store, CreditCard, Banknote, Smartphone, Pencil, Trash2 } from 'lucide-react'
 
 interface Horario { desde: string; hasta: string }
+// CICLO A — techo de la sucursal (null = sin restricción)
+
 interface DeliveryConfig { activo: boolean; costo_envio: number; horarios: Horario[]; mensaje_fuera_horario: string; pausado?: boolean; mensaje_pausa?: string; tolerancia_cierre?: number }
 interface TakeawayConfig { activo: boolean; horarios: Horario[]; mensaje_fuera_horario: string; tolerancia_cierre?: number }
 interface SucursalPagos {
@@ -49,7 +51,7 @@ export default function SucursalesPage() {
     const supabase = createClient()
     const { data: suc } = await supabase
       .from('sucursales')
-      .select('id, nombre, slug, direccion, activo, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, acepta_mp_mesa, acepta_mp_takeaway, cbu_transferencia, titular_transferencia), takeaway_config(activo, horarios, mensaje_fuera_horario, tolerancia_cierre), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre), rubro')
+      .select('id, nombre, slug, direccion, activo, horario_general, mensaje_cerrado, tolerancia_cierre, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, acepta_mp_mesa, acepta_mp_takeaway, cbu_transferencia, titular_transferencia), takeaway_config(activo, horarios, mensaje_fuera_horario, tolerancia_cierre), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre), rubro')
       .eq('empresa_id', ctx.empresaId).order('nombre')
     setData((suc ?? []).map((s: Record<string, unknown>) => ({
       ...s,
@@ -67,14 +69,46 @@ export default function SucursalesPage() {
   }
 
   function openNew() { setForm(emptySucursal()); setPagos(emptyPagos()); setDelivery(emptyDelivery()); setEditId(null); setModal(true) }
-  function openEdit(s: Sucursal) { setForm({ nombre: s.nombre, slug: s.slug, direccion: s.direccion, activo: s.activo }); setPagos(s.pagos ?? emptyPagos()); setDelivery(s.delivery ?? emptyDelivery()); setTakeaway(s.takeaway ?? emptyTakeaway()); setEditId(s.id); setModal(true) }
+  function openEdit(s: Sucursal) { setForm({ nombre: s.nombre, slug: s.slug, direccion: s.direccion, activo: s.activo }); setPagos(s.pagos ?? emptyPagos()); setDelivery(s.delivery ?? emptyDelivery()); setTakeaway(s.takeaway ?? emptyTakeaway()); const sx = s as Sucursal & { horario_general?: Horario[] | null; mensaje_cerrado?: string | null; tolerancia_cierre?: number | null }; setHorarioGeneral(sx.horario_general ?? null); setMensajeCerrado(sx.mensaje_cerrado ?? ''); setTolGeneral(sx.tolerancia_cierre ?? 0); setEditId(s.id); setModal(true) }
+
+  // CICLO A — coherencia canal vs techo (aviso, jamás bloqueo: el techo manda)
+  function minutosAbiertos(franjas: Horario[]): boolean[] {
+    const m = new Array<boolean>(1440).fill(false)
+    for (const { desde, hasta } of franjas) {
+      const [dh, dm] = desde.split(':').map(Number)
+      const [hh2, hm2] = hasta.split(':').map(Number)
+      const d = dh * 60 + dm
+      let h = hh2 * 60 + hm2
+      if (h <= d) h += 1440 // cruza medianoche: pertenece al día de inicio
+      for (let i = d; i < h; i++) m[i % 1440] = true
+    }
+    return m
+  }
+  function canalFueraDeTecho(canal: Horario[]): boolean {
+    if (!horarioGeneral || horarioGeneral.length === 0) return false
+    const techo = minutosAbiertos(horarioGeneral)
+    const c = minutosAbiertos(canal)
+    for (let i = 0; i < 1440; i++) if (c[i] && !techo[i]) return true
+    return false
+  }
+  const AvisoTecho = ({ canal }: { canal: string }) => (
+    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+      ⚠️ Parte del horario de {canal} queda FUERA del horario del local — en ese rango el local
+      cerrado manda y no van a entrar pedidos. Ajustá el canal o ampliá el horario del local.
+    </p>
+  )
+
+  // CICLO A — estado del techo
+  const [horarioGeneral, setHorarioGeneral] = useState<Horario[] | null>(null)
+  const [mensajeCerrado, setMensajeCerrado] = useState('')
+  const [tolGeneral, setTolGeneral] = useState<number>(0)
 
   async function handleSave() {
     if (!ctx || !form.nombre || !form.slug) return
     setSaving(true)
     const supabase = createClient()
     if (editId) {
-      await supabase.from('sucursales').update({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: form.activo ?? true, rubro: form.rubro ?? 'HELADERIA' }).eq('id', editId)
+      await supabase.from('sucursales').update({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: form.activo ?? true, rubro: form.rubro ?? 'HELADERIA', horario_general: horarioGeneral && horarioGeneral.length > 0 ? horarioGeneral : null, mensaje_cerrado: mensajeCerrado.trim() || null, tolerancia_cierre: tolGeneral > 0 ? tolGeneral : null }).eq('id', editId)
       await supabase.from('sucursal_pagos').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, acepta_mp_mesa: pagos.acepta_mp_mesa, acepta_mp_takeaway: pagos.acepta_mp_takeaway, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null }, { onConflict: 'sucursal_id' })
       await supabase.from('takeaway_config').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, activo: takeaway.activo, horarios: takeaway.horarios, mensaje_fuera_horario: takeaway.mensaje_fuera_horario, tolerancia_cierre: takeaway.tolerancia_cierre ?? 5 }, { onConflict: 'sucursal_id' })
     } else {
@@ -225,6 +259,48 @@ export default function SucursalesPage() {
               </div>
               {takeaway.activo && (
                 <div className="space-y-3">
+                  {/* ══ CICLO A — HORARIO DEL LOCAL (techo de todos los canales) ══ */}
+                  <div className="space-y-2 border border-neutral-200 rounded-xl p-4 bg-neutral-50/50">
+                    <div className="flex items-center justify-between">
+                      <Label>🕐 Horario del local (todos los canales)</Label>
+                      {horarioGeneral === null ? (
+                        <button type="button" onClick={() => setHorarioGeneral([{ desde: '10:00', hasta: '23:00' }])}
+                          className="text-xs text-blue-600 font-semibold">Activar horario general</button>
+                      ) : (
+                        <button type="button" onClick={() => setHorarioGeneral(null)}
+                          className="text-xs text-red-500 font-semibold">Quitar (sin restricción)</button>
+                      )}
+                    </div>
+                    {horarioGeneral === null ? (
+                      <p className="text-xs text-neutral-400">Sin horario general: cada canal se rige solo por el suyo (comportamiento actual).</p>
+                    ) : (<>
+                      {horarioGeneral.map((h, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <Input type="time" value={h.desde} onChange={e => { const hs = [...horarioGeneral]; hs[i] = { ...hs[i], desde: e.target.value }; setHorarioGeneral(hs) }} className="flex-1 text-sm" />
+                          <span className="text-neutral-400 text-sm">a</span>
+                          <Input type="time" value={h.hasta} onChange={e => { const hs = [...horarioGeneral]; hs[i] = { ...hs[i], hasta: e.target.value }; setHorarioGeneral(hs) }} className="flex-1 text-sm" />
+                          {horarioGeneral.length > 1 && (
+                            <button type="button" onClick={() => setHorarioGeneral(horarioGeneral.filter((_, j) => j !== i))}
+                              className="text-red-400 text-xs font-semibold">✕</button>
+                          )}
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => setHorarioGeneral([...horarioGeneral, { desde: '10:00', hasta: '23:00' }])}
+                        className="text-xs text-blue-600 font-semibold">+ Agregar franja</button>
+                      <p className="text-xs text-neutral-400">Es el techo: fuera de estas franjas NINGÚN canal recibe pedidos (kiosco, delivery, mesas y take away). La caja del operador no se bloquea. Cruces de medianoche: la franja pertenece al día en que empieza.</p>
+                      <div className="grid grid-cols-[1fr_130px] gap-3">
+                        <div className="space-y-1.5">
+                          <Label>Mensaje de local cerrado</Label>
+                          <Input value={mensajeCerrado} onChange={e => setMensajeCerrado(e.target.value)} placeholder="🔒 El local está cerrado. Volvé dentro del horario de atención." className="text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Tolerancia (min)</Label>
+                          <Input type="number" min={0} value={tolGeneral} onChange={e => setTolGeneral(Number(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                      </div>
+                    </>)}
+                  </div>
+
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label>Horarios de take away</Label>
@@ -243,6 +319,7 @@ export default function SucursalesPage() {
                       </div>
                     ))}
                     <p className="text-xs text-neutral-400">Horarios propios del canal, independientes del delivery. Para cruces de medianoche usá la hora de cierre (ej: 01:00).</p>
+                    {takeaway.activo && canalFueraDeTecho(takeaway.horarios) && <AvisoTecho canal="take away" />}
                   </div>
                   <div className="space-y-1.5">
                     <Label>Mensaje fuera de horario</Label>
@@ -288,6 +365,7 @@ export default function SucursalesPage() {
                       </div>
                     ))}
                     <p className="text-xs text-neutral-400">Para horarios que cruzan la medianoche (ej: 20:00 a 01:00) usá 01:00 como hora de cierre.</p>
+                    {delivery.activo && canalFueraDeTecho(delivery.horarios) && <AvisoTecho canal="delivery" />}
                   </div>
                   <div className="space-y-1.5">
                     <Label>Mensaje fuera de horario</Label>

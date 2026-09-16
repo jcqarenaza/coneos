@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolverPago } from '@/lib/pagos/resolver'
 import { esSlotValido, type Franja } from '@/lib/takeaway/slots'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
+import { estaAbierto, type Franja } from '@/lib/horarios'
 import { canalDePedido } from '@/lib/pagos/mp'
 
 export async function POST(request: Request) {
@@ -26,7 +27,22 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient()
 
+  // ══ CICLO A — EL TECHO: horario general de la sucursal ══
+  // Guard temprano, ANTES de la RPC: un rechazo no consume numeración ni
+  // efecto alguno (patrón C). La venta manual de caja está EXENTA: el
+  // operador ES el horario. null = sin restricción (contrato CTO).
+  if (!venta_caja) {
+    const { data: suc } = await supabase.from('sucursales')
+      .select('horario_general, mensaje_cerrado, tolerancia_cierre')
+      .eq('id', sucursal_id).maybeSingle()
+    const techo = (suc?.horario_general as Franja[] | null) ?? null
+    if (techo && techo.length > 0 && !estaAbierto(techo, Number(suc?.tolerancia_cierre ?? 0))) {
+      return NextResponse.json({ error: suc?.mensaje_cerrado ?? '🔒 El local está cerrado. Volvé a hacer tu pedido dentro del horario de atención.' }, { status: 409 })
+    }
+  }
+
   // Validación server-side para pedidos DELIVERY: pausa y horario con tolerancia
+  // (CICLO A: la evaluación de franjas se unificó en la fuente única @/lib/horarios)
   if (origen === 'DELIVERY') {
     const { data: dc } = await supabase
       .from('delivery_config')
@@ -38,21 +54,9 @@ export async function POST(request: Request) {
       if (dc.pausado) {
         return NextResponse.json({ error: dc.mensaje_pausa ?? 'El delivery está pausado momentáneamente.' }, { status: 409 })
       }
-      const horarios = (dc.horarios as { desde: string; hasta: string }[] | null) ?? []
+      const horarios = (dc.horarios as Franja[] | null) ?? []
       if (dc.activo && horarios.length > 0) {
-        const horaArg = new Date().toLocaleTimeString('en-GB', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })
-        const [hh, mm] = horaArg.split(':').map(Number)
-        const minActual = hh * 60 + mm
-        const tol = Number(dc.tolerancia_cierre ?? 5)
-        const dentro = horarios.some(({ desde, hasta }) => {
-          const [dh, dm] = desde.split(':').map(Number)
-          const [hah, ham] = hasta.split(':').map(Number)
-          const minDesde = dh * 60 + dm
-          const finCrudo = hah * 60 + ham
-          const cruza = finCrudo < minDesde
-          const minHasta = cruza ? (finCrudo + tol) % 1440 : Math.min(finCrudo + tol, 1439)
-          return cruza ? (minActual >= minDesde || minActual <= minHasta) : (minActual >= minDesde && minActual <= minHasta)
-        })
+        const dentro = estaAbierto(horarios, Number(dc.tolerancia_cierre ?? 5))
         if (!dentro) {
           return NextResponse.json({ error: dc.mensaje_fuera_horario ?? 'El delivery ya cerró por hoy.' }, { status: 409 })
         }
