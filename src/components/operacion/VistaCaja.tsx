@@ -11,7 +11,7 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -113,11 +113,38 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     setHistorialLoading(false)
   }
 
+  // ══ 9c — COMANDA AUTOMÁTICA (switch por sucursal) ══
+  const [comandaAuto, setComandaAuto] = useState(false)
+  const comandaAutoRef = useRef(false)
+  const comandaEnCurso = useRef<Set<string>>(new Set())
+  useEffect(() => { comandaAutoRef.current = comandaAuto }, [comandaAuto])
+
+  // Claim idempotente: el server elige UN ganador (a prueba de polling)
+  async function marcarComanda(pedidoId: string): Promise<boolean> {
+    try {
+      const r = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'comanda_claim', pedido_id: pedidoId }) })
+      const d = await r.json(); return !!d?.claimed
+    } catch { return false }
+  }
+  async function comandaAutomatica(pedidoId: string) {
+    if (comandaEnCurso.current.has(pedidoId)) return
+    comandaEnCurso.current.add(pedidoId)
+    try { if (await marcarComanda(pedidoId)) await imprimirComanda(pedidoId) }
+    finally { comandaEnCurso.current.delete(pedidoId) }
+  }
+
   const cargarPedidos = useCallback(async () => {
     const rp = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'pedidos_hoy', verTodas }) })
     const dp = await rp.json()
     if (dp?.stock_alertas) setStockAlertas(dp.stock_alertas)
     setPedidos((dp.pedidos ?? []) as Pedido[])
+    // 9c: sucursal con comanda automática → PREPARING sin comanda = imprimir
+    if (typeof dp?.comanda_auto === 'boolean') { setComandaAuto(dp.comanda_auto); comandaAutoRef.current = dp.comanda_auto }
+    if (comandaAutoRef.current) {
+      for (const p of (dp.pedidos ?? []) as Pedido[]) {
+        if (p.estado === 'PREPARING' && !p.comanda_impresa_at) comandaAutomatica(p.id)
+      }
+    }
     setColaboradores((dp.colaboradores ?? []) as Colaborador[])
     // Pedidos con comprobante fiscal (no se pueden eliminar)
     try {
@@ -552,6 +579,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             <span className="hidden md:inline">{deliveryPausado ? 'Delivery pausado' : 'Pausar delivery'}</span>
           </button>
         )}
+          <button onClick={async () => { const nuevo = !comandaAuto; setComandaAuto(nuevo); comandaAutoRef.current = nuevo; await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'comanda_auto_set', valor: nuevo }) }) }}
+            title={comandaAuto ? 'Comanda automática ACTIVADA: se imprime sola al confirmarse cada pago' : 'Comanda automática desactivada: impresión a botón, como siempre'}
+            className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors ${comandaAuto ? 'text-green-600' : 'text-neutral-300 hover:text-neutral-500'}`}>
+            🖨️<span className="hidden md:inline">Comanda auto</span>
+          </button>
         <button onClick={() => { setTab('historial'); cargarHistorial(historialFecha) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'historial' ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
           <History className="h-4 w-4" />
@@ -995,7 +1027,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <p className="text-amber-700 text-sm">📝 {seleccionado.notas}</p>
                   </div>
                 ) : null}
-                <button onClick={() => imprimirComanda(seleccionado.id)}
+                <button onClick={() => { marcarComanda(seleccionado.id); imprimirComanda(seleccionado.id) }}
                   className="w-full mb-3 py-2.5 flex items-center justify-center gap-2 border border-neutral-200 rounded-xl text-neutral-600 text-sm font-semibold hover:bg-neutral-50 transition-colors">
                   <Printer className="h-4 w-4" /> {seleccionado.estado === 'PENDING_PAYMENT' ? 'Imprimir comanda' : 'Reimprimir comanda'}
                 </button>
@@ -1031,23 +1063,37 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       <div className="flex items-center gap-2 mb-2 px-1">
                         <span className="text-xs text-neutral-400">Cliente eligió:</span>
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${seleccionado.metodo_pago === 'efectivo' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                          {seleccionado.metodo_pago === 'efectivo' ? '💵 Efectivo' : seleccionado.metodo_pago === 'transferencia' ? '📲 Transferencia' : '📱 Mercado Pago'}{cuentaDe(seleccionado) ? ` · ${cuentaDe(seleccionado)}` : ''}{horaRetiroDe(seleccionado) ? ` · 🕐 Retira ${horaRetiroDe(seleccionado)}` : ''}
+                          {seleccionado.metodo_pago === 'efectivo' ? '💵 Efectivo' : seleccionado.metodo_pago === 'transferencia' ? '📲 Transferencia' : seleccionado.metodo_pago === 'debito' ? '💳 Débito' : seleccionado.metodo_pago === 'credito' ? '💳 Crédito' : '📱 Mercado Pago'}{cuentaDe(seleccionado) ? ` · ${cuentaDe(seleccionado)}` : ''}{horaRetiroDe(seleccionado) ? ` · 🕐 Retira ${horaRetiroDe(seleccionado)}` : ''}
                         </span>
                       </div>
                     )}
                     {bloqueCuit()}
+                    {/* 9c: el server encadena PAID→PREPARING (transición central);
+                        la comanda sale según el switch. MP tiene su botón propio:
+                        el guard B decide. */}
+                    {seleccionado.metodo_pago === 'mp' ? (
+                      <button onClick={async () => {
+                          await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
+                          if (comandaAutoRef.current) comandaAutomatica(seleccionado.id)
+                          imprimirTicket(seleccionado.id)
+                        }} disabled={procesando || !receptorListo}
+                        className="w-full py-4 bg-sky-600 hover:bg-sky-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
+                        {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Confirmar pago'}
+                      </button>
+                    ) : (<>
                     <button onClick={async () => {
                         await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
-                        await cambiarEstado(seleccionado.id, 'PREPARING')
+                        if (comandaAutoRef.current) comandaAutomatica(seleccionado.id)
                         imprimirTicket(seleccionado.id)
                       }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
                     </button>
-                    <button onClick={async () => { const r = receptorActivo(); await cambiarEstado(seleccionado.id, 'PAID', r); setModalComprobante(true) }} disabled={procesando || !receptorListo}
+                    <button onClick={async () => { const r = receptorActivo(); await cambiarEstado(seleccionado.id, 'PAID', r); if (comandaAutoRef.current) comandaAutomatica(seleccionado.id); setModalComprobante(true) }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
                       📱 Cobrar transferencia
                     </button>
+                    </>)}
                   </>)}
                   {seleccionado.estado === 'PAID' && (
                     <button onClick={() => cambiarEstado(seleccionado.id, 'PREPARING')} disabled={procesando}

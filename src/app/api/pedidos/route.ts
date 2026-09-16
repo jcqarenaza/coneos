@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolverPago } from '@/lib/pagos/resolver'
 import { esSlotValido, type Franja } from '@/lib/takeaway/slots'
+import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 import { canalDePedido } from '@/lib/pagos/mp'
 
 export async function POST(request: Request) {
@@ -14,6 +15,7 @@ export async function POST(request: Request) {
     // false = "pagar al mozo" (va a cocina sin cobrar, queda por cobrar en caja)
     numero_mesa = null, nombre_cliente = null, pago_mp = false,
     hora_retiro = null, // V1.5: solo takeaway; null = lo antes posible
+    venta_caja = false, // 9c: venta manual de mostrador (nace cobrada)
   } = body
 
   console.log('[pedidos] body recibido:', JSON.stringify({ empresa_id, sucursal_id, items_length: items?.length, origen }))
@@ -167,7 +169,9 @@ export async function POST(request: Request) {
     p_tipo_pedido: esMesa ? 'mesa' : tipo_pedido,
     p_costo_envio: Number(costo_envio),
     p_datos_delivery: datos_delivery,
-    p_estado: esMesa && !pago_mp ? 'PREPARING' : 'PENDING_PAYMENT',
+    // 9c: venta manual de MOSTRADOR (no telefónica-delivery) = cargar+cobrar
+    // en un acto → nace PREPARING. Telefónica (contra entrega) y mesa: intactas.
+    p_estado: (esMesa && !pago_mp) || (venta_caja && tipo_pedido !== 'delivery') ? 'PREPARING' : 'PENDING_PAYMENT',
     p_codigo_retiro: codigo_retiro,
     p_mesa_cuenta_id: mesa_cuenta_id,
     p_numero_mesa: esMesa ? Number(numero_mesa) : null,
@@ -183,13 +187,6 @@ export async function POST(request: Request) {
     if (msg.includes('SIN_STOCK:')) {
       const producto = msg.split('SIN_STOCK:')[1]?.split('\n')[0]?.trim() ?? 'un producto'
       return NextResponse.json({ error: `No queda stock de ${producto}. Sacalo del carrito e intentá de nuevo.` }, { status: 409 })
-    }
-    // v1.2: precio/opciones server-authoritative (decisión 3: mensaje humano)
-    if (msg.includes('PRECIO_INVALIDO:')) {
-      return NextResponse.json({ error: 'Los precios se actualizaron. Revisá tu pedido.' }, { status: 409 })
-    }
-    if (msg.includes('OPCION_INVALIDA:')) {
-      return NextResponse.json({ error: 'Alguna opción de tu pedido ya no está disponible. Revisá tu pedido.' }, { status: 409 })
     }
     console.error('[pedidos] Error creando pedido (RPC):', error)
     return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
@@ -210,6 +207,12 @@ export async function POST(request: Request) {
     } catch (e) {
       console.error('[pedidos] hora_retiro no persistida (pedido intacto):', e)
     }
+  }
+
+  // ── 9c — VENTA MANUAL: facturación al nacer (mismo hook, reubicado) ──
+  if (venta_caja && tipo_pedido !== 'delivery') {
+    const pid = (pedido as { id?: string })?.id
+    if (pid) facturarSiCorresponde(pid).catch(() => {})
   }
 
   // ── FASE 4 — SNAPSHOT TRANSFERENCIA al crear ──

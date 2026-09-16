@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   if (accion === 'pedidos_hoy') {
     let query = supabase.from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, hora_retiro, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre),
+      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, hora_retiro, comanda_impresa_at, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre),
         sucursales(nombre),
         pedido_pagos(metodo, monto),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
@@ -49,7 +49,9 @@ export async function POST(request: Request) {
       .sort((a, b) => a.cantidad - b.cantidad).slice(0, 12)
     const stockAgotados = enAlerta.filter(r => r.cantidad === 0).length
     const stockBajos = enAlerta.filter(r => r.cantidad > 0).length
-    return NextResponse.json({ pedidos: pedidos ?? [], colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta } })
+    const { data: sucCfg } = await supabase.from('sucursales')
+      .select('comanda_auto').eq('id', disp.sucursal_id).maybeSingle()
+    return NextResponse.json({ pedidos: pedidos ?? [], colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta }, comanda_auto: sucCfg?.comanda_auto ?? false })
   }
 
   if (accion === 'historial') {
@@ -104,6 +106,23 @@ export async function POST(request: Request) {
     ])
     // pedidos: compat con clientes viejos del display (solo listos)
     return NextResponse.json({ preparando: preparando ?? [], listos: listos ?? [], pedidos: listos ?? [] })
+  }
+
+  // ══ 9c — comanda automática ══
+  if (accion === 'comanda_auto_set') {
+    await supabase.from('sucursales')
+      .update({ comanda_auto: !!body.valor }).eq('id', disp.sucursal_id)
+    return NextResponse.json({ ok: true, comanda_auto: !!body.valor })
+  }
+  // Claim idempotente de impresión (a prueba de polling: el UPDATE
+  // condicional elige UN ganador; la reimpresión manual sigue en su botón).
+  if (accion === 'comanda_claim') {
+    const { data } = await supabase.from('pedidos')
+      .update({ comanda_impresa_at: new Date().toISOString() })
+      .eq('id', body.pedido_id).eq('empresa_id', disp.empresa_id)
+      .is('comanda_impresa_at', null)
+      .select('id')
+    return NextResponse.json({ claimed: (data ?? []).length > 0 })
   }
 
   if (accion === 'delivery_pausado_get') {

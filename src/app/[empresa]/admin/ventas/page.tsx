@@ -24,7 +24,7 @@ function formatHora(ts: string) {
   return new Date(ts).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' })
 }
 
-const METODO_LABEL: Record<string, string> = { efectivo: 'Efectivo', transferencia: 'Transferencia', mp: 'Mercado Pago' }
+const METODO_LABEL: Record<string, string> = { efectivo: 'Efectivo', transferencia: 'Transferencia', mp: 'Mercado Pago', debito: 'Debito', credito: 'Credito' } // 9c
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado', CANCELLED: 'Cancelado' }
 const ESTADO_BADGE: Record<string, string> = {
   PENDING_PAYMENT: 'bg-red-50 text-red-700', PAID: 'bg-blue-50 text-blue-700',
@@ -286,7 +286,9 @@ export default function VentasPage() {
             <option value="efectivo">Efectivo</option>
             <option value="transferencia">Transferencia</option>
             <option value="mp">Mercado Pago</option>
-          </select>
+            <option value="debito">Debito</option>
+              <option value="credito">Credito</option>
+            </select>
         </div>
         {tab === 'historial' && (
           <div className="space-y-1.5">
