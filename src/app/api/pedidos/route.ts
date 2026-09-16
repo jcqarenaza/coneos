@@ -184,6 +184,13 @@ export async function POST(request: Request) {
       const producto = msg.split('SIN_STOCK:')[1]?.split('\n')[0]?.trim() ?? 'un producto'
       return NextResponse.json({ error: `No queda stock de ${producto}. Sacalo del carrito e intentá de nuevo.` }, { status: 409 })
     }
+    // v1.2: precio/opciones server-authoritative (decisión 3: mensaje humano)
+    if (msg.includes('PRECIO_INVALIDO:')) {
+      return NextResponse.json({ error: 'Los precios se actualizaron. Revisá tu pedido.' }, { status: 409 })
+    }
+    if (msg.includes('OPCION_INVALIDA:')) {
+      return NextResponse.json({ error: 'Alguna opción de tu pedido ya no está disponible. Revisá tu pedido.' }, { status: 409 })
+    }
     console.error('[pedidos] Error creando pedido (RPC):', error)
     return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
   }
