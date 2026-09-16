@@ -225,12 +225,20 @@ export default function CatalogoPage() {
     setSavingStock(true)
     const supabase = createClient()
     if (activando) {
-      const { error: e1 } = await supabase.from('producto_stock').upsert({
-        empresa_id: ctx.empresaId, producto_id: modalStock.id, sucursal_id: sucursalDispo,
-        cantidad: cant, stock_minimo: isNaN(min) || min < 0 ? 0 : min,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'producto_id,sucursal_id' })
+      // ── STOCK V1 REAL: el ajuste entra por LA ÚNICA PUERTA ──
+      // ajustar_stock (modo 'set') fija la cantidad con lock de fila (una
+      // venta simultánea no se pisa) y deja el movimiento escrito. El mínimo
+      // es configuración, no movimiento: se guarda aparte.
+      const { error: e1 } = await supabase.rpc('ajustar_stock', {
+        p_empresa_id: ctx.empresaId, p_sucursal_id: sucursalDispo, p_producto_id: modalStock.id,
+        p_valor: cant, p_modo: 'set', p_motivo: 'ajuste',
+        p_detalle: 'Ajuste desde Catálogo',
+      })
       if (e1) { alert('No se pudo guardar el stock: ' + e1.message); setSavingStock(false); return }
+      const { error: eMin } = await supabase.from('producto_stock')
+        .update({ stock_minimo: isNaN(min) || min < 0 ? 0 : min })
+        .eq('producto_id', modalStock.id).eq('sucursal_id', sucursalDispo)
+      if (eMin) { alert('Stock guardado, pero no se pudo guardar el mínimo: ' + eMin.message) }
     }
     const { error: e2 } = await supabase.from('productos')
       .update({ controla_stock: activando }).eq('id', modalStock.id).eq('empresa_id', ctx.empresaId)

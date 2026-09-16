@@ -10,10 +10,16 @@ export async function POST(request: Request) {
   const supabase = createAdminClient()
 
   const { data: pedido } = await supabase.from('pedidos')
-    .select('id, estado, numero_pedido, empresa_id, sucursal_id, stock_descontado').eq('id', pedido_id).single()
+    .select('id, estado, numero_pedido, empresa_id, sucursal_id, stock_descontado, numero_mesa, pagado').eq('id', pedido_id).single()
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
 
-  if (pedido.estado === 'PAID' || pedido.estado === 'DELIVERED') {
+  // ── STOCK V1 REAL: regla de borrado post-9c ──
+  // 9c volvió transitorio a PAID: los COBRADOS viven en PREPARING. La verdad
+  // operativa: solo lo NO cobrado se elimina — PENDING_PAYMENT, o pedido de
+  // mesa aún sin pagar (su flag pagado SÍ es confiable: nace false).
+  const esBorrable = pedido.estado === 'PENDING_PAYMENT' ||
+    (pedido.numero_mesa != null && pedido.pagado === false)
+  if (!esBorrable) {
     return NextResponse.json({ error: 'No se puede eliminar un pedido ya cobrado' }, { status: 409 })
   }
 
@@ -44,15 +50,17 @@ export async function POST(request: Request) {
         if (!pres?.productos?.controla_stock) continue
         porProducto.set(pres.producto_id, (porProducto.get(pres.producto_id) ?? 0) + it.cantidad)
       }
+      // Devolución ATÓMICA y TRAZADA por la única puerta (Stock V1 Real):
+      // adiós al read-modify-write — el lock de ajustar_stock elimina la
+      // ventana de carrera contra ventas simultáneas, y el movimiento queda
+      // escrito en el mismo acto.
       for (const [productoId, q] of porProducto) {
-        const { data: stk } = await supabase.from('producto_stock')
-          .select('id, cantidad').eq('producto_id', productoId)
-          .eq('sucursal_id', pedido.sucursal_id).maybeSingle()
-        if (stk) {
-          await supabase.from('producto_stock')
-            .update({ cantidad: stk.cantidad + q, updated_at: new Date().toISOString() })
-            .eq('id', stk.id)
-        }
+        await supabase.rpc('ajustar_stock', {
+          p_empresa_id: pedido.empresa_id, p_sucursal_id: pedido.sucursal_id,
+          p_producto_id: productoId, p_valor: q, p_modo: 'delta',
+          p_motivo: 'devolucion', p_pedido_id: pedido_id,
+          p_detalle: `Devolución por eliminación del pedido #${pedido.numero_pedido}`,
+        })
       }
     }
   }
