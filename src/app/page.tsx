@@ -234,9 +234,10 @@ export default function Landing() {
             <p className="mt-3 text-slate-300">Te armamos una demo con tu catálogo real y la probás desde el celular, como la verían tus clientes. Sin compromiso.</p>
           </div>
           <div className="lg:text-right">
-            <a href="mailto:jcqarenaza@hotmail.com?subject=Quiero%20una%20demo%20de%20GastrOS" className="inline-block rounded-full px-8 py-4 font-extrabold" style={{ backgroundColor: CIAN, color: NAVY }}>
-              Pedir una demo
+            <a href="https://wa.me/5492236807302?text=Hola!%20Quiero%20una%20demo%20de%20GastrOS" target="_blank" rel="noopener" className="inline-block rounded-full px-8 py-4 font-extrabold" style={{ backgroundColor: CIAN, color: NAVY }}>
+              📱 Pedir una demo por WhatsApp
             </a>
+            <p className="mt-3 text-sm text-slate-400 lg:text-right">+54 9 2236 80-7302</p>
           </div>
         </div>
       </div>
@@ -248,7 +249,7 @@ export default function Landing() {
             <Image src="/aoki-logo.png" alt="Aoki" width={70} height={23} className="h-5 w-auto opacity-80" />
             <span><b className="text-white">GastrOS</b> — el sistema operativo gastronómico</span>
           </div>
-          <span>Desarrollo y soporte: QP Cloud &amp; IA · General Pico, La Pampa, Argentina</span>
+          <span>Contacto: <a href="https://wa.me/5492236807302" className="hover:text-white transition-colors">+54 9 2236 80-7302</a> · Argentina</span>
         </div>
       </footer>
     </div>
