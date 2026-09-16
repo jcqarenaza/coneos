@@ -89,7 +89,7 @@ export async function POST(request: Request) {
 
       if (pedido && pedido.estado === 'PENDING_PAYMENT') {
         await supabase.from('pedidos')
-          .update({ estado: 'PAID', pagado: true, notas: `MP payment ${paymentId}` })
+          .update({ estado: 'PREPARING', pagado: true, notas: `MP payment ${paymentId}` }) // 9c: pago confirmado → PREPARING
           .eq('id', pedido.id)
         console.log(`[mp/webhook] Pedido ${pedidoId} pagado via MP ${paymentId} (via ${via})`)
         await facturarSiCorresponde(supabase, pedido.id)

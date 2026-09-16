@@ -10,6 +10,14 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; cantidad: number; pedido_item_opciones: OpcionItem[] }
 interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; tipo_pedido?: string; notas: string | null; created_at: string; hora_retiro?: string | null; sucursales?: { nombre: string }; pedido_items: PedidoItem[] }
 
+// Las notas del pedido pueden traer marcas del circuito de COBRO ("MP payment
+// ...") que al cocinero no le importan — acá se filtran; la caja las sigue viendo.
+function notasCocina(n: string | null): string | null {
+  if (!n) return null
+  const limpio = n.split(' · ').filter(seg => !seg.startsWith('MP payment')).join(' · ').trim()
+  return limpio || null
+}
+
 function horaRetiroLabel(iso?: string | null): string | null {
   if (!iso) return null
   return new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso))
@@ -83,8 +91,9 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
     setProcesando(null)
   }
 
-  const nuevos = pedidos.filter(p => p.estado === 'PAID')
-  const preparando = pedidos.filter(p => p.estado === 'PREPARING')
+  // 9c: PAID es transitorio (el server encadena a PREPARING); cualquier
+  // residual se muestra como preparando. Si esta en PREPARING, hay que hacerlo.
+  const preparando = pedidos.filter(p => p.estado === 'PREPARING' || p.estado === 'PAID')
 
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-neutral-200" /></div>
 
@@ -92,14 +101,10 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
     <div className="h-full flex overflow-hidden bg-neutral-50">
       <div className="flex-1 overflow-y-auto p-5">
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-6">
           <div className="bg-white rounded-2xl border border-neutral-100 p-4 text-center shadow-sm">
             <p className="text-3xl font-black text-neutral-800">{pedidos.length}</p>
             <p className="text-xs text-neutral-400 mt-0.5 font-medium">Total activos</p>
-          </div>
-          <div className="bg-blue-50 rounded-2xl border border-blue-100 p-4 text-center shadow-sm">
-            <p className="text-3xl font-black text-blue-600">{nuevos.length}</p>
-            <p className="text-xs text-blue-400 mt-0.5 font-medium">Por preparar</p>
           </div>
           <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4 text-center shadow-sm">
             <p className="text-3xl font-black text-amber-600">{preparando.length}</p>
@@ -114,47 +119,6 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
           </div>
         ) : (
           <div className="space-y-6">
-            {nuevos.length > 0 && (
-              <div>
-                <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-3">Por preparar</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {nuevos.map(pedido => (
-                    <div key={pedido.id} onClick={() => setSeleccionado(s => s?.id === pedido.id ? null : pedido)}
-                      className={`bg-white rounded-2xl border-2 border-blue-100 shadow-sm overflow-hidden cursor-pointer transition-all hover:shadow-md ${seleccionado?.id === pedido.id ? 'ring-2 ring-blue-300' : ''}`}>
-                      <div className="bg-blue-50 px-4 py-3 flex items-center justify-between border-b border-blue-100">
-                        <div className="flex items-center gap-2">
-                          <span className="text-blue-700 font-black text-xl">#{pedido.numero_pedido}</span> {pedido.tipo_pedido === 'takeaway' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-teal-50 text-teal-700 align-middle">🥡 TAKE AWAY</span>}{pedido.tipo_pedido === 'takeaway' && (horaRetiroLabel(pedido.hora_retiro)
-                            ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-neutral-800 text-white align-middle">🕐 {horaRetiroLabel(pedido.hora_retiro)}</span>
-                            : <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-green-50 text-green-700 align-middle">⚡ Lo antes posible</span>)}{pedido.tipo_pedido === 'delivery' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 align-middle">🛵 DELIVERY</span>}
-                          <span className="text-xs bg-blue-200 text-blue-700 px-2 py-0.5 rounded-full font-bold">NUEVO</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-blue-400 text-xs font-medium">
-                          <Clock className="h-3 w-3" />{tiempoRelativo(pedido.created_at)}
-                        </div>
-                      </div>
-                      <div className="p-4 space-y-2">
-                        {pedido.pedido_items.map(item => (
-                          <div key={item.id}>
-                            <p className="text-neutral-800 text-sm font-bold">{item.cantidad > 1 ? `${item.cantidad}× ` : ''}{item.nombre_producto_snap} <span className="font-normal text-neutral-500">— {item.nombre_presentacion_snap}</span></p>
-                            {item.pedido_item_opciones.length > 0 && (
-                              <p className="text-neutral-400 text-xs mt-0.5 ml-0.5">{item.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}</p>
-                            )}
-                          </div>
-                        ))}
-                        {pedido.notas && <p className="text-amber-600 text-xs font-medium">📝 {pedido.notas}</p>}
-                      </div>
-                      {verTodas && pedido.sucursales?.nombre && <div className="px-4 pb-1"><span className="text-xs text-neutral-300">📍 {pedido.sucursales.nombre}</span></div>}
-                      <div className="px-4 pb-4">
-                        <button onClick={e => { e.stopPropagation(); cambiarEstado(pedido.id, 'PREPARING') }} disabled={procesando === pedido.id}
-                          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
-                          {procesando === pedido.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '🍦 Empezar'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {preparando.length > 0 && (
               <div>
@@ -181,7 +145,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                             )}
                           </div>
                         ))}
-                        {pedido.notas && <p className="text-amber-600 text-xs font-medium">📝 {pedido.notas}</p>}
+                        {notasCocina(pedido.notas) && <p className="text-amber-600 text-xs font-medium">📝 {notasCocina(pedido.notas)}</p>}
                       </div>
                       <div className="px-4 pb-4">
                         <button onClick={e => { e.stopPropagation(); cambiarEstado(pedido.id, 'READY') }} disabled={procesando === pedido.id}
@@ -223,13 +187,9 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
               </div>
             ))}
           </div>
-          {seleccionado.notas && <div className="mt-3 bg-amber-50 rounded-xl p-3"><p className="text-amber-700 text-sm">📝 {seleccionado.notas}</p></div>}
+          {notasCocina(seleccionado.notas) && <div className="mt-3 bg-amber-50 rounded-xl p-3"><p className="text-amber-700 text-sm">📝 {notasCocina(seleccionado.notas)}</p></div>}
           <div className="mt-4 space-y-2">
-            {seleccionado.estado === 'PAID' && (
-              <button onClick={() => cambiarEstado(seleccionado.id, 'PREPARING')} disabled={procesando === seleccionado.id}
-                className="w-full py-3 bg-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50">🍦 Empezar</button>
-            )}
-            {seleccionado.estado === 'PREPARING' && (
+            {(seleccionado.estado === 'PREPARING' || seleccionado.estado === 'PAID') && (
               <button onClick={() => cambiarEstado(seleccionado.id, 'READY')} disabled={procesando === seleccionado.id}
                 className="w-full py-3 bg-green-600 text-white rounded-xl text-sm font-bold disabled:opacity-50">✓ Marcar listo</button>
             )}

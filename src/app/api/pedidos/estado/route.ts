@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { acreditarPuntosPedido } from '@/lib/beneficios'
 import { buscarPaymentPorPedido } from '@/lib/pagos/mp'
+import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 
 // GET ?pedido_id= → estado mínimo del pedido, para que kiosk/delivery (anónimos)
 // detecten el pago MP y muestren número y código de retiro.
@@ -40,51 +41,6 @@ const CONDS_VALIDAS = [1, 4, 5, 6] // RI, Exento, Cons. Final, Monotributo (cód
 
 // Resuelve la config de facturación: fila de la sucursal si existe, si no la de la
 // empresa (sucursal_id NULL). Devuelve null si no hay ninguna.
-async function resolverFactConfig(supabase: ReturnType<typeof createAdminClient>, empresaId: string, sucursalId: string | null, columnas: string) {
-  if (sucursalId) {
-    const { data } = await supabase.from('facturacion_config')
-      .select(columnas).eq('empresa_id', empresaId).eq('sucursal_id', sucursalId).maybeSingle()
-    if (data) return data
-  }
-  const { data } = await supabase.from('facturacion_config')
-    .select(columnas).eq('empresa_id', empresaId).is('sucursal_id', null).maybeSingle()
-  return data
-}
-async function facturarSiCorresponde(pedido_id: string) {
-  try {
-    const supabase = createAdminClient()
-    const { data: pedido } = await supabase.from('pedidos')
-      .select('empresa_id, sucursal_id, metodo_pago, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva')
-      .eq('id', pedido_id).maybeSingle()
-    if (!pedido?.metodo_pago) return
-    const cfg = await resolverFactConfig(supabase, pedido.empresa_id, pedido.sucursal_id ?? null,
-      'activo, auto_facturar, metodos_auto, cert_pem, key_pem') as
-      { activo: boolean; auto_facturar: boolean | null; metodos_auto: unknown; cert_pem: string | null; key_pem: string | null } | null
-    if (!cfg?.activo || !cfg.cert_pem || !cfg.key_pem) return
-    if (cfg.auto_facturar === false) return
-    const metodos = Array.isArray(cfg.metodos_auto) ? cfg.metodos_auto as string[] : ['transferencia']
-    if (!metodos.includes(pedido.metodo_pago)) return
-
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    if (!url || !serviceKey) return
-    // FA-1: si el pedido tiene receptor fiscal, viajan los parámetros que la
-    // Edge YA acepta (docTipo/docNro/condIvaReceptor). Sin receptor: body
-    // idéntico al de siempre.
-    const conReceptor = pedido.receptor_doc_nro
-      ? { docTipo: pedido.receptor_doc_tipo ?? 80, docNro: pedido.receptor_doc_nro, condIvaReceptor: pedido.receptor_cond_iva ?? 5 }
-      : {}
-    const res = await fetch(`${url}/functions/v1/arca-facturar`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: pedido.empresa_id, pedido_id, accion: 'facturar', ...conReceptor }),
-    })
-    const d = await res.json().catch(() => null)
-    console.log('[facturacion]', pedido_id, d?.ok ? `CAE ${d.cae} Nro ${d.nro_cbte}` : (d?.error ?? 'sin respuesta'))
-  } catch (e) {
-    console.error('[facturacion] hook error', e)
-  }
-}
 
 // POST — cambio de estado desde caja (original Sprint 3B, restaurado)
 // FA-1: acepta `receptor` opcional { doc_nro, cond_iva, razon_social,
@@ -109,7 +65,9 @@ export async function POST(request: Request) {
   // múltiples approved = ambiguo = rechazo (regla adicional), MP caído =
   // fail-open CON marca inequívoca (a). Histórico intocable (d).
   let mpExtras: { pagado: boolean; notas: string } | null = null
-  if ((estado_nuevo === 'PAID' || estado_nuevo === 'DELIVERED') && pedido.metodo_pago === 'mp' && !pedido.pagado) {
+  // 9c/fix-B: pagado nace TRUE en no-mesa — la condición real de 'MP sin
+  // confirmar' es el ESTADO (transición manual desde no-cobrado).
+  if ((estado_nuevo === 'PAID' || estado_nuevo === 'DELIVERED') && pedido.metodo_pago === 'mp' && pedido.estado === 'PENDING_PAYMENT') {
     const busq = await buscarPaymentPorPedido(supabase, {
       id: pedido_id, empresa_id: pedido.empresa_id, sucursal_id: pedido.sucursal_id,
       mp_credencial_id: pedido.mp_credencial_id, total: Number(pedido.total),
@@ -148,8 +106,13 @@ export async function POST(request: Request) {
     }).eq('id', pedido_id)
   }
 
+  // ══ 9c — TRANSICIÓN OPERATIVA CENTRAL ══
+  // "Pago confirmado = habilitado para preparación. PREPARING es el único
+  // estado operativo posterior al cobro." PAID es transitorio; DELIVERED
+  // (entrega) no se toca.
+  const estadoFinal = estado_nuevo === 'PAID' ? 'PREPARING' : estado_nuevo
   await supabase.from('pedidos').update({
-    estado: estado_nuevo,
+    estado: estadoFinal,
     updated_at: new Date().toISOString(),
     ...(mpExtras ?? {}),
   }).eq('id', pedido_id)

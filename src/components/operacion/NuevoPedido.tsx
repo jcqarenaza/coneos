@@ -165,10 +165,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
         empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
         dispositivo_id: dispositivo.id, session_id: sesion.session_id,
         items, metodo_pago: metodoPago, notas: notas || null,
-        // FASE 5: la venta de MOSTRADOR declara su identidad real — canal CAJA
-        // (antes caía en los defaults KIOSK de /api/pedidos y quedaba disfrazada
-        // de autoservicio). El pedido TELEFÓNICO con reparto sigue siendo un
-        // DELIVERY real: solo cambia quién lo tipeó.
+        venta_caja: true, // 9c: mostrador nace cobrado→PREPARING; telefónica (delivery) sigue su flujo
         ...(esDelivery ? {
           tipo_pedido: 'delivery',
           costo_envio: Number(costoEnvio),
@@ -176,7 +173,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
             nombre: datosDelivery.nombre.trim(), telefono: datosDelivery.telefono.trim(),
             direccion: datosDelivery.direccion.trim(), entre_calles: datosDelivery.entre_calles.trim() || null,
           },
-        } : { origen: 'CAJA', tipo_pedido: 'caja' }),
+        } : {}),
       }),
     })
     setGuardando(false)
@@ -224,16 +221,14 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                 return pres.map(p => {
                   const img = p.imagen_url || prod.imagen_url
                   // Con foto: tarjeta grande. Sin foto: ficha compacta (formato accesorios)
-                  // Miniatura cuadrada (no banner): en pantallas anchas de caja el
-                  // banner w-full hacía zoom desmedido sobre la foto (feedback JC)
                   return img ? (
                     <button key={p.id} onClick={() => seleccionarPresentacion(p, prod)}
-                      className="flex items-center gap-3 p-3 bg-white rounded-xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98">
-                      <img src={img} alt={prod.nombre} className="w-14 h-14 object-cover rounded-lg flex-shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-neutral-800 font-bold text-sm leading-tight truncate">{prod.nombre}</p>
-                        <p className="text-neutral-400 text-xs mt-0.5 truncate">{p.nombre}</p>
-                        <p className="text-neutral-700 font-black mt-1 text-base">{formatPrecio(p.precio)}</p>
+                      className="flex flex-col bg-white rounded-2xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98 overflow-hidden">
+                      <img src={img} alt={prod.nombre} className="w-full h-20 object-cover" />
+                      <div className="p-3">
+                        <p className="text-neutral-800 font-bold text-sm leading-tight">{prod.nombre}</p>
+                        <p className="text-neutral-400 text-xs mt-0.5">{p.nombre}</p>
+                        <p className="text-neutral-700 font-black mt-1.5 text-base">{formatPrecio(p.precio)}</p>
                       </div>
                     </button>
                   ) : (
@@ -369,10 +364,10 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
         {carrito.length > 0 && (
           <div className="p-4 border-t border-neutral-50 space-y-3">
             <div className="flex gap-2">
-              {['efectivo', 'transferencia'].map(m => (
+              {['efectivo', 'debito', 'credito', 'transferencia', 'mp'].map(m => (
                 <button key={m} onClick={() => setMetodoPago(m)}
                   className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors capitalize ${metodoPago === m ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
-                  {m === 'efectivo' ? '💵 Efectivo' : '📱 Transfer'}
+                  {m === 'efectivo' ? '💵 Efectivo' : m === 'debito' ? '💳 Débito' : m === 'credito' ? '💳 Crédito' : m === 'transferencia' ? '🏦 Transfer' : '📱 MP'}
                 </button>
               ))}
             </div>
