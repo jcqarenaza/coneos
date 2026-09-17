@@ -77,6 +77,29 @@ export default function CatalogoPage() {
   const [plantillaRubro, setPlantillaRubro] = useState<string>('OTRO')
   const [cargandoPlantilla, setCargandoPlantilla] = useState(false)
   const [sucursalDispo, setSucursalDispo] = useState<string>('')
+  // ══ CONSOLA F1 (diseño 18/09): búsqueda + precio y visible inline ══
+  const [busqueda, setBusqueda] = useState('')
+  const [editPrecio, setEditPrecio] = useState<{ id: string; valor: string } | null>(null)
+  const [savingInline, setSavingInline] = useState<string | null>(null)
+
+  async function guardarPrecioInline(presId: string) {
+    const nuevo = Number(editPrecio?.valor)
+    setEditPrecio(null)
+    if (!Number.isFinite(nuevo) || nuevo <= 0) return
+    const actual = presentaciones.find(p => p.id === presId)
+    if (!actual || Number(actual.precio) === nuevo) return
+    setSavingInline(presId)
+    const { error } = await createClient().from('presentaciones').update({ precio: nuevo }).eq('id', presId)
+    if (!error) setPresentaciones(prev => prev.map(p => p.id === presId ? { ...p, precio: nuevo } : p))
+    else alert('No se pudo guardar el precio: ' + error.message)
+    setSavingInline(null)
+  }
+  async function toggleVisibleInline(presId: string, actual: boolean) {
+    setSavingInline(presId)
+    const { error } = await createClient().from('presentaciones').update({ visible_kiosk: !actual }).eq('id', presId)
+    if (!error) setPresentaciones(prev => prev.map(p => p.id === presId ? { ...p, visible_kiosk: !actual } : p))
+    setSavingInline(null)
+  }
   const [disponibilidad, setDisponibilidad] = useState<Record<string, boolean>>({})
   const [loadingDispo, setLoadingDispo] = useState(false)
   const [savingDispo, setSavingDispo] = useState<string | null>(null)
@@ -423,7 +446,7 @@ export default function CatalogoPage() {
         </button>
         <button onClick={() => { setVistaActiva('disponibilidad'); cargarDisponibilidad() }}
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'disponibilidad' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
-          Disponibilidad
+          ⚡ Consola
         </button>
       </div>
 
@@ -646,7 +669,9 @@ export default function CatalogoPage() {
       {vistaActiva === 'disponibilidad' && (
         <div className="mt-0">
           {/* Selector sucursal */}
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mb-6 flex-wrap">
+            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="🔍 Buscar producto…"
+              className="px-4 py-2 rounded-xl border border-neutral-200 text-sm w-64 focus:outline-none focus:border-neutral-400" />
             <p className="text-sm font-semibold text-neutral-700">Sucursal:</p>
             <div className="flex gap-2">
               {sucursales.map(s => (
@@ -664,7 +689,9 @@ export default function CatalogoPage() {
           ) : (
             <div className="space-y-3">
               {categorias.map(cat => {
-                const catProds = productos.filter(p => p.categoria_id === cat.id)
+                const catProds = productos.filter(p => p.categoria_id === cat.id &&
+                  (!busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase())))
+                if (catProds.length === 0) return null
                 return (
                   <div key={cat.id} className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
                     {catProds.map((prod, pi) => {
@@ -712,14 +739,34 @@ export default function CatalogoPage() {
                             <div key={pres.id} className="flex items-center justify-between pl-16 pr-5 py-2.5 border-t border-neutral-50">
                               <div className="flex items-center gap-2">
                                 <span className="text-neutral-600 text-sm">{pres.nombre}</span>
-                                <span className="text-neutral-400 text-xs">${Number(pres.precio).toLocaleString('es-AR')}</span>
+                                {editPrecio?.id === pres.id ? (
+                                  <input autoFocus type="number" value={editPrecio.valor}
+                                    onChange={e => setEditPrecio({ id: pres.id, valor: e.target.value })}
+                                    onBlur={() => guardarPrecioInline(pres.id)}
+                                    onKeyDown={e => { if (e.key === 'Enter') guardarPrecioInline(pres.id); if (e.key === 'Escape') setEditPrecio(null) }}
+                                    className="w-24 px-2 py-0.5 rounded-lg border border-blue-300 text-xs font-bold focus:outline-none" />
+                                ) : (
+                                  <button onClick={() => setEditPrecio({ id: pres.id, valor: String(pres.precio) })}
+                                    title="Editar precio (Enter guarda, Esc cancela)"
+                                    className="text-xs font-bold text-neutral-500 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded-lg transition-colors">
+                                    ${Number(pres.precio).toLocaleString('es-AR')} ✎
+                                  </button>
+                                )}
+                                {savingInline === pres.id && <Loader2 className="h-3 w-3 animate-spin text-neutral-300" />}
                               </div>
+                              <div className="flex items-center gap-2">
+                              <button onClick={() => toggleVisibleInline(pres.id, pres.visible_kiosk)}
+                                title={pres.visible_kiosk ? 'Visible en la vidriera (click para ocultar)' : 'OCULTO de la vidriera (sigue vendible en flujos iniciados)'}
+                                className={`text-sm px-1.5 py-0.5 rounded-lg transition-colors ${pres.visible_kiosk ? 'text-neutral-400 hover:text-neutral-600' : 'text-amber-500 bg-amber-50'}`}>
+                                {pres.visible_kiosk ? '👁' : '🙈'}
+                              </button>
                               <button
                                 onClick={() => toggleDisponibilidad(pres.id, 'presentacion', isDisponible(pres.id))}
                                 disabled={savingDispo === pres.id}
                                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isDisponible(pres.id) ? 'bg-green-500' : 'bg-neutral-200'} disabled:opacity-50`}>
                                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isDisponible(pres.id) ? 'translate-x-4' : 'translate-x-0.5'}`} />
                               </button>
+                              </div>
                             </div>
                           ))}
                           {/* Sabores del producto si tiene grupos */}
