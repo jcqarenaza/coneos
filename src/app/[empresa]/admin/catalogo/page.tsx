@@ -455,7 +455,11 @@ export default function CatalogoPage() {
     const supabase = createClient()
     const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo, visible_kiosk: formOp.visible_kiosk }
     if (editId) await supabase.from('opciones').update(payload).eq('id', editId)
-    else await supabase.from('opciones').insert({ ...payload, empresa_id: ctx.empresaId })
+    else {
+      await supabase.from('opciones').insert({ ...payload, empresa_id: ctx.empresaId })
+      // F1.6: si venimos del alta de presentación, volvemos con el grupo tildado
+      if (volverA === 'pres') { setGruposSeleccionados(gs => gs.includes(formOp.grupo_id) ? gs : [...gs, formOp.grupo_id]); setModalPres(true); setVolverA(null) }
+    }
     setSaving(false); setModalOp(false); load(true)
   }
   async function deleteOp(id: string) {
@@ -991,6 +995,10 @@ export default function CatalogoPage() {
                         className="w-4 h-4 rounded" />
                       <span className="text-sm text-neutral-700">{g.nombre}</span>
                       <span className="text-xs text-neutral-400 ml-auto">{opciones.filter(o => o.grupo_id === g.id).length} opciones</span>
+                      {gruposSeleccionados.includes(g.id) && (
+                        <button type="button" onClick={() => { setVolverA('pres'); setModalPres(false); openNewOp(g.id) }}
+                          className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex-shrink-0">+ opción</button>
+                      )}
                     </label>
                   ))}
                 </div>
