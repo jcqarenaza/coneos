@@ -261,20 +261,10 @@ export default function DispositivosTab() {
             <p className="text-xs text-neutral-400 mt-3 text-center">Escaneá con el dispositivo para vincularlo</p>
           </div>
 
-          {/* URL */}
+          {/* Acciones (la URL no se muestra: el QR es el protagonista y
+              Copiar/Abrir la llevan entera — el texto largo era solo ruido) */}
           <div className="space-y-1.5">
-            <Label>URL de vinculación</Label>
-            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
-              <a
-                href={urlActual}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-mono text-blue-600 hover:text-blue-800 underline break-all"
-              >
-                {urlActual}
-              </a>
-            </div>
-            <div className="flex gap-2 pt-1">
+            <div className="flex gap-2 pt-1 justify-center">
               <ConeButton variant="outline" onClick={copyUrl} icon={copiedUrl ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}>
                 {copiedUrl ? 'Copiada' : 'Copiar URL'}
               </ConeButton>

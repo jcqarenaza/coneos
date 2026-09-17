@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const METODOS_VALIDOS = ['transferencia', 'efectivo', 'mp']
+// E1: débito y crédito facturables — los valores CANÓNICOS que ya usan el
+// constraint de pedidos, METODO_UI y el pago dividido de mesa. Cierra la
+// inconsistencia (la UI los ofrecía y este filtro los descartaba en silencio)
+// y cumple el "POSTNET factura vía metodos_auto" definido en 9c.
+const METODOS_VALIDOS = ['transferencia', 'efectivo', 'mp', 'debito', 'credito']
 
 
 // Resuelve la config de facturación: fila de la sucursal si existe, si no la de la
