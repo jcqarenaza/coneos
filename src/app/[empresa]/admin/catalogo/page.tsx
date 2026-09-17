@@ -79,6 +79,12 @@ export default function CatalogoPage() {
   const [sucursalDispo, setSucursalDispo] = useState<string>('')
   // ══ CONSOLA F1 (diseño 18/09): búsqueda + precio y visible inline ══
   const [busqueda, setBusqueda] = useState('')
+  // Plegado por defecto (CTO): la consola escala — abrís solo lo que tocás.
+  // La búsqueda auto-expande sus resultados.
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
+  function toggleExpandir(id: string) {
+    setExpandidos(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
   const [editPrecio, setEditPrecio] = useState<{ id: string; valor: string } | null>(null)
   const [savingInline, setSavingInline] = useState<string | null>(null)
 
@@ -672,6 +678,7 @@ export default function CatalogoPage() {
           <div className="flex items-center gap-3 mb-6 flex-wrap">
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="🔍 Buscar producto…"
               className="px-4 py-2 rounded-xl border border-neutral-200 text-sm w-64 focus:outline-none focus:border-neutral-400" />
+            <span className="text-xs text-neutral-400 bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1.5">🌍 global (toda la empresa) · 📍 solo esta sucursal</span>
             <p className="text-sm font-semibold text-neutral-700">Sucursal:</p>
             <div className="flex gap-2">
               {sucursales.map(s => (
@@ -700,7 +707,8 @@ export default function CatalogoPage() {
                         <div key={prod.id} className={pi < catProds.length - 1 ? 'border-b border-neutral-50' : ''}>
                           {/* Producto header */}
                           <div className="flex items-center justify-between px-5 py-3 bg-neutral-50/50">
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 cursor-pointer select-none flex-1" onClick={() => toggleExpandir(prod.id)}>
+                              <span className="text-neutral-400 text-xs w-3">{(expandidos.has(prod.id) || busqueda.trim().length > 0) ? '▼' : '▶'}</span>
                               <div className="w-7 h-7 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                                 {prod.imagen_url ? <img src={prod.imagen_url} alt={prod.nombre} className="object-cover w-full h-full" /> : <ImageIcon className="h-3.5 w-3.5 text-neutral-300" />}
                               </div>
@@ -709,7 +717,7 @@ export default function CatalogoPage() {
                                 <p className="text-xs text-neutral-400">{cat.nombre}</p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                               {prod.controla_stock === true ? (() => {
                                 const st = stockSuc[prod.id]
                                 const cant = st?.cantidad ?? 0
@@ -734,8 +742,8 @@ export default function CatalogoPage() {
                               </button>
                             </div>
                           </div>
-                          {/* Presentaciones */}
-                          {prodPres.map(pres => (
+                          {/* Presentaciones (plegable) */}
+                          {(expandidos.has(prod.id) || busqueda.trim().length > 0) && prodPres.map(pres => (
                             <div key={pres.id} className="flex items-center justify-between pl-16 pr-5 py-2.5 border-t border-neutral-50">
                               <div className="flex items-center gap-2">
                                 <span className="text-neutral-600 text-sm">{pres.nombre}</span>
@@ -749,7 +757,7 @@ export default function CatalogoPage() {
                                   <button onClick={() => setEditPrecio({ id: pres.id, valor: String(pres.precio) })}
                                     title="Editar precio (Enter guarda, Esc cancela)"
                                     className="text-xs font-bold text-neutral-500 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded-lg transition-colors">
-                                    ${Number(pres.precio).toLocaleString('es-AR')} ✎
+                                    ${Number(pres.precio).toLocaleString('es-AR')} ✎ <span className="text-[9px]" title="Precio GLOBAL: cambia en TODAS las sucursales">🌍</span>
                                   </button>
                                 )}
                                 {savingInline === pres.id && <Loader2 className="h-3 w-3 animate-spin text-neutral-300" />}
@@ -758,10 +766,10 @@ export default function CatalogoPage() {
                               <button onClick={() => toggleVisibleInline(pres.id, pres.visible_kiosk)}
                                 title={pres.visible_kiosk ? 'Visible en la vidriera (click para ocultar)' : 'OCULTO de la vidriera (sigue vendible en flujos iniciados)'}
                                 className={`text-sm px-1.5 py-0.5 rounded-lg transition-colors ${pres.visible_kiosk ? 'text-neutral-400 hover:text-neutral-600' : 'text-amber-500 bg-amber-50'}`}>
-                                {pres.visible_kiosk ? '👁' : '🙈'}
+                                {pres.visible_kiosk ? '👁' : '🙈'}<span className="text-[8px] align-super">🌍</span>
                               </button>
                               <button
-                                onClick={() => toggleDisponibilidad(pres.id, 'presentacion', isDisponible(pres.id))}
+                                title="Disponible 📍 SOLO en esta sucursal" onClick={() => toggleDisponibilidad(pres.id, 'presentacion', isDisponible(pres.id))}
                                 disabled={savingDispo === pres.id}
                                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isDisponible(pres.id) ? 'bg-green-500' : 'bg-neutral-200'} disabled:opacity-50`}>
                                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isDisponible(pres.id) ? 'translate-x-4' : 'translate-x-0.5'}`} />
@@ -769,8 +777,8 @@ export default function CatalogoPage() {
                               </div>
                             </div>
                           ))}
-                          {/* Sabores del producto si tiene grupos */}
-                          {(() => {
+                          {/* Sabores del producto si tiene grupos (plegable) */}
+                          {(expandidos.has(prod.id) || busqueda.trim().length > 0) && (() => {
                             const presIds = new Set(prodPres.map(p => p.id))
                             const grupoIds = new Set(presGrupos.filter(pg => presIds.has(pg.presentacion_id)).map(pg => pg.grupo_id))
                             const saboresProd = [...opciones]
