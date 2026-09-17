@@ -45,10 +45,22 @@ export async function GET(request: Request) {
   const presentacionesFiltradas = (presentaciones ?? []).filter((p: { id: string; producto_id: string }) =>
     dispoMap[p.id] !== false && !ocultosPorStock.has(p.producto_id))
 
+  // ── MICRO-FIX (orden CTO 18/09): PODA DE PADRES ──
+  // Un producto sin NINGUNA presentación visible no se lista (antes quedaba
+  // la card vacía). Filtrar presentaciones → ¿quedó alguna? → si no, fuera.
+  //
+  // SEMÁNTICA DOCUMENTADA (CTO): visible_kiosk controla EXPOSICIÓN en el
+  // catálogo público. NO constituye regla de disponibilidad ni autorización
+  // de venta: algo oculto de la vidriera sigue siendo vendible por un flujo
+  // ya iniciado (carrito pre-armado). Para impedir nuevas ventas se usan
+  // `activo` y las reglas de stock. No mezclar los conceptos.
+  const productosConPresentacion = new Set(presentacionesFiltradas.map((p: { producto_id: string }) => p.producto_id))
+  const productosFinal = productosFiltrados.filter((p: { id: string }) => productosConPresentacion.has(p.id))
+
   // Filtrar opciones por inventario_opciones (sabores sin stock)
   const inventarioMap: Record<string, boolean> = {}
   ;(inventario ?? []).forEach((i: { opcion_id: string; disponible: boolean }) => { inventarioMap[i.opcion_id] = i.disponible })
   const opcionesFiltradas = (opciones ?? []).filter((op: { id: string }) => inventarioMap[op.id] !== false)
 
-  return NextResponse.json({ categorias, productos: productosFiltrados, presentaciones: presentacionesFiltradas, grupos, opciones: opcionesFiltradas, presentacion_grupos: presGrupos ?? [] })
+  return NextResponse.json({ categorias, productos: productosFinal, presentaciones: presentacionesFiltradas, grupos, opciones: opcionesFiltradas, presentacion_grupos: presGrupos ?? [] })
 }
