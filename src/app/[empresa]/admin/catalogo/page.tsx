@@ -369,7 +369,13 @@ export default function CatalogoPage() {
     const supabase = createClient()
     const payload = { nombre: formProd.nombre, descripcion: formProd.descripcion || null, imagen_url: formProd.imagen_url, categoria_id: formProd.categoria_id, codigo: formProd.codigo || null, orden: formProd.orden, activo: formProd.activo, visible_kiosk: formProd.visible_kiosk }
     if (editId) await supabase.from('productos').update(payload).eq('id', editId)
-    else await supabase.from('productos').insert({ ...payload, empresa_id: ctx.empresaId })
+    else {
+      // Regla de oro: un producto SIN presentación no existe comercialmente
+      // (sin precio, y la poda lo oculta del kiosk) → el alta ENCADENA
+      // directo a su primera presentación, con el producto ya puesto.
+      const { data: nuevo } = await supabase.from('productos').insert({ ...payload, empresa_id: ctx.empresaId }).select('id').single()
+      if (nuevo) { setExpandidos(prev => new Set(prev).add(nuevo.id)); setSaving(false); setModalProd(false); load(true); openNewPres(nuevo.id); return }
+    }
     setSaving(false); setModalProd(false); load(true)
   }
   async function deleteProd(id: string) {
