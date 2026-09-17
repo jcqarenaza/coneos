@@ -91,7 +91,7 @@ export async function POST(request: Request) {
   const itemIds = (items ?? []).map(i => i.id)
   if (itemIds.length > 0) await supabase.from('pedido_item_opciones').delete().in('pedido_item_id', itemIds)
   await supabase.from('pedido_items').delete().eq('pedido_id', pedido_id)
-  await supabase.from('comprobantes').delete().eq('pedido_id', pedido_id)
+  // E2: comprobantes retirada (tabla legacy rota — el registro real vive en facturas)
   await supabase.from('facturas').delete().eq('pedido_id', pedido_id) // solo no-emitidas llegan acá
   const { error } = await supabase.from('pedidos').delete().eq('id', pedido_id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

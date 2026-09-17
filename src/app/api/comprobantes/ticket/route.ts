@@ -25,11 +25,12 @@ export async function POST(request: Request) {
     supabase.from('facturacion_config').select('cuit, razon_social').eq('empresa_id', pedido.empresa_id).maybeSingle(),
   ])
 
-  await supabase.from('comprobantes').insert({ empresa_id: pedido.empresa_id, pedido_id, tipo: 'ticket', total: pedido.total })
+  // E2: insert a comprobantes retirado — tabla legacy ROTA (fallaba en silencio
+  // desde siempre, 0 filas, sin lectores; el registro real vive en facturas).
 
   const fmt = (n: number) => `$${Number(n).toLocaleString('es-AR')}`
   const fecha = new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  const metodoLabel: Record<string, string> = { efectivo: 'EFECTIVO', transferencia: 'TRANSFERENCIA', mp: 'MERCADO PAGO' }
+  const metodoLabel: Record<string, string> = { efectivo: 'EFECTIVO', transferencia: 'TRANSFERENCIA', mp: 'MERCADO PAGO', debito: 'DÉBITO', credito: 'CRÉDITO' } // E2: gemelo del fix de comanda
   type Item = { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
   const items = (pedido.pedido_items ?? []) as Item[]
 

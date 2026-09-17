@@ -19,7 +19,6 @@ export async function POST(request: Request) {
     venta_caja = false, // 9c: venta manual de mostrador (nace cobrada)
   } = body
 
-  console.log('[pedidos] body recibido:', JSON.stringify({ empresa_id, sucursal_id, items_length: items?.length, origen }))
 
   if (!empresa_id || !sucursal_id || !items?.length) {
     return NextResponse.json({ error: 'Datos incompletos', debug: { empresa_id, sucursal_id, items_length: items?.length } }, { status: 400 })

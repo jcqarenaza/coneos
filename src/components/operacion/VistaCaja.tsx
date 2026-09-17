@@ -452,7 +452,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
   const tabs = [
     { key: 'PENDING_PAYMENT', label: 'Pendientes', short: 'Pend.' },
-    { key: 'PAID', label: 'Pagados', short: 'Pag.' },
     { key: 'PREPARING', label: 'Preparando', short: 'Prep.' },
     { key: 'READY', label: 'Listos', short: 'List.' },
   ]
@@ -1102,12 +1101,6 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     </button>
                     </>)}
                   </>)}
-                  {seleccionado.estado === 'PAID' && (
-                    <button onClick={() => cambiarEstado(seleccionado.id, 'PREPARING')} disabled={procesando}
-                      className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
-                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '👨‍🍳 Enviar a preparación'}
-                    </button>
-                  )}
                   {seleccionado.estado === 'PREPARING' && (
                     <button onClick={() => cambiarEstado(seleccionado.id, 'READY')} disabled={procesando}
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
