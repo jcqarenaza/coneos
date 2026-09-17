@@ -679,6 +679,8 @@ export default function CatalogoPage() {
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="🔍 Buscar producto…"
               className="px-4 py-2 rounded-xl border border-neutral-200 text-sm w-64 focus:outline-none focus:border-neutral-400" />
             <span className="text-xs text-neutral-400 bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1.5">🌍 global (toda la empresa) · 📍 solo esta sucursal</span>
+            <button onClick={() => openNewProd(categorias[0]?.id ?? '')}
+              className="ml-auto px-4 py-2 rounded-xl bg-neutral-800 text-white text-sm font-semibold hover:bg-neutral-700 transition-colors">+ Producto</button>
             <p className="text-sm font-semibold text-neutral-700">Sucursal:</p>
             <div className="flex gap-2">
               {sucursales.map(s => (
@@ -718,6 +720,8 @@ export default function CatalogoPage() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                              <button onClick={() => openEditProd(prod)} title="Editar producto (nombre, imagen, categoría…)"
+                                className="text-neutral-300 hover:text-neutral-600 text-sm px-1 transition-colors">✎</button>
                               {prod.controla_stock === true ? (() => {
                                 const st = stockSuc[prod.id]
                                 const cant = st?.cantidad ?? 0
@@ -761,6 +765,8 @@ export default function CatalogoPage() {
                                   </button>
                                 )}
                                 {savingInline === pres.id && <Loader2 className="h-3 w-3 animate-spin text-neutral-300" />}
+                                <button onClick={() => openEditPres(pres)} title="Editar presentación completa (opciones, imagen, orden…)"
+                                  className="text-neutral-300 hover:text-neutral-600 text-xs px-1 transition-colors">⚙</button>
                               </div>
                               <div className="flex items-center gap-2">
                               <button onClick={() => toggleVisibleInline(pres.id, pres.visible_kiosk)}
@@ -777,6 +783,12 @@ export default function CatalogoPage() {
                               </div>
                             </div>
                           ))}
+                          {(expandidos.has(prod.id) || busqueda.trim().length > 0) && (
+                            <div className="pl-16 pr-5 py-2 border-t border-neutral-50">
+                              <button onClick={() => openNewPres(prod.id)}
+                                className="text-xs font-semibold text-neutral-400 hover:text-neutral-700 transition-colors">+ Agregar presentación</button>
+                            </div>
+                          )}
                           {/* Sabores del producto si tiene grupos (plegable) */}
                           {(expandidos.has(prod.id) || busqueda.trim().length > 0) && (() => {
                             const presIds = new Set(prodPres.map(p => p.id))
