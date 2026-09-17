@@ -100,6 +100,21 @@ export default function CatalogoPage() {
     else alert('No se pudo guardar el precio: ' + error.message)
     setSavingInline(null)
   }
+  // Eliminar SUAVE (JC 18/09): el producto sale de la venta pero TODO lo suyo
+  // queda para el futuro — stock, movimientos del libro, históricos de pedidos.
+  // (La vista vieja hace delete físico: hallazgo reportado, acá nace bien.)
+  async function softDeleteProd(prod: Producto) {
+    if (!confirm(`¿Eliminar "${prod.nombre}"? Sale de la venta; su stock e historial quedan guardados.`)) return
+    const sb = createClient()
+    await sb.from('productos').update({ deleted_at: new Date().toISOString(), activo: false }).eq('id', prod.id)
+    await sb.from('presentaciones').update({ activo: false }).eq('producto_id', prod.id)
+    load(true)
+  }
+  async function softDeletePres(pres: Presentacion) {
+    if (!confirm(`¿Eliminar la presentación "${pres.nombre}"?`)) return
+    await createClient().from('presentaciones').update({ activo: false }).eq('id', pres.id)
+    load(true)
+  }
   async function toggleVisibleInline(presId: string, actual: boolean) {
     setSavingInline(presId)
     const { error } = await createClient().from('presentaciones').update({ visible_kiosk: !actual }).eq('id', presId)
@@ -365,6 +380,7 @@ export default function CatalogoPage() {
   function openEditProd(p: Producto) { setFormProd({ nombre: p.nombre, descripcion: p.descripcion ?? '', imagen_url: p.imagen_url, categoria_id: p.categoria_id, codigo: p.codigo ?? '', orden: p.orden, activo: p.activo, visible_kiosk: p.visible_kiosk }); setEditId(p.id); setModalProd(true) }
   async function saveProd() {
     if (!ctx || !formProd.nombre) return
+    if (!formProd.categoria_id) { alert('Elegí la categoría (o creala con "+ nueva")'); return }
     setSaving(true)
     const supabase = createClient()
     const payload = { nombre: formProd.nombre, descripcion: formProd.descripcion || null, imagen_url: formProd.imagen_url, categoria_id: formProd.categoria_id, codigo: formProd.codigo || null, orden: formProd.orden, activo: formProd.activo, visible_kiosk: formProd.visible_kiosk }
@@ -695,7 +711,7 @@ export default function CatalogoPage() {
             <span className="text-xs text-neutral-400 bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1.5">🌍 global (toda la empresa) · 📍 solo esta sucursal</span>
             <button onClick={openNewCat}
               className="ml-auto px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 text-sm font-semibold hover:bg-neutral-50 transition-colors">+ Categoría</button>
-            <button onClick={() => openNewProd(categorias[0]?.id ?? '')}
+            <button onClick={() => openNewProd('')}
               className="px-4 py-2 rounded-xl bg-neutral-800 text-white text-sm font-semibold hover:bg-neutral-700 transition-colors">+ Producto</button>
             <p className="text-sm font-semibold text-neutral-700">Sucursal:</p>
             <div className="flex gap-2">
@@ -738,6 +754,8 @@ export default function CatalogoPage() {
                             <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                               <button onClick={() => openEditProd(prod)} title="Editar producto (nombre, imagen, categoría…)"
                                 className="text-neutral-300 hover:text-neutral-600 text-sm px-1 transition-colors">✎</button>
+                              <button onClick={() => softDeleteProd(prod)} title="Eliminar (suave: stock e historial quedan guardados)"
+                                className="text-neutral-300 hover:text-red-500 text-sm px-1 transition-colors">🗑</button>
                               {prod.controla_stock === true ? (() => {
                                 const st = stockSuc[prod.id]
                                 const cant = st?.cantidad ?? 0
@@ -783,6 +801,8 @@ export default function CatalogoPage() {
                                 {savingInline === pres.id && <Loader2 className="h-3 w-3 animate-spin text-neutral-300" />}
                                 <button onClick={() => openEditPres(pres)} title="Editar presentación completa (opciones, imagen, orden…)"
                                   className="text-neutral-300 hover:text-neutral-600 text-xs px-1 transition-colors">⚙</button>
+                                <button onClick={() => softDeletePres(pres)} title="Eliminar presentación (el historial queda)"
+                                  className="text-neutral-300 hover:text-red-500 text-xs px-1 transition-colors">🗑</button>
                               </div>
                               <div className="flex items-center gap-2">
                               <button onClick={() => toggleVisibleInline(pres.id, pres.visible_kiosk)}
