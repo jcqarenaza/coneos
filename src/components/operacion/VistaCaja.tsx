@@ -11,7 +11,7 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; ticket_impreso_at?: string | null; updated_at?: string; facturas?: { estado: string }[]; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -135,6 +135,45 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     finally { comandaEnCurso.current.delete(pedidoId) }
   }
 
+  // ══ 9g — TICKET AUTOMÁTICO (switch por sucursal, calco del patrón comanda) ══
+  const [ticketAuto, setTicketAuto] = useState(false)
+  const ticketAutoRef = useRef(false)
+  const ticketEnCurso = useRef<Set<string>>(new Set())
+  useEffect(() => { ticketAutoRef.current = ticketAuto }, [ticketAuto])
+  // Config fiscal (fuente ÚNICA existente — orden CTO: sin listas paralelas):
+  // qué métodos facturan y si la facturación está activa, para la espera-CAE.
+  const factRef = useRef<{ activa: boolean; metodos: string[] }>({ activa: false, metodos: [] })
+  useEffect(() => {
+    fetch(`/api/facturacion/emitir?empresa_id=${dispositivo.empresa_id}`)
+      .then(r => r.json())
+      .then(d => { factRef.current = { activa: !!d?.activa, metodos: Array.isArray(d?.metodos) ? d.metodos : [] } })
+      .catch(() => {})
+  }, [dispositivo.empresa_id])
+
+  async function marcarTicket(pedidoId: string): Promise<boolean> {
+    try {
+      const r = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'ticket_claim', pedido_id: pedidoId }) })
+      const d = await r.json(); return !!d?.claimed
+    } catch { return false }
+  }
+  async function ticketAutomatico(pedidoId: string) {
+    if (ticketEnCurso.current.has(pedidoId)) return
+    ticketEnCurso.current.add(pedidoId)
+    try { if (await marcarTicket(pedidoId)) await imprimirTicket(pedidoId) }
+    finally { ticketEnCurso.current.delete(pedidoId) }
+  }
+  // ¿Este pedido ya está listo para su ticket automático?
+  // no facturable → al toque · facturable → factura emitida, o timeout 45s
+  // desde el cobro (imprime "sin validez" y la reimpresión posterior sale
+  // fiscal sola — comportamiento existente del ticket route).
+  function listoParaTicket(p: Pedido): boolean {
+    const facturable = factRef.current.activa && factRef.current.metodos.includes(p.metodo_pago ?? '')
+    if (!facturable) return true
+    if ((p.facturas ?? []).some(f => f.estado === 'emitida')) return true
+    const cobradoHace = Date.now() - new Date(p.updated_at ?? Date.now()).getTime()
+    return cobradoHace > 45000
+  }
+
   const cargarPedidos = useCallback(async () => {
     const rp = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'pedidos_hoy', verTodas }) })
     const dp = await rp.json()
@@ -145,6 +184,16 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     if (comandaAutoRef.current) {
       for (const p of (dp.pedidos ?? []) as Pedido[]) {
         if (p.estado === 'PREPARING' && !p.comanda_impresa_at) comandaAutomatica(p.id)
+      }
+    }
+    // 9g: ticket automático — cobrado (mesa EXCLUIDA de V1) + sin claim +
+    // listo (espera-CAE resuelta). El claim del server decide el único ganador.
+    if (typeof dp?.ticket_auto === 'boolean') { setTicketAuto(dp.ticket_auto); ticketAutoRef.current = dp.ticket_auto }
+    if (ticketAutoRef.current) {
+      for (const p of (dp.pedidos ?? []) as Pedido[]) {
+        if (p.numero_mesa == null && (p.estado === 'PREPARING' || p.estado === 'READY' || p.estado === 'DELIVERED') && !p.ticket_impreso_at && listoParaTicket(p)) {
+          ticketAutomatico(p.id)
+        }
       }
     }
     setColaboradores((dp.colaboradores ?? []) as Colaborador[])
@@ -589,6 +638,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             title={comandaAuto ? 'Comanda automática ACTIVADA: se imprime sola al confirmarse cada pago' : 'Comanda automática desactivada: impresión a botón, como siempre'}
             className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors ${comandaAuto ? 'text-green-600' : 'text-neutral-300 hover:text-neutral-500'}`}>
             🖨️<span className="hidden md:inline">Comanda auto</span>
+          </button>
+          <button onClick={async () => { const nuevo = !ticketAuto; setTicketAuto(nuevo); ticketAutoRef.current = nuevo; await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'ticket_auto_set', valor: nuevo }) }) }}
+            title={ticketAuto ? 'Ticket automático ACTIVADO: se imprime solo al confirmarse cada pago (espera la factura si corresponde)' : 'Ticket automático desactivado: impresión desde los botones, como siempre'}
+            className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors ${ticketAuto ? 'text-green-600' : 'text-neutral-300 hover:text-neutral-500'}`}>
+            🧾<span className="hidden md:inline">Ticket auto</span>
           </button>
         <button onClick={() => { setTab('historial'); cargarHistorial(historialFecha) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'historial' ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
@@ -1081,7 +1135,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       <button onClick={async () => {
                           await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
                           if (comandaAutoRef.current) comandaAutomatica(seleccionado.id)
-                          imprimirTicket(seleccionado.id)
+                          if (ticketAutoRef.current) { /* 9g: el watcher imprime (espera-CAE) */ } else imprimirTicket(seleccionado.id)
                         }} disabled={procesando || !receptorListo}
                         className="w-full py-4 bg-sky-600 hover:bg-sky-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                         {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Confirmar pago'}
@@ -1090,7 +1144,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <button onClick={async () => {
                         await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
                         if (comandaAutoRef.current) comandaAutomatica(seleccionado.id)
-                        imprimirTicket(seleccionado.id)
+                        if (ticketAutoRef.current) { /* 9g: el watcher imprime (espera-CAE) */ } else imprimirTicket(seleccionado.id)
                       }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
@@ -1114,7 +1168,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     </button>
                   )}
                   {seleccionado.estado === 'DELIVERED' && (
-                    <button onClick={() => imprimirTicket(seleccionado.id)}
+                    <button onClick={() => { marcarTicket(seleccionado.id); imprimirTicket(seleccionado.id) }}
                       className="w-full py-4 border-2 border-neutral-200 text-neutral-600 hover:bg-neutral-50 rounded-2xl font-bold text-base transition-colors flex items-center justify-center gap-2">
                       🖨️ Reimprimir ticket
                     </button>
@@ -1186,7 +1240,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           </div>
           <div className="space-y-2">
             <button
-              onClick={async () => { await imprimirTicket(seleccionado.id, nombreCliente); setModalComprobante(false); setNombreCliente('') }}
+              onClick={async () => { marcarTicket(seleccionado.id); await imprimirTicket(seleccionado.id, nombreCliente); setModalComprobante(false); setNombreCliente('') }}
               disabled={generandoTicket}
               className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
               {generandoTicket ? <><Loader2 className="h-4 w-4 animate-spin" /> Generando...</> : '🖨️ Generar ticket'}

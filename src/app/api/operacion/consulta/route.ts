@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   if (accion === 'pedidos_hoy') {
     let query = supabase.from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, hora_retiro, comanda_impresa_at, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre),
+      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, hora_retiro, comanda_impresa_at, ticket_impreso_at, updated_at, facturas(estado), cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre),
         sucursales(nombre),
         pedido_pagos(metodo, monto),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
@@ -50,8 +50,8 @@ export async function POST(request: Request) {
     const stockAgotados = enAlerta.filter(r => r.cantidad === 0).length
     const stockBajos = enAlerta.filter(r => r.cantidad > 0).length
     const { data: sucCfg } = await supabase.from('sucursales')
-      .select('comanda_auto').eq('id', disp.sucursal_id).maybeSingle()
-    return NextResponse.json({ pedidos: pedidos ?? [], colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta }, comanda_auto: sucCfg?.comanda_auto ?? false })
+      .select('comanda_auto, ticket_auto').eq('id', disp.sucursal_id).maybeSingle()
+    return NextResponse.json({ pedidos: pedidos ?? [], colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta }, comanda_auto: sucCfg?.comanda_auto ?? false, ticket_auto: sucCfg?.ticket_auto ?? false })
   }
 
   if (accion === 'historial') {
@@ -131,6 +131,35 @@ export async function POST(request: Request) {
       .update({ comanda_impresa_at: new Date().toISOString() })
       .eq('id', body.pedido_id).eq('empresa_id', disp.empresa_id)
       .is('comanda_impresa_at', null)
+      .select('id')
+    return NextResponse.json({ claimed: (data ?? []).length > 0 })
+  }
+
+  // ══ 9g — ticket automático (calco exacto del patrón comanda) ══
+  if (accion === 'ticket_auto_set') {
+    await supabase.from('sucursales')
+      .update({ ticket_auto: !!body.valor }).eq('id', disp.sucursal_id)
+    // Línea de base SERVER-SIDE al activar (orden CTO): lo ya cobrado queda
+    // reclamado — activar el switch a las 10:01 no escupe los 27 de la mañana.
+    if (body.valor) {
+      await supabase.from('pedidos')
+        .update({ ticket_impreso_at: new Date().toISOString() })
+        .eq('sucursal_id', disp.sucursal_id)
+        .in('estado', ['PREPARING', 'READY', 'DELIVERED'])
+        .is('ticket_impreso_at', null)
+    }
+    return NextResponse.json({ ok: true, ticket_auto: !!body.valor })
+  }
+  // Claim ATÓMICO e idempotente (condición técnica del CTO): el UPDATE
+  // condicional decide UN solo ganador — dos watchers simultáneos jamás
+  // imprimen dos veces. Semántica de ticket_impreso_at: "reclamado para
+  // autoimpresión, no volver a autoimprimir" — NO "el papel salió"
+  // (la garantía física no existe; Reimprimir es la vía humana).
+  if (accion === 'ticket_claim') {
+    const { data } = await supabase.from('pedidos')
+      .update({ ticket_impreso_at: new Date().toISOString() })
+      .eq('id', body.pedido_id).eq('empresa_id', disp.empresa_id)
+      .is('ticket_impreso_at', null)
       .select('id')
     return NextResponse.json({ claimed: (data ?? []).length > 0 })
   }
