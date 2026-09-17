@@ -140,6 +140,8 @@ export default function CatalogoPage() {
   const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true })
   const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null, visible_kiosk: true, es_novedad: false })
   const [gruposSeleccionados, setGruposSeleccionados] = useState<string[]>([])
+  // Regla de oro F1.5: crear una dependencia faltante sin abandonar el flujo.
+  const [volverA, setVolverA] = useState<'prod' | 'pres' | null>(null)
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
   const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true, visible_kiosk: true })
 
@@ -346,7 +348,10 @@ export default function CatalogoPage() {
     setSaving(true)
     const supabase = createClient()
     if (editId) await supabase.from('categorias').update({ nombre: formCat.nombre, orden: formCat.orden, activo: formCat.activo, icono_url: formCat.icono_url }).eq('id', editId)
-    else await supabase.from('categorias').insert({ nombre: formCat.nombre, orden: formCat.orden, activo: formCat.activo, icono_url: formCat.icono_url, empresa_id: ctx.empresaId })
+    else {
+      const { data: nueva } = await supabase.from('categorias').insert({ nombre: formCat.nombre, orden: formCat.orden, activo: formCat.activo, icono_url: formCat.icono_url, empresa_id: ctx.empresaId }).select('id').single()
+      if (nueva && volverA === 'prod') { setFormProd(f => ({ ...f, categoria_id: nueva.id })); setModalProd(true); setVolverA(null) }
+    }
     setSaving(false); setModalCat(false); load(true)
   }
   async function deleteCat(id: string) {
@@ -412,7 +417,10 @@ export default function CatalogoPage() {
     setSaving(true)
     const supabase = createClient()
     if (editId) await supabase.from('grupos_opciones').update(formGrupo).eq('id', editId)
-    else await supabase.from('grupos_opciones').insert({ ...formGrupo, empresa_id: ctx.empresaId })
+    else {
+      const { data: nuevo } = await supabase.from('grupos_opciones').insert({ ...formGrupo, empresa_id: ctx.empresaId }).select('id').single()
+      if (nuevo && volverA === 'pres') { setGruposSeleccionados(gs => [...gs, nuevo.id]); setModalPres(true); setVolverA(null) }
+    }
     setSaving(false); setModalGrupo(false); load(true)
   }
 
@@ -679,8 +687,10 @@ export default function CatalogoPage() {
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="🔍 Buscar producto…"
               className="px-4 py-2 rounded-xl border border-neutral-200 text-sm w-64 focus:outline-none focus:border-neutral-400" />
             <span className="text-xs text-neutral-400 bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1.5">🌍 global (toda la empresa) · 📍 solo esta sucursal</span>
+            <button onClick={openNewCat}
+              className="ml-auto px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 text-sm font-semibold hover:bg-neutral-50 transition-colors">+ Categoría</button>
             <button onClick={() => openNewProd(categorias[0]?.id ?? '')}
-              className="ml-auto px-4 py-2 rounded-xl bg-neutral-800 text-white text-sm font-semibold hover:bg-neutral-700 transition-colors">+ Producto</button>
+              className="px-4 py-2 rounded-xl bg-neutral-800 text-white text-sm font-semibold hover:bg-neutral-700 transition-colors">+ Producto</button>
             <p className="text-sm font-semibold text-neutral-700">Sucursal:</p>
             <div className="flex gap-2">
               {sucursales.map(s => (
@@ -896,7 +906,9 @@ export default function CatalogoPage() {
         <div className="space-y-4">
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formProd.nombre} onChange={e => setFormProd({ ...formProd, nombre: e.target.value })} placeholder="Bombón Suizo" autoFocus /></div>
           <div className="space-y-1.5">
-            <Label>Categoría *</Label>
+            <div className="flex items-center justify-between"><Label>Categoría *</Label>
+              <button type="button" onClick={() => { setVolverA('prod'); setModalProd(false); openNewCat() }}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800">+ nueva</button></div>
             <Select value={formProd.categoria_id} onValueChange={v => setFormProd({ ...formProd, categoria_id: v })}>
               <SelectTrigger><SelectValue placeholder="Seleccioná" /></SelectTrigger>
               <SelectContent>{categorias.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
@@ -952,6 +964,8 @@ export default function CatalogoPage() {
                     </label>
                   ))}
                 </div>
+                <button type="button" onClick={() => { setVolverA('pres'); setModalPres(false); openNewGrupo() }}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-800">+ nuevo grupo</button>
                 {gruposSeleccionados.length === 0 && <p className="text-xs text-amber-600">Seleccioná al menos un grupo de opciones</p>}
               </div>
             </div>
