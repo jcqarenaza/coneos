@@ -141,8 +141,46 @@ export default function TakeawayPage() {
     setPaso('confirmacion')
   }
 
+
+  // ══ 9d — RE-PRECIO DEL CARRITO (orden CTO: el server ya manda; el front
+  // se pone al día). Contra el catálogo FRESCO: presentación + adicionales;
+  // lo que ya no existe se quita con aviso. Cero server tocado.
+  const [avisoPrecios, setAvisoPrecios] = useState(false)
+  const [itemsQuitados, setItemsQuitados] = useState(0)
+  async function repreciarCarrito() {
+    try {
+      const r = await fetch(`/api/kiosk/catalogo?empresa_id=${ctx!.empresa_id}&sucursal_id=${ctx!.sucursal_id}`)
+      if (!r.ok) throw new Error('catalogo')
+      const cat = await r.json()
+      const precioPres = new Map<string, number>(((cat.presentaciones ?? []) as { id: string; precio: number }[]).map(p => [p.id, Number(p.precio)]))
+      const precioOp = new Map<string, number>(((cat.opciones ?? []) as { id: string; precio_adicional: number | null }[]).map(o => [o.id, Number(o.precio_adicional ?? 0)]))
+      const opcionesFrescas = (cat.opciones ?? []) as { nombre: string; precio_adicional: number | null }[]
+      let quitados = 0
+      const nuevo: ItemCarrito[] = []
+      for (const item of carrito) {
+        if (!item.presentacion_id) {
+          // accesorio (sin presentación): matchear por nombre contra las opciones frescas
+          const acc = opcionesFrescas.find(o => o.nombre.replace(/^Toppings?\s+/i, '') === item.nombre_presentacion)
+          if (!acc || !(Number(acc.precio_adicional ?? 0) > 0)) { quitados++; continue }
+          nuevo.push({ ...item, precio: Number(acc.precio_adicional) })
+          continue
+        }
+        const base = precioPres.get(item.presentacion_id)
+        if (base === undefined) { quitados++; continue } // la presentación ya no está a la venta
+        const adicionales = item.opciones.reduce((s, op) => s + (precioOp.get(op.opcion_id) ?? 0), 0)
+        nuevo.push({ ...item, precio: base + adicionales })
+      }
+      setCarrito(nuevo)
+      setItemsQuitados(quitados)
+    } catch {
+      setItemsQuitados(0) // sin catálogo: igual volvemos al carrito con el aviso
+    }
+    setAvisoPrecios(true)
+    setPaso('carrito')
+  }
+
   function nuevoPedido() {
-    setCarrito([]); setPedidoCreado(null); setPaso('catalogo')
+    setCarrito([]); setPedidoCreado(null); setPaso('catalogo'); setAvisoPrecios(false); setItemsQuitados(0)
   }
 
   if (loading) return (
@@ -198,17 +236,25 @@ export default function TakeawayPage() {
           onVolver={() => {}}
         />
       )}
-      {paso === 'carrito' && (
+      {paso === 'carrito' && (<>
+        {avisoPrecios && (
+          <div className="max-w-lg mx-auto mt-4 px-4">
+            <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm font-semibold rounded-2xl px-4 py-3 text-center shadow-sm">
+              ⚠️ Los precios se actualizaron — revisá tu pedido antes de confirmar.
+              {itemsQuitados > 0 ? ` ${itemsQuitados === 1 ? 'Un artículo ya no está disponible y se quitó.' : `${itemsQuitados} artículos ya no están disponibles y se quitaron.`}` : ''}
+            </div>
+          </div>
+        )}
         <KioskCarritoDelivery
           config={ctx.config} dispositivo={pseudoDispositivo}
           carrito={carrito} setCarrito={setCarrito}
           accesorios={accesorios}
           costoEnvio={0}
           canal="takeaway"
-          onConfirmar={handleConfirmarCarrito}
+          onConfirmar={extras => { setAvisoPrecios(false); handleConfirmarCarrito(extras) }}
           onSeguirComprando={() => setPaso('catalogo')}
           onVolver={() => setPaso('catalogo')} />
-      )}
+      </>)}
       {paso === 'confirmacion' && (
         <KioskConfirmacionDelivery
           config={ctx.config} dispositivo={pseudoDispositivo}
@@ -221,6 +267,7 @@ export default function TakeawayPage() {
           pedidoCreado={pedidoCreado}
           onPedidoCreado={(num, cod) => { setPedidoCreado({ numero: num, codigo: cod }); try { if (claveCarrito) localStorage.removeItem(claveCarrito) } catch {} }}
           onNuevoPedido={nuevoPedido}
+          onPreciosDesactualizados={repreciarCarrito}
           onVolver={() => setPaso('carrito')} />
       )}
     </div>

@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     venta_caja = false, // 9c: venta manual de mostrador (nace cobrada)
   } = body
 
+  console.log('[pedidos] body recibido:', JSON.stringify({ empresa_id, sucursal_id, items_length: items?.length, origen }))
 
   if (!empresa_id || !sucursal_id || !items?.length) {
     return NextResponse.json({ error: 'Datos incompletos', debug: { empresa_id, sucursal_id, items_length: items?.length } }, { status: 400 })
@@ -190,6 +191,13 @@ export async function POST(request: Request) {
     if (msg.includes('SIN_STOCK:')) {
       const producto = msg.split('SIN_STOCK:')[1]?.split('\n')[0]?.trim() ?? 'un producto'
       return NextResponse.json({ error: `No queda stock de ${producto}. Sacalo del carrito e intentá de nuevo.` }, { status: 409 })
+    }
+    // 9d/regresión-C: la traducción humana de los rechazos de precio del ciclo C
+    // (pisada por una base desactualizada en el merge de 9c — restaurada acá).
+    // 409 + mensaje humano: lo que el cliente ve, y la señal que enciende el
+    // re-precio automático del carrito (9d).
+    if (msg.includes('PRECIO_INVALIDO:') || msg.includes('OPCION_INVALIDA:') || msg.includes('ACCESORIO_INVALIDO:') || msg.includes('CANTIDAD_INVALIDA')) {
+      return NextResponse.json({ error: 'Los precios se actualizaron. Revisá tu pedido.' }, { status: 409 })
     }
     console.error('[pedidos] Error creando pedido (RPC):', error)
     return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })

@@ -15,6 +15,9 @@ interface Props {
   costoEnvio: number; pedidoCreado: { numero: number; codigo: string } | null
   onPedidoCreado: (numero: number, codigo: string) => void
   onNuevoPedido: () => void; onVolver: () => void
+  // 9d: el server rechazó por precios (409 del ciclo C) → el padre re-precia
+  // el carrito contra el catálogo fresco y devuelve al cliente a revisarlo.
+  onPreciosDesactualizados?: () => void
 }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles: string }
 interface PagosSucursal { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; titular_transferencia?: string | null }
@@ -49,7 +52,7 @@ function ResumenTotal({ subtotal, costoEnvio, total, config, esTakeaway = false 
   )
 }
 
-export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null, slotsRetiro = [] }: Props) {
+export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null, slotsRetiro = [] , onPreciosDesactualizados }: Props) {
   const esTakeaway = canal === 'takeaway'
   // V1.5: hora de retiro elegida. null = ⚡ Lo antes posible (default histórico)
   const [horaRetiro, setHoraRetiro] = useState<string | null>(null)
@@ -128,6 +131,12 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     const data = await res.json().catch(() => null)
     setCreando(false)
     if (!res.ok || !data?.pedido) {
+      // 9d: precio desactualizado (mensaje humano del ciclo C) → no es un error
+      // del cliente: el catálogo cambió. El padre re-precia y volvemos al carrito.
+      if (res.status === 409 && String(data?.error ?? '').toLowerCase().includes('precio') && onPreciosDesactualizados) {
+        onPreciosDesactualizados()
+        return null
+      }
       setErrorPedido(data?.error ?? 'No pudimos crear tu pedido. Probá de nuevo.')
       return null
     }
