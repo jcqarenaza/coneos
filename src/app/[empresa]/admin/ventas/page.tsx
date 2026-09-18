@@ -559,76 +559,11 @@ export default function VentasPage() {
             </div>
           )}
 
-          {/* Arqueo del día */}
-          <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-neutral-50">
-              <h3 className="font-bold text-neutral-700">Arqueo del día</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">{new Date().toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })}</p>
-            </div>
-            <div className="p-5 space-y-4">
-              {/* Totales sistema */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Cobrado según sistema</p>
-                {[{ label: '💵 Efectivo', key: 'efectivo', color: 'text-green-700' }, { label: '📲 Transferencia', key: 'transferencia', color: 'text-blue-700' }, { label: '💳 Mercado Pago', key: 'mp', color: 'text-sky-700' }, { label: '💳 Débito', key: 'debito', color: 'text-violet-700' }, { label: '💳 Crédito', key: 'credito', color: 'text-fuchsia-700' }].map(({ label, key, color }) => {
-                  const tot = pedidos.filter(p => p.metodo_pago === key && p.estado !== 'CANCELLED').reduce((acc, p) => acc + Number(p.total), 0)
-                  const cant = pedidos.filter(p => p.metodo_pago === key && p.estado !== 'CANCELLED').length
-                  return (
-                    <div key={key} className="flex items-center justify-between py-2 px-4 bg-neutral-50 rounded-xl">
-                      <div>
-                        <span className="text-sm font-semibold text-neutral-700">{label}</span>
-                        <span className="text-xs text-neutral-400 ml-2">{cant} pedidos</span>
-                      </div>
-                      <span className={`font-bold text-base ${color}`}>{formatPrecio(tot)}</span>
-                    </div>
-                  )
-                })}
-                <div className="flex items-center justify-between py-2 px-4 bg-neutral-800 rounded-xl">
-                  <span className="text-sm font-bold text-white">Total</span>
-                  <span className="font-black text-base text-white">{formatPrecio(pedidos.filter(p => p.estado !== 'CANCELLED').reduce((acc, p) => acc + Number(p.total), 0))}</span>
-                </div>
-              </div>
-
-              {/* MARINA-1: declarado por método */}
-              <div className="space-y-2 pt-2 border-t border-neutral-100">
-                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Contado / declarado (dejá vacío lo que no cierre hoy)</p>
-                {[{ label: '💵 Efectivo', key: 'efectivo', color: 'text-green-700' }, { label: '📲 Transferencia', key: 'transferencia', color: 'text-blue-700' }, { label: '💳 Mercado Pago', key: 'mp', color: 'text-sky-700' }, { label: '💳 Débito', key: 'debito', color: 'text-violet-700' }, { label: '💳 Crédito', key: 'credito', color: 'text-fuchsia-700' }].map(({ label, key }) => {
-                  const sist = pedidos.filter(p => p.metodo_pago === key && p.estado !== 'CANCELLED').reduce((a, p) => a + Number(p.total), 0)
-                  const val = declarados[key] ?? ''
-                  const dif = val === '' ? null : (parseFloat(val) || 0) - sist
-                  return (
-                    <div key={key} className="flex items-center gap-3">
-                      <span className="text-sm font-semibold text-neutral-600 w-40">{label}</span>
-                      <input type="number" value={val} placeholder={String(sist)}
-                        onChange={e => setDeclarados(d => ({ ...d, [key]: e.target.value }))}
-                        className="flex-1 px-3 py-2 rounded-xl border border-neutral-200 text-sm font-bold focus:outline-none focus:border-neutral-400" />
-                      {dif !== null && (
-                        <span className={`text-xs font-bold w-24 text-right ${dif === 0 ? 'text-green-600' : dif > 0 ? 'text-blue-600' : 'text-red-500'}`}>{dif >= 0 ? '+' : ''}{formatPrecio(dif)}</span>
-                      )}
-                    </div>
-                  )
-                })}
-                <div className="flex items-center gap-3 pt-1">
-                  <span className="text-sm font-semibold text-neutral-600 w-40">👤 Cierra</span>
-                  <input value={cerradoPor} onChange={e => setCerradoPor(e.target.value)} placeholder="Nombre de quien cierra la caja"
-                    className="flex-1 px-3 py-2 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400" />
-                </div>
-              </div>
-
-              {/* Notas */}
-              <div className="space-y-1.5">
-                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Notas (opcional)</p>
-                <input value={notasArqueo} onChange={e => setNotasArqueo(e.target.value)}
-                  placeholder="Observaciones del turno..."
-                  className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400" />
-              </div>
-
-              <button onClick={registrarArqueo} disabled={guardandoArqueo || Object.values(declarados).every(v => v === '' || v === undefined)}
-                className="w-full py-3.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 flex items-center justify-center gap-2 bg-neutral-800 text-white hover:bg-neutral-700">
-                {guardandoArqueo ? <><Loader2 className="h-4 w-4 animate-spin" /> Guardando...</>
-                  : arqueoGuardado ? '✓ ¡Arqueo registrado!'
-                  : '🔒 Cerrar caja del día'}
-              </button>
-            </div>
+          {/* MARINA-1 (regla JC): el cierre se EJECUTA desde CAJA al fin del turno,
+              firmado por el operador de la sesión. El admin CONSULTA acá. */}
+          <div className="bg-blue-50 border border-blue-100 rounded-2xl px-5 py-4">
+            <p className="text-sm font-semibold text-blue-800">🔒 El cierre de caja se realiza desde la pantalla de Caja, al fin de cada turno.</p>
+            <p className="text-xs text-blue-600 mt-0.5">Cada cierre queda firmado por el operador de la sesión. Acá ves el historial de todas las sucursales.</p>
           </div>
 
           {/* Historial de cierres */}
@@ -641,7 +576,7 @@ export default function VentasPage() {
                   return (
                     <div key={a.id} className="px-5 py-3 flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-bold text-neutral-700">{formatFecha(a.fecha)}{a.cerrado_por ? <span className="text-xs text-neutral-400 font-medium"> · 👤 {a.cerrado_por}</span> : null}</p>
+                        <p className="text-sm font-bold text-neutral-700">{formatFecha(a.fecha)} {new Date(a.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })} <span className="text-xs text-neutral-400 font-medium">· 🏪 {sucursales.find(s => s.id === a.sucursal_id)?.nombre ?? a.sucursal_id.slice(0, 8)}</span>{a.cerrado_por ? <span className="text-xs text-neutral-400 font-medium"> · 👤 {a.cerrado_por}</span> : null}</p>
                         <p className="text-xs text-neutral-400">{METODOS_CIERRE.filter(mtd => Number(a.totales_sistema?.[mtd] ?? 0) > 0).map(mtd => `${mtd}: ${formatPrecio(Number(a.totales_sistema[mtd]))}`).join(' · ')}</p>
                         {a.observaciones && <p className="text-xs text-neutral-400 mt-0.5">📝 {a.observaciones}</p>}
                       </div>
