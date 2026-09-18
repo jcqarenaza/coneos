@@ -231,6 +231,56 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     alert('✓ Caja cerrada. El cierre quedó registrado.')
   }
 
+  // ══ 9b — ARQUEO DE STOCK (GO CTO): conteo CIEGO del operador → PENDIENTE →
+  // el admin confirma en Ventas. La mutación viaja SIEMPRE por ajustar_stock
+  // en modo DELTA (físico − teórico_snapshot) → los movimientos posteriores
+  // al snapshot SOBREVIVEN — la semántica anti-bomba definida por el CTO. ══
+  const [modalArqueo, setModalArqueo] = useState(false)
+  const [arqCats, setArqCats] = useState<{ id: string; nombre: string }[]>([])
+  const [arqProds, setArqProds] = useState<{ id: string; nombre: string; categoria_id: string }[]>([])
+  const [arqAlcance, setArqAlcance] = useState<string>('completo')
+  const [arqFisico, setArqFisico] = useState<Record<string, string>>({})
+  const [arqObs, setArqObs] = useState('')
+  const [arqGuardando, setArqGuardando] = useState(false)
+  async function abrirArqueo() {
+    setModalArqueo(true); setArqAlcance('completo'); setArqFisico({}); setArqObs('')
+    const sb = createClient()
+    const { data: pend } = await sb.from('arqueos_stock').select('id').eq('sucursal_id', dispositivo.sucursal_id).eq('estado', 'pendiente').limit(1)
+    if ((pend ?? []).length > 0) { alert('Ya hay un arqueo PENDIENTE de esta sucursal esperando confirmación del admin.'); setModalArqueo(false); return }
+    const [{ data: cats }, { data: prods }] = await Promise.all([
+      sb.from('categorias').select('id, nombre').eq('empresa_id', dispositivo.empresa_id).eq('activo', true).order('orden'),
+      sb.from('productos').select('id, nombre, categoria_id').eq('empresa_id', dispositivo.empresa_id).eq('activo', true).eq('controla_stock', true).is('deleted_at', null).order('nombre'),
+    ])
+    setArqCats((cats ?? []) as { id: string; nombre: string }[])
+    setArqProds((prods ?? []) as { id: string; nombre: string; categoria_id: string }[])
+  }
+  const arqLista = arqProds.filter(p => arqAlcance === 'completo' || p.categoria_id === arqAlcance)
+  async function guardarArqueo9b() {
+    const cargados = arqLista.filter(p => (arqFisico[p.id] ?? '') !== '')
+    if (cargados.length === 0) return
+    setArqGuardando(true)
+    const sb = createClient()
+    // SNAPSHOT del teórico AL GUARDAR (garantía CTO) — la carrera de segundos
+    // es inofensiva: el delta preserva cualquier movimiento posterior.
+    const { data: stockRows } = await sb.from('producto_stock').select('producto_id, cantidad')
+      .eq('sucursal_id', dispositivo.sucursal_id).in('producto_id', cargados.map(p => p.id))
+    const teorico = new Map((stockRows ?? []).map((r: { producto_id: string; cantidad: number }) => [r.producto_id, Number(r.cantidad)]))
+    const { data: arq, error } = await sb.from('arqueos_stock').insert({
+      empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
+      alcance: arqAlcance === 'completo' ? 'completo' : `categoria:${arqCats.find(c => c.id === arqAlcance)?.nombre ?? ''}`,
+      contado_por: sesion?.operador?.nombre ?? null, observaciones: arqObs || null,
+    }).select('id').single()
+    if (error || !arq) { alert('No se pudo guardar: ' + (error?.message ?? '')); setArqGuardando(false); return }
+    const { error: e2 } = await sb.from('arqueo_items').insert(cargados.map(p => ({
+      arqueo_id: arq.id, producto_id: p.id,
+      teorico: teorico.get(p.id) ?? 0, fisico: parseFloat(arqFisico[p.id]) || 0,
+    })))
+    setArqGuardando(false)
+    if (e2) { alert('Error guardando ítems: ' + e2.message); return }
+    setModalArqueo(false)
+    alert(`✓ Conteo guardado (${cargados.length} productos). Queda PENDIENTE para confirmación del admin.`)
+  }
+
   const cargarPedidos = useCallback(async () => {
     const rp = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'pedidos_hoy', verTodas }) })
     const dp = await rp.json()
@@ -714,6 +764,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           <button onClick={abrirCierre} title="Cierre de caja del turno: contado vs sistema, por método"
             className="flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent text-neutral-300 hover:text-neutral-600 transition-colors">
             🔒<span className="hidden md:inline">Cierre</span>
+          </button>
+          <button onClick={abrirArqueo} title="Arqueo de stock: conteo físico ciego → el admin confirma"
+            className="flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent text-neutral-300 hover:text-neutral-600 transition-colors">
+            📦<span className="hidden md:inline">Arqueo</span>
           </button>
         <button onClick={() => { setTab('historial'); cargarHistorial(historialFecha) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'historial' ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
@@ -1326,6 +1380,44 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         </div>
       </div>
     )}
+      {modalArqueo && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setModalArqueo(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-neutral-100">
+              <h3 className="font-bold text-neutral-800">📦 Arqueo de stock — conteo físico</h3>
+              <p className="text-xs text-neutral-400 mt-0.5">Contá lo que HAY en el local (sin mirar el sistema). Dejá vacío lo que no cuentes.</p>
+            </div>
+            <div className="px-5 py-3 border-b border-neutral-50">
+              <select value={arqAlcance} onChange={e => { setArqAlcance(e.target.value); setArqFisico({}) }}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold focus:outline-none">
+                <option value="completo">📋 Arqueo completo (todo lo que controla stock)</option>
+                {arqCats.map(c => <option key={c.id} value={c.id}>🏷️ Solo {c.nombre}</option>)}
+              </select>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-2">
+              {arqLista.length === 0 && <p className="text-sm text-neutral-400 text-center py-6">No hay productos con control de stock en este alcance.</p>}
+              {arqLista.map(p => (
+                <div key={p.id} className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-neutral-700 flex-1 truncate">{p.nombre}</span>
+                  <input type="number" min={0} value={arqFisico[p.id] ?? ''} placeholder="físico"
+                    onChange={e => setArqFisico(f => ({ ...f, [p.id]: e.target.value }))}
+                    className="w-28 px-3 py-2 rounded-xl border border-neutral-200 text-sm font-bold text-right focus:outline-none focus:border-neutral-400" />
+                </div>
+              ))}
+              <input value={arqObs} onChange={e => setArqObs(e.target.value)} placeholder="📝 Observaciones (opcional)"
+                className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none mt-2" />
+              <p className="text-xs text-neutral-400">👤 Cuenta: <b className="text-neutral-600">{sesion?.operador?.nombre ?? '—'}</b> · el admin confirma antes de ajustar nada.</p>
+            </div>
+            <div className="px-5 py-4 border-t border-neutral-100 flex gap-2">
+              <button onClick={() => setModalArqueo(false)} className="flex-1 py-3 rounded-xl border border-neutral-200 text-sm font-semibold text-neutral-600">Cancelar</button>
+              <button onClick={guardarArqueo9b} disabled={arqGuardando || arqLista.every(p => (arqFisico[p.id] ?? '') === '')}
+                className="flex-1 py-3 rounded-xl bg-neutral-800 text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2">
+                {arqGuardando ? <Loader2 className="h-4 w-4 animate-spin" /> : '📦 Guardar conteo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {modalCierre && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setModalCierre(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>

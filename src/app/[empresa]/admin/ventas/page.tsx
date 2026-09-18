@@ -150,6 +150,51 @@ export default function VentasPage() {
     URL.revokeObjectURL(url)
   }
 
+  // ══ 9b — pendientes de arqueo + confirmación (DELTA por ajustar_stock) ══
+  interface ArqItem { id: string; producto_id: string; teorico: number; fisico: number; diferencia: number; descartado: boolean }
+  interface ArqueoStock { id: string; sucursal_id: string; alcance: string; contado_por: string | null; observaciones: string | null; created_at: string; estado: string; confirmado_por: string | null; arqueo_items: ArqItem[] }
+  const [arqueosStock, setArqueosStock] = useState<ArqueoStock[]>([])
+  const [prodNombres, setProdNombres] = useState<Record<string, string>>({})
+  const [confirmadoPor, setConfirmadoPor] = useState('')
+  const [confirmando, setConfirmando] = useState<string | null>(null)
+  async function cargarArqueosStock() {
+    if (!ctx) return
+    const sb = createClient()
+    const { data } = await sb.from('arqueos_stock').select('*, arqueo_items(*)')
+      .eq('empresa_id', ctx.empresaId).order('created_at', { ascending: false }).limit(30)
+    const arr = (data ?? []) as ArqueoStock[]
+    setArqueosStock(arr)
+    const ids = [...new Set(arr.flatMap(a => a.arqueo_items.map(i => i.producto_id)))]
+    if (ids.length) {
+      const { data: prods } = await sb.from('productos').select('id, nombre').in('id', ids)
+      setProdNombres(Object.fromEntries((prods ?? []).map((p: { id: string; nombre: string }) => [p.id, p.nombre])))
+    }
+  }
+  async function toggleDescartar(item: ArqItem) {
+    await createClient().from('arqueo_items').update({ descartado: !item.descartado }).eq('id', item.id)
+    cargarArqueosStock()
+  }
+  async function confirmarArqueo(a: ArqueoStock) {
+    if (!ctx) return
+    setConfirmando(a.id)
+    const sb = createClient()
+    // SEMÁNTICA CTO: cada diferencia se aplica como DELTA sobre el stock ACTUAL
+    // (fisico − teorico_snapshot) → las ventas posteriores al conteo SOBREVIVEN.
+    for (const it of a.arqueo_items) {
+      if (it.descartado || Number(it.diferencia) === 0) continue
+      const { error } = await sb.rpc('ajustar_stock', {
+        p_empresa_id: ctx.empresaId, p_sucursal_id: a.sucursal_id, p_producto_id: it.producto_id,
+        p_valor: Number(it.diferencia), p_modo: 'delta', p_motivo: 'arqueo',
+        p_detalle: `Arqueo ${formatFecha(a.created_at.slice(0, 10))} — dif ${Number(it.diferencia) > 0 ? '+' : ''}${it.diferencia}${a.observaciones ? ' · ' + a.observaciones : ''}`,
+      })
+      if (error) { alert(`Error ajustando ${prodNombres[it.producto_id] ?? it.producto_id}: ${error.message}`); setConfirmando(null); return }
+      await sb.from('arqueo_items').update({ ajustado: true }).eq('id', it.id)
+    }
+    await sb.from('arqueos_stock').update({ estado: 'confirmado', confirmado_por: confirmadoPor || 'admin', confirmado_at: new Date().toISOString() }).eq('id', a.id)
+    setConfirmando(null); setConfirmadoPor('')
+    cargarArqueosStock()
+  }
+
   async function cargarArqueos() {
     if (!ctx) return
     setLoadingArqueo(true)
@@ -565,6 +610,55 @@ export default function VentasPage() {
             <p className="text-sm font-semibold text-blue-800">🔒 El cierre de caja se realiza desde la pantalla de Caja, al fin de cada turno.</p>
             <p className="text-xs text-blue-600 mt-0.5">Cada cierre queda firmado por el operador de la sesión. Acá ves el historial de todas las sucursales.</p>
           </div>
+
+          {/* 9b — Arqueos de stock: pendientes + historial */}
+          {arqueosStock.length > 0 && (
+            <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-neutral-50"><h3 className="font-bold text-neutral-700">📦 Arqueos de stock</h3></div>
+              <div className="divide-y divide-neutral-50">
+                {arqueosStock.map(a => (
+                  <div key={a.id} className="px-5 py-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="text-sm font-bold text-neutral-700">
+                          {formatFecha(a.created_at.slice(0, 10))} {new Date(a.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
+                          <span className="text-xs text-neutral-400 font-medium"> · 🏪 {sucursales.find(s => s.id === a.sucursal_id)?.nombre ?? ''} · {a.alcance} · 👤 {a.contado_por ?? '—'}</span>
+                        </p>
+                        {a.observaciones && <p className="text-xs text-neutral-400">📝 {a.observaciones}</p>}
+                      </div>
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${a.estado === 'pendiente' ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
+                        {a.estado === 'pendiente' ? '⏳ PENDIENTE' : `✓ Confirmado por ${a.confirmado_por}`}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {a.arqueo_items.map(it => (
+                        <div key={it.id} className={`flex items-center gap-3 text-sm ${it.descartado ? 'opacity-40 line-through' : ''}`}>
+                          <span className="flex-1 truncate text-neutral-600">{prodNombres[it.producto_id] ?? '…'}</span>
+                          <span className="text-xs text-neutral-400 w-24 text-right">sist. {it.teorico}</span>
+                          <span className="text-xs font-bold text-neutral-700 w-20 text-right">físico {it.fisico}</span>
+                          <span className={`text-xs font-black w-14 text-right ${Number(it.diferencia) === 0 ? 'text-green-600' : 'text-red-500'}`}>{Number(it.diferencia) > 0 ? '+' : ''}{it.diferencia}</span>
+                          {a.estado === 'pendiente' && (
+                            <button onClick={() => toggleDescartar(it)} title={it.descartado ? 'Incluir de nuevo' : 'Descartar (recontar después)'}
+                              className="text-xs text-neutral-300 hover:text-red-500">✕</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {a.estado === 'pendiente' && (
+                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-neutral-50">
+                        <input value={confirmando === a.id ? '' : confirmadoPor} onChange={e => setConfirmadoPor(e.target.value)} placeholder="👤 Confirmado por"
+                          className="flex-1 px-3 py-2 rounded-xl border border-neutral-200 text-sm focus:outline-none" />
+                        <button onClick={() => confirmarArqueo(a)} disabled={confirmando === a.id}
+                          className="px-4 py-2 rounded-xl bg-neutral-800 text-white text-sm font-bold disabled:opacity-40">
+                          {confirmando === a.id ? 'Ajustando…' : '✓ Confirmar y ajustar'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Historial de cierres */}
           {arqueos.length > 0 && (
