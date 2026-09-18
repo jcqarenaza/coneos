@@ -260,7 +260,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                       className="flex items-center gap-2.5 border border-neutral-100 rounded-xl px-2.5 py-2 flex-shrink-0 active:scale-95 transition-transform bg-white text-left">
                       {(pres.imagen_url || prod.imagen_url) && (
                         <div className="w-11 h-11 rounded-lg overflow-hidden bg-neutral-50 flex-shrink-0">
-                          <img src={pres.imagen_url ?? prod.imagen_url!} alt="" className="object-cover w-full h-full" />
+                          <img src={pres.imagen_url ?? prod.imagen_url!} alt="" className="object-contain w-full h-full bg-white" />
                         </div>
                       )}
                       <div className="pr-1">
@@ -302,17 +302,17 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                     <div className="flex-1 w-full p-2">
                       {tieneIcono ? (
                         <div className="w-full h-full rounded-xl overflow-hidden">
-                          <img src={cat.icono_url!} alt={cat.nombre} width={200} height={200} className="object-cover w-full h-full" />
+                          <img src={cat.icono_url!} alt={cat.nombre} width={200} height={200} className="object-contain w-full h-full bg-white" />
                         </div>
                       ) : fotos.length === 1 ? (
                         <div className="w-full h-full rounded-xl overflow-hidden">
-                          <img src={fotos[0]} alt="" width={200} height={200} className="object-cover w-full h-full" />
+                          <img src={fotos[0]} alt="" width={200} height={200} className="object-contain w-full h-full bg-white" />
                         </div>
                       ) : fotos.length > 1 ? (
                         <div className={`w-full h-full grid gap-0.5 rounded-xl overflow-hidden ${fotos.length >= 4 ? 'grid-cols-2 grid-rows-2' : fotos.length === 3 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2'}`}>
                           {fotos.slice(0, 4).map((url, i) => (
                             <div key={i} className={`overflow-hidden ${fotos.length === 3 && i === 0 ? 'row-span-2' : ''}`}>
-                              <img src={url} alt="" width={100} height={100} className="object-cover w-full h-full" />
+                              <img src={url} alt="" width={100} height={100} className="object-contain w-full h-full bg-white" />
                             </div>
                           ))}
                         </div>
@@ -349,7 +349,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                         return (
                           <div className="w-20 h-20 rounded-xl bg-neutral-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
                             {prod.imagen_url
-                              ? <img src={prod.imagen_url} alt={prod.nombre} width={80} height={80} className="object-cover w-full h-full" />
+                              ? <img src={prod.imagen_url} alt={prod.nombre} width={80} height={80} className="object-contain w-full h-full bg-white" />
                               : null}
                           </div>
                         )
@@ -367,7 +367,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                             <div className="flex items-center gap-3">
                             {p.imagen_url && (
                               <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0">
-                                <img src={p.imagen_url} alt={p.nombre} width={56} height={56} className="object-cover w-full h-full" />
+                                <img src={p.imagen_url} alt={p.nombre} width={56} height={56} className="object-contain w-full h-full bg-white" />
                               </div>
                             )}
                             <div>
@@ -477,7 +477,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                         (gastronómico: "Punto jugoso", "Sin sal" — nunca un 🍦 ajeno) */}
                     {tieneImagen ? (
                       <div className="w-full aspect-square overflow-hidden bg-neutral-50">
-                        <img src={op.imagen_url!} alt={op.nombre} width={200} height={200} className="object-cover w-full h-full" />
+                        <img src={op.imagen_url!} alt={op.nombre} width={200} height={200} className="object-contain w-full h-full bg-white" />
                       </div>
                     ) : op.emoji ? (
                       <div className="w-full h-20 flex items-center justify-center bg-neutral-50">
