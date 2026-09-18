@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Loader2, Delete } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string; sucursales: { nombre: string }; empresas: { nombre: string } }
 interface Operador { id: string; nombre: string }
@@ -15,6 +16,14 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [loadingOps, setLoadingOps] = useState(true)
+  // Branding (JC 19/09): el logo del NEGOCIO en el login de operación; sin
+  // logo → el ícono de siempre. (El fallback al logo del PARTNER llega con
+  // el skin del white-label.)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  useEffect(() => {
+    createClient().from('empresas').select('logo_url').eq('id', dispositivo.empresa_id).maybeSingle()
+      .then(({ data }) => setLogoUrl((data as { logo_url?: string | null } | null)?.logo_url ?? null))
+  }, [dispositivo.empresa_id])
 
   useEffect(() => {
     if (!seleccionado) return
@@ -74,7 +83,7 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
         {/* Header */}
         <div className="text-center mb-10">
           <div className="w-14 h-14 bg-neutral-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-white text-2xl">🍦</span>
+            {logoUrl ? <img src={logoUrl} alt="" className="w-full h-full object-contain rounded-2xl bg-white" /> : <span className="text-white text-2xl">🍦</span>}
           </div>
           <h1 className="text-neutral-800 text-xl font-bold">{dispositivo.empresas?.nombre}</h1>
           <p className="text-neutral-400 text-sm mt-1">{dispositivo.sucursales?.nombre}</p>

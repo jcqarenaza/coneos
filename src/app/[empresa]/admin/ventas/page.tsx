@@ -196,6 +196,7 @@ export default function VentasPage() {
   }
 
   async function cargarArqueos() {
+    cargarArqueosStock()  // 9b: los arqueos viajan con la misma carga del tab
     if (!ctx) return
     setLoadingArqueo(true)
     const supabase = createClient()
