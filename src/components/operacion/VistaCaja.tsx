@@ -182,7 +182,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   ] as const
   const [modalCierre, setModalCierre] = useState(false)
   const [declarados, setDeclarados] = useState<Record<string, string>>({})
-  const [cerradoPor, setCerradoPor] = useState('')
+  // El cierre lo firma el OPERADOR de la sesión (mismo PIN que firma cobros)
+  const [conteo, setConteo] = useState<Record<number, string>>({})
+  const [conteoAbierto, setConteoAbierto] = useState(false)
+  const BILLETES = [20000, 10000, 2000, 1000, 500, 200, 100] as const
+  const totalConteo = BILLETES.reduce((a, b) => a + b * (parseInt(conteo[b] ?? '') || 0), 0)
   const [obsCierre, setObsCierre] = useState('')
   const [guardandoCierre, setGuardandoCierre] = useState(false)
   const totalSistema = (met: string) => pedidos.filter(p => p.metodo_pago === met && p.estado !== 'CANCELLED' && p.estado !== 'PENDING_PAYMENT').reduce((a, p) => a + Number(p.total), 0)
@@ -197,11 +201,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
       fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }),
       totales_sistema: sistema, totales_declarados: decl, diferencia,
-      observaciones: obsCierre || null, cerrado_por: cerradoPor || null,
+      observaciones: obsCierre || null, cerrado_por: sesion?.operador?.nombre ?? null,
     })
     setGuardandoCierre(false)
     if (error) { alert(error.code === '23505' ? 'La caja de hoy ya fue cerrada.' : 'No se pudo guardar: ' + error.message); return }
-    setModalCierre(false); setDeclarados({}); setObsCierre(''); setCerradoPor('')
+    setModalCierre(false); setDeclarados({}); setObsCierre(''); setConteo({}); setConteoAbierto(false)
     alert('✓ Caja cerrada. El cierre quedó registrado.')
   }
 
@@ -1312,8 +1316,26 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   </div>
                 )
               })}
-              <input value={cerradoPor} onChange={e => setCerradoPor(e.target.value)} placeholder="👤 Nombre de quien cierra"
-                className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400" />
+              <button onClick={() => setConteoAbierto(v => !v)} className="text-xs font-semibold text-blue-600 hover:text-blue-800">
+                {conteoAbierto ? '▾ Ocultar conteo de billetes' : '▸ Contar billetes (suma sola al efectivo)'}
+              </button>
+              {conteoAbierto && (
+                <div className="grid grid-cols-2 gap-2 bg-neutral-50 rounded-xl p-3">
+                  {BILLETES.map(b => (
+                    <div key={b} className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-neutral-500 w-16 text-right">${b.toLocaleString('es-AR')}</span>
+                      <span className="text-neutral-300 text-xs">×</span>
+                      <input type="number" min={0} value={conteo[b] ?? ''} placeholder="0"
+                        onChange={e => { const c = { ...conteo, [b]: e.target.value }; setConteo(c)
+                          const tot = BILLETES.reduce((a, x) => a + x * (parseInt(c[x] ?? '') || 0), 0)
+                          setDeclarados(d => ({ ...d, efectivo: String(tot) })) }}
+                        className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-sm font-bold focus:outline-none" />
+                    </div>
+                  ))}
+                  <div className="col-span-2 text-right text-sm font-black text-neutral-800 pt-1">= ${totalConteo.toLocaleString('es-AR')}</div>
+                </div>
+              )}
+              <p className="text-xs text-neutral-400">👤 Cierra: <span className="font-bold text-neutral-600">{sesion?.operador?.nombre ?? '—'}</span> (operador de la sesión)</p>
               <input value={obsCierre} onChange={e => setObsCierre(e.target.value)} placeholder="📝 Observaciones del turno (opcional)"
                 className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400" />
             </div>
