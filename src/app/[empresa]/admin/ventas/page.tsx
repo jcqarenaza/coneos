@@ -68,8 +68,13 @@ export default function VentasPage() {
   const [cancelando, setCancelando] = useState(false)
 
   // Arqueo
-  interface Arqueo { id: string; fecha: string; sucursal_id: string; total_efectivo: number; total_transferencia: number; total_mp: number; total_sistema: number; efectivo_contado: number; diferencia: number; notas: string | null; created_at: string }
-  const [arqueos, setArqueos] = useState<Arqueo[]>([])
+  // MARINA-1: cierre formal sobre cierres_caja (5 métodos, declarado por método,
+  // quién cierra, un cierre por día). La tabla arqueos vieja queda intacta (candidata E).
+  interface Cierre { id: string; fecha: string; sucursal_id: string; totales_sistema: Record<string, number>; totales_declarados: Record<string, number>; diferencia: number; observaciones: string | null; cerrado_por: string | null; created_at: string }
+  const METODOS_CIERRE = ['efectivo', 'transferencia', 'mp', 'debito', 'credito'] as const
+  const [declarados, setDeclarados] = useState<Record<string, string>>({})
+  const [cerradoPor, setCerradoPor] = useState('')
+  const [arqueos, setArqueos] = useState<Cierre[]>([])
   const [loadingArqueo, setLoadingArqueo] = useState(false)
   const [efectivoContado, setEfectivoContado] = useState('')
   const [notasArqueo, setNotasArqueo] = useState('')
@@ -129,17 +134,33 @@ export default function VentasPage() {
 
   useEffect(() => { cargar() }, [ctx, tab, rango, sucursalFiltro, metodoPagoFiltro, estadoFiltro, fechaDesde, fechaHasta])
 
+  // MARINA-1: exportar EXACTAMENTE lo que la vista muestra (misma consulta,
+  // mismos filtros — cero segunda fuente). CSV con ; y BOM para Excel AR.
+  function exportarCSV() {
+    const cols = ['fecha_pedido', 'numero_pedido', 'tipo_pedido', 'origen', 'estado', 'metodo_pago', 'total']
+    const nombreSuc = (id: string | null | undefined) => sucursales.find(s => s.id === id)?.nombre ?? ''
+    const filas = pedidos.map(p => {
+      const r = p as unknown as Record<string, unknown>
+      return [...cols.map(c => String(r[c] ?? '')), nombreSuc(r['sucursal_id'] as string)].map(v => '"' + v.replace(/"/g, '""') + '"').join(';')
+    })
+    const csv = '\ufeff' + [...cols, 'sucursal'].join(';') + '\n' + filas.join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url; a.download = `ventas_${new Date().toLocaleDateString('en-CA')}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function cargarArqueos() {
     if (!ctx) return
     setLoadingArqueo(true)
     const supabase = createClient()
     const { data } = await supabase
-      .from('arqueos')
+      .from('cierres_caja')
       .select('*')
       .eq('empresa_id', ctx.empresaId)
       .order('created_at', { ascending: false })
       .limit(20)
-    setArqueos((data ?? []) as Arqueo[])
+    setArqueos((data ?? []) as Cierre[])
     setLoadingArqueo(false)
   }
 
@@ -149,40 +170,29 @@ export default function VentasPage() {
     const supabase = createClient()
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
     const sucId = sucursalArqueo || (sucursales[0]?.id ?? null)
-
-    // Calcular totales del día para esta sucursal
-    let query = supabase.from('pedidos')
-      .select('total, metodo_pago')
-      .eq('empresa_id', ctx.empresaId)
-      .eq('fecha_pedido', hoy)
+    let query = supabase.from('pedidos').select('total, metodo_pago')
+      .eq('empresa_id', ctx.empresaId).eq('fecha_pedido', hoy)
       .in('estado', ['PAID', 'PREPARING', 'READY', 'DELIVERED'])
     if (sucId) query = query.eq('sucursal_id', sucId)
     const { data: pedidosHoy } = await query
-
-    const totEfectivo = (pedidosHoy ?? []).filter((p: {metodo_pago: string | null}) => p.metodo_pago === 'efectivo').reduce((acc: number, p: {total: number}) => acc + Number(p.total), 0)
-    const totTransf = (pedidosHoy ?? []).filter((p: {metodo_pago: string | null}) => p.metodo_pago === 'transferencia').reduce((acc: number, p: {total: number}) => acc + Number(p.total), 0)
-    const totMP = (pedidosHoy ?? []).filter((p: {metodo_pago: string | null}) => p.metodo_pago === 'mp').reduce((acc: number, p: {total: number}) => acc + Number(p.total), 0)
-    const totSistema = totEfectivo + totTransf + totMP
-    const contado = parseFloat(efectivoContado) || 0
-    const diferencia = contado - totEfectivo
-
-    await supabase.from('arqueos').insert({
-      empresa_id: ctx.empresaId,
-      sucursal_id: sucId,
-      fecha: hoy,
-      total_efectivo: totEfectivo,
-      total_transferencia: totTransf,
-      total_mp: totMP,
-      total_sistema: totSistema,
-      efectivo_contado: contado,
-      diferencia,
-      notas: notasArqueo || null,
+    const sistema: Record<string, number> = {}
+    for (const met of METODOS_CIERRE) sistema[met] = (pedidosHoy ?? []).filter((p: { metodo_pago: string | null }) => p.metodo_pago === met).reduce((a: number, p: { total: number }) => a + Number(p.total), 0)
+    const decl: Record<string, number> = {}
+    let diferencia = 0
+    for (const met of METODOS_CIERRE) {
+      if (declarados[met] !== undefined && declarados[met] !== '') {
+        decl[met] = parseFloat(declarados[met]) || 0
+        diferencia += decl[met] - sistema[met]
+      }
+    }
+    const { error } = await supabase.from('cierres_caja').insert({
+      empresa_id: ctx.empresaId, sucursal_id: sucId, fecha: hoy,
+      totales_sistema: sistema, totales_declarados: decl,
+      diferencia, observaciones: notasArqueo || null, cerrado_por: cerradoPor || null,
     })
-
     setGuardandoArqueo(false)
-    setArqueoGuardado(true)
-    setEfectivoContado('')
-    setNotasArqueo('')
+    if (error) { alert(error.code === '23505' ? 'La caja de hoy ya fue cerrada para esta sucursal (un cierre por día).' : 'No se pudo guardar: ' + error.message); return }
+    setArqueoGuardado(true); setDeclarados({}); setNotasArqueo(''); setCerradoPor('')
     setTimeout(() => setArqueoGuardado(false), 3000)
     cargarArqueos()
   }
@@ -324,6 +334,9 @@ export default function VentasPage() {
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${tab === 'arqueo' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
           Arqueo
         </button>
+        <button onClick={exportarCSV} disabled={pedidos.length === 0}
+          title="Exporta lo que está en pantalla, con los filtros aplicados"
+          className="ml-auto px-4 py-2 rounded-lg text-sm font-semibold bg-neutral-800 text-white hover:bg-neutral-700 disabled:opacity-40 transition-colors">📥 Exportar CSV</button>
       </div>
 
       <Filtros />
@@ -546,108 +559,34 @@ export default function VentasPage() {
             </div>
           )}
 
-          {/* Arqueo del día */}
-          <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-neutral-50">
-              <h3 className="font-bold text-neutral-700">Arqueo del día</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">{new Date().toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })}</p>
-            </div>
-            <div className="p-5 space-y-4">
-              {/* Totales sistema */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Cobrado según sistema</p>
-                {[
-                  { label: '💵 Efectivo', key: 'efectivo', color: 'text-green-700' },
-                  { label: '📲 Transferencia', key: 'transferencia', color: 'text-blue-700' },
-                  { label: '💳 Mercado Pago', key: 'mp', color: 'text-sky-700' },
-                ].map(({ label, key, color }) => {
-                  const tot = pedidos.filter(p => p.metodo_pago === key && p.estado !== 'CANCELLED').reduce((acc, p) => acc + Number(p.total), 0)
-                  const cant = pedidos.filter(p => p.metodo_pago === key && p.estado !== 'CANCELLED').length
+          {/* MARINA-1 (regla JC): el cierre se EJECUTA desde CAJA al fin del turno,
+              firmado por el operador de la sesión. El admin CONSULTA acá. */}
+          <div className="bg-blue-50 border border-blue-100 rounded-2xl px-5 py-4">
+            <p className="text-sm font-semibold text-blue-800">🔒 El cierre de caja se realiza desde la pantalla de Caja, al fin de cada turno.</p>
+            <p className="text-xs text-blue-600 mt-0.5">Cada cierre queda firmado por el operador de la sesión. Acá ves el historial de todas las sucursales.</p>
+          </div>
+
+          {/* Historial de cierres */}
+          {arqueos.length > 0 && (
+            <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-neutral-50"><h3 className="font-bold text-neutral-700">Cierres anteriores</h3></div>
+              <div className="divide-y divide-neutral-50">
+                {arqueos.map(a => {
+                  const totalSist = Object.values(a.totales_sistema ?? {}).reduce((x, y) => x + Number(y), 0)
                   return (
-                    <div key={key} className="flex items-center justify-between py-2 px-4 bg-neutral-50 rounded-xl">
+                    <div key={a.id} className="px-5 py-3 flex items-center justify-between">
                       <div>
-                        <span className="text-sm font-semibold text-neutral-700">{label}</span>
-                        <span className="text-xs text-neutral-400 ml-2">{cant} pedidos</span>
+                        <p className="text-sm font-bold text-neutral-700">{formatFecha(a.fecha)} {new Date(a.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })} <span className="text-xs text-neutral-400 font-medium">· 🏪 {sucursales.find(s => s.id === a.sucursal_id)?.nombre ?? a.sucursal_id.slice(0, 8)}</span>{a.cerrado_por ? <span className="text-xs text-neutral-400 font-medium"> · 👤 {a.cerrado_por}</span> : null}</p>
+                        <p className="text-xs text-neutral-400">{METODOS_CIERRE.filter(mtd => Number(a.totales_sistema?.[mtd] ?? 0) > 0).map(mtd => `${mtd}: ${formatPrecio(Number(a.totales_sistema[mtd]))}`).join(' · ')}</p>
+                        {a.observaciones && <p className="text-xs text-neutral-400 mt-0.5">📝 {a.observaciones}</p>}
                       </div>
-                      <span className={`font-bold text-base ${color}`}>{formatPrecio(tot)}</span>
+                      <div className="text-right">
+                        <p className="text-sm font-black text-neutral-800">{formatPrecio(totalSist)}</p>
+                        <p className={`text-xs font-semibold ${Number(a.diferencia) === 0 ? 'text-green-600' : Number(a.diferencia) > 0 ? 'text-blue-600' : 'text-red-500'}`}>{Number(a.diferencia) >= 0 ? '+' : ''}{formatPrecio(Number(a.diferencia))}</p>
+                      </div>
                     </div>
                   )
                 })}
-                <div className="flex items-center justify-between py-2 px-4 bg-neutral-800 rounded-xl">
-                  <span className="text-sm font-bold text-white">Total</span>
-                  <span className="font-black text-base text-white">{formatPrecio(pedidos.filter(p => p.estado !== 'CANCELLED').reduce((acc, p) => acc + Number(p.total), 0))}</span>
-                </div>
-              </div>
-
-              {/* Conteo de efectivo */}
-              <div className="space-y-2 pt-2 border-t border-neutral-100">
-                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Efectivo en caja</p>
-                <div className="flex items-center gap-3">
-                  <span className="text-neutral-500 text-sm font-medium">$</span>
-                  <input
-                    type="number"
-                    value={efectivoContado}
-                    onChange={e => setEfectivoContado(e.target.value)}
-                    placeholder="0"
-                    className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-xl font-bold focus:outline-none focus:border-neutral-400"
-                  />
-                </div>
-                {efectivoContado && (() => {
-                  const totEfectivo = pedidos.filter(p => p.metodo_pago === 'efectivo' && p.estado !== 'CANCELLED').reduce((acc, p) => acc + Number(p.total), 0)
-                  const contado = parseFloat(efectivoContado) || 0
-                  const dif = contado - totEfectivo
-                  return (
-                    <div className={`flex items-center justify-between px-4 py-3 rounded-xl ${dif === 0 ? 'bg-green-50' : dif > 0 ? 'bg-blue-50' : 'bg-red-50'}`}>
-                      <span className={`text-sm font-semibold ${dif === 0 ? 'text-green-700' : dif > 0 ? 'text-blue-700' : 'text-red-700'}`}>
-                        {dif === 0 ? '✓ Cuadra perfectamente' : dif > 0 ? `Sobran ${formatPrecio(dif)}` : `Faltan ${formatPrecio(Math.abs(dif))}`}
-                      </span>
-                      <span className={`font-black text-base ${dif === 0 ? 'text-green-700' : dif > 0 ? 'text-blue-700' : 'text-red-700'}`}>{dif >= 0 ? '+' : ''}{formatPrecio(dif)}</span>
-                    </div>
-                  )
-                })()}
-              </div>
-
-              {/* Notas */}
-              <div className="space-y-1.5">
-                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Notas (opcional)</p>
-                <input value={notasArqueo} onChange={e => setNotasArqueo(e.target.value)}
-                  placeholder="Observaciones del turno..."
-                  className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400" />
-              </div>
-
-              <button onClick={registrarArqueo} disabled={guardandoArqueo || !efectivoContado}
-                className="w-full py-3.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 flex items-center justify-center gap-2 bg-neutral-800 text-white hover:bg-neutral-700">
-                {guardandoArqueo ? <><Loader2 className="h-4 w-4 animate-spin" /> Guardando...</>
-                  : arqueoGuardado ? '✓ ¡Arqueo registrado!'
-                  : 'Registrar arqueo'}
-              </button>
-            </div>
-          </div>
-
-          {/* Historial de arqueos */}
-          {arqueos.length > 0 && (
-            <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-neutral-50">
-                <h3 className="font-bold text-neutral-700">Arqueos anteriores</h3>
-              </div>
-              <div className="divide-y divide-neutral-50">
-                {arqueos.map(a => (
-                  <div key={a.id} className="px-5 py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-bold text-neutral-700">{formatFecha(a.fecha)}</p>
-                      <p className="text-xs text-neutral-400">
-                        Efectivo: {formatPrecio(a.total_efectivo)} · Transf: {formatPrecio(a.total_transferencia)} · MP: {formatPrecio(a.total_mp)}
-                      </p>
-                      {a.notas && <p className="text-xs text-neutral-400 mt-0.5">📝 {a.notas}</p>}
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-black text-neutral-800">{formatPrecio(a.total_sistema)}</p>
-                      <p className={`text-xs font-semibold ${a.diferencia === 0 ? 'text-green-600' : a.diferencia > 0 ? 'text-blue-600' : 'text-red-500'}`}>
-                        {a.diferencia >= 0 ? '+' : ''}{formatPrecio(a.diferencia)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           )}

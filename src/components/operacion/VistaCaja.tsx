@@ -174,6 +174,63 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     return cobradoHace > 45000
   }
 
+  // ══ MARINA-1: CIERRE DE CAJA DEL TURNO (orden CTO + corrección JC: se hace
+  // DESDE CAJA; el admin de Ventas queda como historial/respaldo) ══
+  const METODOS_CIERRE = [
+    { key: 'efectivo', label: '💵 Efectivo' }, { key: 'transferencia', label: '📲 Transferencia' },
+    { key: 'mp', label: '💳 Mercado Pago' }, { key: 'debito', label: '💳 Débito' }, { key: 'credito', label: '💳 Crédito' },
+  ] as const
+  const [modalCierre, setModalCierre] = useState(false)
+  const [declarados, setDeclarados] = useState<Record<string, string>>({})
+  // El cierre lo firma el OPERADOR de la sesión (mismo PIN que firma cobros)
+  const [conteo, setConteo] = useState<Record<number, string>>({})
+  const [conteoAbierto, setConteoAbierto] = useState(false)
+  const BILLETES = [20000, 10000, 2000, 1000, 500, 200, 100] as const
+  const totalConteo = BILLETES.reduce((a, b) => a + b * (parseInt(conteo[b] ?? '') || 0), 0)
+  const [obsCierre, setObsCierre] = useState('')
+  const [guardandoCierre, setGuardandoCierre] = useState(false)
+  // SEMÁNTICA CTO 19/09: el cierre corta DESDE EL ÚLTIMO CIERRE VÁLIDO (o desde
+  // el inicio si nunca hubo) — turnos sin cerrar se ACUMULAN, jamás se inventan
+  // cierres. V1: el corte filtra por nacimiento del pedido (created_at); el
+  // timestamp exacto de cobro llega con 1.b (extracciones/cuadre por tramo).
+  const [pedidosCierre, setPedidosCierre] = useState<{ total: number; metodo_pago: string | null }[]>([])
+  const [desdeCorte, setDesdeCorte] = useState<string | null>(null)
+  const [cargandoCierre, setCargandoCierre] = useState(false)
+  async function abrirCierre() {
+    setModalCierre(true); setCargandoCierre(true)
+    const sb = createClient()
+    const { data: ult } = await sb.from('cierres_caja').select('created_at')
+      .eq('sucursal_id', dispositivo.sucursal_id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const corte = ult?.created_at ?? null
+    setDesdeCorte(corte)
+    let q = sb.from('pedidos').select('total, metodo_pago')
+      .eq('sucursal_id', dispositivo.sucursal_id)
+      .in('estado', ['PAID', 'PREPARING', 'READY', 'DELIVERED'])
+    if (corte) q = q.gt('created_at', corte)
+    const { data } = await q
+    setPedidosCierre((data ?? []) as { total: number; metodo_pago: string | null }[])
+    setCargandoCierre(false)
+  }
+  const totalSistema = (met: string) => pedidosCierre.filter(p => p.metodo_pago === met).reduce((a, p) => a + Number(p.total), 0)
+  async function guardarCierre() {
+    setGuardandoCierre(true)
+    const sistema: Record<string, number> = {}
+    for (const { key } of METODOS_CIERRE) sistema[key] = totalSistema(key)
+    const decl: Record<string, number> = {}
+    let diferencia = 0
+    for (const { key } of METODOS_CIERRE) if ((declarados[key] ?? '') !== '') { decl[key] = parseFloat(declarados[key]) || 0; diferencia += decl[key] - sistema[key] }
+    const { error } = await createClient().from('cierres_caja').insert({
+      empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
+      fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }),
+      totales_sistema: sistema, totales_declarados: decl, diferencia,
+      observaciones: obsCierre || null, cerrado_por: sesion?.operador?.nombre ?? null,
+    })
+    setGuardandoCierre(false)
+    if (error) { alert(error.code === '23505' ? 'La caja de hoy ya fue cerrada.' : 'No se pudo guardar: ' + error.message); return }
+    setModalCierre(false); setDeclarados({}); setObsCierre(''); setConteo({}); setConteoAbierto(false)
+    alert('✓ Caja cerrada. El cierre quedó registrado.')
+  }
+
   const cargarPedidos = useCallback(async () => {
     const rp = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'pedidos_hoy', verTodas }) })
     const dp = await rp.json()
@@ -550,6 +607,16 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       })(),
     }
   }
+  // MODO DISCRETO (JC 19/09, "ojito de banco"): oculta los ACUMULADOS de la
+  // barra contra miradas del mostrador. El precio del pedido que se cobra se
+  // ve SIEMPRE. Preferencia recordada por dispositivo.
+  const [ocultarImportes, setOcultarImportes] = useState(false)
+  useEffect(() => { try { setOcultarImportes(localStorage.getItem('coneos_caja_ocultar') === '1') } catch {} }, [])
+  function toggleOcultar() {
+    setOcultarImportes(v => { try { localStorage.setItem('coneos_caja_ocultar', v ? '0' : '1') } catch {}; return !v })
+  }
+  const fmtBarra = (n: number) => ocultarImportes ? '$•••••' : formatPrecio(n)
+
   const resumen = calcResumen(pedidos)
   const resumenHist = calcResumen(historialPedidos)
 
@@ -644,6 +711,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors ${ticketAuto ? 'text-green-600' : 'text-neutral-300 hover:text-neutral-500'}`}>
             🧾<span className="hidden md:inline">Ticket auto</span>
           </button>
+          <button onClick={abrirCierre} title="Cierre de caja del turno: contado vs sistema, por método"
+            className="flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent text-neutral-300 hover:text-neutral-600 transition-colors">
+            🔒<span className="hidden md:inline">Cierre</span>
+          </button>
         <button onClick={() => { setTab('historial'); cargarHistorial(historialFecha) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'historial' ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
           <History className="h-4 w-4" />
@@ -658,20 +729,21 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
       {tab === 'activos' && resumen.cantidad > 0 && (
         <div className="flex items-center gap-x-4 gap-y-1 flex-wrap bg-neutral-800 text-white px-4 py-2 text-xs">
-          <span className="font-black text-sm">{formatPrecio(resumen.total)}</span>
+          <button onClick={toggleOcultar} title={ocultarImportes ? 'Mostrar importes' : 'Ocultar importes (modo discreto)'} className="text-base leading-none hover:opacity-70 transition-opacity">{ocultarImportes ? '🙈' : '👁️'}</button>
+          <span className="font-black text-sm">{fmtBarra(resumen.total)}</span>
           <span className="text-neutral-400">{resumen.cantidad} pedidos</span>
           <span className="text-neutral-500">|</span>
-          <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumen.kiosk)}</b> <span className="text-neutral-500">({resumen.kioskCant})</span></span>
-          <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumen.deliveryProductos)}</b> <span className="text-neutral-500">({resumen.deliveryCant})</span></span>
-          <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumen.envios)}</b></span>
-          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumen.mesa)}</b> <span className="text-neutral-500">({resumen.mesaCant})</span></span>}{resumen.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{formatPrecio(resumen.takeaway)}</b> <span className="text-neutral-500">({resumen.takeawayCant})</span></span>}{resumen.cajaCant > 0 && <span><span className="text-neutral-400">🧾 Caja</span> <b>{formatPrecio(resumen.caja)}</b> <span className="text-neutral-500">({resumen.cajaCant})</span></span>}
-          {resumen.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{formatPrecio(resumen.mesaPorCobrar)}</b></span>}
+          <span><span className="text-neutral-400">Kiosk</span> <b>{fmtBarra(resumen.kiosk)}</b> <span className="text-neutral-500">({resumen.kioskCant})</span></span>
+          <span><span className="text-neutral-400">Delivery</span> <b>{fmtBarra(resumen.deliveryProductos)}</b> <span className="text-neutral-500">({resumen.deliveryCant})</span></span>
+          <span><span className="text-neutral-400">Envíos</span> <b>{fmtBarra(resumen.envios)}</b></span>
+          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{fmtBarra(resumen.mesa)}</b> <span className="text-neutral-500">({resumen.mesaCant})</span></span>}{resumen.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{fmtBarra(resumen.takeaway)}</b> <span className="text-neutral-500">({resumen.takeawayCant})</span></span>}{resumen.cajaCant > 0 && <span><span className="text-neutral-400">🧾 Caja</span> <b>{fmtBarra(resumen.caja)}</b> <span className="text-neutral-500">({resumen.cajaCant})</span></span>}
+          {resumen.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{fmtBarra(resumen.mesaPorCobrar)}</b></span>}
           <span className="text-neutral-500">|</span>
-          <span>💵 <b>{formatPrecio(resumen.efectivo)}</b></span>
-          <span>📱 <b>{formatPrecio(resumen.transferencia)}</b></span>
-          {resumen.mp > 0 && <span>🔵 <b>{formatPrecio(resumen.mp)}</b></span>}
-          {resumen.debito > 0 && <span>💳 <span className="text-neutral-400">Déb</span> <b>{formatPrecio(resumen.debito)}</b></span>}
-          {resumen.credito > 0 && <span>💳 <span className="text-neutral-400">Créd</span> <b>{formatPrecio(resumen.credito)}</b></span>}
+          <span>💵 <b>{fmtBarra(resumen.efectivo)}</b></span>
+          <span>📱 <b>{fmtBarra(resumen.transferencia)}</b></span>
+          {resumen.mp > 0 && <span>🔵 <b>{fmtBarra(resumen.mp)}</b></span>}
+          {resumen.debito > 0 && <span>💳 <span className="text-neutral-400">Déb</span> <b>{fmtBarra(resumen.debito)}</b></span>}
+          {resumen.credito > 0 && <span>💳 <span className="text-neutral-400">Créd</span> <b>{fmtBarra(resumen.credito)}</b></span>}
         </div>
       )}
 
@@ -1254,6 +1326,62 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         </div>
       </div>
     )}
+      {modalCierre && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setModalCierre(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-neutral-100">
+              <h3 className="font-bold text-neutral-800">🔒 Cierre de caja del turno</h3>
+              <p className="text-xs text-neutral-400 mt-0.5">{cargandoCierre ? 'Calculando el período…' : desdeCorte ? `Corte: desde el último cierre (${new Date(desdeCorte).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}) hasta ahora.` : 'Primer cierre: toma TODO lo acumulado desde el inicio.'}</p>
+            </div>
+            <div className="p-5 space-y-2.5">
+              {METODOS_CIERRE.map(({ key, label }) => {
+                const sist = totalSistema(key)
+                const val = declarados[key] ?? ''
+                const dif = val === '' ? null : (parseFloat(val) || 0) - sist
+                return (
+                  <div key={key} className="flex items-center gap-2.5">
+                    <span className="text-sm font-semibold text-neutral-600 w-36">{label}</span>
+                    <span className="text-xs text-neutral-400 w-20 text-right">${sist.toLocaleString('es-AR')}</span>
+                    <input type="number" value={val} placeholder="contado"
+                      onChange={e => setDeclarados(d => ({ ...d, [key]: e.target.value }))}
+                      className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-neutral-200 text-sm font-bold focus:outline-none focus:border-neutral-400" />
+                    {dif !== null && <span className={`text-xs font-bold w-20 text-right ${dif === 0 ? 'text-green-600' : dif > 0 ? 'text-blue-600' : 'text-red-500'}`}>{dif >= 0 ? '+' : ''}${Math.abs(dif) >= 0 ? dif.toLocaleString('es-AR') : ''}</span>}
+                  </div>
+                )
+              })}
+              <button onClick={() => setConteoAbierto(v => !v)} className="text-xs font-semibold text-blue-600 hover:text-blue-800">
+                {conteoAbierto ? '▾ Ocultar conteo de billetes' : '▸ Contar billetes (suma sola al efectivo)'}
+              </button>
+              {conteoAbierto && (
+                <div className="grid grid-cols-2 gap-2 bg-neutral-50 rounded-xl p-3">
+                  {BILLETES.map(b => (
+                    <div key={b} className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-neutral-500 w-16 text-right">${b.toLocaleString('es-AR')}</span>
+                      <span className="text-neutral-300 text-xs">×</span>
+                      <input type="number" min={0} value={conteo[b] ?? ''} placeholder="0"
+                        onChange={e => { const c = { ...conteo, [b]: e.target.value }; setConteo(c)
+                          const tot = BILLETES.reduce((a, x) => a + x * (parseInt(c[x] ?? '') || 0), 0)
+                          setDeclarados(d => ({ ...d, efectivo: String(tot) })) }}
+                        className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-sm font-bold focus:outline-none" />
+                    </div>
+                  ))}
+                  <div className="col-span-2 text-right text-sm font-black text-neutral-800 pt-1">= ${totalConteo.toLocaleString('es-AR')}</div>
+                </div>
+              )}
+              <p className="text-xs text-neutral-400">👤 Cierra: <span className="font-bold text-neutral-600">{sesion?.operador?.nombre ?? '—'}</span> (operador de la sesión)</p>
+              <input value={obsCierre} onChange={e => setObsCierre(e.target.value)} placeholder="📝 Observaciones del turno (opcional)"
+                className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400" />
+            </div>
+            <div className="px-5 py-4 border-t border-neutral-100 flex gap-2">
+              <button onClick={() => setModalCierre(false)} className="flex-1 py-3 rounded-xl border border-neutral-200 text-sm font-semibold text-neutral-600">Cancelar</button>
+              <button onClick={guardarCierre} disabled={guardandoCierre || Object.values(declarados).every(v => (v ?? '') === '')}
+                className="flex-1 py-3 rounded-xl bg-neutral-800 text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2">
+                {guardandoCierre ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔒 Cerrar caja'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
