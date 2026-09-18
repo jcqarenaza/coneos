@@ -174,6 +174,37 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     return cobradoHace > 45000
   }
 
+  // ══ MARINA-1: CIERRE DE CAJA DEL TURNO (orden CTO + corrección JC: se hace
+  // DESDE CAJA; el admin de Ventas queda como historial/respaldo) ══
+  const METODOS_CIERRE = [
+    { key: 'efectivo', label: '💵 Efectivo' }, { key: 'transferencia', label: '📲 Transferencia' },
+    { key: 'mp', label: '💳 Mercado Pago' }, { key: 'debito', label: '💳 Débito' }, { key: 'credito', label: '💳 Crédito' },
+  ] as const
+  const [modalCierre, setModalCierre] = useState(false)
+  const [declarados, setDeclarados] = useState<Record<string, string>>({})
+  const [cerradoPor, setCerradoPor] = useState('')
+  const [obsCierre, setObsCierre] = useState('')
+  const [guardandoCierre, setGuardandoCierre] = useState(false)
+  const totalSistema = (met: string) => pedidos.filter(p => p.metodo_pago === met && p.estado !== 'CANCELLED' && p.estado !== 'PENDING_PAYMENT').reduce((a, p) => a + Number(p.total), 0)
+  async function guardarCierre() {
+    setGuardandoCierre(true)
+    const sistema: Record<string, number> = {}
+    for (const { key } of METODOS_CIERRE) sistema[key] = totalSistema(key)
+    const decl: Record<string, number> = {}
+    let diferencia = 0
+    for (const { key } of METODOS_CIERRE) if ((declarados[key] ?? '') !== '') { decl[key] = parseFloat(declarados[key]) || 0; diferencia += decl[key] - sistema[key] }
+    const { error } = await createClient().from('cierres_caja').insert({
+      empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
+      fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }),
+      totales_sistema: sistema, totales_declarados: decl, diferencia,
+      observaciones: obsCierre || null, cerrado_por: cerradoPor || null,
+    })
+    setGuardandoCierre(false)
+    if (error) { alert(error.code === '23505' ? 'La caja de hoy ya fue cerrada.' : 'No se pudo guardar: ' + error.message); return }
+    setModalCierre(false); setDeclarados({}); setObsCierre(''); setCerradoPor('')
+    alert('✓ Caja cerrada. El cierre quedó registrado.')
+  }
+
   const cargarPedidos = useCallback(async () => {
     const rp = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'pedidos_hoy', verTodas }) })
     const dp = await rp.json()
@@ -643,6 +674,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             title={ticketAuto ? 'Ticket automático ACTIVADO: se imprime solo al confirmarse cada pago (espera la factura si corresponde)' : 'Ticket automático desactivado: impresión desde los botones, como siempre'}
             className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors ${ticketAuto ? 'text-green-600' : 'text-neutral-300 hover:text-neutral-500'}`}>
             🧾<span className="hidden md:inline">Ticket auto</span>
+          </button>
+          <button onClick={() => setModalCierre(true)} title="Cierre de caja del turno: contado vs sistema, por método"
+            className="flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent text-neutral-300 hover:text-neutral-600 transition-colors">
+            🔒<span className="hidden md:inline">Cierre</span>
           </button>
         <button onClick={() => { setTab('historial'); cargarHistorial(historialFecha) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'historial' ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
@@ -1254,6 +1289,44 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         </div>
       </div>
     )}
+      {modalCierre && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setModalCierre(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-neutral-100">
+              <h3 className="font-bold text-neutral-800">🔒 Cierre de caja del turno</h3>
+              <p className="text-xs text-neutral-400 mt-0.5">Contado vs sistema, por método. Dejá vacío lo que no cierre hoy.</p>
+            </div>
+            <div className="p-5 space-y-2.5">
+              {METODOS_CIERRE.map(({ key, label }) => {
+                const sist = totalSistema(key)
+                const val = declarados[key] ?? ''
+                const dif = val === '' ? null : (parseFloat(val) || 0) - sist
+                return (
+                  <div key={key} className="flex items-center gap-2.5">
+                    <span className="text-sm font-semibold text-neutral-600 w-36">{label}</span>
+                    <span className="text-xs text-neutral-400 w-20 text-right">${sist.toLocaleString('es-AR')}</span>
+                    <input type="number" value={val} placeholder="contado"
+                      onChange={e => setDeclarados(d => ({ ...d, [key]: e.target.value }))}
+                      className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-neutral-200 text-sm font-bold focus:outline-none focus:border-neutral-400" />
+                    {dif !== null && <span className={`text-xs font-bold w-20 text-right ${dif === 0 ? 'text-green-600' : dif > 0 ? 'text-blue-600' : 'text-red-500'}`}>{dif >= 0 ? '+' : ''}${Math.abs(dif) >= 0 ? dif.toLocaleString('es-AR') : ''}</span>}
+                  </div>
+                )
+              })}
+              <input value={cerradoPor} onChange={e => setCerradoPor(e.target.value)} placeholder="👤 Nombre de quien cierra"
+                className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400" />
+              <input value={obsCierre} onChange={e => setObsCierre(e.target.value)} placeholder="📝 Observaciones del turno (opcional)"
+                className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400" />
+            </div>
+            <div className="px-5 py-4 border-t border-neutral-100 flex gap-2">
+              <button onClick={() => setModalCierre(false)} className="flex-1 py-3 rounded-xl border border-neutral-200 text-sm font-semibold text-neutral-600">Cancelar</button>
+              <button onClick={guardarCierre} disabled={guardandoCierre || Object.values(declarados).every(v => (v ?? '') === '')}
+                className="flex-1 py-3 rounded-xl bg-neutral-800 text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2">
+                {guardandoCierre ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔒 Cerrar caja'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
