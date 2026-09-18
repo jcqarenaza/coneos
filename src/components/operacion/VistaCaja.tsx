@@ -607,6 +607,16 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       })(),
     }
   }
+  // MODO DISCRETO (JC 19/09, "ojito de banco"): oculta los ACUMULADOS de la
+  // barra contra miradas del mostrador. El precio del pedido que se cobra se
+  // ve SIEMPRE. Preferencia recordada por dispositivo.
+  const [ocultarImportes, setOcultarImportes] = useState(false)
+  useEffect(() => { try { setOcultarImportes(localStorage.getItem('coneos_caja_ocultar') === '1') } catch {} }, [])
+  function toggleOcultar() {
+    setOcultarImportes(v => { try { localStorage.setItem('coneos_caja_ocultar', v ? '0' : '1') } catch {}; return !v })
+  }
+  const fmtBarra = (n: number) => ocultarImportes ? '$•••••' : formatPrecio(n)
+
   const resumen = calcResumen(pedidos)
   const resumenHist = calcResumen(historialPedidos)
 
@@ -719,20 +729,21 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
       {tab === 'activos' && resumen.cantidad > 0 && (
         <div className="flex items-center gap-x-4 gap-y-1 flex-wrap bg-neutral-800 text-white px-4 py-2 text-xs">
-          <span className="font-black text-sm">{formatPrecio(resumen.total)}</span>
+          <button onClick={toggleOcultar} title={ocultarImportes ? 'Mostrar importes' : 'Ocultar importes (modo discreto)'} className="text-base leading-none hover:opacity-70 transition-opacity">{ocultarImportes ? '🙈' : '👁️'}</button>
+          <span className="font-black text-sm">{fmtBarra(resumen.total)}</span>
           <span className="text-neutral-400">{resumen.cantidad} pedidos</span>
           <span className="text-neutral-500">|</span>
-          <span><span className="text-neutral-400">Kiosk</span> <b>{formatPrecio(resumen.kiosk)}</b> <span className="text-neutral-500">({resumen.kioskCant})</span></span>
-          <span><span className="text-neutral-400">Delivery</span> <b>{formatPrecio(resumen.deliveryProductos)}</b> <span className="text-neutral-500">({resumen.deliveryCant})</span></span>
-          <span><span className="text-neutral-400">Envíos</span> <b>{formatPrecio(resumen.envios)}</b></span>
-          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{formatPrecio(resumen.mesa)}</b> <span className="text-neutral-500">({resumen.mesaCant})</span></span>}{resumen.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{formatPrecio(resumen.takeaway)}</b> <span className="text-neutral-500">({resumen.takeawayCant})</span></span>}{resumen.cajaCant > 0 && <span><span className="text-neutral-400">🧾 Caja</span> <b>{formatPrecio(resumen.caja)}</b> <span className="text-neutral-500">({resumen.cajaCant})</span></span>}
-          {resumen.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{formatPrecio(resumen.mesaPorCobrar)}</b></span>}
+          <span><span className="text-neutral-400">Kiosk</span> <b>{fmtBarra(resumen.kiosk)}</b> <span className="text-neutral-500">({resumen.kioskCant})</span></span>
+          <span><span className="text-neutral-400">Delivery</span> <b>{fmtBarra(resumen.deliveryProductos)}</b> <span className="text-neutral-500">({resumen.deliveryCant})</span></span>
+          <span><span className="text-neutral-400">Envíos</span> <b>{fmtBarra(resumen.envios)}</b></span>
+          {resumen.mesa > 0 && <span><span className="text-neutral-400">Mesas</span> <b>{fmtBarra(resumen.mesa)}</b> <span className="text-neutral-500">({resumen.mesaCant})</span></span>}{resumen.takeawayCant > 0 && <span><span className="text-neutral-400">🥡 Take Away</span> <b>{fmtBarra(resumen.takeaway)}</b> <span className="text-neutral-500">({resumen.takeawayCant})</span></span>}{resumen.cajaCant > 0 && <span><span className="text-neutral-400">🧾 Caja</span> <b>{fmtBarra(resumen.caja)}</b> <span className="text-neutral-500">({resumen.cajaCant})</span></span>}
+          {resumen.mesaPorCobrar > 0 && <span className="text-red-300">🪑 Por cobrar <b>{fmtBarra(resumen.mesaPorCobrar)}</b></span>}
           <span className="text-neutral-500">|</span>
-          <span>💵 <b>{formatPrecio(resumen.efectivo)}</b></span>
-          <span>📱 <b>{formatPrecio(resumen.transferencia)}</b></span>
-          {resumen.mp > 0 && <span>🔵 <b>{formatPrecio(resumen.mp)}</b></span>}
-          {resumen.debito > 0 && <span>💳 <span className="text-neutral-400">Déb</span> <b>{formatPrecio(resumen.debito)}</b></span>}
-          {resumen.credito > 0 && <span>💳 <span className="text-neutral-400">Créd</span> <b>{formatPrecio(resumen.credito)}</b></span>}
+          <span>💵 <b>{fmtBarra(resumen.efectivo)}</b></span>
+          <span>📱 <b>{fmtBarra(resumen.transferencia)}</b></span>
+          {resumen.mp > 0 && <span>🔵 <b>{fmtBarra(resumen.mp)}</b></span>}
+          {resumen.debito > 0 && <span>💳 <span className="text-neutral-400">Déb</span> <b>{fmtBarra(resumen.debito)}</b></span>}
+          {resumen.credito > 0 && <span>💳 <span className="text-neutral-400">Créd</span> <b>{fmtBarra(resumen.credito)}</b></span>}
         </div>
       )}
 
