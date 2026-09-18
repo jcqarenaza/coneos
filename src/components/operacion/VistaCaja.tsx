@@ -189,7 +189,29 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const totalConteo = BILLETES.reduce((a, b) => a + b * (parseInt(conteo[b] ?? '') || 0), 0)
   const [obsCierre, setObsCierre] = useState('')
   const [guardandoCierre, setGuardandoCierre] = useState(false)
-  const totalSistema = (met: string) => pedidos.filter(p => p.metodo_pago === met && p.estado !== 'CANCELLED' && p.estado !== 'PENDING_PAYMENT').reduce((a, p) => a + Number(p.total), 0)
+  // SEMÁNTICA CTO 19/09: el cierre corta DESDE EL ÚLTIMO CIERRE VÁLIDO (o desde
+  // el inicio si nunca hubo) — turnos sin cerrar se ACUMULAN, jamás se inventan
+  // cierres. V1: el corte filtra por nacimiento del pedido (created_at); el
+  // timestamp exacto de cobro llega con 1.b (extracciones/cuadre por tramo).
+  const [pedidosCierre, setPedidosCierre] = useState<{ total: number; metodo_pago: string | null }[]>([])
+  const [desdeCorte, setDesdeCorte] = useState<string | null>(null)
+  const [cargandoCierre, setCargandoCierre] = useState(false)
+  async function abrirCierre() {
+    setModalCierre(true); setCargandoCierre(true)
+    const sb = createClient()
+    const { data: ult } = await sb.from('cierres_caja').select('created_at')
+      .eq('sucursal_id', dispositivo.sucursal_id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const corte = ult?.created_at ?? null
+    setDesdeCorte(corte)
+    let q = sb.from('pedidos').select('total, metodo_pago')
+      .eq('sucursal_id', dispositivo.sucursal_id)
+      .in('estado', ['PAID', 'PREPARING', 'READY', 'DELIVERED'])
+    if (corte) q = q.gt('created_at', corte)
+    const { data } = await q
+    setPedidosCierre((data ?? []) as { total: number; metodo_pago: string | null }[])
+    setCargandoCierre(false)
+  }
+  const totalSistema = (met: string) => pedidosCierre.filter(p => p.metodo_pago === met).reduce((a, p) => a + Number(p.total), 0)
   async function guardarCierre() {
     setGuardandoCierre(true)
     const sistema: Record<string, number> = {}
@@ -679,7 +701,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors ${ticketAuto ? 'text-green-600' : 'text-neutral-300 hover:text-neutral-500'}`}>
             🧾<span className="hidden md:inline">Ticket auto</span>
           </button>
-          <button onClick={() => setModalCierre(true)} title="Cierre de caja del turno: contado vs sistema, por método"
+          <button onClick={abrirCierre} title="Cierre de caja del turno: contado vs sistema, por método"
             className="flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent text-neutral-300 hover:text-neutral-600 transition-colors">
             🔒<span className="hidden md:inline">Cierre</span>
           </button>
@@ -1298,7 +1320,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-neutral-100">
               <h3 className="font-bold text-neutral-800">🔒 Cierre de caja del turno</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">Contado vs sistema, por método. Dejá vacío lo que no cierre hoy.</p>
+              <p className="text-xs text-neutral-400 mt-0.5">{cargandoCierre ? 'Calculando el período…' : desdeCorte ? `Corte: desde el último cierre (${new Date(desdeCorte).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}) hasta ahora.` : 'Primer cierre: toma TODO lo acumulado desde el inicio.'}</p>
             </div>
             <div className="p-5 space-y-2.5">
               {METODOS_CIERRE.map(({ key, label }) => {
