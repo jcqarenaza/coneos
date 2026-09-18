@@ -26,6 +26,9 @@ interface Props {
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 
+// F1.6 multirubro: el fallback deja de hablar en heladero — reconoce los
+// rubros de las precargas y cae en un neutro. (El icono_url de la categoría
+// siempre manda; esto es solo para las que no tienen imagen.)
 function getEmoji(nombre: string): string {
   const n = nombre.toLowerCase()
   if (n.includes('helado') || n.includes('kilo')) return '🍦'
@@ -34,7 +37,18 @@ function getEmoji(nombre: string): string {
   if (n.includes('torta')) return '🎂'
   if (n.includes('palito')) return '🍡'
   if (n.includes('copa')) return '🍨'
-  return '🍨'
+  if (n.includes('pizza')) return '🍕'
+  if (n.includes('hamburgues') || n.includes('burger')) return '🍔'
+  if (n.includes('sushi') || n.includes('roll')) return '🍣'
+  if (n.includes('empanada')) return '🥟'
+  if (n.includes('sandwich') || n.includes('lomito') || n.includes('sánguche')) return '🥪'
+  if (n.includes('papas')) return '🍟'
+  if (n.includes('bebida') || n.includes('gaseosa')) return '🥤'
+  if (n.includes('cerveza') || n.includes('birra')) return '🍺'
+  if (n.includes('café') || n.includes('cafe')) return '☕'
+  if (n.includes('postre')) return '🍰'
+  if (n.includes('ensalada')) return '🥗'
+  return '🍽️'
 }
 
 export default function KioskCatalogo({ dispositivo, config, carrito, categoriaIdInicial, onAgregar, onVerCarrito, onVolver }: Props) {
@@ -184,7 +198,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
   const gruposDeActual = actualCola
     ? grupos.filter(g => presGrupos.some(pg => pg.presentacion_id === actualCola.presentacion.id && pg.grupo_id === g.id)).sort((a, b) => a.orden - b.orden)
-    : []
+    : []
+
   // Multi-rubro F1: la etiqueta de selección usa el NOMBRE DEL GRUPO real de la
   // presentación ("sabores", "adicionales", "salsas", "variedades"). Con varios
   // grupos (sin contar accesorios) cae al genérico "opciones".

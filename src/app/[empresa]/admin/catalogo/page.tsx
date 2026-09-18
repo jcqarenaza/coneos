@@ -165,7 +165,7 @@ export default function CatalogoPage() {
     const supabase = createClient()
     const [{ data: cats }, { data: prods }, { data: pres }, { data: grps }, { data: ops }, { data: pg }] = await Promise.all([
       supabase.from('categorias').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
-      supabase.from('productos').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
+      supabase.from('productos').select('*').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('orden'),
       supabase.from('presentaciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
       supabase.from('grupos_opciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
       supabase.from('opciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
