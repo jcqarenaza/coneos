@@ -100,7 +100,11 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   // DB cambia → version++ → Realtime avisa → INVALIDA → refetch en reposo → UI.
   // Freno JC (sellado): un flujo de compra en marcha JAMÁS se interrumpe.
   const [catalogoSucio, setCatalogoSucio] = useState(false)
-  const enReposo = paso === 'categorias' && carrito.length === 0 && cola.length === 0
+  // Reposo (relajado por JC 19/09): cualquier pantalla — lo que protege es
+  // manos-quietas + nada en curso. Un dispositivo abandonado dentro de una
+  // categoría también merece precios frescos.
+  const hayCantidadesMarcadas = Object.values(cantidad).some(m => Object.values(m).some(v => v > 0))
+  const enReposo = carrito.length === 0 && cola.length === 0 && !hayCantidadesMarcadas
 
   useEffect(() => {
     const supabase = createClient()
@@ -152,7 +156,11 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   // marcha JAMÁS se interrumpe. Cubre los 4 canales (todos montan este
   // componente). Sin push ni infraestructura: el totem se cura solo.
   useEffect(() => {
-    const enReposo = paso === 'categorias' && carrito.length === 0 && cola.length === 0
+    // Reposo (relajado por JC 19/09): cualquier pantalla — lo que protege es
+  // manos-quietas + nada en curso. Un dispositivo abandonado dentro de una
+  // categoría también merece precios frescos.
+  const hayCantidadesMarcadas = Object.values(cantidad).some(m => Object.values(m).some(v => v > 0))
+  const enReposo = carrito.length === 0 && cola.length === 0 && !hayCantidadesMarcadas
     if (!enReposo) return
     const t = setInterval(() => {
       fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
