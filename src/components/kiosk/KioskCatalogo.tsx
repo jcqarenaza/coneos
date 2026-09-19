@@ -6,7 +6,7 @@ import { ShoppingCart, ArrowLeft, Check, Plus, Minus, X } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
-interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string }
+interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; agotado?: boolean }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null; es_novedad?: boolean }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string; precio_adicional?: number }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
@@ -183,9 +183,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   }
 
   const productosFiltrados = productos.filter(p => p.categoria_id === categoriaActiva?.id)
-  const novedades = presentaciones.filter(p => p.es_novedad === true)
+  const novedades = presentaciones.filter(p => p.es_novedad === true)  // agotados fuera de la tira: se filtran abajo por prod.agotado
     .map(pres => ({ pres, prod: productos.find(pr => pr.id === pres.producto_id) }))
-    .filter((n): n is { pres: Presentacion; prod: Producto } => !!n.prod)
+    .filter((n): n is { pres: Presentacion; prod: Producto } => !!n.prod && !n.prod.agotado)
   const totalCarrito = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const actualCola = cola[colaIndex]
   const haySeleccion = productos.filter(p => p.categoria_id === categoriaActiva?.id).some(prod =>
@@ -340,7 +340,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               {productosFiltrados.map(prod => {
                 const pres = presentaciones.filter(p => p.producto_id === prod.id)
                 return (
-                  <div key={prod.id} id={`prod-${prod.id}`} className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
+                  <div key={prod.id} id={`prod-${prod.id}`} className={`bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden ${prod.agotado ? 'opacity-60 grayscale' : ''}`}>
                     <div className="flex gap-4 p-4 items-center">
                       {(() => {
                         const algunaTieneImagen = pres.some(p => p.imagen_url)
@@ -355,7 +355,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                         )
                       })()}
                       <div className="flex-1">
-                        <p className="font-bold text-neutral-800 text-lg">{prod.nombre}</p>
+                        <p className="font-bold text-neutral-800 text-lg">{prod.nombre}
+                          {prod.agotado && <span className="ml-2 align-middle text-[11px] font-bold uppercase tracking-wide bg-neutral-200 text-neutral-500 rounded-full px-2.5 py-0.5">Agotado</span>}
+                        </p>
                         {prod.descripcion && <p className="text-neutral-400 text-sm mt-0.5">{prod.descripcion}</p>}
                       </div>
                     </div>
@@ -376,6 +378,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                               {p.permite_opciones && <p className="text-xs text-neutral-400">{p.opciones_max === 1 ? 'Elegís variedad' : `${p.opciones_min}–${p.opciones_max} ${etiquetaOpciones(p.id)}`}</p>}
                             </div>
                             </div>
+                            {prod.agotado ? (
+                              <span className="text-sm font-bold text-neutral-400">Agotado</span>
+                            ) : (
                             <div className="flex items-center gap-3">
                               <button onClick={() => setCant(prod.id, p.id, cant - 1)} className="w-10 h-10 flex items-center justify-center rounded-xl border-2 border-neutral-200 bg-white active:bg-neutral-50 transition-colors">
                                 <Minus className="h-4 w-4 text-neutral-600" />
@@ -386,6 +391,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                                 <Plus className="h-4 w-4" />
                               </button>
                             </div>
+                            )}
                           </div>
                         )
                       })}
