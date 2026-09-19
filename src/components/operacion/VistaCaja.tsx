@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, History, ChevronLeft, ChevronRight, CloudRain, Trash2 } from 'lucide-react'
+import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, History, ChevronLeft, ChevronRight, CloudRain, Trash2, Volume2, VolumeX } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
@@ -320,7 +320,20 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
 
   const pedidosCountRef = useRef(0)
 
+  // Toggle de sonido POR DISPOSITIVO (JC 19/09): default ON = comportamiento
+  // histórico (Lucía sigue con timbre sin tocar nada). Persistido local.
+  const [sonidoActivo, setSonidoActivo] = useState(true)
+  useEffect(() => {
+    try { if (localStorage.getItem('caja-sonido') === 'off') setSonidoActivo(false) } catch {}
+  }, [])
+  const sonidoRef = useRef(true)
+  useEffect(() => {
+    sonidoRef.current = sonidoActivo
+    try { localStorage.setItem('caja-sonido', sonidoActivo ? 'on' : 'off') } catch {}
+  }, [sonidoActivo])
+
   function reproducirSonido() {
+    if (!sonidoRef.current) return  // silenciado en este dispositivo
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
       const osc = ctx.createOscillator()
@@ -768,6 +781,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           <button onClick={abrirArqueo} title="Arqueo de stock: conteo físico ciego → el admin confirma"
             className="flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent text-neutral-300 hover:text-neutral-600 transition-colors">
             📦<span className="hidden md:inline">Arqueo</span>
+          </button>
+          <button onClick={() => setSonidoActivo(v => !v)}
+            title={sonidoActivo ? 'Sonido de pedidos activado en este dispositivo — tocá para silenciar' : 'Sonido silenciado en este dispositivo — tocá para activar'}
+            className={`flex items-center gap-1.5 px-3 py-3 text-sm font-semibold border-b-2 border-transparent transition-colors ${sonidoActivo ? 'text-neutral-500 hover:text-neutral-700' : 'text-neutral-300 hover:text-neutral-600'}`}>
+            {sonidoActivo ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            <span className="hidden md:inline">{sonidoActivo ? 'Sonido' : 'Silencio'}</span>
           </button>
         <button onClick={() => { setTab('historial'); cargarHistorial(historialFecha) }}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'historial' ? 'border-neutral-800 text-neutral-900' : 'border-transparent text-neutral-400'}`}>
