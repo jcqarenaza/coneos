@@ -33,6 +33,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]) + '&sucursal=' + encodeURIComponent(partes[2]);
             }
 
+            // Favicon por empresa en TODAS las rutas (JC 19/09): admin/caja/kiosk
+            // tambien. Solo consulta; si la empresa no tiene favicon_url cargado,
+            // queda el estatico de siempre.
+            if (href.indexOf('/api/manifest') !== 0 && partes[0]) {
+              fetch('/api/manifest?empresa=' + encodeURIComponent(partes[0]))
+                .then(function(r) { return r.json() })
+                .then(function(m) {
+                  if (m && m.favicon) {
+                    var oldFav = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]');
+                    oldFav.forEach(function(l) { l.remove() });
+                    var fi = document.createElement('link');
+                    fi.rel = 'icon';
+                    fi.href = m.favicon;
+                    document.head.appendChild(fi);
+                  }
+                }).catch(function() {});
+            }
+
             // Solo inyectar manifest si se resolvió uno dinámico (evita 404 de /manifest.json en caja/admin)
             if (href.indexOf('/api/manifest') === 0) {
               var link = document.createElement('link');
