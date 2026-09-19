@@ -14,6 +14,7 @@ interface Config {
   texto_bienvenida: string; moneda: string
   cuit: string | null; razon_social: string | null; condicion_iva: string | null; punto_venta: number | null
   pwa_nombre: string | null; pwa_icono_url: string | null
+  mostrar_agotados: boolean
 }
 interface Empresa { nombre: string; slug: string; plan: string }
 
@@ -31,7 +32,7 @@ export default function ConfigPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('empresas').select('nombre, slug, plan').eq('id', ctx.empresaId).single(),
-      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta, pwa_nombre, pwa_icono_url').eq('empresa_id', ctx.empresaId).single(),
+      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta, pwa_nombre, pwa_icono_url, mostrar_agotados').eq('empresa_id', ctx.empresaId).single(),
     ]).then(([{ data: emp }, { data: cfg }]) => {
       if (emp) setEmpresa(emp)
       if (cfg) setConfig({
@@ -40,6 +41,7 @@ export default function ConfigPage() {
         razon_social: cfg.razon_social ?? '',
         condicion_iva: cfg.condicion_iva ?? 'RI',
         punto_venta: cfg.punto_venta ?? 1,
+        mostrar_agotados: cfg.mostrar_agotados ?? false,
       })
     })
   }, [ctx])
@@ -74,6 +76,7 @@ export default function ConfigPage() {
       punto_venta: config.punto_venta || 1,
       pwa_nombre: config.pwa_nombre || null,
       pwa_icono_url: config.pwa_icono_url || null,
+      mostrar_agotados: config.mostrar_agotados === true,
     }).eq('empresa_id', ctx.empresaId)
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
   }
@@ -261,6 +264,17 @@ export default function ConfigPage() {
               <Label>Moneda</Label>
               <Input value={config.moneda} onChange={e => setConfig({ ...config, moneda: e.target.value })} placeholder="ARS" className="w-32" />
             </div>
+            {/* Toggle agotados (default OFF = ocultar, comportamiento histórico) */}
+            <button type="button" onClick={() => setConfig({ ...config, mostrar_agotados: !config.mostrar_agotados })}
+              className="w-full flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100 hover:bg-neutral-100 transition-colors text-left">
+              <div>
+                <p className="text-sm font-semibold text-neutral-700">Mostrar productos agotados en el catálogo</p>
+                <p className="text-xs text-neutral-400 mt-1">Encendido: el producto sin stock se ve griseado como &quot;Agotado&quot; (no se puede comprar). Apagado: desaparece del catálogo hasta que vuelva el stock.</p>
+              </div>
+              <span className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.mostrar_agotados ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.mostrar_agotados ? 'left-[22px]' : 'left-0.5'}`} />
+              </span>
+            </button>
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
               <p className="text-sm font-semibold text-neutral-700">Numeración de pedidos</p>
               <p className="text-xs text-neutral-400 mt-1">Numeración correlativa por empresa. El número nunca se reinicia.</p>

@@ -25,6 +25,10 @@ export async function GET(request: Request) {
       supabase.from('producto_stock').select('producto_id, cantidad').eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id),
     ])
 
+  // Toggle por empresa (default OFF = ocultar, comportamiento histórico)
+  const { data: cfgAgotados } = await supabase.from('empresa_config').select('mostrar_agotados').eq('empresa_id', empresa_id).maybeSingle()
+  const mostrarAgotados = cfgAgotados?.mostrar_agotados === true
+
   // Mapa de disponibilidad por sucursal
   const dispoMap: Record<string, boolean> = {}
   ;(catalogoConfig ?? []).forEach((r: { entidad_id: string; disponible: boolean }) => { dispoMap[r.entidad_id] = r.disponible })
@@ -43,11 +47,15 @@ export async function GET(request: Request) {
   // muestra diferenciado y bloquea la selección. La lógica de descuento de
   // stock NO se toca: este flag es solo exposición. controla_stock sigue sin
   // viajar al cliente.
-  const productosFiltrados = (productos ?? [])
+  const conFlag = (productos ?? [])
     .filter((p: { id: string }) => dispoMap[p.id] !== false)
     .map(({ controla_stock: _cs, ...p }: { id: string; controla_stock?: boolean }) => ({ ...p, agotado: sinStock({ id: p.id, controla_stock: _cs }) }))
+  // Toggle OFF → poda como siempre (producto y sus presentaciones fuera).
+  // Toggle ON → viajan con el flag y el kiosk los muestra griseados.
+  const agotadosSet = new Set(conFlag.filter((p: { id: string; agotado: boolean }) => p.agotado).map((p: { id: string }) => p.id))
+  const productosFiltrados = mostrarAgotados ? conFlag : conFlag.filter((p: { id: string; agotado: boolean }) => !p.agotado)
   const presentacionesFiltradas = (presentaciones ?? []).filter((p: { id: string; producto_id: string }) =>
-    dispoMap[p.id] !== false)
+    dispoMap[p.id] !== false && (mostrarAgotados || !agotadosSet.has(p.producto_id)))
 
   // ── MICRO-FIX (orden CTO 18/09): PODA DE PADRES ──
   // Un producto sin NINGUNA presentación visible no se lista (antes quedaba
