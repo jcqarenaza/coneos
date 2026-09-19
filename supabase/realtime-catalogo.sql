@@ -24,7 +24,7 @@ on conflict (sucursal_id) do nothing;
 
 -- Bump de UNA sucursal (upsert por si la fila no existe todavía)
 create or replace function bump_catalogo_sucursal(p_sucursal uuid, p_empresa uuid)
-returns void language plpgsql as $$
+returns void language plpgsql security definer set search_path = public as $$
 begin
   insert into catalogo_version (sucursal_id, empresa_id, version, updated_at)
   values (p_sucursal, p_empresa, 1, now())
@@ -34,7 +34,7 @@ end $$;
 
 -- Bump de TODAS las sucursales de una empresa
 create or replace function bump_catalogo_empresa(p_empresa uuid)
-returns void language plpgsql as $$
+returns void language plpgsql security definer set search_path = public as $$
 begin
   update catalogo_version set version = version + 1, updated_at = now()
   where empresa_id = p_empresa;
