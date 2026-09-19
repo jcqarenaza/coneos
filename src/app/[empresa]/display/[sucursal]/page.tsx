@@ -53,7 +53,8 @@ export default function DisplayPage() {
 
   // Refs para evitar closure stale en el handler de Realtime
   const empresaIdRef = useRef<string | null>(null)
-  const sucursalIdRef = useRef<string | null>(null)  const dispositivoIdRef = useRef<string | null>(null)
+  const sucursalIdRef = useRef<string | null>(null)
+  const dispositivoIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const tick = () => setHora(new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }))
@@ -61,6 +62,21 @@ export default function DisplayPage() {
     const interval = setInterval(tick, 30000)
     return () => clearInterval(interval)
   }, [])
+
+  // REALTIME CATÁLOGO — extensión de cobertura (orden CTO 19/09): el display
+  // consume UNA fuente del catálogo (empresa_config: logo/colores) y la cargaba
+  // solo al montar. Se suscribe al mismo libro de versiones: cambio → refetch
+  // de config. Sin manos-quietas: nadie interactúa con un display, y refrescar
+  // logo/color no perturba los pedidos en pantalla. El flujo de pedidos NO se
+  // toca (queda tal cual, con su canal y su respaldo — Etapa 2 aparte).
+  async function cargarConfig() {
+    const empId = empresaIdRef.current
+    if (!empId) return
+    try {
+      const res = await fetch(`/api/kiosk/config?empresa_id=${empId}`)
+      if (res.ok) setConfig(await res.json())
+    } catch {}
+  }
 
   async function cargarPedidos() {
     const dispId = dispositivoIdRef.current
@@ -90,7 +106,8 @@ export default function DisplayPage() {
 
         // Guardar en refs antes de suscribir Realtime
         empresaIdRef.current = data.dispositivo.empresa_id
-        sucursalIdRef.current = data.dispositivo.sucursal_id        dispositivoIdRef.current = data.dispositivo.id
+        sucursalIdRef.current = data.dispositivo.sucursal_id
+        dispositivoIdRef.current = data.dispositivo.id
 
         const res = await fetch(`/api/kiosk/config?empresa_id=${data.dispositivo.empresa_id}`)
         const cfg = await res.json()
@@ -109,6 +126,16 @@ export default function DisplayPage() {
             filter: `empresa_id=eq.${data.dispositivo.empresa_id}`,
           }, () => cargarPedidos())
           .subscribe()
+        // Libro de versiones del catálogo → la config visual se cura sola
+        supabase
+          .channel(`display-catalogo-${data.dispositivo.sucursal_id}`)
+          .on('postgres_changes', {
+            event: '*', schema: 'public', table: 'catalogo_version',
+            filter: `sucursal_id=eq.${data.dispositivo.sucursal_id}`,
+          }, () => cargarConfig())
+          .subscribe(status => { if (status === 'SUBSCRIBED') cargarConfig() })  // reconexión = puesta al día
+        // Despertar de la pestaña = puesta al día (mismo principio R7b)
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') cargarConfig() })
         // Respaldo sin sesión (Realtime no emite con RLS): refresco cada 15s
         setInterval(() => cargarPedidos(), 7000)
       })
