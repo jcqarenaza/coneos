@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { Loader2, Trash2, CheckCircle, Plus, Minus, Bike } from 'lucide-react'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
@@ -53,13 +54,11 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   const [exito, setExito] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function init() {
-      // Mismo catálogo que kiosk: fotos, grupos por presentación, disponibilidad por sucursal e inventario
-      const [catRes, horaRes] = await Promise.all([
-        fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`),
-        fetch(`/api/hora-argentina?sucursal_id=${dispositivo.sucursal_id}`),
-      ])
+  // Refetch del catálogo: el endpoint es la ÚNICA verdad (condición CTO —
+  // el evento Realtime solo invalida, jamás toca la UI directamente).
+  const refetchCatalogo = useCallback(async (inicial = false) => {
+    try {
+      const catRes = await fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
       if (catRes.ok) {
         const cat = await catRes.json()
         setCategorias(cat.categorias ?? [])
@@ -68,9 +67,16 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
         setGrupos(cat.grupos ?? [])
         setOpciones(cat.opciones ?? [])
         setPresGrupos(cat.presentacion_grupos ?? [])
-        if (cat.categorias?.length) setCategoriaActiva(cat.categorias[0].id)
+        if (inicial && cat.categorias?.length) setCategoriaActiva(cat.categorias[0].id)
       }
-      if (horaRes.ok) {
+    } catch {}  // sin red: la UI vigente sigue; el timbre reintenta
+  }, [dispositivo])
+
+  useEffect(() => {
+    async function init() {
+      const horaRes = await fetch(`/api/hora-argentina?sucursal_id=${dispositivo.sucursal_id}`).catch(() => null)
+      await refetchCatalogo(true)
+      if (horaRes?.ok) {
         const h = await horaRes.json()
         const costo = Number(h.delivery_config?.costo_envio ?? 0)
         setCostoEnvioConfig(costo)
@@ -79,7 +85,35 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
       setLoading(false)
     }
     init()
-  }, [dispositivo])
+  }, [dispositivo, refetchCatalogo])
+
+  // ── REALTIME CATÁLOGO — la caja como segundo suscriptor del libro de
+  // versiones (GO CTO, criterio APB de JC: no depender de que el operador
+  // se acuerde de refrescar). Reposo de caja: pedido en armado VACÍO y sin
+  // estar guardando — un pedido a medias JAMÁS se toca (flag sucio espera).
+  const [catalogoSucio, setCatalogoSucio] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    const canal = supabase
+      .channel(`catalogo-caja-${dispositivo.sucursal_id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'catalogo_version', filter: `sucursal_id=eq.${dispositivo.sucursal_id}` },
+        () => setCatalogoSucio(true))
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') setCatalogoSucio(true)  // R7: (re)conexión = puesta al día
+      })
+    const alDespertar = () => { if (document.visibilityState === 'visible') setCatalogoSucio(true) }  // R7b
+    document.addEventListener('visibilitychange', alDespertar)
+    return () => { supabase.removeChannel(canal); document.removeEventListener('visibilitychange', alDespertar) }
+  }, [dispositivo.sucursal_id])
+
+  useEffect(() => {
+    const enReposo = carrito.length === 0 && !guardando
+    if (!enReposo || !catalogoSucio) return
+    setCatalogoSucio(false)
+    refetchCatalogo()
+  }, [carrito.length, guardando, catalogoSucio, refetchCatalogo])
 
   // Grupos de accesorios (por nombre, igual que kiosk)
   const grupoIdsAccesorios = new Set(grupos.filter(g => g.nombre.toLowerCase().includes('accesorio')).map(g => g.id))
@@ -220,16 +254,15 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                 const pres = presentaciones.filter(p => p.producto_id === prod.id)
                 return pres.map(p => {
                   const img = p.imagen_url || prod.imagen_url
-                  // Compacto SIEMPRE (JC 19/09): la foto como miniatura, no banner —
-                  // en caja rinde la densidad, la foto grande vive en el kiosk.
+                  // Con foto: tarjeta grande. Sin foto: ficha compacta (formato accesorios)
                   return img ? (
                     <button key={p.id} onClick={() => seleccionarPresentacion(p, prod)}
-                      className="flex items-center gap-2.5 p-3 bg-white rounded-xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98">
-                      <img src={img} alt={prod.nombre} className="w-12 h-12 object-cover rounded-lg flex-shrink-0 bg-neutral-50" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-neutral-800 font-bold text-sm leading-tight truncate">{prod.nombre}</p>
-                        <p className="text-neutral-400 text-xs truncate">{p.nombre}</p>
-                        <p className="text-neutral-700 font-black text-sm mt-0.5">{formatPrecio(p.precio)}</p>
+                      className="flex flex-col bg-white rounded-2xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98 overflow-hidden">
+                      <img src={img} alt={prod.nombre} className="w-full h-20 object-cover" />
+                      <div className="p-3">
+                        <p className="text-neutral-800 font-bold text-sm leading-tight">{prod.nombre}</p>
+                        <p className="text-neutral-400 text-xs mt-0.5">{p.nombre}</p>
+                        <p className="text-neutral-700 font-black mt-1.5 text-base">{formatPrecio(p.precio)}</p>
                       </div>
                     </button>
                   ) : (

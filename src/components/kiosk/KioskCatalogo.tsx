@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 import { ShoppingCart, ArrowLeft, Check, Plus, Minus, X } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
@@ -69,7 +70,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [grupoActivo, setGrupoActivo] = useState<string | null>(null)
   const [agregado, setAgregado] = useState(false)
 
-  useEffect(() => {
+  // Refetch silencioso: el endpoint es la ÚNICA verdad (condición CTO —
+  // ningún evento Realtime modifica la UI directamente; solo invalida).
+  const refetchCatalogo = useCallback((inicial = false) => {
     fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
       .then(r => r.json())
       .then(data => {
@@ -80,13 +83,75 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         setOpciones(data.opciones ?? [])
         setGrupos(data.grupos ?? [])
         setPresGrupos(data.presentacion_grupos ?? [])
-        setLoading(false)
-        if (categoriaIdInicial) {
-          const cat = cats.find((c: Categoria) => c.id === categoriaIdInicial)
-          if (cat) { setCategoriaActiva(cat); setPaso('productos') }
+        if (inicial) {
+          setLoading(false)
+          if (categoriaIdInicial) {
+            const cat = cats.find((c: Categoria) => c.id === categoriaIdInicial)
+            if (cat) { setCategoriaActiva(cat); setPaso('productos') }
+          }
         }
       })
+      .catch(() => {})  // sin red: la UI actual sigue viva; el timbre reintenta
   }, [dispositivo, categoriaIdInicial])
+
+  useEffect(() => { refetchCatalogo(true) }, [refetchCatalogo])
+
+  // ── REALTIME CATÁLOGO — libro de versiones (ciclo feature/realtime-catalogo, GO CTO) ──
+  // DB cambia → version++ → Realtime avisa → INVALIDA → refetch en reposo → UI.
+  // Freno JC (sellado): un flujo de compra en marcha JAMÁS se interrumpe.
+  const [catalogoSucio, setCatalogoSucio] = useState(false)
+  const enReposo = paso === 'categorias' && carrito.length === 0 && cola.length === 0
+
+  useEffect(() => {
+    const supabase = createClient()
+    const canal = supabase
+      .channel(`catalogo-${dispositivo.sucursal_id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'catalogo_version', filter: `sucursal_id=eq.${dispositivo.sucursal_id}` },
+        () => setCatalogoSucio(true))
+      .subscribe(status => {
+        // R7: (re)conexión = invalidar y ponerse al día contra el endpoint —
+        // no confiamos en eventos retrospectivos perdidos.
+        if (status === 'SUBSCRIBED') setCatalogoSucio(true)
+      })
+    // R7b: PWA/pestaña que despierta — el websocket pudo morir en background.
+    const alDespertar = () => { if (document.visibilityState === 'visible') setCatalogoSucio(true) }
+    document.addEventListener('visibilitychange', alDespertar)
+    return () => { supabase.removeChannel(canal); document.removeEventListener('visibilitychange', alDespertar) }
+  }, [dispositivo.sucursal_id])
+
+  // Aplicación de la invalidación: SOLO en reposo. Si el timbre sonó con un
+  // carrito armado, el flag queda esperando y se aplica al volver al inicio.
+  useEffect(() => {
+    if (!enReposo || !catalogoSucio) return
+    setCatalogoSucio(false)
+    refetchCatalogo()
+  }, [enReposo, catalogoSucio, refetchCatalogo])
+
+  // ── AUTO-REFRESH EN REPOSO (JC 19/09, mismo ciclo agotado-visible) ──
+  // Un totem quieto nunca se entera de cambios de stock → cada 60s, SOLO si
+  // está en el inicio (categorías) y sin carrito ni selección en curso,
+  // re-pide el catálogo en silencio. Freno de JC: un flujo de compra en
+  // marcha JAMÁS se interrumpe. Cubre los 4 canales (todos montan este
+  // componente). Sin push ni infraestructura: el totem se cura solo.
+  useEffect(() => {
+    const enReposo = paso === 'categorias' && carrito.length === 0 && cola.length === 0
+    if (!enReposo) return
+    const t = setInterval(() => {
+      fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
+        .then(r => r.json())
+        .then(data => {
+          setCategorias(data.categorias ?? [])
+          setProductos(data.productos ?? [])
+          setPresentaciones(data.presentaciones ?? [])
+          setOpciones(data.opciones ?? [])
+          setGrupos(data.grupos ?? [])
+          setPresGrupos(data.presentacion_grupos ?? [])
+        })
+        .catch(() => {})  // sin red no pasa nada: reintenta al próximo tick
+    }, 60000)
+    return () => clearInterval(t)
+  }, [paso, carrito.length, cola.length, dispositivo])
 
   function getCant(prodId: string, presId: string) { return cantidad[prodId]?.[presId] ?? 0 }
   function setCant(prodId: string, presId: string, val: number) {
