@@ -67,7 +67,25 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     fetch(`/api/beneficios?empresa_id=${dispositivo.empresa_id}`)
       .then(r => r.json()).then(d => { if (d.activo) setBenefPesosPorPunto(Number(d.pesos_por_punto ?? 1000)) }).catch(() => {})
   }, [dispositivo])
-  const [datos, setDatos] = useState<DatosDelivery>({ nombre: '', telefono: '', direccion: '', entre_calles: '' })
+  // Datos de entrega con memoria de sesión (JC 19/09): si el re-precio o un
+  // "volver" desmonta este paso, lo escrito NO se pierde — al volver a entrar
+  // el form renace lleno. Se limpia al confirmar el pedido (éxito) y muere
+  // solo al cerrar la pestaña (sessionStorage): no filtra datos entre clientes
+  // distintos en un mismo dispositivo más allá de la sesión.
+  const [datos, setDatos] = useState<DatosDelivery>(() => {
+    try {
+      const g = sessionStorage.getItem('delivery-datos')
+      if (g) return { nombre: '', telefono: '', direccion: '', entre_calles: '', ...JSON.parse(g) }
+    } catch {}
+    return { nombre: '', telefono: '', direccion: '', entre_calles: '' }
+  })
+  useEffect(() => {
+    try { sessionStorage.setItem('delivery-datos', JSON.stringify(datos)) } catch {}
+  }, [datos])
+  useEffect(() => {
+    // Pedido confirmado → los datos cumplieron su ciclo: se limpian
+    if (paso === 'exito') { try { sessionStorage.removeItem('delivery-datos') } catch {} }
+  }, [paso])
   const [erroresCampos, setErroresCampos] = useState<Partial<DatosDelivery>>({})
   const [errorPedido, setErrorPedido] = useState<string | null>(null)
   // FASE 4: la disponibilidad de MP la decide el SERVER (resolver del canal
