@@ -14,6 +14,7 @@ export async function GET(request: Request) {
   let logoUrl: string | null = null
   let pwaNombre: string | null = null
   let pwaIconoUrl: string | null = null
+  let faviconUrl: string | null = null  // Favicon del tab (JC 19/09): separado del icono PWA
   let startUrl = '/'
 
   const supabase = createAdminClient()
@@ -32,17 +33,18 @@ export async function GET(request: Request) {
       if (emp) {
         nombre = emp.nombre
         startUrl = `/${emp.slug}/d/${token}`
-        const { data: cfg } = await supabase.from('empresa_config').select('primary_color, logo_url, pwa_nombre, pwa_icono_url').eq('empresa_id', (await supabase.from('empresas').select('id').eq('slug', emp.slug).single()).data?.id ?? '').maybeSingle()
+        const { data: cfg } = await supabase.from('empresa_config').select('primary_color, logo_url, pwa_nombre, pwa_icono_url, favicon_url').eq('empresa_id', (await supabase.from('empresas').select('id').eq('slug', emp.slug).single()).data?.id ?? '').maybeSingle()
         if (cfg?.primary_color) themeColor = cfg.primary_color
         if (cfg?.logo_url) logoUrl = cfg.logo_url
         if (cfg?.pwa_nombre) pwaNombre = cfg.pwa_nombre
         if (cfg?.pwa_icono_url) pwaIconoUrl = cfg.pwa_icono_url
+        if (cfg?.favicon_url) faviconUrl = cfg.favicon_url
       }
     }
   } else if (empresaSlug) {
     const { data: emp } = await supabase
       .from('empresas')
-      .select('id, nombre, config:empresa_config(primary_color, logo_url, pwa_nombre, pwa_icono_url)')
+      .select('id, nombre, config:empresa_config(primary_color, logo_url, pwa_nombre, pwa_icono_url, favicon_url)')
       .eq('slug', empresaSlug)
       .single()
     if (emp) {
@@ -52,6 +54,7 @@ export async function GET(request: Request) {
       if (cfg?.logo_url) logoUrl = cfg.logo_url
       if (cfg?.pwa_nombre) pwaNombre = cfg.pwa_nombre
       if (cfg?.pwa_icono_url) pwaIconoUrl = cfg.pwa_icono_url
+      if (cfg?.favicon_url) faviconUrl = cfg.favicon_url
       if (sucursalSlug) startUrl = `/${empresaSlug}/delivery/${sucursalSlug}`
     }
   }
@@ -60,6 +63,7 @@ export async function GET(request: Request) {
   const iconoFinal = pwaIconoUrl ?? logoUrl
 
   const manifest = {
+    favicon: faviconUrl,  // campo propio: el layout lo lee para el <link rel="icon"> del tab
     name: nombreFinal,
     short_name: pwaNombre ?? nombre,
     description: `Hacé tu pedido en ${nombre}`,

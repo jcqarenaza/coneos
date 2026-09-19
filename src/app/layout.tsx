@@ -44,6 +44,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             // apple-touch-icon dinamico para iOS (iOS ignora el manifest para el icono)
             if (href.indexOf('/api/manifest') === 0) {
               fetch(href).then(function(r) { return r.json() }).then(function(m) {
+                // Favicon del tab por empresa (JC 19/09): si la config lo define,
+                // pisa el favicon estatico SOLO en esa empresa.
+                if (m && m.favicon) {
+                  var oldFav = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]');
+                  oldFav.forEach(function(l) { l.remove() });
+                  var fi = document.createElement('link');
+                  fi.rel = 'icon';
+                  fi.href = m.favicon;
+                  document.head.appendChild(fi);
+                }
                 if (m && m.icons && m.icons[0] && m.icons[0].src) {
                   var old = document.querySelectorAll('link[rel="apple-touch-icon"]');
                   old.forEach(function(l) { l.remove() });
