@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 import { ShoppingCart, ArrowLeft, Check, Plus, Minus, X } from 'lucide-react'
@@ -120,13 +120,30 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     return () => { supabase.removeChannel(canal); document.removeEventListener('visibilitychange', alDespertar) }
   }, [dispositivo.sucursal_id])
 
-  // Aplicación de la invalidación: SOLO en reposo. Si el timbre sonó con un
-  // carrito armado, el flag queda esperando y se aplica al volver al inicio.
+  // MANOS QUIETAS (JC 19/09): además del reposo de estado, exigir 10s sin
+  // interacción — jamás cambiar el catálogo bajo el dedo de alguien por tocar.
+  const ultimaInteraccion = useRef(Date.now())
   useEffect(() => {
-    if (!enReposo || !catalogoSucio) return
-    setCatalogoSucio(false)
-    refetchCatalogo()
-  }, [enReposo, catalogoSucio, refetchCatalogo])
+    const marcar = () => { ultimaInteraccion.current = Date.now() }
+    window.addEventListener('pointerdown', marcar)
+    window.addEventListener('keydown', marcar)
+    return () => { window.removeEventListener('pointerdown', marcar); window.removeEventListener('keydown', marcar) }
+  }, [])
+
+  // Aplicación de la invalidación: SOLO en reposo Y con manos quietas. Si el
+  // timbre suena en mal momento, el flag espera y reintenta cada 3s.
+  useEffect(() => {
+    if (!catalogoSucio) return
+    const intentar = () => {
+      if (enReposo && Date.now() - ultimaInteraccion.current > 10000) {
+        setCatalogoSucio(false)
+        refetchCatalogo()
+      }
+    }
+    intentar()
+    const t = setInterval(intentar, 3000)
+    return () => clearInterval(t)
+  }, [catalogoSucio, enReposo, refetchCatalogo])
 
   // ── AUTO-REFRESH EN REPOSO (JC 19/09, mismo ciclo agotado-visible) ──
   // Un totem quieto nunca se entera de cambios de stock → cada 60s, SOLO si

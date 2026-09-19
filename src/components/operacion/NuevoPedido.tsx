@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, Trash2, CheckCircle, Plus, Minus, Bike } from 'lucide-react'
 
@@ -108,12 +108,29 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     return () => { supabase.removeChannel(canal); document.removeEventListener('visibilitychange', alDespertar) }
   }, [dispositivo.sucursal_id])
 
+  // MANOS QUIETAS (JC 19/09): 10s sin toque/tecla además del pedido vacío —
+  // el catálogo nunca cambia mientras el operador está interactuando.
+  const ultimaInteraccion = useRef(Date.now())
   useEffect(() => {
-    const enReposo = carrito.length === 0 && !guardando
-    if (!enReposo || !catalogoSucio) return
-    setCatalogoSucio(false)
-    refetchCatalogo()
-  }, [carrito.length, guardando, catalogoSucio, refetchCatalogo])
+    const marcar = () => { ultimaInteraccion.current = Date.now() }
+    window.addEventListener('pointerdown', marcar)
+    window.addEventListener('keydown', marcar)
+    return () => { window.removeEventListener('pointerdown', marcar); window.removeEventListener('keydown', marcar) }
+  }, [])
+
+  useEffect(() => {
+    if (!catalogoSucio) return
+    const intentar = () => {
+      const enReposo = carrito.length === 0 && !guardando
+      if (enReposo && Date.now() - ultimaInteraccion.current > 10000) {
+        setCatalogoSucio(false)
+        refetchCatalogo()
+      }
+    }
+    intentar()
+    const t = setInterval(intentar, 3000)
+    return () => clearInterval(t)
+  }, [catalogoSucio, carrito.length, guardando, refetchCatalogo])
 
   // Grupos de accesorios (por nombre, igual que kiosk)
   const grupoIdsAccesorios = new Set(grupos.filter(g => g.nombre.toLowerCase().includes('accesorio')).map(g => g.id))
