@@ -72,12 +72,18 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
   useEffect(() => {
     cargarPedidos()
     const supabase = createClient()
+    // ETAPA 2 (GO CTO): canal sobre pedidos_version — emisión garantizada por
+    // construcción (tabla mínima, RLS de lectura trivial). Invalidación → el
+    // mismo refetch de siempre. Flujo de estados intocado.
     const channel = supabase.channel(`prep-${dispositivo.sucursal_id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, cargarPedidos)
-      .subscribe()
-    // Respaldo sin sesión (Realtime no emite con RLS): refresco cada 15s
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos_version', filter: `sucursal_id=eq.${dispositivo.sucursal_id}` }, () => cargarPedidos())
+      .subscribe(status => { if (status === 'SUBSCRIBED') cargarPedidos() })  // reconexión = puesta al día
+    const alDespertar = () => { if (document.visibilityState === 'visible') cargarPedidos() }  // despertar = al día
+    document.addEventListener('visibilitychange', alDespertar)
+    // Polling: QUEDA INTACTO por orden CTO (red mientras la matriz certifica);
+    // su destino se decide en ciclo separado, con datos.
     const poll = setInterval(() => cargarPedidos(), 7000)
-    return () => { supabase.removeChannel(channel); clearInterval(poll) }
+    return () => { supabase.removeChannel(channel); document.removeEventListener('visibilitychange', alDespertar); clearInterval(poll) }
   }, [cargarPedidos, dispositivo])
 
   async function cambiarEstado(pedidoId: string, estadoNuevo: string) {

@@ -285,6 +285,16 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     const rp = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'pedidos_hoy', verTodas }) })
     const dp = await rp.json()
     if (dp?.stock_alertas) setStockAlertas(dp.stock_alertas)
+    // Timbre por id nuevo (Etapa 2): antes sonaba con el INSERT crudo de
+    // `pedidos`; con el libro de versiones el detector es el refetch mismo —
+    // pedido nunca visto = suena, llegue por Realtime o por polling.
+    {
+      const nuevos = (dp.pedidos ?? []) as Pedido[]
+      if (idsVistosRef.current !== null) {
+        if (nuevos.some(p => !idsVistosRef.current!.has(p.id))) reproducirSonido()
+      }
+      idsVistosRef.current = new Set(nuevos.map(p => p.id))
+    }
     setPedidos((dp.pedidos ?? []) as Pedido[])
     // 9c: sucursal con comanda automática → PREPARING sin comanda = imprimir
     if (typeof dp?.comanda_auto === 'boolean') { setComandaAuto(dp.comanda_auto); comandaAutoRef.current = dp.comanda_auto }
@@ -319,6 +329,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   useEffect(() => { cargarPedidosRef.current = cargarPedidos }, [cargarPedidos])
 
   const pedidosCountRef = useRef(0)
+  const idsVistosRef = useRef<Set<string> | null>(null)
 
   // Toggle de sonido POR DISPOSITIVO (JC 19/09): default ON = comportamiento
   // histórico (Lucía sigue con timbre sin tocar nada). Persistido local.
@@ -353,16 +364,21 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   useEffect(() => {
     cargarPedidos()
     const supabase = createClient()
+    // ETAPA 2 (GO CTO): el canal escucha pedidos_version — tabla mínima con
+    // emisión GARANTIZADA por construcción (RLS de lectura trivial, expone solo
+    // versión+fecha). Invalidación → refetch; el sonido lo decide el refetch.
     const channel = supabase.channel(`caja-${dispositivo.sucursal_id}-${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `empresa_id=eq.${dispositivo.empresa_id}` }, (payload) => {
-        if (payload.eventType === 'INSERT') reproducirSonido()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos_version', filter: `sucursal_id=eq.${dispositivo.sucursal_id}` }, () => {
         cargarPedidosRef.current()
       })
-      .subscribe()
-    // Respaldo: sin sesión de auth en el navegador, Realtime no emite (RLS) —
-    // el polling garantiza que la caja se refresque igual
+      .subscribe(status => { if (status === 'SUBSCRIBED') cargarPedidosRef.current() })  // reconexión = puesta al día
+    const alDespertar = () => { if (document.visibilityState === 'visible') cargarPedidosRef.current() }  // pestaña despierta = al día
+    document.addEventListener('visibilitychange', alDespertar)
+    // Polling: QUEDA INTACTO en esta etapa por orden CTO — red de seguridad
+    // mientras el canal nuevo certifica su matriz. Su destino se decide en un
+    // ciclo separado, con datos.
     const poll = setInterval(() => cargarPedidosRef.current(), 7000)
-    return () => { supabase.removeChannel(channel); clearInterval(poll) }
+    return () => { supabase.removeChannel(channel); document.removeEventListener('visibilitychange', alDespertar); clearInterval(poll) }
   }, [dispositivo])
 
   useEffect(() => {

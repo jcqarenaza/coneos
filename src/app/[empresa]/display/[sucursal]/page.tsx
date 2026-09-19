@@ -119,13 +119,15 @@ export default function DisplayPage() {
 
         // Suscribir Realtime — una sola vez, usando refs para siempre tener los IDs actuales
         const supabase = createClient()
+        // ETAPA 2 (GO CTO): canal sobre pedidos_version — emisión garantizada
+        // por construcción. Invalidación → refetch. Flujo de pedidos intocado.
         supabase
           .channel(`display-${data.dispositivo.sucursal_id}`)
           .on('postgres_changes', {
-            event: '*', schema: 'public', table: 'pedidos',
-            filter: `empresa_id=eq.${data.dispositivo.empresa_id}`,
+            event: '*', schema: 'public', table: 'pedidos_version',
+            filter: `sucursal_id=eq.${data.dispositivo.sucursal_id}`,
           }, () => cargarPedidos())
-          .subscribe()
+          .subscribe(status => { if (status === 'SUBSCRIBED') cargarPedidos() })  // reconexión = puesta al día
         // Libro de versiones del catálogo → la config visual se cura sola
         supabase
           .channel(`display-catalogo-${data.dispositivo.sucursal_id}`)
@@ -134,9 +136,10 @@ export default function DisplayPage() {
             filter: `sucursal_id=eq.${data.dispositivo.sucursal_id}`,
           }, () => cargarConfig())
           .subscribe(status => { if (status === 'SUBSCRIBED') cargarConfig() })  // reconexión = puesta al día
-        // Despertar de la pestaña = puesta al día (mismo principio R7b)
-        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') cargarConfig() })
-        // Respaldo sin sesión (Realtime no emite con RLS): refresco cada 15s
+        // Despertar de la pestaña = puesta al día de TODO (principio R7b)
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { cargarConfig(); cargarPedidos() } })
+        // Polling: QUEDA INTACTO por orden CTO (red mientras la matriz
+        // certifica); su destino se decide en ciclo separado, con datos.
         setInterval(() => cargarPedidos(), 7000)
       })
       .catch(() => { setError('Error de conexión'); setLoading(false) })
