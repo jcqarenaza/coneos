@@ -475,7 +475,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     }
     const W = 640
     const lineas = carrito.length + (costoEnvio > 0 && !esTakeaway ? 1 : 0)
-    const H = 460 + lineas * 34 + (esTakeaway && cod ? 110 : 0) + (logo ? 96 : 0)
+    const H = 460 + lineas * 34 + (esTakeaway && cod ? 110 : 0) + (esTakeaway && cod && horaConfirmada ? 40 : 0) + (logo ? 96 : 0)
     const cv = document.createElement('canvas')
     cv.width = W; cv.height = H
     const cx = cv.getContext('2d')
@@ -503,6 +503,13 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       cx.fillText('CÓDIGO DE RETIRO', W / 2, y); y += 34
       cx.font = '900 52px ui-monospace, monospace'; cx.fillStyle = config.primary_color || '#171717'
       cx.fillText(cod, W / 2, y); y += 44
+      // hora de retiro elegida (matriz F-C test 8): el dato que el mostrador y
+      // el cliente van a mirar juntos — al comprobante también
+      if (horaConfirmada) {
+        const horaTxt = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConfirmada))
+        cx.font = 'bold 20px system-ui, sans-serif'; cx.fillStyle = '#404040'
+        cx.fillText(`🕐 Retiro: ${horaTxt} hs`, W / 2, y); y += 36
+      }
     }
     // separador
     cx.strokeStyle = '#e5e5e5'; cx.beginPath(); cx.moveTo(48, y); cx.lineTo(W - 48, y); cx.stroke(); y += 34
