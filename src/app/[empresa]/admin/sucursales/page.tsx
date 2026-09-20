@@ -16,6 +16,9 @@ interface DeliveryConfig { activo: boolean; costo_envio: number; horarios: Horar
 interface TakeawayConfig { activo: boolean; horarios: Horario[]; mensaje_fuera_horario: string; tolerancia_cierre?: number }
 interface SucursalPagos {
   acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; acepta_mp_kiosk: boolean; acepta_mp_delivery: boolean; acepta_mp_mesa: boolean; acepta_mp_takeaway: boolean
+  // F-C: llaves por canal para efectivo y transferencia (espejo del modelo MP)
+  acepta_efectivo_kiosk: boolean; acepta_efectivo_delivery: boolean; acepta_efectivo_mesa: boolean; acepta_efectivo_takeaway: boolean
+  acepta_transferencia_kiosk: boolean; acepta_transferencia_delivery: boolean; acepta_transferencia_mesa: boolean; acepta_transferencia_takeaway: boolean
   cbu_transferencia: string | null; titular_transferencia: string | null
   mp_alias?: string | null; mp_public_key?: string | null
 }
@@ -29,7 +32,7 @@ const RUBROS: [string, string][] = [
   ['CAFETERIA', '☕ Cafetería'], ['PARRILLA', '🥩 Parrilla'], ['OTRO', '🏪 Otro'],
 ]
 
-const emptyPagos = (): SucursalPagos => ({ acepta_efectivo: true, acepta_transferencia: true, acepta_mp: false, acepta_mp_kiosk: true, acepta_mp_delivery: true, acepta_mp_mesa: true, acepta_mp_takeaway: true, cbu_transferencia: '', titular_transferencia: '', mp_alias: '', mp_public_key: '' })
+const emptyPagos = (): SucursalPagos => ({ acepta_efectivo: true, acepta_transferencia: true, acepta_mp: false, acepta_mp_kiosk: true, acepta_mp_delivery: true, acepta_mp_mesa: true, acepta_mp_takeaway: true, acepta_efectivo_kiosk: true, acepta_efectivo_delivery: true, acepta_efectivo_mesa: true, acepta_efectivo_takeaway: true, acepta_transferencia_kiosk: true, acepta_transferencia_delivery: true, acepta_transferencia_mesa: true, acepta_transferencia_takeaway: true, cbu_transferencia: '', titular_transferencia: '', mp_alias: '', mp_public_key: '' })
 const emptyDelivery = (): DeliveryConfig => ({ activo: false, costo_envio: 0, horarios: [{ desde: '20:00', hasta: '23:59' }], mensaje_fuera_horario: 'El delivery no está disponible en este momento. ¡Volvemos pronto!' })
 const emptyTakeaway = (): TakeawayConfig => ({ activo: false, horarios: [{ desde: '19:00', hasta: '23:30' }], mensaje_fuera_horario: 'El take away no está disponible en este momento. ¡Volvemos pronto!', tolerancia_cierre: 5 })
 const emptySucursal = (): Partial<Sucursal> => ({ nombre: '', slug: '', direccion: '', activo: true, rubro: 'HELADERIA' })
@@ -51,7 +54,7 @@ export default function SucursalesPage() {
     const supabase = createClient()
     const { data: suc } = await supabase
       .from('sucursales')
-      .select('id, nombre, slug, direccion, activo, horario_general, mensaje_cerrado, tolerancia_cierre, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, acepta_mp_mesa, acepta_mp_takeaway, cbu_transferencia, titular_transferencia), takeaway_config(activo, horarios, mensaje_fuera_horario, tolerancia_cierre), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre), rubro')
+      .select('id, nombre, slug, direccion, activo, horario_general, mensaje_cerrado, tolerancia_cierre, sucursal_pagos(acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, acepta_mp_mesa, acepta_mp_takeaway, acepta_efectivo_kiosk, acepta_efectivo_delivery, acepta_efectivo_mesa, acepta_efectivo_takeaway, acepta_transferencia_kiosk, acepta_transferencia_delivery, acepta_transferencia_mesa, acepta_transferencia_takeaway, cbu_transferencia, titular_transferencia), takeaway_config(activo, horarios, mensaje_fuera_horario, tolerancia_cierre), delivery_config(activo, costo_envio, horarios, mensaje_fuera_horario, pausado, mensaje_pausa, tolerancia_cierre), rubro')
       .eq('empresa_id', ctx.empresaId).order('nombre')
     setData((suc ?? []).map((s: Record<string, unknown>) => ({
       ...s,
@@ -109,7 +112,7 @@ export default function SucursalesPage() {
     const supabase = createClient()
     if (editId) {
       await supabase.from('sucursales').update({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: form.activo ?? true, rubro: form.rubro ?? 'HELADERIA', horario_general: horarioGeneral && horarioGeneral.length > 0 ? horarioGeneral : null, mensaje_cerrado: mensajeCerrado.trim() || null, tolerancia_cierre: tolGeneral > 0 ? tolGeneral : null }).eq('id', editId)
-      await supabase.from('sucursal_pagos').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, acepta_mp_mesa: pagos.acepta_mp_mesa, acepta_mp_takeaway: pagos.acepta_mp_takeaway, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null }, { onConflict: 'sucursal_id' })
+      await supabase.from('sucursal_pagos').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, acepta_mp_mesa: pagos.acepta_mp_mesa, acepta_mp_takeaway: pagos.acepta_mp_takeaway, acepta_efectivo_kiosk: pagos.acepta_efectivo_kiosk, acepta_efectivo_delivery: pagos.acepta_efectivo_delivery, acepta_efectivo_mesa: pagos.acepta_efectivo_mesa, acepta_efectivo_takeaway: pagos.acepta_efectivo_takeaway, acepta_transferencia_kiosk: pagos.acepta_transferencia_kiosk, acepta_transferencia_delivery: pagos.acepta_transferencia_delivery, acepta_transferencia_mesa: pagos.acepta_transferencia_mesa, acepta_transferencia_takeaway: pagos.acepta_transferencia_takeaway, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null }, { onConflict: 'sucursal_id' })
       await supabase.from('takeaway_config').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, activo: takeaway.activo, horarios: takeaway.horarios, mensaje_fuera_horario: takeaway.mensaje_fuera_horario, tolerancia_cierre: takeaway.tolerancia_cierre ?? 5 }, { onConflict: 'sucursal_id' })
     } else {
       const { data: nueva } = await supabase.from('sucursales').insert({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: true, rubro: form.rubro ?? 'HELADERIA', empresa_id: ctx.empresaId }).select('id').single()
@@ -220,9 +223,27 @@ export default function SucursalesPage() {
           <div className="space-y-3 pt-2 border-t border-neutral-100">
             <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Métodos de pago</p>
             <div className="flex items-center gap-2"><input type="checkbox" id="ef" checked={pagos.acepta_efectivo} onChange={e => setPagos({ ...pagos, acepta_efectivo: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef" className="cursor-pointer flex items-center gap-1.5"><Banknote className="h-4 w-4 text-neutral-400" /> Efectivo</Label></div>
+            {pagos.acepta_efectivo && (
+              <div className="ml-6 space-y-2">
+                <div className="flex items-center gap-2"><input type="checkbox" id="ef-kiosk" checked={pagos.acepta_efectivo_kiosk} onChange={e => setPagos({ ...pagos, acepta_efectivo_kiosk: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef-kiosk" className="cursor-pointer text-sm">Habilitar en Kiosk</Label></div>
+                <div className="flex items-center gap-2"><input type="checkbox" id="ef-delivery" checked={pagos.acepta_efectivo_delivery} onChange={e => setPagos({ ...pagos, acepta_efectivo_delivery: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef-delivery" className="cursor-pointer text-sm">Habilitar en Delivery</Label></div>
+                <div className="flex items-center gap-2"><input type="checkbox" id="ef-mesa" checked={pagos.acepta_efectivo_mesa} onChange={e => setPagos({ ...pagos, acepta_efectivo_mesa: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef-mesa" className="cursor-pointer text-sm">Habilitar en Mesas</Label></div>
+                <div className="flex items-center gap-2"><input type="checkbox" id="ef-ta" checked={pagos.acepta_efectivo_takeaway} onChange={e => setPagos({ ...pagos, acepta_efectivo_takeaway: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef-ta" className="cursor-pointer text-sm">Habilitar en Take Away</Label></div>
+                {!pagos.acepta_efectivo_takeaway && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <p className="text-amber-800 text-xs font-medium">💡 Take Away queda <span className="font-bold">solo prepago</span> — recomendado para evitar pedidos fantasma: el cliente deberá pagar (Mercado Pago o transferencia con comprobante obligatorio) antes de confirmar el pedido.</p>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <div className="flex items-center gap-2"><input type="checkbox" id="tr" checked={pagos.acepta_transferencia} onChange={e => setPagos({ ...pagos, acepta_transferencia: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr" className="cursor-pointer flex items-center gap-1.5"><CreditCard className="h-4 w-4 text-neutral-400" /> Transferencia</Label></div>
-              {pagos.acepta_transferencia && <div className="ml-6 space-y-2"><div><Label>CBU / Alias</Label><Input value={pagos.cbu_transferencia ?? ''} onChange={e => setPagos({ ...pagos, cbu_transferencia: e.target.value })} placeholder="tu.alias" className="font-mono text-sm mt-1" /></div><div><Label>Titular de la cuenta</Label><Input value={pagos.titular_transferencia ?? ''} onChange={e => setPagos({ ...pagos, titular_transferencia: e.target.value })} placeholder="Lucía Pérez" className="text-sm mt-1" /></div></div>}
+              {pagos.acepta_transferencia && <div className="ml-6 space-y-2">
+                <div className="flex items-center gap-2"><input type="checkbox" id="tr-kiosk" checked={pagos.acepta_transferencia_kiosk} onChange={e => setPagos({ ...pagos, acepta_transferencia_kiosk: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr-kiosk" className="cursor-pointer text-sm">Habilitar en Kiosk</Label></div>
+                <div className="flex items-center gap-2"><input type="checkbox" id="tr-delivery" checked={pagos.acepta_transferencia_delivery} onChange={e => setPagos({ ...pagos, acepta_transferencia_delivery: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr-delivery" className="cursor-pointer text-sm">Habilitar en Delivery</Label></div>
+                <div className="flex items-center gap-2"><input type="checkbox" id="tr-mesa" checked={pagos.acepta_transferencia_mesa} onChange={e => setPagos({ ...pagos, acepta_transferencia_mesa: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr-mesa" className="cursor-pointer text-sm">Habilitar en Mesas</Label></div>
+                <div className="flex items-center gap-2"><input type="checkbox" id="tr-ta" checked={pagos.acepta_transferencia_takeaway} onChange={e => setPagos({ ...pagos, acepta_transferencia_takeaway: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr-ta" className="cursor-pointer text-sm">Habilitar en Take Away</Label></div>
+                <div><Label>CBU / Alias</Label><Input value={pagos.cbu_transferencia ?? ''} onChange={e => setPagos({ ...pagos, cbu_transferencia: e.target.value })} placeholder="tu.alias" className="font-mono text-sm mt-1" /></div><div><Label>Titular de la cuenta</Label><Input value={pagos.titular_transferencia ?? ''} onChange={e => setPagos({ ...pagos, titular_transferencia: e.target.value })} placeholder="Lucía Pérez" className="text-sm mt-1" /></div></div>}
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-2"><input type="checkbox" id="mp" checked={pagos.acepta_mp} onChange={e => setPagos({ ...pagos, acepta_mp: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="mp" className="cursor-pointer flex items-center gap-1.5"><Smartphone className="h-4 w-4 text-neutral-400" /> Mercado Pago</Label></div>
