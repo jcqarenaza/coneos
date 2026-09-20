@@ -109,7 +109,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   useEffect(() => {
     if (pagosIniciales) return
-    fetch(`/api/kiosk/pagos?sucursal_id=${dispositivo.sucursal_id}&canal=DELIVERY`)
+    // F-C: el canal se declara — TAKEAWAY recibe sus medios resueltos por canal
+    fetch(`/api/kiosk/pagos?sucursal_id=${dispositivo.sucursal_id}&canal=${esTakeaway ? 'TAKEAWAY' : 'DELIVERY'}`)
       .then(r => r.json()).then(data => { setPagosSucursal(data) })
   }, [dispositivo, pagosIniciales])
 
@@ -180,8 +181,15 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     setPaso('pago')
   }
 
+  // F-C (orden CTO): TA en modo prepago = el canal no acepta efectivo. En ese
+  // modo la transferencia exige comprobante ANTES de crear el pedido — "sin
+  // captura → no crear". La captura NO equivale a pago acreditado: el pedido
+  // nace PENDING_PAYMENT igual (semántica prepago-declarado).
+  const prepagoTA = esTakeaway && pagosSucursal !== null && !pagosSucursal.acepta_efectivo
+
   async function confirmarPago() {
     setErrorPedido(null)
+    if (metodoPago === 'transferencia' && prepagoTA && !pedidoRef.current) { setPaso('transferencia'); return }
     const pedido = await crearPedido(metodoPago)
     if (!pedido) return
     if (metodoPago === 'transferencia') { setPaso('transferencia') }
@@ -221,8 +229,16 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   }
 
   async function confirmarTransferencia() {
-    const p = pedidoRef.current
-    if (!p) return
+    let p = pedidoRef.current
+    if (!p) {
+      // F-C prepago: el pedido se crea RECIÉN acá, con el comprobante en mano
+      if (prepagoTA && !captura) { setErrorPedido('Subí el comprobante de tu transferencia para confirmar el pedido.'); return }
+      setErrorPedido(null)
+      const creado = await crearPedido('transferencia')
+      if (!creado) return
+      p = pedidoRef.current
+      if (!p) return
+    }
     if (captura) await subirCaptura(p.id) // la API sube y guarda la URL en el pedido
     onPedidoCreado(p.numero, p.codigo)
     setPaso('exito')
@@ -303,7 +319,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     if (pagosSucursal?.acepta_transferencia) metodos.push({ id: 'transferencia', label: 'Transferencia bancaria', desc: `Alias: ${pagosSucursal.cbu_transferencia ?? ''}${pagosSucursal.titular_transferencia ? ` · a nombre de ${pagosSucursal.titular_transferencia}` : ''}` })
     // FASE 4: acepta_mp llega RESUELTO del server (credencial usable + checkbox + llave del canal)
     if (mpPermitido && pagosSucursal?.acepta_mp) metodos.push({ id: 'mp', label: 'Mercado Pago', desc: 'Pagá con QR o link' })
-    if (!metodos.length) metodos.push({ id: 'efectivo', label: esTakeaway ? 'Efectivo al retirar' : 'Efectivo al repartidor', desc: esTakeaway ? 'Pagás cuando retires tu pedido' : 'Pagás cuando llegue tu pedido' })
+    // F-C: fin del fallback que resucitaba efectivo con lista vacía — si la
+    // config no deja ningún medio, se dice de frente (y el server igual manda).
 
     return (
       <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
@@ -350,7 +367,12 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
                       </div>
                     )}
 
-          <button onClick={confirmarPago} disabled={creando}
+          {metodos.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 text-center">
+              <p className="text-amber-800 text-sm font-semibold">😕 No hay medios de pago disponibles en este momento. Consultá en el local.</p>
+            </div>
+          )}
+          <button onClick={confirmarPago} disabled={creando || metodos.length === 0}
             className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ backgroundColor: config.primary_color }}>
             {creando ? <><Loader2 className="h-5 w-5 animate-spin" /> Procesando...</> : 'Confirmar pedido →'}
@@ -386,14 +408,16 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               )}
             </div>
           )}
-          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
-            <p className="text-amber-700 text-xs text-center font-medium">Incluí el número de pedido #{pedidoNum} en el comentario</p>
-          </div>
+          {pedidoNum !== null && (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+              <p className="text-amber-700 text-xs text-center font-medium">Incluí el número de pedido #{pedidoNum} en el comentario</p>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-4">
           <p className="text-sm font-bold text-neutral-700 mb-1">Subir comprobante</p>
-          <p className="text-xs text-neutral-400 mb-3">Opcional pero recomendado — acelera la confirmación</p>
+          <p className="text-xs text-neutral-400 mb-3">{prepagoTA ? '📎 Obligatorio — tu pedido se confirma con el comprobante' : 'Opcional pero recomendado — acelera la confirmación'}</p>
           {capturaPreview ? (
             <div className="relative rounded-xl overflow-hidden">
               <img src={capturaPreview} alt="Comprobante" className="w-full max-h-52 object-contain bg-neutral-50" />
@@ -413,10 +437,15 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             onChange={e => { const f = e.target.files?.[0]; if (f) handleCaptura(f); e.target.value = '' }} />
         </div>
 
-        <button onClick={confirmarTransferencia} disabled={subiendoCaptura}
+        {errorPedido && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-3 mb-3 text-center">
+            <p className="text-red-600 text-sm font-semibold">{errorPedido}</p>
+          </div>
+        )}
+        <button onClick={confirmarTransferencia} disabled={subiendoCaptura || creando || (prepagoTA && !pedidoRef.current && !captura)}
           className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           style={{ backgroundColor: config.primary_color }}>
-          {subiendoCaptura ? <><Loader2 className="h-5 w-5 animate-spin" /> Subiendo...</> : '✅ Ya realicé la transferencia'}
+          {(subiendoCaptura || creando) ? <><Loader2 className="h-5 w-5 animate-spin" /> {creando ? 'Confirmando...' : 'Subiendo...'}</> : (pedidoRef.current ? '✅ Ya realicé la transferencia' : '✅ Confirmar pedido')}
         </button>
       </div>
     </div>

@@ -261,7 +261,10 @@ export default function TakeawayPage() {
           carrito={carrito} costoEnvio={0}
           canal="takeaway"
           mpPermitido={ctx.pagos.acepta_mp}
-          pagosIniciales={ctx.pagos as never}
+          // F-C: pagosIniciales ya NO se inyecta del contexto (venía sin canal
+          // y resucitaba medios apagados) — el checkout consulta
+          // /api/kiosk/pagos?canal=TAKEAWAY, que resuelve por canal (Capa 1)
+          pagosIniciales={null}
           horarioTexto={horarioTexto}
           slotsRetiro={ctx.takeaway.slots_retiro ?? []}
           pedidoCreado={pedidoCreado}
