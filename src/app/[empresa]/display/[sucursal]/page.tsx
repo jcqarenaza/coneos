@@ -221,7 +221,10 @@ export default function DisplayPage() {
                   return (
                     <div key={p.id} className="flex flex-col items-center bg-white rounded-3xl shadow-md border-2 px-8 py-6" style={{ minWidth: 190, borderColor: `${config.primary_color}30` }}>
                       <p className="font-black leading-none" style={{ fontSize: '4.5rem', color: config.primary_color }}>#{p.numero_pedido}</p>
-                      <p className="text-sm font-black tracking-wider text-neutral-500 mt-3">{c.emoji} {c.label}</p>
+                      {/* F-B (orden CTO 20/09): el cliente reclama por el código de su
+                          confirmación — número y código juntos, mismo dato ya presente */}
+                      {p.codigo_retiro && <p className="text-base font-bold font-mono text-neutral-400 mt-1.5 tracking-widest">{p.codigo_retiro}</p>}
+                      <p className="text-sm font-black tracking-wider text-neutral-500 mt-2">{c.emoji} {c.label}</p>
                     </div>
                   )
                 })}
