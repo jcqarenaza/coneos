@@ -107,6 +107,40 @@ export async function POST(request: Request) {
     }
   }
 
+  // ══ F-C — GUARD DE MEDIOS DE PAGO POR CANAL (orden CTO 20/09) ══
+  // NO NEGOCIABLE: la regla de negocio de cobro se garantiza ACÁ, no en la UI.
+  // El cliente puede mandar cualquier metodo_pago — el server resuelve los
+  // permitidos del canal contra sucursal_pagos y rechaza con 409 ANTES de la
+  // RPC (patrón rechazo-temprano: no consume numeración ni efecto alguno).
+  // EXENTOS: venta_caja (operador cobrando presencial, mismo criterio que su
+  // exención de horario) y MESA (fuera de F-C por orden CTO — su circuito de
+  // cuentas/pagar-al-mozo no se toca).
+  // MP no se valida acá: su disponibilidad real la resuelve la credencial en
+  // /api/mp/preferencia (server-authoritative desde Fase 4) — un pedido
+  // PENDING_PAYMENT con mp sin credencial muere ahí, sin efectos.
+  // La regla se evalúa AL CREAR: pedidos previos a un cambio de toggle no se
+  // modifican retroactivamente (decisión CTO).
+  if (!venta_caja && origen !== 'MESA' && (metodo_pago === 'efectivo' || metodo_pago === 'transferencia')) {
+    const canalGuard = canalDePedido(tipo_pedido).toLowerCase() as 'kiosk' | 'delivery' | 'takeaway' | 'mesa' | 'caja'
+    const { data: sp } = await supabase.from('sucursal_pagos')
+      .select('acepta_efectivo, acepta_transferencia, acepta_efectivo_kiosk, acepta_efectivo_delivery, acepta_efectivo_mesa, acepta_efectivo_takeaway, acepta_transferencia_kiosk, acepta_transferencia_delivery, acepta_transferencia_mesa, acepta_transferencia_takeaway')
+      .eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id).maybeSingle()
+    // Sin fila de pagos = comportamiento histórico (todo permitido por default)
+    if (sp) {
+      const llave = (base: boolean | null, porCanal: Record<string, boolean | null>): boolean => {
+        const canalKey = canalGuard === 'caja' ? 'kiosk' : canalGuard // caja pública no existe; defensa
+        const especifica = porCanal[canalKey]
+        return (base ?? true) && (especifica ?? true)
+      }
+      const permitido = metodo_pago === 'efectivo'
+        ? llave(sp.acepta_efectivo, { kiosk: sp.acepta_efectivo_kiosk, delivery: sp.acepta_efectivo_delivery, mesa: sp.acepta_efectivo_mesa, takeaway: sp.acepta_efectivo_takeaway })
+        : llave(sp.acepta_transferencia, { kiosk: sp.acepta_transferencia_kiosk, delivery: sp.acepta_transferencia_delivery, mesa: sp.acepta_transferencia_mesa, takeaway: sp.acepta_transferencia_takeaway })
+      if (!permitido) {
+        return NextResponse.json({ error: 'Ese medio de pago no está disponible para este pedido. Elegí otro método.' }, { status: 409 })
+      }
+    }
+  }
+
   // ── MESA: resolver la cuenta (regla de Juan Cruz: si hay cuenta abierta con
   // saldo pendiente, el pedido SUMA a esa cuenta; si lo anterior está todo pago,
   // se cierra y se abre cuenta nueva) ──
@@ -249,4 +283,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ pedido: { ...(pedido as object), hora_retiro: horaRetiroConfirmada } })
 }
-
