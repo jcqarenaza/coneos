@@ -426,13 +426,27 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   // Canvas dibujado a mano — cero dependencias, cero infraestructura. Botón
   // explícito (gesto del usuario: robusto en iOS/Safari), nunca auto-descarga.
   // El cliente sin cuenta se lleva su evidencia; el flujo de compra no cambia.
-  function guardarComprobante() {
+  async function guardarComprobante() {
     const num = pedidoCreado?.numero ?? pedidoNum
     const cod = pedidoCreado?.codigo ?? codigoRetiro
     const comercio = ((dispositivo as unknown as { empresas?: { nombre?: string } }).empresas?.nombre) ?? ''
+    // Logo del comercio (pedido JC): se intenta cargar con timeout — si falla
+    // (red/CORS), el comprobante sale igual sin logo. La descarga nunca se
+    // bloquea por una imagen.
+    let logo: HTMLImageElement | null = null
+    if (config.logo_url) {
+      logo = await new Promise<HTMLImageElement | null>(res => {
+        const im = new Image()
+        im.crossOrigin = 'anonymous'
+        const t = setTimeout(() => res(null), 2500)
+        im.onload = () => { clearTimeout(t); res(im) }
+        im.onerror = () => { clearTimeout(t); res(null) }
+        im.src = config.logo_url as string
+      })
+    }
     const W = 640
     const lineas = carrito.length + (costoEnvio > 0 && !esTakeaway ? 1 : 0)
-    const H = 460 + lineas * 34 + (esTakeaway && cod ? 110 : 0)
+    const H = 460 + lineas * 34 + (esTakeaway && cod ? 110 : 0) + (logo ? 96 : 0)
     const cv = document.createElement('canvas')
     cv.width = W; cv.height = H
     const cx = cv.getContext('2d')
@@ -441,6 +455,12 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, W, H)
     let y = 56
     cx.textAlign = 'center'; cx.fillStyle = '#171717'
+    if (logo) {
+      const maxH = 72, maxW = 260
+      const esc = Math.min(maxH / logo.height, maxW / logo.width, 1)
+      const lw = logo.width * esc, lh = logo.height * esc
+      try { cx.drawImage(logo, (W - lw) / 2, y - 34, lw, lh); y += lh + 14 } catch { /* canvas tainted: seguimos sin logo */ }
+    }
     if (comercio) { cx.font = 'bold 26px system-ui, sans-serif'; cx.fillText(comercio, W / 2, y); y += 30 }
     cx.font = '13px system-ui, sans-serif'; cx.fillStyle = '#a3a3a3'
     cx.fillText('COMPROBANTE DE PEDIDO · ' + new Date().toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }), W / 2, y); y += 44
