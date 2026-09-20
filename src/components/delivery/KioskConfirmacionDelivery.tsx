@@ -422,6 +422,74 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     </div>
   )
 
+  // ── F-D (orden CTO 20/09): comprobante como imagen descargable ──
+  // Canvas dibujado a mano — cero dependencias, cero infraestructura. Botón
+  // explícito (gesto del usuario: robusto en iOS/Safari), nunca auto-descarga.
+  // El cliente sin cuenta se lleva su evidencia; el flujo de compra no cambia.
+  function guardarComprobante() {
+    const num = pedidoCreado?.numero ?? pedidoNum
+    const cod = pedidoCreado?.codigo ?? codigoRetiro
+    const comercio = ((dispositivo as unknown as { empresas?: { nombre?: string } }).empresas?.nombre) ?? ''
+    const W = 640
+    const lineas = carrito.length + (costoEnvio > 0 && !esTakeaway ? 1 : 0)
+    const H = 460 + lineas * 34 + (esTakeaway && cod ? 110 : 0)
+    const cv = document.createElement('canvas')
+    cv.width = W; cv.height = H
+    const cx = cv.getContext('2d')
+    if (!cx) return
+    // fondo blanco
+    cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, W, H)
+    let y = 56
+    cx.textAlign = 'center'; cx.fillStyle = '#171717'
+    if (comercio) { cx.font = 'bold 26px system-ui, sans-serif'; cx.fillText(comercio, W / 2, y); y += 30 }
+    cx.font = '13px system-ui, sans-serif'; cx.fillStyle = '#a3a3a3'
+    cx.fillText('COMPROBANTE DE PEDIDO · ' + new Date().toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }), W / 2, y); y += 44
+    // número
+    cx.fillStyle = config.primary_color || '#171717'
+    cx.font = '900 84px system-ui, sans-serif'
+    cx.fillText('#' + (num ?? ''), W / 2, y + 40); y += 96
+    // código de retiro (TA)
+    if (esTakeaway && cod) {
+      cx.font = '12px system-ui, sans-serif'; cx.fillStyle = '#a3a3a3'
+      cx.fillText('CÓDIGO DE RETIRO', W / 2, y); y += 34
+      cx.font = '900 52px ui-monospace, monospace'; cx.fillStyle = config.primary_color || '#171717'
+      cx.fillText(cod, W / 2, y); y += 44
+    }
+    // separador
+    cx.strokeStyle = '#e5e5e5'; cx.beginPath(); cx.moveTo(48, y); cx.lineTo(W - 48, y); cx.stroke(); y += 34
+    // detalle
+    cx.textAlign = 'left'; cx.font = '16px system-ui, sans-serif'
+    for (const it of carrito) {
+      cx.fillStyle = '#404040'
+      const nom = `${it.cantidad > 1 ? it.cantidad + '× ' : ''}${it.nombre_producto} — ${it.nombre_presentacion}`
+      cx.fillText(nom.length > 44 ? nom.slice(0, 43) + '…' : nom, 48, y)
+      cx.textAlign = 'right'; cx.fillText(formatPrecio(it.precio * it.cantidad), W - 48, y)
+      cx.textAlign = 'left'; y += 34
+    }
+    if (costoEnvio > 0 && !esTakeaway) {
+      cx.fillStyle = '#737373'; cx.fillText('Envío', 48, y)
+      cx.textAlign = 'right'; cx.fillText(formatPrecio(costoEnvio), W - 48, y)
+      cx.textAlign = 'left'; y += 34
+    }
+    cx.strokeStyle = '#e5e5e5'; cx.beginPath(); cx.moveTo(48, y); cx.lineTo(W - 48, y); cx.stroke(); y += 40
+    cx.font = '900 26px system-ui, sans-serif'; cx.fillStyle = '#171717'
+    cx.fillText('TOTAL', 48, y)
+    cx.textAlign = 'right'; cx.fillStyle = config.primary_color || '#171717'; cx.fillText(formatPrecio(total), W - 48, y)
+    // pie
+    y += 48; cx.textAlign = 'center'; cx.font = '13px system-ui, sans-serif'; cx.fillStyle = '#a3a3a3'
+    cx.fillText(esTakeaway ? 'Presentá este comprobante al retirar tu pedido' : 'Presentá este comprobante al recibir tu pedido', W / 2, y)
+    // descarga (gesto del usuario)
+    cv.toBlob(blob => {
+      if (!blob) return
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `pedido-${num ?? 'coneos'}${cod ? '-' + cod : ''}.png`
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 4000)
+    }, 'image/png')
+  }
+
   // ── ÉXITO ──
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-5" style={{ backgroundColor: '#faf8f5' }}>
@@ -473,6 +541,11 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           </div>
         </div>
 
+        <button onClick={guardarComprobante}
+          className="w-full py-3.5 rounded-2xl text-white font-bold text-sm active:opacity-80 transition-opacity mb-3 shadow-sm"
+          style={{ backgroundColor: config.primary_color }}>
+          ⬇️ Guardar comprobante
+        </button>
         <button onClick={onNuevoPedido}
           className="w-full py-3.5 rounded-2xl border-2 border-neutral-200 text-neutral-600 font-semibold text-sm active:bg-neutral-50 transition-colors">
           Hacer otro pedido
