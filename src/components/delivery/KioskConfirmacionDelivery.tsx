@@ -475,7 +475,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     }
     const W = 640
     const lineas = carrito.length + (costoEnvio > 0 && !esTakeaway ? 1 : 0)
-    const H = 460 + lineas * 34 + (esTakeaway && cod ? 110 : 0) + (esTakeaway && cod && horaConfirmada ? 40 : 0) + (logo ? 96 : 0)
+    const H = 460 + lineas * 34 + (esTakeaway && cod ? 110 : 0) + (esTakeaway && cod && (horaConfirmada || slotsRetiro.length > 0) ? 40 : 0) + (logo ? 96 : 0)
     const cv = document.createElement('canvas')
     cv.width = W; cv.height = H
     const cx = cv.getContext('2d')
@@ -505,10 +505,12 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       cx.fillText(cod, W / 2, y); y += 44
       // hora de retiro elegida (matriz F-C test 8): el dato que el mostrador y
       // el cliente van a mirar juntos — al comprobante también
-      if (horaConfirmada) {
-        const horaTxt = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConfirmada))
+      const horaComprobante = horaConfirmada
+        ? new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConfirmada))
+        : (slotsRetiro.length > 0 ? `desde las ${slotsRetiro[0].label}` : null)
+      if (horaComprobante) {
         cx.font = 'bold 20px system-ui, sans-serif'; cx.fillStyle = '#404040'
-        cx.fillText(`🕐 Retiro: ${horaTxt} hs`, W / 2, y); y += 36
+        cx.fillText(`🕐 Retiro: ${horaComprobante}`, W / 2, y); y += 36
       }
     }
     // separador
@@ -575,6 +577,12 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               {horaConfirmada ? (
                 <p className="inline-block mt-3 px-4 py-2 rounded-xl text-white font-bold text-base" style={{ backgroundColor: config.primary_color }}>
                   🕐 Retiralo a las {new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConfirmada))}
+                </p>
+              ) : slotsRetiro.length > 0 ? (
+                // "Lo antes posible": el dato útil es el PRÓXIMO retiro posible,
+                // no el rango del día entero (pedido JC, matriz F-C)
+                <p className="inline-block mt-3 px-4 py-2 rounded-xl text-white font-bold text-base" style={{ backgroundColor: config.primary_color }}>
+                  🕐 Retiralo desde las {slotsRetiro[0].label}
                 </p>
               ) : (
                 horarioTexto && <p className="text-neutral-400 text-xs mt-1">🕗 Horario de retiro: {horarioTexto}</p>
