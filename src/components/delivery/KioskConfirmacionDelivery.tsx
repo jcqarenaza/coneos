@@ -95,6 +95,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     if (pagosIniciales) { setPagosSucursal(pagosIniciales); return }
   }, [pagosIniciales])
   const [metodoPago, setMetodoPago] = useState('efectivo')
+  const [pagosSucursal, setPagosSucursal] = useState<PagosSucursal | null>(null)
   // F-C (matriz): el método seleccionado debe ser uno DISPONIBLE. Si el actual
   // quedó afuera (ej: efectivo apagado por llave del canal), se selecciona el
   // primero disponible — con un solo medio, queda elegido por defecto.
@@ -107,7 +108,6 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     if (ids.length > 0 && !ids.includes(metodoPago)) setMetodoPago(ids[0])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagosSucursal, mpPermitido])
-  const [pagosSucursal, setPagosSucursal] = useState<PagosSucursal | null>(null)
   const [creando, setCreando] = useState(false)
   const [pedidoId, setPedidoId] = useState<string | null>(null)
   const [pedidoNum, setPedidoNum] = useState<number | null>(null)
