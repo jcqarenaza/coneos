@@ -223,7 +223,7 @@ export default function DisplayPage() {
                       <p className="font-black leading-none" style={{ fontSize: '4.5rem', color: config.primary_color }}>#{p.numero_pedido}</p>
                       {/* F-B (orden CTO 20/09): el cliente reclama por el código de su
                           confirmación — número y código juntos, mismo dato ya presente */}
-                      {p.codigo_retiro && <p className="text-base font-bold font-mono text-neutral-400 mt-1.5 tracking-widest">{p.codigo_retiro}</p>}
+                      {p.codigo_retiro && <p className="text-3xl font-black font-mono text-neutral-500 mt-2 tracking-[0.25em]">{p.codigo_retiro}</p>}
                       <p className="text-sm font-black tracking-wider text-neutral-500 mt-2">{c.emoji} {c.label}</p>
                     </div>
                   )
