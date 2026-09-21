@@ -23,16 +23,17 @@ const ROJO = '#EA4350'
 
 const MODULOS = [
   { emoji: '🛒', color: AZUL, title: 'Kiosco / Autopedido', desc: 'El cliente arma su pedido desde un celular, tablet o tótem, con fotos y opciones de cada producto.' },
-  { emoji: '📱', color: VERDE, title: 'Delivery', desc: 'Pedidos online con datos del cliente, envío, cadetes con comanda, pagos y horarios por sucursal.' },
-  { emoji: '🥡', color: AMARILLO, title: 'Take Away', desc: 'El cliente pide desde su celular sin estar en el local y retira mostrando su código. Sin registro: solo el nombre.' },
+  { emoji: '📱', color: VERDE, title: 'Delivery', desc: 'Pedidos online con datos del cliente, envío, cadetes con comanda, pagos y horarios por sucursal. Con pago online, el pedido entra ya cobrado.' },
+  { emoji: '🥡', color: AMARILLO, title: 'Take Away', desc: 'El cliente pide desde su celular, elige horario de retiro y muestra su código al llegar. Modo prepago opcional: se paga antes de confirmar, y los pedidos fantasma se terminan.' },
   { emoji: '🍽️', color: AMARILLO, title: 'Mesas', desc: 'QR por mesa, pedidos desde el celular, cuenta abierta que suma y cobro — incluso dividido entre varios medios.' },
   { emoji: '💰', color: ROJO, title: 'Caja', desc: 'Todos los pedidos en un solo lugar: medios de pago, comprobantes, resumen del día y control por canal.' },
   { emoji: '👨‍🍳', color: AZUL, title: 'Preparación', desc: 'Los pedidos llegan automáticamente al área correspondiente, con el detalle exacto de cada unidad.' },
-  { emoji: '🖥️', color: VERDE, title: 'Display', desc: 'Pantalla de mostrador con dos zonas — en preparación y para retirar — que distingue cada canal: mostrador, delivery y take away.' },
-  { emoji: '🧾', color: NAVY, title: 'Facturación', desc: 'Integración con ARCA para facturación electrónica: comprobante con CAE y QR fiscal desde la misma venta.' },
-  { emoji: '💳', color: AZUL, title: 'Mercado Pago', desc: 'Cobros integrados usando la cuenta de Mercado Pago del comercio. La plata va directo a tu cuenta.' },
+  { emoji: '🖥️', color: VERDE, title: 'Display', desc: 'Pantalla de mostrador en tiempo real: en preparación y para retirar, con número y código grandes para cantar cada pedido de cualquier canal.' },
+  { emoji: '🧾', color: NAVY, title: 'Facturación', desc: 'Integración con ARCA: comprobante con CAE y QR fiscal desde la misma venta — y automático cuando el pago online se acredita.' },
+  { emoji: '💳', color: AZUL, title: 'Mercado Pago', desc: 'El cliente paga online desde su celular y el pedido se marca cobrado solo, al instante. La plata va directo a la cuenta del comercio, sin intermediarios.' },
   { emoji: '👥', color: ROJO, title: 'Clientes y beneficios', desc: 'Identificación por teléfono, puntos por compra y canjes configurables. Sin registros ni contraseñas.' },
   { emoji: '📊', color: AMARILLO, title: 'Gestión', desc: 'Ventas, productos, opciones, sucursales, equipo, dispositivos, horarios y métricas del negocio.' },
+  { emoji: '📲', color: ROJO, title: 'Tu app, con tu marca', desc: 'Los clientes instalan el acceso en su celular como una app: con el logo, el ícono y los colores del negocio. Y el comprobante del pedido les llega con tu marca.' },
 ]
 
 const RUBROS: [string, string][] = [
@@ -44,7 +45,7 @@ const FLUJO = [
   { n: '1', color: AZUL, t: 'El cliente pide', d: 'Kiosco · QR de mesa · Delivery · Take Away' },
   { n: '2', color: VERDE, t: 'El pedido entra', d: 'Todos los canales llegan a GastrOS, con su número y detalle.' },
   { n: '3', color: AMARILLO, t: 'Se prepara', d: 'El equipo recibe exactamente qué tiene que preparar.' },
-  { n: '4', color: ROJO, t: 'Se cobra', d: 'Caja registra el pago: efectivo, transferencia o Mercado Pago.' },
+  { n: '4', color: ROJO, t: 'Se cobra', d: 'Efectivo, transferencia o Mercado Pago online — pagado desde el celular, se acredita y marca solo.' },
   { n: '5', color: NAVY, t: 'Se entrega', d: 'El pedido queda finalizado y trazable de punta a punta.' },
 ]
 
@@ -54,7 +55,9 @@ const FAQ: [string, string][] = [
   ['¿Necesito comprar hardware?', 'El hardware no está incluido. GastrOS funciona en celulares, tablets, tótems y otros dispositivos compatibles según el módulo.'],
   ['¿Puedo recibir pedidos por QR?', 'Sí. Cada mesa puede tener su QR, y el pedido cae directo a preparación.'],
   ['¿Puedo trabajar con delivery?', 'Sí, con formulario de entrega, cadetes y horarios configurables por sucursal.'],
-  ['¿Puedo integrar Mercado Pago?', 'Sí. Se integra con la cuenta de Mercado Pago del comercio: los cobros van directo a tu cuenta.'],
+  ['¿Puedo integrar Mercado Pago?', 'Sí. El cliente paga online desde su celular y el pedido queda cobrado automáticamente. Los cobros van directo a la cuenta de Mercado Pago del comercio.'],
+  ['¿Cómo evito los pedidos que nadie retira?', 'Con el modo prepago del Take Away: el cliente paga (Mercado Pago o transferencia con comprobante) antes de confirmar. Sin pago, no hay pedido.'],
+  ['¿El cliente recibe un comprobante?', 'Sí: al confirmar descarga un comprobante digital con el logo del negocio, su número de pedido, el código de retiro y el horario elegido.'],
   ['¿Puedo facturar desde GastrOS?', 'Sí, mediante la integración fiscal correspondiente con ARCA: el comprobante sale con CAE y QR desde la misma venta.'],
   ['¿Tengo que cambiar mi forma de trabajar?', 'No necesariamente. GastrOS se configura según la operación del negocio: podés empezar por un canal y sumar el resto cuando quieras.'],
   ['¿Me ayudan con la implementación?', 'Sí. La implementación incluye configuración, capacitación y acompañamiento inicial.'],
