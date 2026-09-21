@@ -58,6 +58,9 @@ export default function KioskPage() {
   const [error, setError] = useState<string | null>(null)
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
   const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>(undefined)
+  // Ciclo 3: gate por horario del negocio (server-side; re-chequeo por minuto
+  // para que el tótem cierre y reviva solo, sin manos)
+  const [horarioNegocio, setHorarioNegocio] = useState<{ abierto: boolean; horarios: { desde: string; hasta: string }[]; mensaje: string } | null>(null)
   const [catalogoKey, setCatalogoKey] = useState(0)
 
   useEffect(() => {
@@ -88,6 +91,20 @@ export default function KioskPage() {
       .catch(() => setError('Error de conexión'))
       .finally(() => setLoading(false))
   }, [token])
+
+  useEffect(() => {
+    if (!dispositivo) return
+    let vivo = true
+    async function chequear() {
+      try {
+        const r = await fetch(`/api/kiosk/horario?sucursal_id=${dispositivo!.sucursal_id}`)
+        if (r.ok && vivo) setHorarioNegocio(await r.json())
+      } catch {}
+    }
+    chequear()
+    const int = setInterval(chequear, 60000)
+    return () => { vivo = false; clearInterval(int) }
+  }, [dispositivo])
 
   useEffect(() => {
     if (!config) return
@@ -152,6 +169,25 @@ export default function KioskPage() {
       </div>
     </div>
   )
+
+  // Gate del negocio: fuera de horario, el tótem muestra el cerrado con la
+  // marca y los horarios — y revive solo cuando el reloj lo habilita
+  if (horarioNegocio && !horarioNegocio.abierto) {
+    const horariosTexto = [...horarioNegocio.horarios].sort((a, b) => a.desde.localeCompare(b.desde)).map(h => `${h.desde} a ${h.hasta}`).join(' y ')
+    return (
+      <div className="min-h-screen select-none flex flex-col items-center justify-center px-8 text-center gap-4" style={{ backgroundColor: '#faf8f5' }}>
+        <LatidoDispositivo empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} dispositivoId={dispositivo.id} tipo="KIOSK" />
+        {config.logo_url
+          ? <img src={config.logo_url} alt="Logo" className="w-36 h-36 object-contain" />
+          : null}
+        <h2 className="text-3xl font-black text-neutral-800">Estamos cerrados</h2>
+        {horariosTexto && (
+          <p className="text-neutral-700 text-base font-semibold bg-white border border-neutral-100 rounded-2xl px-6 py-4 shadow-sm">🕗 Nuestro horario: {horariosTexto}</p>
+        )}
+        <p className="text-neutral-500 text-lg max-w-sm">{horarioNegocio.mensaje}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen select-none" style={{ backgroundColor: '#faf8f5' }}>
