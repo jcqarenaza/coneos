@@ -25,6 +25,7 @@ import { ConePageHeader, ConeCard } from '@/components/admin/ConeComponents'
 import { Loader2, Plus, X, CloudRain } from 'lucide-react'
 import DispositivosTab from '@/components/admin/DispositivosTab'
 import QrAccesosTab from '@/components/admin/QrAccesosTab'
+import EquipoTab from '@/components/admin/EquipoTab'
 
 interface Franja { desde: string; hasta: string }
 interface Sucursal { id: string; nombre: string }
@@ -91,7 +92,7 @@ export default function ServiciosPage() {
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState<string | null>(null)
   // Orden de flujo (decisión JC): creás el dispositivo → horarios y servicios → mensajes → QR
-  const [tab, setTab] = useState<'dispositivos' | 'servicios' | 'mensajes' | 'qr'>('dispositivos')
+  const [tab, setTab] = useState<'dispositivos' | 'equipo' | 'servicios' | 'mensajes' | 'qr'>('dispositivos')
   const [aviso, setAviso] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const avisar = (m: string) => { setAviso(m); setTimeout(() => setAviso(null), 2500) }
@@ -240,13 +241,13 @@ export default function ServiciosPage() {
 
   return (
     <div className="space-y-5">
-      <ConePageHeader title="Servicios y horarios" description="Cuándo y cómo atiende cada servicio de la sucursal — todo en un solo lugar" />
+      <ConePageHeader title="Configuración del negocio" description="La casa operativa de la sucursal: dispositivos, equipo, horarios, mensajes y accesos — todo en un solo lugar" />
 
       {aviso && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-green-600 text-white rounded-full text-sm font-semibold shadow-lg pointer-events-none">✓ {aviso}</div>}
       {error && <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 font-medium">{error}</div>}
 
       <div className="flex gap-2">
-        {([['dispositivos', '🔧 Dispositivos'], ['servicios', '🕗 Horarios y servicios'], ['mensajes', '💬 Mensajes'], ['qr', '📱 QR y accesos']] as const).map(([id, label]) => (
+        {([['dispositivos', '🔧 Dispositivos'], ['equipo', '👥 Equipo'], ['servicios', '🕗 Horarios y servicios'], ['mensajes', '💬 Mensajes'], ['qr', '📱 QR y accesos']] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${tab === id ? 'bg-neutral-800 text-white' : 'bg-white border border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}>
             {label}
@@ -254,8 +255,11 @@ export default function ServiciosPage() {
         ))}
       </div>
 
-      {/* ═══ TAB DISPOSITIVOS (mudado de Operación — tokens/URLs/modal idénticos) ═══ */}
+      {/* ═══ TAB DISPOSITIVOS (tokens/URLs/modal idénticos a siempre) ═══ */}
       {tab === 'dispositivos' && <DispositivosTab />}
+
+      {/* ═══ TAB EQUIPO (Operadores + Colaboradores unificados, mudados de Operación) ═══ */}
+      {tab === 'equipo' && <EquipoTab />}
 
       {/* ═══ TAB QR Y ACCESOS (entradas públicas + mesas, dominio canónico) ═══ */}
       {tab === 'qr' && <QrAccesosTab />}
