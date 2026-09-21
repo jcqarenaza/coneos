@@ -147,7 +147,7 @@ export default function SucursalesPage() {
 
   return (
     <div>
-      <ConePageHeader title="Sucursales" description="Gestión de sucursales y métodos de pago" action={{ label: 'Nueva sucursal', onClick: openNew }} />
+      <ConePageHeader title="Sucursales" description="Gestión de sucursales y puntos de venta" action={{ label: 'Nueva sucursal', onClick: openNew }} />
 
       <div className="space-y-3">
         {data.length === 0 && (
@@ -168,9 +168,6 @@ export default function SucursalesPage() {
                   </div>
                   {s.direccion && <p className="text-xs text-neutral-400 mt-0.5">{s.direccion}</p>}
                   <div className="flex items-center gap-1.5 mt-1.5">
-                    {s.pagos?.acepta_efectivo && <span className="flex items-center gap-1 text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full"><Banknote className="h-3 w-3" /> Efectivo</span>}
-                    {s.pagos?.acepta_transferencia && <span className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full"><CreditCard className="h-3 w-3" /> Transferencia</span>}
-                    {s.pagos?.acepta_mp && <span className="flex items-center gap-1 text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full"><Smartphone className="h-3 w-3" /> MP</span>}
                   </div>
                 </div>
               </div>
