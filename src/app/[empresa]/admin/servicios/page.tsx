@@ -89,6 +89,8 @@ export default function ServiciosPage() {
   const [ta, setTa] = useState<TaCfg | null>(null)
   const [tieneDelivery, setTieneDelivery] = useState(true)
   const [tieneTa, setTieneTa] = useState(true)
+  const [tieneMesas, setTieneMesas] = useState(false)
+  const [mesasActivo, setMesasActivo] = useState(true)
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState<string | null>(null)
   // Orden de flujo (decisión JC): creás el dispositivo → horarios y servicios → mensajes → QR
@@ -104,11 +106,13 @@ export default function ServiciosPage() {
       supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre').eq('id', sucId).maybeSingle(),
       supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio').eq('sucursal_id', sucId).maybeSingle(),
-      supabase.from('empresa_config').select('modulos').eq('empresa_id', ctx.empresaId).maybeSingle(),
+      supabase.from('empresa_config').select('modulos, mesas_activo').eq('empresa_id', ctx.empresaId).maybeSingle(),
     ])
     const mods = (cfg?.modulos ?? {}) as Record<string, boolean>
     setTieneDelivery(mods.delivery !== false)
     setTieneTa(mods.takeaway !== false)
+    setTieneMesas(mods.mesas === true)
+    setMesasActivo(cfg?.mesas_activo !== false)
     setNegocio({
       horario_general: (suc?.horario_general as Franja[] | null) ?? [],
       mensaje_cerrado: suc?.mensaje_cerrado ?? '',
@@ -170,6 +174,7 @@ export default function ServiciosPage() {
         tolerancia_cierre: ta.tolerancia_cierre,
         costo_servicio: ta.costo_servicio,
       }, { onConflict: 'sucursal_id' }),
+      ...(tieneMesas ? [supabase.from('empresa_config').update({ mesas_activo: mesasActivo }).eq('empresa_id', ctx.empresaId)] : []),
     ])
     setGuardando(null)
     const errs = [r1.error && `negocio: ${r1.error.message}`, r2.error && `delivery: ${r2.error.message}`, r3.error && `take away: ${r3.error.message}`].filter(Boolean)
@@ -349,6 +354,23 @@ export default function ServiciosPage() {
                   </td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   
+                </tr>
+              )}
+              {/* ── 🪑 MESAS (mudada de la ex-página Mesas) ──
+                  La llave es empresa_config.mesas_activo — la MISMA de siempre
+                  (los QR de mesa muestran "no disponible" cuando está apagada).
+                  Sin horario propio: mesas abre con el local (query verificada). */}
+              {tieneMesas && (
+                <tr className="border-t border-neutral-100 align-top">
+                  <td className="py-3 pr-3">
+                    <p className="font-semibold text-neutral-700 whitespace-nowrap">🪑 Mesas</p>
+                    <p className="text-[11px] text-neutral-400">pedidos desde el salón</p>
+                  </td>
+                  <td className="py-3 pr-3"><Toggle on={mesasActivo} onClick={() => setMesasActivo(!mesasActivo)} /></td>
+                  <td className="py-3 pr-3 min-w-[230px]"><span className="text-xs text-neutral-400">Abre con el local (horario del negocio)</span></td>
+                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
                 </tr>
               )}
             </tbody>

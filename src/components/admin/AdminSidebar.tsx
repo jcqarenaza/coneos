@@ -36,7 +36,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
     { href: `/${slug}/admin/cuentas`, label: 'Cuentas y cobros', icon: CreditCard },
     ...(modulos.facturacion === true ? [{ href: `/${slug}/admin/facturas`, label: 'Facturas', icon: FileText }] : []),
     ...(modulos.beneficios === true ? [{ href: `/${slug}/admin/beneficios`, label: 'Beneficios', icon: Gift }] : []),
-    ...(modulos.mesas === true ? [{ href: `/${slug}/admin/mesas`, label: 'Mesas', icon: Armchair }] : []),
+    // CASA: Mesas (llave + QRs) vive en Config. del negocio; el candado comercial de abajo queda
     { href: `/${slug}/admin/trafico`, label: 'Tráfico', icon: TrendingUp },
     { href: `/${slug}/admin/config`, label: 'Configuración', icon: Settings },
   ]
