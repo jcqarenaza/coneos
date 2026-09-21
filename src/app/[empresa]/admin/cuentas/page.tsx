@@ -42,6 +42,7 @@ export default function CuentasPage() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+  const avisoEsApagado = !!aviso && aviso.includes('deshabilitad')
 
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalSel, setSucursalSel] = useState<string>('')
@@ -148,7 +149,7 @@ export default function CuentasPage() {
 
       {error && <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700 font-medium">{error}</div>}
       {/* toast flotante: no participa del layout — el guardado no hace saltar la grilla */}
-      {aviso && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-green-600 text-white rounded-full text-sm font-semibold shadow-lg pointer-events-none">✓ {aviso}</div>}
+      {aviso && <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 text-white rounded-full text-sm font-semibold shadow-lg pointer-events-none ${avisoEsApagado ? 'bg-amber-500' : 'bg-green-600'}`}>✓ {aviso}</div>}
 
       <div className="flex gap-2">
         {([['mp', '🟦 Mercado Pago'], ['transfer', '🏦 Transferencias'], ['matriz', '🎛️ Canales y medios']] as const).map(([id, label]) => (
