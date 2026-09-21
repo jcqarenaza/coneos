@@ -93,6 +93,7 @@ export default function ServiciosPage() {
 
   const cargar = useCallback(async (sucId: string) => {
     if (!ctx?.empresaId || !sucId) return
+    console.log('[servicios] cargar config de sucursal', sucId)
     setCargando(true)
     const [{ data: suc }, { data: dc }, { data: tc }, { data: cfg }] = await Promise.all([
       supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre').eq('id', sucId).maybeSingle(),
@@ -126,9 +127,12 @@ export default function ServiciosPage() {
   }, [ctx?.empresaId, supabase])
 
   useEffect(() => {
+    console.log('[servicios] ctx:', ctx)
     if (!ctx?.empresaId) return
+    console.log('[servicios] cargando sucursales de', ctx.empresaId)
     supabase.from('sucursales').select('id, nombre').eq('empresa_id', ctx.empresaId).eq('activo', true).order('nombre')
-      .then(({ data }) => {
+      .then(({ data, error: e }) => {
+        console.log('[servicios] sucursales:', data, 'error:', e)
         const lista = (data ?? []) as Sucursal[]
         setSucursales(lista)
         if (lista.length > 0) { setSucursalSel(lista[0].id); cargar(lista[0].id) }
@@ -187,7 +191,10 @@ export default function ServiciosPage() {
   }
 
   if (!ctx || cargando) return (
-    <div className="p-8 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
+    <div className="p-8 flex flex-col items-center gap-2">
+      <Loader2 className="h-6 w-6 animate-spin text-neutral-300" />
+      <p className="text-xs text-neutral-300">{!ctx ? 'esperando contexto de empresa…' : 'cargando configuración…'}</p>
+    </div>
   )
 
   const BotonGuardar = ({ id, onClick }: { id: string; onClick: () => void }) => (
