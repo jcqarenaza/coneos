@@ -88,6 +88,7 @@ export default function ServiciosPage() {
   const [tieneTa, setTieneTa] = useState(true)
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState<string | null>(null)
+  const [tab, setTab] = useState<'servicios' | 'mensajes'>('servicios')
   const [aviso, setAviso] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const avisar = (m: string) => { setAviso(m); setTimeout(() => setAviso(null), 2500) }
@@ -199,12 +200,22 @@ export default function ServiciosPage() {
   )
 
   return (
-    <div className="p-8 max-w-4xl space-y-5">
+    <div className="space-y-5">
       <ConePageHeader title="Servicios y horarios" description="Cuándo y cómo atiende cada servicio de la sucursal — todo en un solo lugar" />
 
       {aviso && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-green-600 text-white rounded-full text-sm font-semibold shadow-lg pointer-events-none">✓ {aviso}</div>}
       {error && <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 font-medium">{error}</div>}
 
+      <div className="flex gap-2">
+        {([['servicios', '🕗 Horarios y servicios'], ['mensajes', '💬 Mensajes']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${tab === id ? 'bg-neutral-800 text-white' : 'bg-white border border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'servicios' && (
       <ConeCard>
         <div className="flex items-center justify-between gap-3 mb-4">
           <h3 className="font-bold text-neutral-800">Qué servicio atiende y cuándo</h3>
@@ -278,11 +289,13 @@ export default function ServiciosPage() {
         </div>
         <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja). Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
       </ConeCard>
+      )}
 
-      {/* ── MENSAJES CUANDO ESTÁ CERRADO ── */}
+      {/* ═══ TAB MENSAJES ═══ */}
+      {tab === 'mensajes' && (
       <ConeCard>
         <h3 className="font-bold text-neutral-800 mb-1">Mensajes al cliente</h3>
-        <p className="text-xs text-neutral-400 mb-4">Lo que ve el cliente cuando el servicio está cerrado o en pausa. Se guardan con el Guardar de cada fila de arriba.</p>
+        <p className="text-xs text-neutral-400 mb-4">Lo que ve el cliente cuando el servicio está cerrado o en pausa. Se guardan con el <b>Guardar</b> de la fila del servicio (tab Horarios).</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {negocio && (
             <div>
@@ -308,6 +321,7 @@ export default function ServiciosPage() {
           )}
         </div>
       </ConeCard>
+      )}
     </div>
   )
 }
