@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, Armchair, TrendingUp, CreditCard } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, Armchair, TrendingUp, CreditCard, Clock } from 'lucide-react'
 
 interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean>; logoUrl?: string | null }
 
@@ -31,6 +31,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
     { href: `/${slug}/admin/catalogo`, label: 'Catálogo', icon: BookOpen },
     { href: `/${slug}/admin/accesorios`, label: 'Accesorios', icon: Cherry },
     { href: `/${slug}/admin/sucursales`, label: 'Sucursales', icon: Store },
+    { href: `/${slug}/admin/servicios`, label: 'Servicios y horarios', icon: Clock },
     { href: `/${slug}/admin/operacion`, label: 'Equipo', icon: Users },
     { href: `/${slug}/admin/ventas`, label: 'Ventas', icon: BarChart3 },
     { href: `/${slug}/admin/cuentas`, label: 'Cuentas y cobros', icon: CreditCard },
