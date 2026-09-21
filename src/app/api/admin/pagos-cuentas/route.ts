@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { resolverPago, type CanalPago } from '@/lib/pagos/resolver'
 
 // ============================================================
 // /api/admin/pagos-cuentas — Fase 6.2 canales-medios-pago
@@ -20,7 +21,10 @@ import { createClient } from '@supabase/supabase-js'
 //   · medio coherente con el tipo de cuenta
 //   · unicidad (sucursal, canal, medio) — el UNIQUE de DB de respaldo
 // Este endpoint JAMÁS toca: resolver, OAuth, webhook, ARCA, Stock,
-// RPC, numeración, pedido_pagos, sucursal_pagos. Nunca lee tokens MP.
+// RPC, numeración, pedido_pagos. Nunca lee tokens MP.
+// CICLO 1 (opción A, GO CTO 21/09): set_llave es el ÚNICO camino de
+// escritura sobre sucursal_pagos, y SOLO sobre las llaves ON/OFF por
+// canal — jamás alias/titular/cbu legacy, jamás las bases globales.
 // ============================================================
 
 const CANALES = ['KIOSK', 'DELIVERY', 'MESA', 'TAKEAWAY', 'CAJA'] as const
@@ -77,7 +81,7 @@ export async function GET(request: Request) {
         .select('canal, medio, mp_credencial_id, transferencia_cuenta_id')
         .eq('sucursal_id', sucursal_id),
       db.from('sucursal_pagos')
-        .select('acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, acepta_mp_mesa, acepta_mp_takeaway')
+        .select('acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, acepta_mp_mesa, acepta_mp_takeaway, acepta_efectivo_kiosk, acepta_efectivo_delivery, acepta_efectivo_mesa, acepta_efectivo_takeaway, acepta_transferencia_kiosk, acepta_transferencia_delivery, acepta_transferencia_mesa, acepta_transferencia_takeaway')
         .eq('sucursal_id', sucursal_id).maybeSingle(),
     ])
     mapeos = m.data ?? []
@@ -205,6 +209,43 @@ export async function POST(request: Request) {
         .eq('sucursal_id', sucursal_id).eq('canal', canal).eq('medio', medio)
       if (error) return err('No se pudo quitar el mapeo')
       return NextResponse.json({ ok: true }) // el canal vuelve a Config. general (legacy)
+    }
+
+    // ── LLAVES ON/OFF POR CANAL (Ciclo 1 — único escritor de sucursal_pagos) ──
+    case 'set_llave': {
+      const { sucursal_id, canal, medio, valor } = body
+      const CANALES_LLAVE = ['KIOSK', 'DELIVERY', 'MESA', 'TAKEAWAY'] as const
+      const MEDIOS_LLAVE = ['EFECTIVO', 'TRANSFERENCIA', 'MERCADO_PAGO'] as const
+      if (!sucursal_id || typeof valor !== 'boolean') return err('Datos incompletos')
+      if (!CANALES_LLAVE.includes(canal)) return err('Canal inválido')
+      if (!MEDIOS_LLAVE.includes(medio)) return err('Medio inválido')
+      if (!(await sucursalValida(db, empresa_id, sucursal_id))) return err('Sucursal inválida', 403)
+
+      // VALIDACIÓN BLOQUEANTE server-side y atómica (decisión CTO): encender
+      // TRANSFERENCIA para un canal exige una cuenta RESOLUBLE con datos para
+      // ese canal — si no, 409 y sucursal_pagos NO se modifica. Persistir un
+      // ON sin cuenta = experiencia rota al cliente (transferencia sin alias).
+      // MP adrede NO se bloquea: el runtime ya se auto-protege — /api/kiosk/
+      // pagos resuelve mpUsable con credencial real y sin ella el botón ni
+      // aparece (regla detectada contra el resolver real, mandato CTO: no
+      // inventar reglas que el sistema no tenga). Apagar nunca exige nada.
+      if (valor === true && medio === 'TRANSFERENCIA') {
+        const res = await resolverPago(empresa_id, sucursal_id, canal as CanalPago, 'TRANSFERENCIA')
+        const cuentaOk = res.ok && res.medio === 'TRANSFERENCIA' && !!res.cuenta && !!(res.cuenta.alias || res.cuenta.cbu)
+        if (!cuentaOk) {
+          return err('No hay una cuenta de transferencia con datos para ese canal. Asignala en la pestaña Transferencias antes de habilitar el medio.', 409)
+        }
+      }
+
+      const sufijo = canal.toLowerCase() as 'kiosk' | 'delivery' | 'mesa' | 'takeaway'
+      const columna = medio === 'EFECTIVO' ? `acepta_efectivo_${sufijo}`
+        : medio === 'TRANSFERENCIA' ? `acepta_transferencia_${sufijo}`
+        : `acepta_mp_${sufijo}`
+
+      const { error } = await db.from('sucursal_pagos')
+        .upsert({ sucursal_id, empresa_id, [columna]: valor }, { onConflict: 'sucursal_id' })
+      if (error) return err('No se pudo guardar la llave')
+      return NextResponse.json({ ok: true, columna, valor })
     }
 
     default:
