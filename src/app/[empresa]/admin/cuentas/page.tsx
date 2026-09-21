@@ -304,9 +304,15 @@ export default function CuentasPage() {
                     const efvo = s ? (llaves?.acepta_efectivo !== false) && (llaves?.[`acepta_efectivo_${s}`] !== false) : null
                     const trf = s ? (llaves?.acepta_transferencia !== false) && (llaves?.[`acepta_transferencia_${s}`] !== false) : null
                     const mpOn = s && canal.llaveMp ? (llaves?.acepta_mp !== false) && (llaves?.[canal.llaveMp] !== false) : null
+                    // Canal público con TODO apagado: el cliente no puede confirmar
+                    // ningún pedido ahí (F-C: lista vacía → aviso y confirmar bloqueado)
+                    const sinMedios = s !== null && efvo === false && trf === false && mpOn === false
                     return (
-                      <tr key={canal.id} className="border-t border-neutral-100">
-                        <td className="py-2.5 pr-3 font-semibold text-neutral-700 whitespace-nowrap">{canal.emoji} {canal.label}</td>
+                      <tr key={canal.id} className={`border-t border-neutral-100 ${sinMedios ? 'bg-amber-50/60' : ''}`}>
+                        <td className="py-2.5 pr-3 font-semibold text-neutral-700 whitespace-nowrap">
+                          {canal.emoji} {canal.label}
+                          {sinMedios && <span className="block text-[11px] font-semibold text-amber-600 mt-0.5">⚠️ Sin medios de pago: los clientes de este canal no podrán confirmar pedidos</span>}
+                        </td>
                         <td className="py-2.5 pr-3">
                           {s ? <LlaveToggle canalId={canal.id} medio="EFECTIVO" efectiva={!!efvo} baseOff={llaves?.acepta_efectivo === false} label={canal.label} /> : <span title="Venta manual: el operador cobra en mano — siempre permitido" className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Permitido</span>}
                         </td>
