@@ -23,6 +23,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { ConePageHeader, ConeCard } from '@/components/admin/ConeComponents'
 import { Loader2, Plus, X, CloudRain } from 'lucide-react'
+import DispositivosTab from '@/components/admin/DispositivosTab'
+import QrAccesosTab from '@/components/admin/QrAccesosTab'
 
 interface Franja { desde: string; hasta: string }
 interface Sucursal { id: string; nombre: string }
@@ -88,7 +90,8 @@ export default function ServiciosPage() {
   const [tieneTa, setTieneTa] = useState(true)
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState<string | null>(null)
-  const [tab, setTab] = useState<'servicios' | 'mensajes'>('servicios')
+  // Orden de flujo (decisión JC): creás el dispositivo → horarios y servicios → mensajes → QR
+  const [tab, setTab] = useState<'dispositivos' | 'servicios' | 'mensajes' | 'qr'>('dispositivos')
   const [aviso, setAviso] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const avisar = (m: string) => { setAviso(m); setTimeout(() => setAviso(null), 2500) }
@@ -243,13 +246,19 @@ export default function ServiciosPage() {
       {error && <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 font-medium">{error}</div>}
 
       <div className="flex gap-2">
-        {([['servicios', '🕗 Horarios y servicios'], ['mensajes', '💬 Mensajes']] as const).map(([id, label]) => (
+        {([['dispositivos', '🔧 Dispositivos'], ['servicios', '🕗 Horarios y servicios'], ['mensajes', '💬 Mensajes'], ['qr', '📱 QR y accesos']] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${tab === id ? 'bg-neutral-800 text-white' : 'bg-white border border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}>
             {label}
           </button>
         ))}
       </div>
+
+      {/* ═══ TAB DISPOSITIVOS (mudado de Operación — tokens/URLs/modal idénticos) ═══ */}
+      {tab === 'dispositivos' && <DispositivosTab />}
+
+      {/* ═══ TAB QR Y ACCESOS (entradas públicas + mesas, dominio canónico) ═══ */}
+      {tab === 'qr' && <QrAccesosTab />}
 
       {tab === 'servicios' && (
       <ConeCard>

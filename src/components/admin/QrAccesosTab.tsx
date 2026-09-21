@@ -18,11 +18,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
-import { ConePageHeader, ConeCard } from '@/components/admin/ConeComponents'
+import { ConeCard } from '@/components/admin/ConeComponents'
 import { Loader2, Copy, Download, Printer, Check } from 'lucide-react'
 import QRCode from 'qrcode'
 import QrMesas from '@/components/admin/QrMesas'
-import DispositivosTab from '@/app/[empresa]/admin/operacion/tabs/DispositivosTab'
 
 interface Sucursal { id: string; nombre: string; slug: string }
 
@@ -32,7 +31,7 @@ const DESTINOS = [
   { id: 'takeaway', emoji: '🥡', titulo: 'Take Away directo', desc: 'Entra derecho al pedido para retirar, sin selector.', path: 'takeaway' },
 ] as const
 
-export default function QrPublicoPage() {
+export default function QrAccesosTab() {
   const { ctx, loading: ctxLoading } = useEmpresa()
   const supabase = useMemo(() => createClient(), [])
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
@@ -41,7 +40,6 @@ export default function QrPublicoPage() {
   const [qrs, setQrs] = useState<Record<string, string>>({})
   const [copiado, setCopiado] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
-  const [tab, setTab] = useState<'entradas' | 'mesas' | 'dispositivos'>('entradas')
   const [moduloMesas, setModuloMesas] = useState(false)
 
   useEffect(() => {
@@ -111,19 +109,7 @@ export default function QrPublicoPage() {
 
   return (
     <div className="space-y-5">
-      <ConePageHeader title="QR y accesos" description="Todo lo que se escanea, en un lugar: entradas para clientes, QRs de mesas y vinculación de dispositivos" />
 
-      <div className="flex gap-2">
-        {([['entradas', '🚪 Entradas'], ['mesas', '🪑 Mesas'], ['dispositivos', '🔧 Dispositivos']] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${tab === id ? 'bg-neutral-800 text-white' : 'bg-white border border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* ═══ TAB ENTRADAS (público, SIN token — URLs estables para siempre) ═══ */}
-      {tab === 'entradas' && (<>
       <div className="flex items-center gap-2">
         {sucursales.length > 1 && (
           <select value={sucursalSel?.id ?? ''} onChange={e => setSucursalSel(sucursales.find(s => s.id === e.target.value) ?? null)}
@@ -170,22 +156,16 @@ export default function QrPublicoPage() {
         })}
       </div>
 
-      <p className="text-xs text-neutral-400">💡 Estos QR son <b>entradas públicas</b>: URL estable de producción, sin token, sin vencimiento — cambiar horarios, servicios o la UI de la App jamás los invalida. Para <b>vincular equipos</b> (kiosk, caja, delivery) está el tab Dispositivos: esos QR llevan la llave del equipo y no se reparten a clientes.</p>
-      </>)}
-
-      {/* ═══ TAB MESAS (generador mudado de Admin→Mesas; la llave del salón sigue allá) ═══ */}
-      {tab === 'mesas' && (
-        moduloMesas
-          ? <QrMesas />
-          : <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-8 text-center">
-              <span className="text-5xl block mb-3">🪑</span>
-              <p className="font-black text-neutral-800 mb-1">El módulo Mesas no está activo</p>
-              <p className="text-neutral-400 text-sm">Contactá a tu proveedor para activarlo en tu plan.</p>
-            </div>
+      {/* ═══ MESAS — otra entrada pública más (generador mudado de Admin→Mesas;
+          la llave "Recibir pedidos de mesa" sigue en su página) ═══ */}
+      {moduloMesas && (
+        <div>
+          <p className="font-bold text-neutral-800 mb-2">🪑 Mesas</p>
+          <QrMesas />
+        </div>
       )}
 
-      {/* ═══ TAB DISPOSITIVOS (mudado entero de Operación — mismos tokens, mismas URLs, mismo modal: los QR vinculados e impresos siguen idénticos) ═══ */}
-      {tab === 'dispositivos' && <DispositivosTab />}
+      <p className="text-xs text-neutral-400">💡 Todo lo de esta página es <b>entrada pública</b>: URL estable de producción, sin token — cambiar horarios, servicios o la UI de la App jamás invalida un QR impreso. Los QR para <b>vincular equipos</b> (kiosk, caja, delivery) viven en el tab <b>🔧 Dispositivos</b> de esta misma casa: llevan la llave del equipo y no se reparten a clientes.</p>
     </div>
   )
 }

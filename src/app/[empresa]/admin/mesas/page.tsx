@@ -5,7 +5,7 @@
 // Queda la llave del negocio: "Recibir pedidos de mesa"
 // (empresa_config.mesas_activo — doble llave con modulos.mesas de QP).
 // Los links y el generador de QRs imprimibles se MUDARON a la casa
-// "QR y accesos" → tab Mesas (componente QrMesas, código intacto).
+// "Servicios y horarios" → tab QR y accesos (componente QrMesas, intacto).
 // ═══════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from 'react'
@@ -74,7 +74,7 @@ export default function MesasPage() {
 
       {/* CICLO QR: los links y QRs imprimibles se mudaron */}
       <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
-        <p className="text-xs text-neutral-500">📱 Los <b>links y QRs imprimibles</b> de las mesas (cartelitos y stickers) ahora viven en <b>QR y accesos</b> → tab Mesas.</p>
+        <p className="text-xs text-neutral-500">📱 Los <b>links y QRs imprimibles</b> de las mesas (cartelitos y stickers) ahora viven en <b>Servicios y horarios</b> → tab 📱 QR y accesos.</p>
       </div>
     </div>
   )

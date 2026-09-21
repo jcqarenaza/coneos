@@ -5,8 +5,8 @@ import { ConePageHeader } from '@/components/admin/ConeComponents'
 import OperadoresTab from './tabs/OperadoresTab'
 import ColaboradoresTab from './tabs/ColaboradoresTab'
 
-// CICLO QR: la tab Dispositivos se mudó a la casa "QR y accesos" (todo lo
-// que se escanea vive junto). Operación queda para PERSONAS.
+// CICLO CASA OPERATIVA: la tab Dispositivos se mudó a Servicios y horarios
+// (crear dispositivo → horarios → mensajes → QR). Operación = PERSONAS.
 const TABS = [
   { id: 'operadores',    label: 'Operadores' },
   { id: 'colaboradores', label: 'Colaboradores' },
@@ -18,7 +18,7 @@ export default function OperacionPage() {
     <div>
       <ConePageHeader title="Operación" description="Las personas del equipo: operadores y colaboradores" />
       <div className="mb-4 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
-        <p className="text-xs text-neutral-500">🔧 Los <b>dispositivos</b> (kiosk, caja, delivery y su vinculación por QR) ahora viven en <b>QR y accesos</b>.</p>
+        <p className="text-xs text-neutral-500">🔧 Los <b>dispositivos</b> (kiosk, caja, delivery y su vinculación por QR) ahora viven en <b>Servicios y horarios</b> → tab Dispositivos.</p>
       </div>
       <div className="flex gap-1 border-b border-neutral-200 mb-6">
         {TABS.map(t => (
