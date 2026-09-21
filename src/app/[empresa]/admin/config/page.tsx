@@ -51,7 +51,10 @@ export default function ConfigPage() {
     setUploadingLogo(true)
     const supabase = createClient()
     const ext = file.name.split('.').pop()
-    const path = `logos/${ctx.empresaSlug}.${ext}`
+    // Ciclo 1 (decisión CTO): URL INMUTABLE por subida — cada logo nuevo es un
+    // archivo nuevo, y CDN/optimizador de Next/browser/canvas se refrescan por
+    // construcción. Nada de ?v=: cache invalidation por diseño, no por parche.
+    const path = `logos/${ctx.empresaSlug}-${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('productos').upload(path, file, { upsert: true })
     if (!error) {
       const { data } = supabase.storage.from('productos').getPublicUrl(path)
@@ -213,15 +216,7 @@ export default function ConfigPage() {
         </ConeCard>
 
         {/* Mercado Pago — migrado a 💳 Cuentas y cobros (Fase 6.4) */}
-        <ConeCard title="Mercado Pago y cuentas de cobro">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-neutral-500">Las cuentas de Mercado Pago, las cuentas de transferencia y qué cuenta cobra cada canal se administran en su propia sección.</p>
-            <a href={`/${empresa?.slug ?? ''}/admin/cuentas`}
-              className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-bold rounded-xl text-sm transition-colors">
-              💳 Cuentas y cobros →
-            </a>
-          </div>
-        </ConeCard>
+        {/* Ciclo 1: la tarjeta de MP/cuentas se eliminó — cero señalizadores duplicados (principio CTO); la navegación ya tiene Cuentas y cobros */}
 
         {/* Datos fiscales */}
         <ConeCard title="Datos fiscales">
