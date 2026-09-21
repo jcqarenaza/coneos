@@ -50,6 +50,7 @@ export default function CuentasPage() {
   const [cuentas, setCuentas] = useState<Cuenta[]>([])
   const [mapeos, setMapeos] = useState<Mapeo[]>([])
   const [llaves, setLlaves] = useState<Llaves | null>(null)
+  const [modulos, setModulos] = useState<Record<string, boolean> | null>(null)
 
   const [editCuenta, setEditCuenta] = useState<Partial<Cuenta> | null>(null) // null=cerrado, {}=nueva
   const [guardando, setGuardando] = useState(false)
@@ -79,6 +80,7 @@ export default function CuentasPage() {
       setCuentas(d.cuentas_transferencia)
       setMapeos(d.mapeos)
       setLlaves(d.llaves)
+      setModulos(d.modulos ?? null)
       if (!sucursal && d.sucursales.length > 0) setSucursalSel(d.sucursales[0].id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando')
@@ -294,7 +296,13 @@ export default function CuentasPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {CANALES.map(canal => {
+                  {CANALES.filter(canal => {
+                    // Módulo de empresa apagado → el canal no existe para este negocio:
+                    // la fila ni aparece (pedido JC). Sin dato de módulos → se muestran todas.
+                    if (!modulos) return true
+                    const llaveModulo = canal.id === 'KIOSK' ? 'kiosk' : canal.id === 'DELIVERY' ? 'delivery' : canal.id === 'MESA' ? 'mesas' : canal.id === 'TAKEAWAY' ? 'takeaway' : 'caja'
+                    return modulos[llaveModulo] !== false
+                  }).map(canal => {
                     const mT = mapeoDe(canal.id, 'TRANSFERENCIA')
                     const mM = mapeoDe(canal.id, 'MERCADO_PAGO')
                     const sel = 'w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700'

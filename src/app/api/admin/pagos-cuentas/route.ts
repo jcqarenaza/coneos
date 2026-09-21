@@ -72,6 +72,11 @@ export async function GET(request: Request) {
     db.from('sucursales').select('id, nombre').eq('empresa_id', empresa_id).order('nombre'),
   ])
 
+  // Ciclo 1: módulos contratados de la empresa — la grilla oculta canales
+  // cuyo módulo está apagado (empresa-level; el activo por sucursal NO oculta:
+  // se configura pagos aunque el canal esté momentáneamente cerrado)
+  const { data: cfgMod } = await db.from('empresa_config').select('modulos').eq('empresa_id', empresa_id).maybeSingle()
+
   let mapeos: unknown[] = []
   let llaves: unknown = null
   if (sucursal_id) {
@@ -95,6 +100,7 @@ export async function GET(request: Request) {
     cuentas_transferencia: cuentas.data ?? [],
     mapeos,
     llaves,
+    modulos: cfgMod?.modulos ?? null,
   })
 }
 
