@@ -147,7 +147,8 @@ export default function CuentasPage() {
       <ConePageHeader title="💳 Cuentas y cobros" subtitle="Cuentas de Mercado Pago y transferencia, y qué cuenta cobra cada canal" />
 
       {error && <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700 font-medium">{error}</div>}
-      {aviso && <div className="p-3 bg-green-50 border border-green-100 rounded-xl text-sm text-green-700 font-medium">✓ {aviso}</div>}
+      {/* toast flotante: no participa del layout — el guardado no hace saltar la grilla */}
+      {aviso && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-green-600 text-white rounded-full text-sm font-semibold shadow-lg pointer-events-none">✓ {aviso}</div>}
 
       <div className="flex gap-2">
         {([['mp', '🟦 Mercado Pago'], ['transfer', '🏦 Transferencias'], ['matriz', '🎛️ Canales y medios']] as const).map(([id, label]) => (
@@ -306,13 +307,14 @@ export default function CuentasPage() {
                       <tr key={canal.id} className="border-t border-neutral-100">
                         <td className="py-2.5 pr-3 font-semibold text-neutral-700 whitespace-nowrap">{canal.emoji} {canal.label}</td>
                         <td className="py-2.5 pr-3">
-                          {s ? <LlaveToggle canalId={canal.id} medio="EFECTIVO" efectiva={!!efvo} baseOff={llaves?.acepta_efectivo === false} label={canal.label} /> : <span className="text-xs text-neutral-300">siempre</span>}
+                          {s ? <LlaveToggle canalId={canal.id} medio="EFECTIVO" efectiva={!!efvo} baseOff={llaves?.acepta_efectivo === false} label={canal.label} /> : <span title="Venta manual: el operador cobra en mano — siempre permitido" className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Permitido</span>}
                         </td>
                         <td className="py-2.5 pr-3">
-                          {s ? <LlaveToggle canalId={canal.id} medio="TRANSFERENCIA" efectiva={!!trf} baseOff={llaves?.acepta_transferencia === false} label={canal.label} /> : <span className="text-xs text-neutral-300">—</span>}
+                          {s ? <LlaveToggle canalId={canal.id} medio="TRANSFERENCIA" efectiva={!!trf} baseOff={llaves?.acepta_transferencia === false} label={canal.label} /> : <span title="Venta manual: el operador cobra en mano — siempre permitido" className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Permitido</span>}
                         </td>
                         <td className="py-2.5 pr-3">
-                          <select className={sel} value={mT?.transferencia_cuenta_id ?? ''} disabled={guardando}
+                          <select className={`${sel} ${s && trf === false ? 'opacity-45 bg-neutral-50' : ''}`} value={mT?.transferencia_cuenta_id ?? ''} disabled={guardando || (s !== null && trf === false)}
+                            title={s && trf === false ? 'Transferencia está OFF en este canal — la cuenta asignada se conserva para cuando se habilite' : undefined}
                             onChange={e => e.target.value
                               ? accion({ accion: 'asignar_mapeo', sucursal_id: sucursalSel, canal: canal.id, medio: 'TRANSFERENCIA', cuenta_id: e.target.value }, `${canal.label}: transferencia asignada`)
                               : accion({ accion: 'quitar_mapeo', sucursal_id: sucursalSel, canal: canal.id, medio: 'TRANSFERENCIA' }, `${canal.label}: vuelve a la cuenta de siempre`)}>
@@ -321,10 +323,11 @@ export default function CuentasPage() {
                           </select>
                         </td>
                         <td className="py-2.5 pr-3">
-                          {s && canal.llaveMp ? <LlaveToggle canalId={canal.id} medio="MERCADO_PAGO" efectiva={!!mpOn} baseOff={llaves?.acepta_mp === false} label={canal.label} /> : <span className="text-xs text-neutral-300">—</span>}
+                          {s && canal.llaveMp ? <LlaveToggle canalId={canal.id} medio="MERCADO_PAGO" efectiva={!!mpOn} baseOff={llaves?.acepta_mp === false} label={canal.label} /> : <span title="Venta manual: el operador cobra en mano — siempre permitido" className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Permitido</span>}
                         </td>
                         <td className="py-2.5">
-                          <select className={sel} value={mM?.mp_credencial_id ?? ''} disabled={guardando}
+                          <select className={`${sel} ${s && mpOn === false ? 'opacity-45 bg-neutral-50' : ''}`} value={mM?.mp_credencial_id ?? ''} disabled={guardando || (s !== null && mpOn === false)}
+                            title={s && mpOn === false ? 'MP está OFF en este canal — la credencial asignada se conserva para cuando se habilite' : undefined}
                             onChange={e => e.target.value
                               ? accion({ accion: 'asignar_mapeo', sucursal_id: sucursalSel, canal: canal.id, medio: 'MERCADO_PAGO', cuenta_id: e.target.value }, `${canal.label}: cuenta MP asignada`)
                               : accion({ accion: 'quitar_mapeo', sucursal_id: sucursalSel, canal: canal.id, medio: 'MERCADO_PAGO' }, `${canal.label}: vuelve a la cuenta de siempre`)}>
