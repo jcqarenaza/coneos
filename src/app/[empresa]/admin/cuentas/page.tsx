@@ -20,15 +20,20 @@ import { Loader2, Plus, Pencil, X } from 'lucide-react'
 interface Credencial { id: string; nombre: string; activo: boolean; sucursal_id: string | null; mp_user_id: string; expires_at: string | null }
 interface Cuenta { id: string; nombre: string; alias: string | null; cbu: string | null; titular: string | null; activo: boolean; sucursal_id: string }
 interface Mapeo { canal: string; medio: string; mp_credencial_id: string | null; transferencia_cuenta_id: string | null }
-interface Llaves { acepta_transferencia: boolean; acepta_mp: boolean; acepta_mp_kiosk: boolean | null; acepta_mp_delivery: boolean | null; acepta_mp_mesa: boolean | null; acepta_mp_takeaway: boolean | null }
+interface Llaves {
+  acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean
+  acepta_mp_kiosk: boolean | null; acepta_mp_delivery: boolean | null; acepta_mp_mesa: boolean | null; acepta_mp_takeaway: boolean | null
+  acepta_efectivo_kiosk: boolean | null; acepta_efectivo_delivery: boolean | null; acepta_efectivo_mesa: boolean | null; acepta_efectivo_takeaway: boolean | null
+  acepta_transferencia_kiosk: boolean | null; acepta_transferencia_delivery: boolean | null; acepta_transferencia_mesa: boolean | null; acepta_transferencia_takeaway: boolean | null
+}
 interface Sucursal { id: string; nombre: string }
 
-const CANALES: { id: string; label: string; emoji: string; llaveMp: keyof Llaves | null }[] = [
-  { id: 'KIOSK', label: 'Kiosk', emoji: '🛒', llaveMp: 'acepta_mp_kiosk' },
-  { id: 'DELIVERY', label: 'Delivery', emoji: '🛵', llaveMp: 'acepta_mp_delivery' },
-  { id: 'MESA', label: 'Mesa', emoji: '🍽️', llaveMp: 'acepta_mp_mesa' },
-  { id: 'TAKEAWAY', label: 'Take Away', emoji: '🥡', llaveMp: 'acepta_mp_takeaway' },
-  { id: 'CAJA', label: 'Caja', emoji: '🧾', llaveMp: null },
+const CANALES: { id: string; label: string; emoji: string; llaveMp: keyof Llaves | null; suf: 'kiosk' | 'delivery' | 'mesa' | 'takeaway' | null }[] = [
+  { id: 'KIOSK', label: 'Kiosk', emoji: '🛒', llaveMp: 'acepta_mp_kiosk', suf: 'kiosk' },
+  { id: 'DELIVERY', label: 'Delivery', emoji: '🛵', llaveMp: 'acepta_mp_delivery', suf: 'delivery' },
+  { id: 'MESA', label: 'Mesa', emoji: '🍽️', llaveMp: 'acepta_mp_mesa', suf: 'mesa' },
+  { id: 'TAKEAWAY', label: 'Take Away', emoji: '🥡', llaveMp: 'acepta_mp_takeaway', suf: 'takeaway' },
+  { id: 'CAJA', label: 'Caja', emoji: '🧾', llaveMp: null, suf: null }, // venta manual: exenta del guard por diseño (F-C)
 ]
 
 export default function CuentasPage() {
@@ -97,6 +102,29 @@ export default function CuentasPage() {
     } finally {
       setGuardando(false)
     }
+  }
+
+  // ── CICLO 1 — GRILLA ON/OFF (llaves por canal) ──
+  // Regla CTO: sin optimistic update — la celda muestra spinner, el server
+  // decide (set_llave valida bloqueante), y el estado real vuelve por refetch.
+  const [celdaGuardando, setCeldaGuardando] = useState<string | null>(null)
+  async function toggleLlave(canalId: string, medio: 'EFECTIVO' | 'TRANSFERENCIA' | 'MERCADO_PAGO', valorNuevo: boolean, label: string) {
+    const key = `${canalId}-${medio}`
+    setCeldaGuardando(key)
+    await accion({ accion: 'set_llave', sucursal_id: sucursalSel, canal: canalId, medio, valor: valorNuevo },
+      `${label}: ${medio === 'EFECTIVO' ? 'efectivo' : medio === 'TRANSFERENCIA' ? 'transferencia' : 'Mercado Pago'} ${valorNuevo ? 'habilitado' : 'deshabilitado'}`)
+    setCeldaGuardando(null)
+  }
+  function LlaveToggle({ canalId, medio, efectiva, baseOff, label }: { canalId: string; medio: 'EFECTIVO' | 'TRANSFERENCIA' | 'MERCADO_PAGO'; efectiva: boolean; baseOff: boolean; label: string }) {
+    const key = `${canalId}-${medio}`
+    const ocupada = celdaGuardando === key
+    return (
+      <button disabled={guardando || baseOff} onClick={() => toggleLlave(canalId, medio, !efectiva, label)}
+        title={baseOff ? 'El medio está apagado a nivel general — hasta la poda del ciclo se ajusta en Sucursales' : undefined}
+        className={`min-w-[52px] px-2 py-1 rounded-full text-[11px] font-bold border transition-colors disabled:opacity-40 ${efectiva ? 'bg-green-50 text-green-700 border-green-200' : 'bg-neutral-100 text-neutral-400 border-neutral-200'}`}>
+        {ocupada ? <Loader2 className="h-3.5 w-3.5 animate-spin inline" /> : efectiva ? 'ON' : 'OFF'}
+      </button>
+    )
   }
 
   function copiarLinkMP(sucursalId?: string, credencialId?: string) {
@@ -256,19 +284,33 @@ export default function CuentasPage() {
                 <thead>
                   <tr className="text-left text-xs text-neutral-400 uppercase tracking-wide">
                     <th className="py-2 pr-3 font-semibold">Canal</th>
-                    <th className="py-2 pr-3 font-semibold">🏦 Transferencia</th>
-                    <th className="py-2 font-semibold">🟦 Mercado Pago</th>
+                    <th className="py-2 pr-3 font-semibold">💵 Efectivo</th>
+                    <th className="py-2 pr-3 font-semibold">🏦 Transf.</th>
+                    <th className="py-2 pr-3 font-semibold">Cuenta transferencia</th>
+                    <th className="py-2 pr-3 font-semibold">🟦 MP</th>
+                    <th className="py-2 font-semibold">Credencial MP</th>
                   </tr>
                 </thead>
                 <tbody>
                   {CANALES.map(canal => {
                     const mT = mapeoDe(canal.id, 'TRANSFERENCIA')
                     const mM = mapeoDe(canal.id, 'MERCADO_PAGO')
-                    const llaveMpOff = llaves && canal.llaveMp !== null && (llaves.acepta_mp === false || llaves[canal.llaveMp] === false)
                     const sel = 'w-full px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700'
+                    // Grilla ON/OFF: estado EFECTIVO = base && llave del canal (misma
+                    // fórmula que /api/kiosk/pagos y el guard — una sola verdad)
+                    const s = canal.suf
+                    const efvo = s ? (llaves?.acepta_efectivo !== false) && (llaves?.[`acepta_efectivo_${s}`] !== false) : null
+                    const trf = s ? (llaves?.acepta_transferencia !== false) && (llaves?.[`acepta_transferencia_${s}`] !== false) : null
+                    const mpOn = s && canal.llaveMp ? (llaves?.acepta_mp !== false) && (llaves?.[canal.llaveMp] !== false) : null
                     return (
                       <tr key={canal.id} className="border-t border-neutral-100">
                         <td className="py-2.5 pr-3 font-semibold text-neutral-700 whitespace-nowrap">{canal.emoji} {canal.label}</td>
+                        <td className="py-2.5 pr-3">
+                          {s ? <LlaveToggle canalId={canal.id} medio="EFECTIVO" efectiva={!!efvo} baseOff={llaves?.acepta_efectivo === false} label={canal.label} /> : <span className="text-xs text-neutral-300">siempre</span>}
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          {s ? <LlaveToggle canalId={canal.id} medio="TRANSFERENCIA" efectiva={!!trf} baseOff={llaves?.acepta_transferencia === false} label={canal.label} /> : <span className="text-xs text-neutral-300">—</span>}
+                        </td>
                         <td className="py-2.5 pr-3">
                           <select className={sel} value={mT?.transferencia_cuenta_id ?? ''} disabled={guardando}
                             onChange={e => e.target.value
@@ -278,6 +320,9 @@ export default function CuentasPage() {
                             {cuentasDeSucursal.map(c => <option key={c.id} value={c.id} disabled={!c.activo && mT?.transferencia_cuenta_id !== c.id}>{c.nombre}{!c.activo ? ' (inactiva)' : ''}</option>)}
                           </select>
                         </td>
+                        <td className="py-2.5 pr-3">
+                          {s && canal.llaveMp ? <LlaveToggle canalId={canal.id} medio="MERCADO_PAGO" efectiva={!!mpOn} baseOff={llaves?.acepta_mp === false} label={canal.label} /> : <span className="text-xs text-neutral-300">—</span>}
+                        </td>
                         <td className="py-2.5">
                           <select className={sel} value={mM?.mp_credencial_id ?? ''} disabled={guardando}
                             onChange={e => e.target.value
@@ -286,7 +331,6 @@ export default function CuentasPage() {
                             <option value="">Cuenta de siempre (Sucursales)</option>
                             {credencialesAsignables.map(c => <option key={c.id} value={c.id} disabled={!c.activo && mM?.mp_credencial_id !== c.id}>{c.nombre}{c.sucursal_id === null ? ' (marca)' : ''}{!c.activo ? ' (inactiva)' : ''}</option>)}
                           </select>
-                          {llaveMpOff && mM && <p className="text-[11px] text-amber-600 mt-1">⚠️ La llave de MP de este canal está apagada en Sucursales — el cliente no lo ve.</p>}
                         </td>
                       </tr>
                     )
@@ -296,7 +340,7 @@ export default function CuentasPage() {
             </div>
 
             <p className="text-xs text-neutral-400 pt-2 border-t border-neutral-100">
-              <b>Cuenta de siempre</b>: si no asignás nada, el canal usa los datos de pago cargados en <b>Sucursales</b> — todo sigue funcionando como hasta ahora. Acá solo elegís <b>a qué cuenta</b> va la plata de cada canal. Encender o apagar un medio de pago se hace en Sucursales. Los pedidos ya cobrados nunca cambian de cuenta.
+<b>ON/OFF</b> decide qué medios ve el cliente en cada canal; <b>las cuentas</b> deciden a dónde va la plata. <b>Cuenta de siempre</b>: sin asignación, el canal usa los datos históricos de la sucursal. Para habilitar transferencia en un canal hace falta una cuenta con datos (el sistema lo exige solo). Los pedidos ya cobrados nunca cambian de cuenta. 💡 Apagar el efectivo de Take Away = solo prepago, recomendado para evitar pedidos fantasma.
             </p>
           </div>
         </ConeCard>
