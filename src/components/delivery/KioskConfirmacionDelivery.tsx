@@ -622,7 +622,26 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           style={{ backgroundColor: config.primary_color }}>
           ⬇️ Guardar comprobante
         </button>
-        <button onClick={onNuevoPedido}
+        <button onClick={() => {
+            // CICLO 2 (5b, pedido JC): si el cliente llegó por la App Pública
+            // (?desde=app — anti-loop y retorno: las dos caras de la misma
+            // navegación), "otro pedido" vuelve al INICIO de la app, no al
+            // canal donde cayó. El token se conserva (passthrough) para que
+            // una próxima vuelta por Delivery mantenga su dispositivo. Sin
+            // el parámetro: comportamiento de siempre (onNuevoPedido).
+            try {
+              const q = new URLSearchParams(window.location.search)
+              if (q.get('desde') === 'app') {
+                const partes = window.location.pathname.split('/').filter(Boolean)
+                const tk = q.get('token')
+                if (partes[0] && partes[2]) {
+                  window.location.href = `/${partes[0]}/pedidos/${partes[2]}${tk ? `?token=${encodeURIComponent(tk)}` : ''}`
+                  return
+                }
+              }
+            } catch {}
+            onNuevoPedido()
+          }}
           className="w-full py-3.5 rounded-2xl border-2 border-neutral-200 text-neutral-600 font-semibold text-sm active:bg-neutral-50 transition-colors">
           Hacer otro pedido
         </button>
