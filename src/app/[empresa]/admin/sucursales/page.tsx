@@ -112,11 +112,11 @@ export default function SucursalesPage() {
     const supabase = createClient()
     if (editId) {
       await supabase.from('sucursales').update({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: form.activo ?? true, rubro: form.rubro ?? 'HELADERIA', horario_general: horarioGeneral && horarioGeneral.length > 0 ? horarioGeneral : null, mensaje_cerrado: mensajeCerrado.trim() || null, tolerancia_cierre: tolGeneral > 0 ? tolGeneral : null }).eq('id', editId)
-      await supabase.from('sucursal_pagos').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, acepta_mp_mesa: pagos.acepta_mp_mesa, acepta_mp_takeaway: pagos.acepta_mp_takeaway, acepta_efectivo_kiosk: pagos.acepta_efectivo_kiosk, acepta_efectivo_delivery: pagos.acepta_efectivo_delivery, acepta_efectivo_mesa: pagos.acepta_efectivo_mesa, acepta_efectivo_takeaway: pagos.acepta_efectivo_takeaway, acepta_transferencia_kiosk: pagos.acepta_transferencia_kiosk, acepta_transferencia_delivery: pagos.acepta_transferencia_delivery, acepta_transferencia_mesa: pagos.acepta_transferencia_mesa, acepta_transferencia_takeaway: pagos.acepta_transferencia_takeaway, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null }, { onConflict: 'sucursal_id' })
+      // CICLO 1: guardar la sucursal ya NO toca sucursal_pagos (prueba explícita del ciclo)
       await supabase.from('takeaway_config').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, activo: takeaway.activo, horarios: takeaway.horarios, mensaje_fuera_horario: takeaway.mensaje_fuera_horario, tolerancia_cierre: takeaway.tolerancia_cierre ?? 5 }, { onConflict: 'sucursal_id' })
     } else {
       const { data: nueva } = await supabase.from('sucursales').insert({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: true, rubro: form.rubro ?? 'HELADERIA', empresa_id: ctx.empresaId }).select('id').single()
-      if (nueva) await supabase.from('sucursal_pagos').insert({ sucursal_id: nueva.id, empresa_id: ctx.empresaId, acepta_efectivo: pagos.acepta_efectivo, acepta_transferencia: pagos.acepta_transferencia, acepta_mp: pagos.acepta_mp, acepta_mp_kiosk: pagos.acepta_mp_kiosk, acepta_mp_delivery: pagos.acepta_mp_delivery, cbu_transferencia: pagos.cbu_transferencia || null, titular_transferencia: pagos.titular_transferencia || null })
+      if (nueva) await supabase.from('sucursal_pagos').insert({ sucursal_id: nueva.id, empresa_id: ctx.empresaId }) // Ciclo 1: fila mínima, defaults de DB; la config vive en Cuentas y cobros
     }
     // Guardar delivery_config
     const sucursalId = editId ?? null
@@ -221,53 +221,10 @@ export default function SucursalesPage() {
             </div>
           </div>
           <div className="space-y-3 pt-2 border-t border-neutral-100">
-            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Métodos de pago</p>
-            <div className="flex items-center gap-2"><input type="checkbox" id="ef" checked={pagos.acepta_efectivo} onChange={e => setPagos({ ...pagos, acepta_efectivo: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef" className="cursor-pointer flex items-center gap-1.5"><Banknote className="h-4 w-4 text-neutral-400" /> Efectivo</Label></div>
-            {pagos.acepta_efectivo && (
-              <div className="ml-6 space-y-2">
-                <div className="flex items-center gap-2"><input type="checkbox" id="ef-kiosk" checked={pagos.acepta_efectivo_kiosk} onChange={e => setPagos({ ...pagos, acepta_efectivo_kiosk: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef-kiosk" className="cursor-pointer text-sm">Habilitar en Kiosk</Label></div>
-                <div className="flex items-center gap-2"><input type="checkbox" id="ef-delivery" checked={pagos.acepta_efectivo_delivery} onChange={e => setPagos({ ...pagos, acepta_efectivo_delivery: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef-delivery" className="cursor-pointer text-sm">Habilitar en Delivery</Label></div>
-                <div className="flex items-center gap-2"><input type="checkbox" id="ef-mesa" checked={pagos.acepta_efectivo_mesa} onChange={e => setPagos({ ...pagos, acepta_efectivo_mesa: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef-mesa" className="cursor-pointer text-sm">Habilitar en Mesas</Label></div>
-                <div className="flex items-center gap-2"><input type="checkbox" id="ef-ta" checked={pagos.acepta_efectivo_takeaway} onChange={e => setPagos({ ...pagos, acepta_efectivo_takeaway: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="ef-ta" className="cursor-pointer text-sm">Habilitar en Take Away</Label></div>
-                {!pagos.acepta_efectivo_takeaway && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <p className="text-amber-800 text-xs font-medium">💡 Take Away queda <span className="font-bold">solo prepago</span> — recomendado para evitar pedidos fantasma: el cliente deberá pagar (Mercado Pago o transferencia con comprobante obligatorio) antes de confirmar el pedido.</p>
-                  </div>
-                )}
-              </div>
-            )}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2"><input type="checkbox" id="tr" checked={pagos.acepta_transferencia} onChange={e => setPagos({ ...pagos, acepta_transferencia: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr" className="cursor-pointer flex items-center gap-1.5"><CreditCard className="h-4 w-4 text-neutral-400" /> Transferencia</Label></div>
-              {pagos.acepta_transferencia && <div className="ml-6 space-y-2">
-                <div className="flex items-center gap-2"><input type="checkbox" id="tr-kiosk" checked={pagos.acepta_transferencia_kiosk} onChange={e => setPagos({ ...pagos, acepta_transferencia_kiosk: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr-kiosk" className="cursor-pointer text-sm">Habilitar en Kiosk</Label></div>
-                <div className="flex items-center gap-2"><input type="checkbox" id="tr-delivery" checked={pagos.acepta_transferencia_delivery} onChange={e => setPagos({ ...pagos, acepta_transferencia_delivery: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr-delivery" className="cursor-pointer text-sm">Habilitar en Delivery</Label></div>
-                <div className="flex items-center gap-2"><input type="checkbox" id="tr-mesa" checked={pagos.acepta_transferencia_mesa} onChange={e => setPagos({ ...pagos, acepta_transferencia_mesa: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr-mesa" className="cursor-pointer text-sm">Habilitar en Mesas</Label></div>
-                <div className="flex items-center gap-2"><input type="checkbox" id="tr-ta" checked={pagos.acepta_transferencia_takeaway} onChange={e => setPagos({ ...pagos, acepta_transferencia_takeaway: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="tr-ta" className="cursor-pointer text-sm">Habilitar en Take Away</Label></div>
-                <div><Label>CBU / Alias</Label><Input value={pagos.cbu_transferencia ?? ''} onChange={e => setPagos({ ...pagos, cbu_transferencia: e.target.value })} placeholder="tu.alias" className="font-mono text-sm mt-1" /></div><div><Label>Titular de la cuenta</Label><Input value={pagos.titular_transferencia ?? ''} onChange={e => setPagos({ ...pagos, titular_transferencia: e.target.value })} placeholder="Lucía Pérez" className="text-sm mt-1" /></div></div>}
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2"><input type="checkbox" id="mp" checked={pagos.acepta_mp} onChange={e => setPagos({ ...pagos, acepta_mp: e.target.checked })} className="w-4 h-4 rounded" /><Label htmlFor="mp" className="cursor-pointer flex items-center gap-1.5"><Smartphone className="h-4 w-4 text-neutral-400" /> Mercado Pago</Label></div>
-              {pagos.acepta_mp && (
-                <div className="ml-6 space-y-2">
-                  <p className="text-xs text-neutral-400">La cuenta se conecta desde Configuración → Mercado Pago. Acá elegís dónde se ofrece:</p>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="mp-kiosk" checked={pagos.acepta_mp_kiosk} onChange={e => setPagos({ ...pagos, acepta_mp_kiosk: e.target.checked })} className="w-4 h-4 rounded" />
-                    <Label htmlFor="mp-kiosk" className="cursor-pointer text-sm">Habilitar en Kiosk</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="mp-delivery" checked={pagos.acepta_mp_delivery} onChange={e => setPagos({ ...pagos, acepta_mp_delivery: e.target.checked })} className="w-4 h-4 rounded" />
-                    <Label htmlFor="mp-delivery" className="cursor-pointer text-sm">Habilitar en Delivery</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="mp-mesa" checked={pagos.acepta_mp_mesa} onChange={e => setPagos({ ...pagos, acepta_mp_mesa: e.target.checked })} className="w-4 h-4 rounded" />
-                    <Label htmlFor="mp-mesa" className="cursor-pointer text-sm">Habilitar en Mesas</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="mp-ta" checked={pagos.acepta_mp_takeaway} onChange={e => setPagos({ ...pagos, acepta_mp_takeaway: e.target.checked })} className="w-4 h-4 rounded" />
-                    <Label htmlFor="mp-ta" className="cursor-pointer text-sm">Habilitar en Take Away</Label>
-                  </div>
-                </div>
-              )}
+            {/* CICLO 1 — poda (decisión CTO): los medios de pago tienen UNA casa.
+                Este modal ya no lee ni escribe la configuración de pagos. */}
+            <div className="bg-neutral-50 border border-neutral-100 rounded-xl p-3">
+              <p className="text-xs text-neutral-500">💳 Los medios de pago y las cuentas de esta sucursal se configuran en <b>Cuentas y cobros</b>.</p>
             </div>
           </div>
 
