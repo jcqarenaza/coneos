@@ -2,6 +2,17 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { estaAbierto, type Franja } from '@/lib/horarios'
 
+// 2.1a: el cerrado dice CUÁNDO abre — dato COMPUESTO de las mismas franjas
+// de config que ya gobiernan la apertura (cero regla nueva, cero duplicación:
+// la casa de horarios sigue siendo el backend de cada servicio; acá solo se
+// expone). Próxima 'desde' de hoy, o la primera del día siguiente.
+function proximaApertura(horarios: Franja[]): string | null {
+  if (!horarios || horarios.length === 0) return null
+  const hora = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())
+  const ordenadas = [...horarios].sort((a, b) => a.desde.localeCompare(b.desde))
+  return (ordenadas.find(h => h.desde > hora) ?? ordenadas[0]).desde
+}
+
 // ============================================================
 // CICLO 2 — /api/pedidos-entrada/contexto
 // AGREGADOR de la APP PÚBLICA DE PEDIDOS (GO CTO 21/09, modelo
@@ -70,6 +81,7 @@ export async function GET(request: Request) {
   const deliveryConfigurado = modulos.delivery === true && !!dispDelivery && dc?.activo === true
   let deliveryDisponible = false
   let deliveryMotivo: string | null = null
+  let deliveryProximo: string | null = null
   if (!deliveryConfigurado) {
     deliveryMotivo = null // no configurado: ni se muestra (decisión CTO)
   } else if (dc?.pausado) {
@@ -78,17 +90,18 @@ export async function GET(request: Request) {
   } else {
     const horarios = (dc?.horarios as Franja[] | null) ?? []
     deliveryDisponible = horarios.length === 0 ? true : estaAbierto(horarios, Number(dc?.tolerancia_cierre ?? 5))
-    if (!deliveryDisponible) deliveryMotivo = 'Cerrado por horario'
+    if (!deliveryDisponible) { deliveryMotivo = 'Cerrado por horario'; deliveryProximo = proximaApertura(horarios) }
   }
 
   // TAKE AWAY — configurado = módulo ON y config activa
   const taConfigurado = modulos.takeaway === true && tc?.activo === true
   let taDisponible = false
   let taMotivo: string | null = null
+  let taProximo: string | null = null
   if (taConfigurado) {
     const horariosTa = (tc?.horarios as Franja[] | null) ?? []
     taDisponible = horariosTa.length === 0 ? true : estaAbierto(horariosTa, Number(tc?.tolerancia_cierre ?? 5))
-    if (!taDisponible) taMotivo = 'Cerrado por horario'
+    if (!taDisponible) { taMotivo = 'Cerrado por horario'; taProximo = proximaApertura(horariosTa) }
   }
 
   return NextResponse.json({
@@ -103,8 +116,8 @@ export async function GET(request: Request) {
     // ya opera en producción vía /api/device/verify). El token, si vino, lo
     // transporta la PAGE como passthrough — este endpoint no lo conoce.
     servicios: {
-      delivery: { configurado: deliveryConfigurado, disponible: deliveryDisponible, motivo: deliveryMotivo, url: `/${empresa.slug}/delivery/${sucursal.slug}` },
-      takeaway: { configurado: taConfigurado, disponible: taDisponible, motivo: taMotivo, url: `/${empresa.slug}/takeaway/${sucursal.slug}` },
+      delivery: { configurado: deliveryConfigurado, disponible: deliveryDisponible, motivo: deliveryMotivo, proximo: deliveryProximo, url: `/${empresa.slug}/delivery/${sucursal.slug}` },
+      takeaway: { configurado: taConfigurado, disponible: taDisponible, motivo: taMotivo, proximo: taProximo, url: `/${empresa.slug}/takeaway/${sucursal.slug}` },
     },
   })
 }

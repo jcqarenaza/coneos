@@ -23,7 +23,7 @@
 
 import { useEffect, useState } from 'react'
 
-interface Canal { configurado: boolean; disponible: boolean; motivo: string | null; url: string }
+interface Canal { configurado: boolean; disponible: boolean; motivo: string | null; proximo: string | null; url: string }
 interface Contexto {
   nombre: string
   sucursal_nombre: string
@@ -79,46 +79,61 @@ export default function EntradaPedidosPage() {
 
   if (estado === 'cargando' || estado === 'redirigiendo') return (
     <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
-      <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
+      {/* 2.1a: con contexto en mano, la espera muestra la marca (pulso suave);
+          antes del contexto no hay logo — spinner neutro. Cero delay agregado. */}
+      {ctx?.config.logo_url
+        ? <img src={ctx.config.logo_url} alt="" className="w-24 h-24 object-contain animate-pulse" />
+        : <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />}
     </div>
   )
 
   if (estado === 'no-disponible' || !ctx) return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3 text-center" style={{ backgroundColor: '#faf8f5' }}>
-      <div className="text-5xl">🍦</div>
+      {/* 2.1a: sin rubro hardcodeado — GastrOS es gastronomía en general */}
       <p className="text-neutral-500">Esta página no está disponible.</p>
     </div>
   )
 
   const color = ctx.config.primary_color
-  const tarjetas: { emoji: string; titulo: string; canal: Canal }[] = [
-    { emoji: '🛵', titulo: 'Delivery', canal: ctx.servicios.delivery },
-    { emoji: '🥡', titulo: 'Take Away', canal: ctx.servicios.takeaway },
+  const tarjetas: { emoji: string; titulo: string; sub: string; canal: Canal }[] = [
+    { emoji: '🛵', titulo: 'Delivery', sub: 'Te lo llevamos', canal: ctx.servicios.delivery },
+    { emoji: '🥡', titulo: 'Take Away', sub: 'Pedí y pasá a retirarlo', canal: ctx.servicios.takeaway },
   ].filter(x => x.canal.configurado)
+  // Cerrado global: "volvemos a atender a las X" = la próxima apertura más
+  // temprana entre los servicios configurados (dato del agregador, no cálculo)
+  const proximos = tarjetas.map(t => t.canal.proximo).filter((x): x is string => !!x).sort()
+  const volvemosA = proximos[0] ?? null
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-5 py-10" style={{ backgroundColor: '#faf8f5' }}>
       <div className="w-full max-w-md text-center">
         {ctx.config.logo_url
           ? <img src={ctx.config.logo_url} alt="Logo" className="w-28 h-28 object-contain mx-auto mb-4" />
-          : <div className="text-6xl mb-4">🍦</div>}
+          : null}
         <h1 className="text-2xl font-black text-neutral-800">{ctx.nombre}</h1>
         <p className="text-sm text-neutral-400 mb-2">{ctx.sucursal_nombre}</p>
-        <h2 className="text-lg font-bold text-neutral-700 mt-6 mb-4">
-          {estado === 'selector' ? '¿Cómo querés recibir tu pedido?' : 'Estamos cerrados en este momento'}
+        <h2 className="text-lg font-bold text-neutral-700 mt-6 mb-1">
+          {estado === 'selector' ? '¿Cómo querés recibir tu pedido?' : 'Ahora estamos cerrados'}
         </h2>
+        {estado === 'cerrado' && volvemosA && (
+          <p className="text-sm font-semibold text-neutral-500 mb-4">Volvemos a atender a las {volvemosA}</p>
+        )}
+        {(estado === 'selector' || !volvemosA) && <div className="mb-3" />}
 
         <div className="space-y-3">
-          {tarjetas.map(({ emoji, titulo, canal }) => (
+          {tarjetas.map(({ emoji, titulo, sub, canal }) => (
             <div key={titulo}
               className={`w-full bg-white rounded-2xl border-2 p-5 text-left shadow-sm transition-all ${canal.disponible ? '' : 'opacity-70'}`}
               style={{ borderColor: canal.disponible ? `${color}40` : '#e5e5e5' }}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-lg font-black text-neutral-800">{emoji} {titulo}</p>
+                  <p className="text-xs text-neutral-400">{sub}</p>
                   {canal.disponible
-                    ? <p className="text-sm font-semibold text-green-600 mt-0.5">Disponible</p>
-                    : <p className="text-sm font-semibold text-neutral-400 mt-0.5">{canal.motivo ?? 'No disponible'}</p>}
+                    ? <p className="text-sm font-semibold text-green-600 mt-1">🟢 Abierto</p>
+                    : canal.proximo
+                      ? <p className="text-sm font-semibold text-amber-600 mt-1">🟠 Abre a las {canal.proximo}</p>
+                      : <p className="text-sm font-semibold text-neutral-400 mt-1">{canal.motivo ?? 'No disponible'}</p>}
                 </div>
                 {canal.disponible ? (
                   <a href={canal.url}
