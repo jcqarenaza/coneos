@@ -18,7 +18,7 @@
 // ciclo, con la casa probada (molde del Ciclo 1).
 // ═══════════════════════════════════════════════════════════════════
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { ConePageHeader, ConeCard } from '@/components/admin/ConeComponents'
@@ -75,7 +75,9 @@ const inp = 'w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm bg-wh
 
 export default function ServiciosPage() {
   const ctx = useEmpresa()
-  const supabase = createClient()
+  // Cliente ÚNICO (memoizado): crearlo por render hacía cambiar la identidad
+  // de cargar() y el efecto se re-disparaba infinito — spinner eterno
+  const supabase = useMemo(() => createClient(), [])
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalSel, setSucursalSel] = useState('')
   const [negocio, setNegocio] = useState<NegocioCfg | null>(null)
