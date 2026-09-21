@@ -111,23 +111,13 @@ export default function SucursalesPage() {
     setSaving(true)
     const supabase = createClient()
     if (editId) {
-      await supabase.from('sucursales').update({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: form.activo ?? true, rubro: form.rubro ?? 'HELADERIA', horario_general: horarioGeneral && horarioGeneral.length > 0 ? horarioGeneral : null, mensaje_cerrado: mensajeCerrado.trim() || null, tolerancia_cierre: tolGeneral > 0 ? tolGeneral : null }).eq('id', editId)
+      // CICLO 3: horario_general/mensaje_cerrado/tolerancia se editan en Servicios y horarios — este update ya no los escribe (evita pisadas con datos viejos abiertos en el modal)
+      await supabase.from('sucursales').update({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: form.activo ?? true, rubro: form.rubro ?? 'HELADERIA' }).eq('id', editId)
       // CICLO 1: guardar la sucursal ya NO toca sucursal_pagos (prueba explícita del ciclo)
-      await supabase.from('takeaway_config').upsert({ sucursal_id: editId, empresa_id: ctx.empresaId, activo: takeaway.activo, horarios: takeaway.horarios, mensaje_fuera_horario: takeaway.mensaje_fuera_horario, tolerancia_cierre: takeaway.tolerancia_cierre ?? 5 }, { onConflict: 'sucursal_id' })
+      // CICLO 3: tampoco toca takeaway_config ni delivery_config — su único escritor de UI es Servicios y horarios
     } else {
       const { data: nueva } = await supabase.from('sucursales').insert({ nombre: form.nombre, slug: form.slug, direccion: form.direccion || null, activo: true, rubro: form.rubro ?? 'HELADERIA', empresa_id: ctx.empresaId }).select('id').single()
       if (nueva) await supabase.from('sucursal_pagos').insert({ sucursal_id: nueva.id, empresa_id: ctx.empresaId }) // Ciclo 1: fila mínima, defaults de DB; la config vive en Cuentas y cobros
-    }
-    // Guardar delivery_config
-    const sucursalId = editId ?? null
-    if (sucursalId) {
-      await supabase.from('delivery_config').upsert({
-        sucursal_id: sucursalId, empresa_id: ctx.empresaId,
-        activo: delivery.activo, costo_envio: delivery.costo_envio,
-        horarios: delivery.horarios, mensaje_fuera_horario: delivery.mensaje_fuera_horario,
-        pausado: delivery.pausado ?? false, mensaje_pausa: delivery.mensaje_pausa || null,
-        tolerancia_cierre: delivery.tolerancia_cierre ?? 5,
-      }, { onConflict: 'sucursal_id' })
     }
     setSaving(false); setModal(false); load()
   }
@@ -225,145 +215,12 @@ export default function SucursalesPage() {
             </div>
           </div>
 
+          {/* CICLO 3: las secciones Take Away y Delivery (servicios, horarios,
+              costos y mensajes) se PODARON de este modal — su casa es
+              "Servicios y horarios". Igual que la poda de pagos del Ciclo 1. */}
           {editId && (
-            <div className="space-y-3 pt-2 border-t border-neutral-100">
-              <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Take Away 🥡</p>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="ta" checked={takeaway.activo} onChange={e => setTakeaway({ ...takeaway, activo: e.target.checked })} className="w-4 h-4 rounded" />
-                <Label htmlFor="ta" className="cursor-pointer">Take Away activo</Label>
-              </div>
-              {takeaway.activo && (
-                <div className="space-y-3">
-                  {/* ══ CICLO A — HORARIO DEL LOCAL (techo de todos los canales) ══ */}
-                  <div className="space-y-2 border border-neutral-200 rounded-xl p-4 bg-neutral-50/50">
-                    <div className="flex items-center justify-between">
-                      <Label>🕐 Horario del local (todos los canales)</Label>
-                      {horarioGeneral === null ? (
-                        <button type="button" onClick={() => setHorarioGeneral([{ desde: '10:00', hasta: '23:00' }])}
-                          className="text-xs text-blue-600 font-semibold">Activar horario general</button>
-                      ) : (
-                        <button type="button" onClick={() => setHorarioGeneral(null)}
-                          className="text-xs text-red-500 font-semibold">Quitar (sin restricción)</button>
-                      )}
-                    </div>
-                    {horarioGeneral === null ? (
-                      <p className="text-xs text-neutral-400">Sin horario general: cada canal se rige solo por el suyo (comportamiento actual).</p>
-                    ) : (<>
-                      {horarioGeneral.map((h, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <Input type="time" value={h.desde} onChange={e => { const hs = [...horarioGeneral]; hs[i] = { ...hs[i], desde: e.target.value }; setHorarioGeneral(hs) }} className="flex-1 text-sm" />
-                          <span className="text-neutral-400 text-sm">a</span>
-                          <Input type="time" value={h.hasta} onChange={e => { const hs = [...horarioGeneral]; hs[i] = { ...hs[i], hasta: e.target.value }; setHorarioGeneral(hs) }} className="flex-1 text-sm" />
-                          {horarioGeneral.length > 1 && (
-                            <button type="button" onClick={() => setHorarioGeneral(horarioGeneral.filter((_, j) => j !== i))}
-                              className="text-red-400 text-xs font-semibold">✕</button>
-                          )}
-                        </div>
-                      ))}
-                      <button type="button" onClick={() => setHorarioGeneral([...horarioGeneral, { desde: '10:00', hasta: '23:00' }])}
-                        className="text-xs text-blue-600 font-semibold">+ Agregar franja</button>
-                      <p className="text-xs text-neutral-400">Es el techo: fuera de estas franjas NINGÚN canal recibe pedidos (kiosco, delivery, mesas y take away). La caja del operador no se bloquea. Cruces de medianoche: la franja pertenece al día en que empieza.</p>
-                      <div className="grid grid-cols-[1fr_130px] gap-3">
-                        <div className="space-y-1.5">
-                          <Label>Mensaje de local cerrado</Label>
-                          <Input value={mensajeCerrado} onChange={e => setMensajeCerrado(e.target.value)} placeholder="🔒 El local está cerrado. Volvé dentro del horario de atención." className="text-sm" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label>Tolerancia (min)</Label>
-                          <Input type="number" min={0} value={tolGeneral} onChange={e => setTolGeneral(Number(e.target.value) || 0)} className="text-sm" />
-                        </div>
-                      </div>
-                    </>)}
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Horarios de take away</Label>
-                      <button type="button" onClick={() => setTakeaway({ ...takeaway, horarios: [...takeaway.horarios, { desde: '19:00', hasta: '23:30' }] })}
-                        className="text-xs text-blue-600 font-semibold">+ Agregar franja</button>
-                    </div>
-                    {takeaway.horarios.map((h, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <Input type="time" value={h.desde} onChange={e => { const hs = [...takeaway.horarios]; hs[i] = { ...hs[i], desde: e.target.value }; setTakeaway({ ...takeaway, horarios: hs }) }} className="flex-1 text-sm" />
-                        <span className="text-neutral-400 text-sm">a</span>
-                        <Input type="time" value={h.hasta} onChange={e => { const hs = [...takeaway.horarios]; hs[i] = { ...hs[i], hasta: e.target.value }; setTakeaway({ ...takeaway, horarios: hs }) }} className="flex-1 text-sm" />
-                        {takeaway.horarios.length > 1 && (
-                          <button type="button" onClick={() => setTakeaway({ ...takeaway, horarios: takeaway.horarios.filter((_, j) => j !== i) })}
-                            className="text-red-400 text-xs font-semibold">✕</button>
-                        )}
-                      </div>
-                    ))}
-                    <p className="text-xs text-neutral-400">Horarios propios del canal, independientes del delivery. Para cruces de medianoche usá la hora de cierre (ej: 01:00).</p>
-                    {takeaway.activo && canalFueraDeTecho(takeaway.horarios) && <AvisoTecho canal="take away" />}
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Mensaje fuera de horario</Label>
-                    <textarea value={takeaway.mensaje_fuera_horario} onChange={e => setTakeaway({ ...takeaway, mensaje_fuera_horario: e.target.value })} rows={2} className="w-full rounded-md border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-y" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Tolerancia de cierre (minutos)</Label>
-                    <Input type="number" min={0} max={60} value={takeaway.tolerancia_cierre ?? 5} onChange={e => setTakeaway({ ...takeaway, tolerancia_cierre: Number(e.target.value) })} className="w-28" />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {editId && (
-            <div className="space-y-3 pt-2 border-t border-neutral-100">
-              <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Delivery</p>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="del" checked={delivery.activo} onChange={e => setDelivery({ ...delivery, activo: e.target.checked })} className="w-4 h-4 rounded" />
-                <Label htmlFor="del" className="cursor-pointer">Delivery activo</Label>
-              </div>
-              {delivery.activo && (
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label>Costo de envío ($)</Label>
-                    <Input type="number" value={delivery.costo_envio} onChange={e => setDelivery({ ...delivery, costo_envio: Number(e.target.value) })} placeholder="4000" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Horarios de delivery</Label>
-                      <button type="button" onClick={() => setDelivery({ ...delivery, horarios: [...delivery.horarios, { desde: '20:00', hasta: '23:59' }] })}
-                        className="text-xs text-blue-600 font-semibold">+ Agregar franja</button>
-                    </div>
-                    {delivery.horarios.map((h, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <Input type="time" value={h.desde} onChange={e => { const hs = [...delivery.horarios]; hs[i] = { ...hs[i], desde: e.target.value }; setDelivery({ ...delivery, horarios: hs }) }} className="flex-1 text-sm" />
-                        <span className="text-neutral-400 text-sm">a</span>
-                        <Input type="time" value={h.hasta} onChange={e => { const hs = [...delivery.horarios]; hs[i] = { ...hs[i], hasta: e.target.value }; setDelivery({ ...delivery, horarios: hs }) }} className="flex-1 text-sm" />
-                        {delivery.horarios.length > 1 && (
-                          <button type="button" onClick={() => setDelivery({ ...delivery, horarios: delivery.horarios.filter((_, j) => j !== i) })}
-                            className="text-red-400 text-xs font-semibold">✕</button>
-                        )}
-                      </div>
-                    ))}
-                    <p className="text-xs text-neutral-400">Para horarios que cruzan la medianoche (ej: 20:00 a 01:00) usá 01:00 como hora de cierre.</p>
-                    {delivery.activo && canalFueraDeTecho(delivery.horarios) && <AvisoTecho canal="delivery" />}
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Mensaje fuera de horario</Label>
-                    <textarea value={delivery.mensaje_fuera_horario} onChange={e => setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value })} placeholder="El delivery no está disponible..." rows={3} className="w-full rounded-md border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-y" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Tolerancia de cierre (minutos)</Label>
-                    <Input type="number" min={0} max={60} value={delivery.tolerancia_cierre ?? 5} onChange={e => setDelivery({ ...delivery, tolerancia_cierre: Number(e.target.value) })} className="w-28" />
-                    <p className="text-xs text-neutral-400">Quien ya está pidiendo puede confirmar hasta estos minutos después del cierre.</p>
-                  </div>
-                  <div className="pt-2 border-t border-neutral-100 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <input type="checkbox" id="del-pausado" checked={delivery.pausado} onChange={e => setDelivery({ ...delivery, pausado: e.target.checked })} className="w-4 h-4 rounded" />
-                      <Label htmlFor="del-pausado" className="cursor-pointer">🌧️ Pausar por mal tiempo</Label>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Mensaje de pausa</Label>
-                      <textarea value={delivery.mensaje_pausa ?? ''} onChange={e => setDelivery({ ...delivery, mensaje_pausa: e.target.value })} rows={3} className="w-full rounded-md border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-y" />
-                      <p className="text-xs text-neutral-400">También se puede pausar/reactivar desde la caja con un click.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+              <p className="text-xs text-neutral-500">🕗 Los servicios (Take Away, Delivery), sus horarios, costos y mensajes — y el horario del negocio que rige el Kiosk — se configuran en <b>Servicios y horarios</b>.</p>
             </div>
           )}
         </div>

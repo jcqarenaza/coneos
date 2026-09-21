@@ -28,8 +28,8 @@ interface Franja { desde: string; hasta: string }
 interface Sucursal { id: string; nombre: string }
 
 interface NegocioCfg { horario_general: Franja[]; mensaje_cerrado: string; tolerancia_cierre: number }
-interface DeliveryCfg { activo: boolean; pausado: boolean; mensaje_pausa: string; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number }
-interface TaCfg { activo: boolean; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number }
+interface DeliveryCfg { activo: boolean; pausado: boolean; mensaje_pausa: string; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_envio: number }
+interface TaCfg { activo: boolean; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio: number }
 
 // ── Editor de franjas horarias (compartido por las tres tarjetas) ──
 function FranjasEditor({ franjas, onChange, deshabilitado }: { franjas: Franja[]; onChange: (f: Franja[]) => void; deshabilitado?: boolean }) {
@@ -98,8 +98,8 @@ export default function ServiciosPage() {
     setCargando(true)
     const [{ data: suc }, { data: dc }, { data: tc }, { data: cfg }] = await Promise.all([
       supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre').eq('id', sucId).maybeSingle(),
-      supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre').eq('sucursal_id', sucId).maybeSingle(),
-      supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre').eq('sucursal_id', sucId).maybeSingle(),
+      supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio').eq('sucursal_id', sucId).maybeSingle(),
+      supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('empresa_config').select('modulos').eq('empresa_id', ctx.empresaId).maybeSingle(),
     ])
     const mods = (cfg?.modulos ?? {}) as Record<string, boolean>
@@ -117,12 +117,14 @@ export default function ServiciosPage() {
       horarios: (dc?.horarios as Franja[] | null) ?? [],
       mensaje_fuera_horario: dc?.mensaje_fuera_horario ?? '',
       tolerancia_cierre: Number(dc?.tolerancia_cierre ?? 5),
+      costo_envio: Number(dc?.costo_envio ?? 0),
     })
     setTa({
       activo: tc?.activo ?? false,
       horarios: (tc?.horarios as Franja[] | null) ?? [],
       mensaje_fuera_horario: tc?.mensaje_fuera_horario ?? '',
       tolerancia_cierre: Number(tc?.tolerancia_cierre ?? 5),
+      costo_servicio: Number(tc?.costo_servicio ?? 0),
     })
     setCargando(false)
   }, [ctx?.empresaId, supabase])
@@ -155,12 +157,14 @@ export default function ServiciosPage() {
         horarios: delivery.horarios,
         mensaje_fuera_horario: delivery.mensaje_fuera_horario || null,
         tolerancia_cierre: delivery.tolerancia_cierre,
+        costo_envio: delivery.costo_envio,
       }, { onConflict: 'sucursal_id' }),
       supabase.from('takeaway_config').upsert({
         sucursal_id: sucursalSel, empresa_id: ctx.empresaId,
         activo: ta.activo, horarios: ta.horarios,
         mensaje_fuera_horario: ta.mensaje_fuera_horario || null,
         tolerancia_cierre: ta.tolerancia_cierre,
+        costo_servicio: ta.costo_servicio,
       }, { onConflict: 'sucursal_id' }),
     ])
     setGuardando(null)
@@ -270,6 +274,7 @@ export default function ServiciosPage() {
                 <th className="py-2 pr-3 font-semibold">Activo</th>
                 <th className="py-2 pr-3 font-semibold">Franjas horarias</th>
                 <th className="py-2 pr-3 font-semibold">Tolerancia</th>
+                <th className="py-2 pr-3 font-semibold">Costo</th>
                 <th className="py-2 font-semibold">Pausa</th>
               </tr>
             </thead>
@@ -285,6 +290,7 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={negocio.horario_general} onChange={f => setNegocio({ ...negocio, horario_general: f })} /></td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   
                 </tr>
               )}
@@ -298,6 +304,13 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3"><Toggle on={delivery.activo} onClick={() => setDelivery({ ...delivery, activo: !delivery.activo })} /></td>
                   <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={delivery.horarios} onChange={f => setDelivery({ ...delivery, horarios: f })} deshabilitado={!delivery.activo} /></td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={delivery.tolerancia_cierre} onChange={e => setDelivery({ ...delivery, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
+                  <td className="py-3 pr-3">
+                    <div className="flex items-center gap-1" title="Costo de envío — se suma al pedido de delivery">
+                      <span className="text-xs text-neutral-400">$</span>
+                      <input type="number" min={0} value={delivery.costo_envio} onChange={e => setDelivery({ ...delivery, costo_envio: Number(e.target.value) })} disabled={!delivery.activo} className="w-20 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700 disabled:opacity-40" />
+                    </div>
+                    <p className="text-[10px] text-neutral-300 mt-0.5">envío</p>
+                  </td>
                   <td className="py-3 pr-3">
                     <button onClick={() => setDelivery({ ...delivery, pausado: !delivery.pausado })} title="Pausa momentánea: lluvia o demanda desbordada — misma llave que el botón de la caja"
                       className={`p-1.5 rounded-lg border transition-colors ${delivery.pausado ? 'bg-amber-100 border-amber-300 text-amber-600' : 'bg-white border-neutral-200 text-neutral-300 hover:text-neutral-500'}`}>
@@ -314,6 +327,13 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3"><Toggle on={ta.activo} onClick={() => setTa({ ...ta, activo: !ta.activo })} /></td>
                   <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={ta.horarios} onChange={f => setTa({ ...ta, horarios: f })} deshabilitado={!ta.activo} /></td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={ta.tolerancia_cierre} onChange={e => setTa({ ...ta, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
+                  <td className="py-3 pr-3">
+                    <div className="flex items-center gap-1" title="Costo de servicio de retiro (aderezos, salsas, packaging) — todavía no se cobra en el checkout">
+                      <span className="text-xs text-neutral-400">$</span>
+                      <input type="number" min={0} value={ta.costo_servicio} onChange={e => setTa({ ...ta, costo_servicio: Number(e.target.value) })} disabled={!ta.activo} className="w-20 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700 disabled:opacity-40" />
+                    </div>
+                    <p className="text-[10px] text-neutral-300 mt-0.5">servicio ⚠️</p>
+                  </td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   
                 </tr>
@@ -321,7 +341,7 @@ export default function ServiciosPage() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja). Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
+        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · ⚠️ el costo de <b>servicio</b> de Take Away todavía <b>no se cobra en el checkout</b> — se conecta en el próximo paso. Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
       </ConeCard>
       )}
 
