@@ -199,134 +199,115 @@ export default function ServiciosPage() {
   )
 
   return (
-    <div className="p-8 max-w-3xl space-y-5">
+    <div className="p-8 max-w-4xl space-y-5">
       <ConePageHeader title="Servicios y horarios" description="Cuándo y cómo atiende cada servicio de la sucursal — todo en un solo lugar" />
 
       {aviso && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-green-600 text-white rounded-full text-sm font-semibold shadow-lg pointer-events-none">✓ {aviso}</div>}
       {error && <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 font-medium">{error}</div>}
 
-      {sucursales.length > 1 && (
-        <select value={sucursalSel} onChange={e => { setSucursalSel(e.target.value); cargar(e.target.value) }}
-          className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
-          {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-        </select>
-      )}
+      <ConeCard>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h3 className="font-bold text-neutral-800">Qué servicio atiende y cuándo</h3>
+          {sucursales.length > 1 && (
+            <select value={sucursalSel} onChange={e => { setSucursalSel(e.target.value); cargar(e.target.value) }}
+              className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
+              {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          )}
+        </div>
 
-      {/* ══ 🏪 NEGOCIO / KIOSK ══ */}
-      {negocio && (
-        <ConeCard>
-          <div className="flex items-start justify-between gap-3 mb-1">
-            <div>
-              <h3 className="font-bold text-neutral-800">🏪 Horario del negocio</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">El horario del local. El <b>Kiosk</b> del mostrador atiende dentro de este horario.</p>
-            </div>
-            <BotonGuardar id="negocio" onClick={guardarNegocio} />
-          </div>
-          <div className="mt-3 space-y-3">
-            <FranjasEditor franjas={negocio.horario_general} onChange={f => setNegocio({ ...negocio, horario_general: f })} />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-neutral-500">Tolerancia de cierre (min)</label>
-                <input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) })} className={inp} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-neutral-500">Mensaje cuando está cerrado</label>
-                <input value={negocio.mensaje_cerrado} placeholder="¡Volvemos pronto!" onChange={e => setNegocio({ ...negocio, mensaje_cerrado: e.target.value })} className={inp} />
-              </div>
-            </div>
-          </div>
-        </ConeCard>
-      )}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-xs text-neutral-400 uppercase tracking-wide">
+                <th className="py-2 pr-3 font-semibold">Servicio</th>
+                <th className="py-2 pr-3 font-semibold">Activo</th>
+                <th className="py-2 pr-3 font-semibold">Franjas horarias</th>
+                <th className="py-2 pr-3 font-semibold">Tolerancia</th>
+                <th className="py-2 pr-3 font-semibold">Pausa</th>
+                <th className="py-2 font-semibold"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* ── 🏪 NEGOCIO / KIOSK ── */}
+              {negocio && (
+                <tr className="border-t border-neutral-100 align-top">
+                  <td className="py-3 pr-3">
+                    <p className="font-semibold text-neutral-700 whitespace-nowrap">🏪 Negocio</p>
+                    <p className="text-[11px] text-neutral-400">rige el Kiosk</p>
+                  </td>
+                  <td className="py-3 pr-3"><span className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Siempre</span></td>
+                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={negocio.horario_general} onChange={f => setNegocio({ ...negocio, horario_general: f })} /></td>
+                  <td className="py-3 pr-3"><input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
+                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3 text-right"><BotonGuardar id="negocio" onClick={guardarNegocio} /></td>
+                </tr>
+              )}
+              {/* ── 🛵 DELIVERY ── */}
+              {delivery && tieneDelivery && (
+                <tr className={`border-t border-neutral-100 align-top ${delivery.pausado ? 'bg-amber-50/60' : ''}`}>
+                  <td className="py-3 pr-3">
+                    <p className="font-semibold text-neutral-700 whitespace-nowrap">🛵 Delivery</p>
+                    {delivery.pausado && <p className="text-[11px] font-semibold text-amber-600">⏸️ EN PAUSA</p>}
+                  </td>
+                  <td className="py-3 pr-3"><Toggle on={delivery.activo} onClick={() => setDelivery({ ...delivery, activo: !delivery.activo })} /></td>
+                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={delivery.horarios} onChange={f => setDelivery({ ...delivery, horarios: f })} deshabilitado={!delivery.activo} /></td>
+                  <td className="py-3 pr-3"><input type="number" min={0} max={120} value={delivery.tolerancia_cierre} onChange={e => setDelivery({ ...delivery, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
+                  <td className="py-3 pr-3">
+                    <button onClick={() => setDelivery({ ...delivery, pausado: !delivery.pausado })} title="Pausa momentánea: lluvia o demanda desbordada — misma llave que el botón de la caja"
+                      className={`p-1.5 rounded-lg border transition-colors ${delivery.pausado ? 'bg-amber-100 border-amber-300 text-amber-600' : 'bg-white border-neutral-200 text-neutral-300 hover:text-neutral-500'}`}>
+                      <CloudRain className="h-4 w-4" />
+                    </button>
+                  </td>
+                  <td className="py-3 text-right"><BotonGuardar id="delivery" onClick={guardarDelivery} /></td>
+                </tr>
+              )}
+              {/* ── 🥡 TAKE AWAY ── */}
+              {ta && tieneTa && (
+                <tr className="border-t border-neutral-100 align-top">
+                  <td className="py-3 pr-3"><p className="font-semibold text-neutral-700 whitespace-nowrap">🥡 Take Away</p></td>
+                  <td className="py-3 pr-3"><Toggle on={ta.activo} onClick={() => setTa({ ...ta, activo: !ta.activo })} /></td>
+                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={ta.horarios} onChange={f => setTa({ ...ta, horarios: f })} deshabilitado={!ta.activo} /></td>
+                  <td className="py-3 pr-3"><input type="number" min={0} max={120} value={ta.tolerancia_cierre} onChange={e => setTa({ ...ta, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
+                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3 text-right"><BotonGuardar id="ta" onClick={guardarTa} /></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja). Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
+      </ConeCard>
 
-      {/* ══ 🛵 DELIVERY ══ */}
-      {delivery && tieneDelivery && (
-        <ConeCard>
-          <div className="flex items-start justify-between gap-3 mb-1">
+      {/* ── MENSAJES CUANDO ESTÁ CERRADO ── */}
+      <ConeCard>
+        <h3 className="font-bold text-neutral-800 mb-1">Mensajes al cliente</h3>
+        <p className="text-xs text-neutral-400 mb-4">Lo que ve el cliente cuando el servicio está cerrado o en pausa. Se guardan con el Guardar de cada fila de arriba.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {negocio && (
             <div>
-              <h3 className="font-bold text-neutral-800">🛵 Delivery</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">Pedidos a domicilio — link, QR y App de pedidos.</p>
+              <label className="text-xs font-semibold text-neutral-500">🏪 Negocio cerrado</label>
+              <input value={negocio.mensaje_cerrado} placeholder="¡Volvemos pronto!" onChange={e => setNegocio({ ...negocio, mensaje_cerrado: e.target.value })} className={inp} />
             </div>
-            <BotonGuardar id="delivery" onClick={guardarDelivery} />
-          </div>
-          <div className="mt-3 space-y-4">
-            <div className="flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
-              <div>
-                <p className="text-sm font-semibold text-neutral-700">Servicio activo</p>
-                <p className="text-xs text-neutral-400">Apagado: el delivery no recibe pedidos ni aparece en la app.</p>
-              </div>
-              <Toggle on={delivery.activo} onClick={() => setDelivery({ ...delivery, activo: !delivery.activo })} />
-            </div>
-            <div className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${delivery.pausado ? 'bg-amber-50 border-amber-200' : 'bg-neutral-50 border-neutral-100'}`}>
-              <div className="flex items-start gap-2">
-                <CloudRain className={`h-4 w-4 mt-0.5 ${delivery.pausado ? 'text-amber-500' : 'text-neutral-300'}`} />
-                <div>
-                  <p className="text-sm font-semibold text-neutral-700">Pausa momentánea {delivery.pausado && <span className="text-amber-600">— EN PAUSA</span>}</p>
-                  <p className="text-xs text-neutral-400">Para lluvia o demanda desbordada: frena pedidos nuevos sin apagar el servicio. La caja tiene el mismo botón — es la misma llave.</p>
-                </div>
-              </div>
-              <Toggle on={delivery.pausado} onClick={() => setDelivery({ ...delivery, pausado: !delivery.pausado })} />
-            </div>
-            {delivery.pausado && (
-              <div>
-                <label className="text-xs font-semibold text-neutral-500">Mensaje durante la pausa</label>
-                <input value={delivery.mensaje_pausa} placeholder="Pausado momentáneamente — ¡ya volvemos!" onChange={e => setDelivery({ ...delivery, mensaje_pausa: e.target.value })} className={inp} />
-              </div>
-            )}
+          )}
+          {delivery && tieneDelivery && (<>
             <div>
-              <p className="text-xs font-semibold text-neutral-500 mb-2">Franjas horarias del delivery</p>
-              <FranjasEditor franjas={delivery.horarios} onChange={f => setDelivery({ ...delivery, horarios: f })} deshabilitado={!delivery.activo} />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-neutral-500">Tolerancia de cierre (min)</label>
-                <input type="number" min={0} max={120} value={delivery.tolerancia_cierre} onChange={e => setDelivery({ ...delivery, tolerancia_cierre: Number(e.target.value) })} className={inp} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-neutral-500">Mensaje fuera de horario</label>
-                <input value={delivery.mensaje_fuera_horario} placeholder="El delivery no está disponible ahora." onChange={e => setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value })} className={inp} />
-              </div>
-            </div>
-          </div>
-        </ConeCard>
-      )}
-
-      {/* ══ 🥡 TAKE AWAY ══ */}
-      {ta && tieneTa && (
-        <ConeCard>
-          <div className="flex items-start justify-between gap-3 mb-1">
-            <div>
-              <h3 className="font-bold text-neutral-800">🥡 Take Away</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">Pedidos para retirar en el local — link y App de pedidos.</p>
-            </div>
-            <BotonGuardar id="ta" onClick={guardarTa} />
-          </div>
-          <div className="mt-3 space-y-4">
-            <div className="flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
-              <div>
-                <p className="text-sm font-semibold text-neutral-700">Servicio activo</p>
-                <p className="text-xs text-neutral-400">Apagado: el take away no recibe pedidos ni aparece en la app.</p>
-              </div>
-              <Toggle on={ta.activo} onClick={() => setTa({ ...ta, activo: !ta.activo })} />
+              <label className="text-xs font-semibold text-neutral-500">🛵 Delivery fuera de horario</label>
+              <input value={delivery.mensaje_fuera_horario} placeholder="El delivery no está disponible ahora." onChange={e => setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value })} className={inp} />
             </div>
             <div>
-              <p className="text-xs font-semibold text-neutral-500 mb-2">Franjas horarias del take away</p>
-              <FranjasEditor franjas={ta.horarios} onChange={f => setTa({ ...ta, horarios: f })} deshabilitado={!ta.activo} />
+              <label className="text-xs font-semibold text-neutral-500">⏸️ Delivery en pausa</label>
+              <input value={delivery.mensaje_pausa} placeholder="Pausado momentáneamente — ¡ya volvemos!" onChange={e => setDelivery({ ...delivery, mensaje_pausa: e.target.value })} className={inp} />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-neutral-500">Tolerancia de cierre (min)</label>
-                <input type="number" min={0} max={120} value={ta.tolerancia_cierre} onChange={e => setTa({ ...ta, tolerancia_cierre: Number(e.target.value) })} className={inp} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-neutral-500">Mensaje fuera de horario</label>
-                <input value={ta.mensaje_fuera_horario} placeholder="El take away no está disponible ahora. ¡Volvemos pronto!" onChange={e => setTa({ ...ta, mensaje_fuera_horario: e.target.value })} className={inp} />
-              </div>
+          </>)}
+          {ta && tieneTa && (
+            <div>
+              <label className="text-xs font-semibold text-neutral-500">🥡 Take Away fuera de horario</label>
+              <input value={ta.mensaje_fuera_horario} placeholder="El take away no está disponible ahora. ¡Volvemos pronto!" onChange={e => setTa({ ...ta, mensaje_fuera_horario: e.target.value })} className={inp} />
             </div>
-          </div>
-        </ConeCard>
-      )}
-
-      <p className="text-xs text-neutral-400">💡 Sin franjas cargadas, el servicio queda abierto siempre. Los medios de pago de cada canal se configuran en <b>Cuentas y cobros</b>.</p>
+          )}
+        </div>
+      </ConeCard>
     </div>
   )
 }
