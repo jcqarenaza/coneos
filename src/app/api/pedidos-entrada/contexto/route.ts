@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     supabase.from('empresa_config')
       .select('primary_color, secondary_color, logo_url, modulos, entrada_unificada')
       .eq('empresa_id', empresa.id).maybeSingle(),
-    supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
+    supabase.from('sucursales').select('id, nombre, slug, direccion, horario_general, mensaje_cerrado').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
   ])
   if (!sucursal) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
 
@@ -107,6 +107,12 @@ export async function GET(request: Request) {
   return NextResponse.json({
     nombre: empresa.nombre,
     sucursal_nombre: sucursal.nombre,
+    // 2.1a: la página del negocio como fallback — datos que YA viven en sucursales
+    negocio: {
+      direccion: sucursal.direccion ?? null,
+      horarios: (sucursal.horario_general as Franja[] | null) ?? [],
+      mensaje: sucursal.mensaje_cerrado ?? null,
+    },
     config: {
       primary_color: cfg?.primary_color ?? '#1E3A5F',
       secondary_color: cfg?.secondary_color ?? '#F5C842',

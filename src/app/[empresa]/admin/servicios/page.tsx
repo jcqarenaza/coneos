@@ -138,6 +138,38 @@ export default function ServiciosPage() {
       })
   }, [ctx?.empresaId, supabase, cargar])
 
+  // UN solo Guardar (pedido JC): las tres fuentes en una pasada, todo o se avisa
+  async function guardarTodo() {
+    if (!negocio || !delivery || !ta || !sucursalSel || !ctx?.empresaId) return
+    setGuardando('todo'); setError(null)
+    const [r1, r2, r3] = await Promise.all([
+      supabase.from('sucursales').update({
+        horario_general: negocio.horario_general,
+        mensaje_cerrado: negocio.mensaje_cerrado || null,
+        tolerancia_cierre: negocio.tolerancia_cierre,
+      }).eq('id', sucursalSel),
+      supabase.from('delivery_config').upsert({
+        sucursal_id: sucursalSel, empresa_id: ctx.empresaId,
+        activo: delivery.activo, pausado: delivery.pausado,
+        mensaje_pausa: delivery.mensaje_pausa || null,
+        horarios: delivery.horarios,
+        mensaje_fuera_horario: delivery.mensaje_fuera_horario || null,
+        tolerancia_cierre: delivery.tolerancia_cierre,
+      }, { onConflict: 'sucursal_id' }),
+      supabase.from('takeaway_config').upsert({
+        sucursal_id: sucursalSel, empresa_id: ctx.empresaId,
+        activo: ta.activo, horarios: ta.horarios,
+        mensaje_fuera_horario: ta.mensaje_fuera_horario || null,
+        tolerancia_cierre: ta.tolerancia_cierre,
+      }, { onConflict: 'sucursal_id' }),
+    ])
+    setGuardando(null)
+    const errs = [r1.error && `negocio: ${r1.error.message}`, r2.error && `delivery: ${r2.error.message}`, r3.error && `take away: ${r3.error.message}`].filter(Boolean)
+    if (errs.length) { setError(`No se pudo guardar — ${errs.join(' · ')}`); return }
+    avisar(delivery.pausado ? 'Guardado — Delivery quedó EN PAUSA' : 'Guardado')
+    cargar(sucursalSel)
+  }
+
   async function guardarNegocio() {
     if (!negocio || !sucursalSel) return
     setGuardando('negocio'); setError(null)
@@ -219,12 +251,15 @@ export default function ServiciosPage() {
       <ConeCard>
         <div className="flex items-center justify-between gap-3 mb-4">
           <h3 className="font-bold text-neutral-800">Qué servicio atiende y cuándo</h3>
+          <div className="flex items-center gap-2">
+          <BotonGuardar id="todo" onClick={guardarTodo} />
           {sucursales.length > 1 && (
             <select value={sucursalSel} onChange={e => { setSucursalSel(e.target.value); cargar(e.target.value) }}
               className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
               {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
           )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -235,8 +270,7 @@ export default function ServiciosPage() {
                 <th className="py-2 pr-3 font-semibold">Activo</th>
                 <th className="py-2 pr-3 font-semibold">Franjas horarias</th>
                 <th className="py-2 pr-3 font-semibold">Tolerancia</th>
-                <th className="py-2 pr-3 font-semibold">Pausa</th>
-                <th className="py-2 font-semibold"></th>
+                <th className="py-2 font-semibold">Pausa</th>
               </tr>
             </thead>
             <tbody>
@@ -251,7 +285,7 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={negocio.horario_general} onChange={f => setNegocio({ ...negocio, horario_general: f })} /></td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
-                  <td className="py-3 text-right"><BotonGuardar id="negocio" onClick={guardarNegocio} /></td>
+                  
                 </tr>
               )}
               {/* ── 🛵 DELIVERY ── */}
@@ -270,7 +304,7 @@ export default function ServiciosPage() {
                       <CloudRain className="h-4 w-4" />
                     </button>
                   </td>
-                  <td className="py-3 text-right"><BotonGuardar id="delivery" onClick={guardarDelivery} /></td>
+                  
                 </tr>
               )}
               {/* ── 🥡 TAKE AWAY ── */}
@@ -281,7 +315,7 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={ta.horarios} onChange={f => setTa({ ...ta, horarios: f })} deshabilitado={!ta.activo} /></td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={ta.tolerancia_cierre} onChange={e => setTa({ ...ta, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
-                  <td className="py-3 text-right"><BotonGuardar id="ta" onClick={guardarTa} /></td>
+                  
                 </tr>
               )}
             </tbody>
@@ -295,7 +329,7 @@ export default function ServiciosPage() {
       {tab === 'mensajes' && (
       <ConeCard>
         <h3 className="font-bold text-neutral-800 mb-1">Mensajes al cliente</h3>
-        <p className="text-xs text-neutral-400 mb-4">Lo que ve el cliente cuando el servicio está cerrado o en pausa. Se guardan con el <b>Guardar</b> de la fila del servicio (tab Horarios).</p>
+        <p className="text-xs text-neutral-400 mb-4">Lo que ve el cliente cuando el servicio está cerrado o en pausa. Se guardan con el mismo botón <b>Guardar</b> (tab Horarios y servicios).</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {negocio && (
             <div>

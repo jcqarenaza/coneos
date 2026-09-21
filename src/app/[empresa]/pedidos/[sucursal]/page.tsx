@@ -27,6 +27,7 @@ interface Canal { configurado: boolean; disponible: boolean; motivo: string | nu
 interface Contexto {
   nombre: string
   sucursal_nombre: string
+  negocio: { direccion: string | null; horarios: { desde: string; hasta: string }[]; mensaje: string | null }
   config: { primary_color: string; secondary_color: string; logo_url: string | null }
   servicios: { delivery: Canal; takeaway: Canal }
 }
@@ -87,12 +88,27 @@ export default function EntradaPedidosPage() {
     </div>
   )
 
-  if (estado === 'no-disponible' || !ctx) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3 text-center" style={{ backgroundColor: '#faf8f5' }}>
-      {/* 2.1a: sin rubro hardcodeado — GastrOS es gastronomía en general */}
-      <p className="text-neutral-500">Esta página no está disponible.</p>
-    </div>
-  )
+  if (estado === 'no-disponible' || !ctx) {
+    // Con contexto (toggle ON pero sin servicios que mostrar): la PÁGINA DEL
+    // NEGOCIO — nombre, dirección y horarios del local (datos de sucursales).
+    // Sin contexto (toggle OFF / slugs inválidos): mensaje neutro, sin rubro.
+    if (!ctx) return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3 text-center" style={{ backgroundColor: '#faf8f5' }}>
+        <p className="text-neutral-500">Esta página no está disponible.</p>
+      </div>
+    )
+    const horariosNegocio = [...(ctx.negocio?.horarios ?? [])].sort((a, b) => a.desde.localeCompare(b.desde)).map(h => `${h.desde} a ${h.hasta}`).join(' y ')
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3 text-center" style={{ backgroundColor: '#faf8f5' }}>
+        {ctx.config.logo_url && <img src={ctx.config.logo_url} alt="Logo" className="w-28 h-28 object-contain" />}
+        <h1 className="text-2xl font-black text-neutral-800">{ctx.nombre}</h1>
+        <p className="text-sm text-neutral-400 -mt-2">{ctx.sucursal_nombre}</p>
+        {ctx.negocio?.direccion && <p className="text-sm font-semibold text-neutral-600">📍 {ctx.negocio.direccion}</p>}
+        {horariosNegocio && <p className="text-neutral-700 text-sm font-semibold bg-white border border-neutral-100 rounded-2xl px-5 py-3 shadow-sm">🕗 Nuestro horario: {horariosNegocio}</p>}
+        <p className="text-neutral-500 text-sm max-w-xs">{ctx.negocio?.mensaje ?? 'En este momento no estamos tomando pedidos online. ¡Te esperamos en el local!'}</p>
+      </div>
+    )
+  }
 
   const color = ctx.config.primary_color
   const tarjetas: { emoji: string; titulo: string; sub: string; canal: Canal }[] = [
