@@ -101,6 +101,41 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
   useEffect(() => {
     async function init() {
+      // ══ CICLO 2 — PUENTE A LA APP PÚBLICA (la ÚNICA edición del ciclo a este
+      // flujo; contrato CTO). Doblemente gateado e INERTE por diseño:
+      //   1. ?desde=app presente → jamás re-reenvía (SOLO anti-loop, no negocio)
+      //   2. reanudación MP pendiente → jamás intercepta (el cliente que vuelve
+      //      de pagar retoma su pedido; condición previa a todo)
+      //   3. consulta al agregador de la App Pública: con toggle OFF responde
+      //      404 → catch/return → este flujo sigue EXACTAMENTE como siempre
+      //   4. solo si Take Away está disponible → replace a /pedidos/ con el
+      //      token como PASSTHROUGH puro (el QR sigue identificando su
+      //      dispositivo; la App Pública lo transporta sin interpretarlo)
+      // Cualquier error = camino de siempre. Byte-idéntico con toggle apagado.
+      if (searchParams.get('desde') !== 'app') {
+        const rawMp = (() => { try { return sessionStorage.getItem('coneos_mp_pedido') } catch { return null } })()
+        let mpPendiente = false
+        if (rawMp) { try { const pj = JSON.parse(rawMp); mpPendiente = !!pj?.id && Date.now() - (pj.ts ?? 0) <= 3600000 } catch {} }
+        if (!mpPendiente) {
+          try {
+            const partesApp = window.location.pathname.split('/').filter(Boolean)
+            const eSlug = partesApp[0]
+            const sSlug = partesApp[2]
+            if (eSlug && sSlug) {
+              const rApp = await fetch(`/api/pedidos-entrada/contexto?empresa=${eSlug}&sucursal=${sSlug}`)
+              if (rApp.ok) {
+                const dApp = await rApp.json()
+                if (dApp?.servicios?.takeaway?.disponible === true) {
+                  window.location.replace(`/${eSlug}/pedidos/${sSlug}${token ? `?token=${encodeURIComponent(token)}` : ''}`)
+                  return
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+      // ══ FIN DEL PUENTE — de acá en adelante, el flujo de siempre ══
+
       // Con token: flujo normal. Sin token (PWA Android/iOS con start_url sin query):
       // fallback por slugs leídos del pathname — /{empresa}/delivery/{sucursal}
       // (No usar params.empresa: en Next 16 los params de client pages son Promise)

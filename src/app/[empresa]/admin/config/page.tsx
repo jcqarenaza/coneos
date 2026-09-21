@@ -15,6 +15,7 @@ interface Config {
   cuit: string | null; razon_social: string | null; condicion_iva: string | null; punto_venta: number | null
   pwa_nombre: string | null; pwa_icono_url: string | null
   mostrar_agotados: boolean
+  entrada_unificada: boolean
 }
 interface Empresa { nombre: string; slug: string; plan: string }
 
@@ -32,7 +33,7 @@ export default function ConfigPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('empresas').select('nombre, slug, plan').eq('id', ctx.empresaId).single(),
-      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta, pwa_nombre, pwa_icono_url, mostrar_agotados').eq('empresa_id', ctx.empresaId).single(),
+      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta, pwa_nombre, pwa_icono_url, mostrar_agotados, entrada_unificada').eq('empresa_id', ctx.empresaId).single(),
     ]).then(([{ data: emp }, { data: cfg }]) => {
       if (emp) setEmpresa(emp)
       if (cfg) setConfig({
@@ -42,6 +43,7 @@ export default function ConfigPage() {
         condicion_iva: cfg.condicion_iva ?? 'RI',
         punto_venta: cfg.punto_venta ?? 1,
         mostrar_agotados: cfg.mostrar_agotados ?? false,
+        entrada_unificada: cfg.entrada_unificada ?? false,
       })
     })
   }, [ctx])
@@ -80,6 +82,7 @@ export default function ConfigPage() {
       pwa_nombre: config.pwa_nombre || null,
       pwa_icono_url: config.pwa_icono_url || null,
       mostrar_agotados: config.mostrar_agotados === true,
+      entrada_unificada: config.entrada_unificada === true,
     }).eq('empresa_id', ctx.empresaId)
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
   }
@@ -268,6 +271,19 @@ export default function ConfigPage() {
               </div>
               <span className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.mostrar_agotados ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
                 <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.mostrar_agotados ? 'left-[22px]' : 'left-0.5'}`} />
+              </span>
+            </button>
+            {/* Ciclo 2 — Entrada unificada de pedidos (default OFF: la ruta
+                /pedidos/ es inalcanzable hasta encender esto; las URLs y QR
+                actuales de delivery/TA funcionan SIEMPRE, con esto ON u OFF) */}
+            <button type="button" onClick={() => setConfig({ ...config, entrada_unificada: !config.entrada_unificada })}
+              className="w-full flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100 hover:bg-neutral-100 transition-colors text-left">
+              <div>
+                <p className="text-sm font-semibold text-neutral-700">App de pedidos de la marca</p>
+                <p className="text-xs text-neutral-400 mt-1">Encendida: la app y el QR ofrecen elegir entre Delivery y Take Away (según qué esté disponible). Apagada: todo sigue exactamente como hasta ahora. Los links y QR actuales funcionan siempre.</p>
+              </div>
+              <span className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.entrada_unificada ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.entrada_unificada ? 'left-[22px]' : 'left-0.5'}`} />
               </span>
             </button>
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
