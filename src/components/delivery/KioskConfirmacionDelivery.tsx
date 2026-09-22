@@ -157,7 +157,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     }))
     const res = await fetch('/api/pedidos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(esTakeaway && horaRetiro ? { hora_retiro: horaRetiro } : {}) }),
+      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(horaRetiro ? { hora_retiro: horaRetiro } : {}) /* programado: ambos canales; el server exige la llave en delivery */ }),
     })
     const data = await res.json().catch(() => null)
     setCreando(false)
@@ -292,9 +292,9 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           ))}
         </div>
 
-        {esTakeaway && slotsRetiro.length > 0 && (
+        {slotsRetiro.length > 0 && (
           <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-4">
-            <p className="text-xs font-semibold text-neutral-500 mb-2">¿Cuándo lo retirás?</p>
+            <p className="text-xs font-semibold text-neutral-500 mb-2">{esTakeaway ? '¿Cuándo lo retirás?' : '🚚 ¿Cuándo lo querés recibir?'}</p>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => setHoraRetiro(null)}
                 className={`px-3.5 py-2 rounded-xl text-sm font-bold border transition-colors ${horaRetiro === null ? 'text-white border-transparent' : 'bg-white text-neutral-500 border-neutral-200'}`}
@@ -599,6 +599,13 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               ) : (
                 horarioTexto && <p className="text-neutral-400 text-xs mt-1">🕗 Horario de retiro: {horarioTexto}</p>
               )}
+            </div>
+          )}
+          {!esTakeaway && horaConfirmada && (
+            <div className="text-center mb-4">
+              <p className="inline-block px-4 py-2 rounded-xl text-white font-bold text-base" style={{ backgroundColor: config.primary_color }}>
+                🚚 Entrega: a las {new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConfirmada))}
+              </p>
             </div>
           )}
           <div className="border-t border-neutral-100 pt-4 space-y-1.5">

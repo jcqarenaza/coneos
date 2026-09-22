@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   if (origen === 'DELIVERY') {
     const { data: dc } = await supabase
       .from('delivery_config')
-      .select('activo, pausado, horarios, tolerancia_cierre, mensaje_pausa, mensaje_fuera_horario')
+      .select('activo, pausado, horarios, tolerancia_cierre, mensaje_pausa, mensaje_fuera_horario, permitir_programado')
       .eq('sucursal_id', sucursal_id)
       .maybeSingle()
 
@@ -82,6 +82,22 @@ export async function POST(request: Request) {
   // hermana: la validación de horario del canal TA corre de verdad.
   // (mismo motor que delivery, leyendo takeaway_config — decisión CTO: horarios
   // independientes; sin pausa ni costo de envío, el canal no los tiene)
+  // DELIVERY PROGRAMADO V1 (orden JC): hora/franja de entrega solicitada.
+  // Pedido NORMAL (entra ya a Preparación) + dato temporal. Solo con la llave
+  // del comercio; slot validado con LA MISMA fuente que TA (jamás 2do motor).
+  // ASAP (sin hora_retiro) = flujo actual intacto. Techo y horario del canal
+  // ya validaron arriba: programado solo existe con delivery OPERATIVO.
+  if (tipo_pedido === 'delivery' && hora_retiro) {
+    const { data: dcProg } = await supabase.from('delivery_config')
+      .select('permitir_programado, horarios').eq('sucursal_id', sucursal_id).maybeSingle()
+    if (dcProg?.permitir_programado !== true) {
+      return NextResponse.json({ error: 'Este local no acepta entregas programadas.' }, { status: 409 })
+    }
+    if (!esSlotValido((dcProg.horarios as Franja[] | null) ?? [], String(hora_retiro))) {
+      return NextResponse.json({ error: 'Esa franja de entrega ya no está disponible — elegí otra.' }, { status: 409 })
+    }
+  }
+
   if (tipo_pedido === 'takeaway') {
     const { data: tc } = await supabase
       .from('takeaway_config')

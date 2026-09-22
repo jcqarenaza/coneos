@@ -25,19 +25,21 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
   const [modalBeneficios, setModalBeneficios] = useState(false)
   const [modalFacturacion, setModalFacturacion] = useState(false)
 
+  // MAPA ADMIN v2 (orden JC 22/09): Dashboard → Config. del negocio (+Sucursales
+  // hasta su mudanza) → Config. de productos → Cobros → Informes → al fondo lo
+  // administrativo. seccion = caption gris sobre el grupo.
   const NAV = [
     { href: `/${slug}/admin`, label: 'Dashboard', icon: LayoutDashboard, exact: true },
-    { href: `/${slug}/admin/catalogo`, label: 'Catálogo', icon: BookOpen },
-    { href: `/${slug}/admin/accesorios`, label: 'Accesorios', icon: Cherry },
-    { href: `/${slug}/admin/sucursales`, label: 'Sucursales', icon: Store },
     { href: `/${slug}/admin/servicios`, label: 'Config. del negocio', icon: Clock },
-    { href: `/${slug}/admin/ventas`, label: 'Ventas', icon: BarChart3 },
-    { href: `/${slug}/admin/cuentas`, label: 'Cuentas y cobros', icon: CreditCard },
-    ...(modulos.facturacion === true ? [{ href: `/${slug}/admin/facturas`, label: 'Facturas', icon: FileText }] : []),
+    { href: `/${slug}/admin/sucursales`, label: 'Sucursales', icon: Store },
+    { href: `/${slug}/admin/catalogo`, label: 'Catálogo', icon: BookOpen, seccion: 'Config. de productos' },
+    { href: `/${slug}/admin/accesorios`, label: 'Accesorios', icon: Cherry },
     ...(modulos.beneficios === true ? [{ href: `/${slug}/admin/beneficios`, label: 'Beneficios', icon: Gift }] : []),
-    // CASA: Mesas (llave + QRs) vive en Config. del negocio; el candado comercial de abajo queda
+    { href: `/${slug}/admin/cuentas`, label: 'Cobros', icon: CreditCard, seccion: 'Administración' },
+    ...(modulos.facturacion === true ? [{ href: `/${slug}/admin/facturas`, label: 'Facturas', icon: FileText }] : []),
+    { href: `/${slug}/admin/ventas`, label: 'Ventas', icon: BarChart3, seccion: 'Informes' },
     { href: `/${slug}/admin/trafico`, label: 'Tráfico', icon: TrendingUp },
-    { href: `/${slug}/admin/config`, label: 'Configuración', icon: Settings },
+    { href: `/${slug}/admin/config`, label: 'Configuración', icon: Settings, seccion: 'Empresa' },
   ]
 
   const deliveryActivo = modulos.delivery === true
@@ -68,13 +70,17 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
 
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           {NAV.map(item => {
+            const cap = (item as { seccion?: string }).seccion
             const active = item.exact ? pathname === item.href : pathname.startsWith(item.href)
             return (
-              <Link key={item.href} href={item.href}
+              <div key={item.href}>
+                {cap && <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-neutral-300">{cap}</p>}
+              <Link href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${active ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-50'}`}>
                 <item.icon className="h-4 w-4 flex-shrink-0" />
                 {item.label}
               </Link>
+              </div>
             )
           })}
 

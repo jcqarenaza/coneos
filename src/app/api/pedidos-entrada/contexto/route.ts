@@ -70,10 +70,10 @@ export async function GET(request: Request) {
       .eq('sucursal_id', sucursal.id).eq('tipo', 'DELIVERY').eq('activo', true)
       .limit(1).maybeSingle(),
     supabase.from('delivery_config')
-      .select('activo, pausado, horarios, tolerancia_cierre, mensaje_fuera_horario, mensaje_pausa')
+      .select('activo, pausado, horarios, tolerancia_cierre, mensaje_fuera_horario, mensaje_pausa, mostrar_en_app')
       .eq('sucursal_id', sucursal.id).maybeSingle(),
     supabase.from('takeaway_config')
-      .select('activo, horarios, tolerancia_cierre, mensaje_fuera_horario, acepta_anticipado')
+      .select('activo, horarios, tolerancia_cierre, mensaje_fuera_horario, acepta_anticipado, mostrar_en_app')
       .eq('sucursal_id', sucursal.id).maybeSingle(),
   ])
 
@@ -140,8 +140,8 @@ export async function GET(request: Request) {
     // ya opera en producción vía /api/device/verify). El token, si vino, lo
     // transporta la PAGE como passthrough — este endpoint no lo conoce.
     servicios: {
-      delivery: { configurado: deliveryConfigurado, disponible: deliveryDisponible, motivo: deliveryMotivo, proximo: deliveryProximo, url: `/${empresa.slug}/delivery/${sucursal.slug}` },
-      takeaway: { configurado: taConfigurado, disponible: taDisponible || taAnticipado, anticipado: taAnticipado, motivo: taMotivo, proximo: taProximo, url: `/${empresa.slug}/takeaway/${sucursal.slug}` },
+      delivery: { configurado: deliveryConfigurado, visible: dc?.mostrar_en_app !== false, disponible: deliveryDisponible, motivo: deliveryMotivo, proximo: deliveryProximo, url: `/${empresa.slug}/delivery/${sucursal.slug}` },
+      takeaway: { configurado: taConfigurado, visible: tc?.mostrar_en_app !== false, disponible: taDisponible || taAnticipado, anticipado: taAnticipado, motivo: taMotivo, proximo: taProximo, url: `/${empresa.slug}/takeaway/${sucursal.slug}` },
     },
   })
 }

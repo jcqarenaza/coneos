@@ -35,11 +35,11 @@ export async function POST(request: Request) {
   const fecha = new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
   // V1.5: hora de retiro para la cocina (solo take away)
   const p2 = pedido as { tipo_pedido?: string | null; hora_retiro?: string | null }
-  const retiraLabel = p2.tipo_pedido === 'takeaway'
-    ? (p2.hora_retiro
-      ? new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(p2.hora_retiro))
-      : 'LO ANTES POSIBLE')
-    : null
+  const horaFmt = p2.hora_retiro ? new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(p2.hora_retiro)) : null
+  // TA: siempre cartel (con hora o LO ANTES POSIBLE). Delivery: SOLO si es
+  // programado (V1) — el ASAP de siempre no gana carteles nuevos.
+  const retiraLabel = p2.tipo_pedido === 'takeaway' ? (horaFmt ?? 'LO ANTES POSIBLE') : null
+  const entregaLabel = p2.tipo_pedido === 'delivery' && horaFmt ? horaFmt : null
 
   const bloquesItems = normales.map(item => {
     const prod = (item.nombre_producto_snap ?? '').toLowerCase()
@@ -88,6 +88,7 @@ body { font-family: 'Calibri', Arial, sans-serif; font-size: 13px; font-weight: 
 <div class="grande">#${pedido.numero_pedido}</div>
 <div class="chico">${fecha}</div>
 ${retiraLabel ? `<div class="cadete">RETIRA: ${retiraLabel}</div>` : ''}
+${entregaLabel ? `<div class="cadete">🚚 ENTREGA: ${entregaLabel}</div>` : ''}
 
 <div class="linea"></div>
 

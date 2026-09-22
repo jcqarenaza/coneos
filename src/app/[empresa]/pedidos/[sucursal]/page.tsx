@@ -23,7 +23,7 @@
 
 import { useEffect, useState } from 'react'
 
-interface Canal { configurado: boolean; disponible: boolean; anticipado?: boolean; motivo: string | null; proximo: string | null; url: string }
+interface Canal { configurado: boolean; visible?: boolean; disponible: boolean; anticipado?: boolean; motivo: string | null; proximo: string | null; url: string }
 interface Contexto {
   nombre: string
   sucursal_nombre: string
@@ -63,7 +63,9 @@ export default function EntradaPedidosPage() {
       const d = { ...data.servicios.delivery, url: armarUrl(data.servicios.delivery.url, true) }
       const t = { ...data.servicios.takeaway, url: armarUrl(data.servicios.takeaway.url, false) }
       data.servicios = { delivery: d, takeaway: t }
-      const mostrables = [d, t].filter(c => c.configurado)
+      // CANALES VISIBLES (espec JC): la puerta pública muestra configurado &&
+      // visible — la URL directa del canal ni se entera de esta llave
+      const mostrables = [d, t].filter(c => c.configurado && c.visible !== false)
       const disponibles = mostrables.filter(c => c.disponible)
       // ANTICIPADO: jamás redirige solo — se ofrece en el selector y se elige
       // con un toque (el redirect directo es solo para abiertos DE VERDAD)

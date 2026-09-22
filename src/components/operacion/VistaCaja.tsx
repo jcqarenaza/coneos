@@ -22,7 +22,7 @@ function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}
 // Fase 6.5: nombre de la cuenta receptora DEL SNAPSHOT del pedido (identidad
 // histórica congelada al cobrar) — jamás se reconstruye desde la config actual.
 function horaRetiroDe(p: Pedido): string | null {
-  if (p.tipo_pedido !== 'takeaway' || !p.hora_retiro) return null
+  if (!p.hora_retiro || (p.tipo_pedido !== 'takeaway' && p.tipo_pedido !== 'delivery')) return null
   return new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(p.hora_retiro))
 }
 

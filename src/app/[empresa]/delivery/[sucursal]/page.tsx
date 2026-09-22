@@ -7,6 +7,7 @@ import KioskInicio from '@/components/kiosk/KioskInicio'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarritoDelivery from '@/components/delivery/KioskCarritoDelivery'
 import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDelivery'
+import { generarSlots } from '@/lib/takeaway/slots'
 import RegistroVisita from '@/components/RegistroVisita'
 
 export interface EmpresaConfig {
@@ -74,6 +75,9 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [mensajePausa, setMensajePausa] = useState('🌧️ Por el mal tiempo el delivery está pausado. ¡Ni bien mejore volvemos a repartir!')
   const [pausado, setPausado] = useState(false)
   const [horariosConfig, setHorariosConfig] = useState<{ desde: string; hasta: string }[]>([])
+  // DELIVERY PROGRAMADO V1: franjas de entrega (llave del comercio; misma
+  // fuente de slots que TA — el server valida con esSlotValido igual)
+  const [slotsEntrega, setSlotsEntrega] = useState<{ iso: string; label: string }[]>([])
   // Cartel de cierre: los horarios se muestran SOLOS desde la config —
   // nunca más tipearlos a mano en el mensaje.
   const horariosTexto = [...horariosConfig]
@@ -181,6 +185,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
           const horarios = (dc.horarios as { desde: string; hasta: string }[]) ?? []
           setHorarioActivo(dc.activo ? estaEnHorario(horarios, horaData.hora) : false)
           setHorariosConfig(horarios)
+          if (dc.permitir_programado === true) setSlotsEntrega(generarSlots(horarios))
           setToleranciaCierre(Number(dc.tolerancia_cierre ?? 5))
           if (dc.mensaje_fuera_horario) setMensajeFueraHorario(dc.mensaje_fuera_horario)
           setPausado(!!dc.pausado)
@@ -407,6 +412,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         <KioskConfirmacionDelivery
           config={config} dispositivo={dispositivo}
           carrito={carrito} costoEnvio={costoEnvio}
+          slotsRetiro={slotsEntrega}
           pedidoCreado={pedidoCreado}
           onPedidoCreado={(num, cod) => { setPedidoCreado({ numero: num, codigo: cod }); try { if (claveCarrito) localStorage.removeItem(claveCarrito) } catch {} }}
           onNuevoPedido={nuevoPedido}

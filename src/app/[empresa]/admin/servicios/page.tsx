@@ -31,8 +31,8 @@ interface Franja { desde: string; hasta: string }
 interface Sucursal { id: string; nombre: string }
 
 interface NegocioCfg { horario_general: Franja[]; mensaje_cerrado: string; tolerancia_cierre: number }
-interface DeliveryCfg { activo: boolean; pausado: boolean; mensaje_pausa: string; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_envio: number }
-interface TaCfg { activo: boolean; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio: number; acepta_anticipado: boolean }
+interface DeliveryCfg { activo: boolean; pausado: boolean; mensaje_pausa: string; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_envio: number; mostrar_en_app: boolean; permitir_programado: boolean }
+interface TaCfg { activo: boolean; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio: number; acepta_anticipado: boolean; mostrar_en_app: boolean }
 
 // ── Editor de franjas horarias (compartido por las tres tarjetas) ──
 function FranjasEditor({ franjas, onChange, deshabilitado }: { franjas: Franja[]; onChange: (f: Franja[]) => void; deshabilitado?: boolean }) {
@@ -107,8 +107,8 @@ export default function ServiciosPage() {
     setCargando(true)
     const [{ data: suc }, { data: dc }, { data: tc }, { data: cfg }] = await Promise.all([
       supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre').eq('id', sucId).maybeSingle(),
-      supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio').eq('sucursal_id', sucId).maybeSingle(),
-      supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio, acepta_anticipado').eq('sucursal_id', sucId).maybeSingle(),
+      supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio, mostrar_en_app, permitir_programado').eq('sucursal_id', sucId).maybeSingle(),
+      supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio, acepta_anticipado, mostrar_en_app').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('empresa_config').select('modulos, mesas_activo, soporte_nombre, soporte_whatsapp').eq('empresa_id', ctx.empresaId).maybeSingle(),
     ])
     const mods = (cfg?.modulos ?? {}) as Record<string, boolean>
@@ -130,6 +130,8 @@ export default function ServiciosPage() {
       mensaje_fuera_horario: dc?.mensaje_fuera_horario ?? '',
       tolerancia_cierre: Number(dc?.tolerancia_cierre ?? 5),
       costo_envio: Number(dc?.costo_envio ?? 0),
+      mostrar_en_app: dc?.mostrar_en_app !== false,
+      permitir_programado: dc?.permitir_programado === true,
     })
     setTa({
       activo: tc?.activo ?? false,
@@ -138,6 +140,7 @@ export default function ServiciosPage() {
       tolerancia_cierre: Number(tc?.tolerancia_cierre ?? 5),
       costo_servicio: Number(tc?.costo_servicio ?? 0),
       acepta_anticipado: tc?.acepta_anticipado === true,
+      mostrar_en_app: tc?.mostrar_en_app !== false,
     })
     setCargando(false)
     setSucio(false)
@@ -172,6 +175,8 @@ export default function ServiciosPage() {
         mensaje_fuera_horario: delivery.mensaje_fuera_horario || null,
         tolerancia_cierre: delivery.tolerancia_cierre,
         costo_envio: delivery.costo_envio,
+        mostrar_en_app: delivery.mostrar_en_app,
+        permitir_programado: delivery.permitir_programado,
       }, { onConflict: 'sucursal_id' }),
       supabase.from('takeaway_config').upsert({
         sucursal_id: sucursalSel, empresa_id: ctx.empresaId,
@@ -180,6 +185,7 @@ export default function ServiciosPage() {
         tolerancia_cierre: ta.tolerancia_cierre,
         costo_servicio: ta.costo_servicio,
         acepta_anticipado: ta.acepta_anticipado,
+        mostrar_en_app: ta.mostrar_en_app,
       }, { onConflict: 'sucursal_id' }),
       ...(tieneMesas ? [supabase.from('empresa_config').update({ mesas_activo: mesasActivo }).eq('empresa_id', ctx.empresaId)] : []),
     ])
@@ -301,7 +307,8 @@ export default function ServiciosPage() {
                 <th className="py-2 pr-3 font-semibold">Franjas horarias</th>
                 <th className="py-2 pr-3 font-semibold">Tolerancia</th>
                 <th className="py-2 pr-3 font-semibold">Costo</th>
-                <th className="py-2 font-semibold">Pausa</th>
+                <th className="py-2 pr-3 font-semibold">Pausa</th>
+                <th className="py-2 font-semibold">En App</th>
               </tr>
             </thead>
             <tbody>
@@ -317,7 +324,7 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => { setSucio(true); setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) }) }} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
-                  
+                  <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
                 </tr>
               )}
               {/* ── 🛵 DELIVERY ── */}
@@ -328,7 +335,12 @@ export default function ServiciosPage() {
                     {delivery.pausado && <p className="text-[11px] font-semibold text-amber-600">⏸️ EN PAUSA</p>}
                   </td>
                   <td className="py-3 pr-3"><Toggle on={delivery.activo} onClick={() => { setSucio(true); setDelivery({ ...delivery, activo: !delivery.activo }) }} /></td>
-                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={delivery.horarios} onChange={f => { setSucio(true); setDelivery({ ...delivery, horarios: f }) }} deshabilitado={!delivery.activo} /></td>
+                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={delivery.horarios} onChange={f => { setSucio(true); setDelivery({ ...delivery, horarios: f }) }} deshabilitado={!delivery.activo} />
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-neutral-50" title="Con delivery ABIERTO, el cliente puede elegir una franja futura del día para recibir — el pedido entra igual a Preparación con su hora a la vista">
+                      <Toggle on={delivery.permitir_programado} onClick={() => { setSucio(true); setDelivery({ ...delivery, permitir_programado: !delivery.permitir_programado }) }} disabled={!delivery.activo} />
+                      <span className="text-[11px] font-semibold text-neutral-500">Permitir entregas programadas <span className="text-neutral-300">(elige franja)</span></span>
+                    </div>
+                  </td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={delivery.tolerancia_cierre} onChange={e => { setSucio(true); setDelivery({ ...delivery, tolerancia_cierre: Number(e.target.value) }) }} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-1" title="Costo de envío — se suma al pedido de delivery">
@@ -342,6 +354,9 @@ export default function ServiciosPage() {
                       className={`p-1.5 rounded-lg border transition-colors ${delivery.pausado ? 'bg-amber-100 border-amber-300 text-amber-600' : 'bg-white border-neutral-200 text-neutral-300 hover:text-neutral-500'}`}>
                       <CloudRain className="h-4 w-4" />
                     </button>
+                  </td>
+                  <td className="py-3" title="¿Aparece Delivery en la puerta pública (App)? La URL directa y el QR siguen andando igual">
+                    <Toggle on={delivery.mostrar_en_app} onClick={() => { setSucio(true); setDelivery({ ...delivery, mostrar_en_app: !delivery.mostrar_en_app }) }} disabled={!delivery.activo} />
                   </td>
                   
                 </tr>
@@ -367,6 +382,9 @@ export default function ServiciosPage() {
                     <p className="text-[10px] text-neutral-300 mt-0.5">servicio</p>
                   </td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3" title="¿Aparece Take Away en la puerta pública (App)? La URL directa y el QR siguen andando igual">
+                    <Toggle on={ta.mostrar_en_app} onClick={() => { setSucio(true); setTa({ ...ta, mostrar_en_app: !ta.mostrar_en_app }) }} disabled={!ta.activo} />
+                  </td>
                   
                 </tr>
               )}
@@ -389,6 +407,7 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3 min-w-[230px]"><span className="text-xs text-neutral-400">Tus clientes piden con un QR desde la mesa 🪑</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
                 </tr>
               )}
@@ -403,12 +422,13 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · el horario del Negocio <b>techa</b> Kiosk y Delivery (local cerrado = no entran) · <b>Take Away se rige solo por sus franjas</b>; con su llave de <b>anticipado</b> activada acepta pedidos antes de abrir (entran ya, retiro desde la apertura) · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · el costo de <b>servicio</b> de Take Away se suma al pedido (0 = no se muestra). Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
+        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · el horario del Negocio <b>techa</b> Kiosk y Delivery (local cerrado = no entran) · <b>Take Away se rige solo por sus franjas</b>; con su llave de <b>anticipado</b> activada acepta pedidos antes de abrir (entran ya, retiro desde la apertura) · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · el costo de <b>servicio</b> de Take Away se suma al pedido (0 = no se muestra). con <b>entregas programadas</b> el cliente elige franja del día (delivery abierto; el pedido entra ya a Preparación con su hora) · la columna <b>En App</b> decide si el canal aparece en la puerta pública — su URL directa y su QR siguen andando igual. Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
       </ConeCard>
       )}
 
