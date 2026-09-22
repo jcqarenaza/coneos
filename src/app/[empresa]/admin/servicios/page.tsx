@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { ConePageHeader, ConeCard } from '@/components/admin/ConeComponents'
-import { Loader2, Plus, X, CloudRain } from 'lucide-react'
+import { Loader2, Plus, X, CloudRain, Lock } from 'lucide-react'
 import DispositivosTab from '@/components/admin/DispositivosTab'
 import QrAccesosTab from '@/components/admin/QrAccesosTab'
 import EquipoTab from '@/components/admin/EquipoTab'
@@ -91,6 +91,8 @@ export default function ServiciosPage() {
   const [tieneTa, setTieneTa] = useState(true)
   const [tieneMesas, setTieneMesas] = useState(false)
   const [mesasActivo, setMesasActivo] = useState(true)
+  const [modalMesas, setModalMesas] = useState(false)
+  const [soporte, setSoporte] = useState<{ nombre: string; wa: string }>({ nombre: 'QP C&IA', wa: '542302456497' })
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState<string | null>(null)
   // Orden de flujo (decisión JC): creás el dispositivo → horarios y servicios → mensajes → QR
@@ -106,13 +108,14 @@ export default function ServiciosPage() {
       supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre').eq('id', sucId).maybeSingle(),
       supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio').eq('sucursal_id', sucId).maybeSingle(),
-      supabase.from('empresa_config').select('modulos, mesas_activo').eq('empresa_id', ctx.empresaId).maybeSingle(),
+      supabase.from('empresa_config').select('modulos, mesas_activo, soporte_nombre, soporte_whatsapp').eq('empresa_id', ctx.empresaId).maybeSingle(),
     ])
     const mods = (cfg?.modulos ?? {}) as Record<string, boolean>
     setTieneDelivery(mods.delivery !== false)
     setTieneTa(mods.takeaway !== false)
     setTieneMesas(mods.mesas === true)
     setMesasActivo(cfg?.mesas_activo !== false)
+    if (cfg?.soporte_whatsapp) setSoporte({ nombre: cfg.soporte_nombre ?? 'tu proveedor', wa: String(cfg.soporte_whatsapp).replace(/\D/g, '') })
     setNegocio({
       horario_general: (suc?.horario_general as Franja[] | null) ?? [],
       mensaje_cerrado: suc?.mensaje_cerrado ?? '',
@@ -346,11 +349,11 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={ta.horarios} onChange={f => setTa({ ...ta, horarios: f })} deshabilitado={!ta.activo} /></td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={ta.tolerancia_cierre} onChange={e => setTa({ ...ta, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3">
-                    <div className="flex items-center gap-1" title="Costo de servicio de retiro (aderezos, salsas, packaging) — todavía no se cobra en el checkout">
+                    <div className="flex items-center gap-1" title="Costo de servicio de retiro (aderezos, salsas, packaging) — se suma al pedido de take away">
                       <span className="text-xs text-neutral-400">$</span>
                       <input type="number" min={0} value={ta.costo_servicio} onChange={e => setTa({ ...ta, costo_servicio: Number(e.target.value) })} disabled={!ta.activo} className="w-20 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700 disabled:opacity-40" />
                     </div>
-                    <p className="text-[10px] text-neutral-300 mt-0.5">servicio ⚠️</p>
+                    <p className="text-[10px] text-neutral-300 mt-0.5">servicio</p>
                   </td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   
@@ -360,6 +363,24 @@ export default function ServiciosPage() {
                   La llave es empresa_config.mesas_activo — la MISMA de siempre
                   (los QR de mesa muestran "no disponible" cuando está apagada).
                   Sin horario propio: mesas abre con el local (query verificada). */}
+              {!tieneMesas && (
+                <tr className="border-t border-neutral-100 align-top opacity-70">
+                  <td className="py-3 pr-3">
+                    <p className="font-semibold text-neutral-400 whitespace-nowrap">🪑 Mesas</p>
+                    <p className="text-[11px] text-neutral-300">módulo no contratado</p>
+                  </td>
+                  <td className="py-3 pr-3">
+                    <button onClick={() => setModalMesas(true)} title="Activar el módulo Mesas"
+                      className="p-1.5 rounded-lg border border-neutral-200 text-neutral-300 hover:text-neutral-500 hover:border-neutral-300 transition-colors">
+                      <Lock className="h-4 w-4" />
+                    </button>
+                  </td>
+                  <td className="py-3 pr-3 min-w-[230px]"><span className="text-xs text-neutral-300">Tus clientes piden con un QR desde la mesa</span></td>
+                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
+                  <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
+                </tr>
+              )}
               {tieneMesas && (
                 <tr className="border-t border-neutral-100 align-top">
                   <td className="py-3 pr-3">
@@ -376,7 +397,7 @@ export default function ServiciosPage() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · ⚠️ el costo de <b>servicio</b> de Take Away todavía <b>no se cobra en el checkout</b> — se conecta en el próximo paso. Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
+        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · el costo de <b>servicio</b> de Take Away se suma al pedido (0 = no se muestra). Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
       </ConeCard>
       )}
 
@@ -410,6 +431,26 @@ export default function ServiciosPage() {
           )}
         </div>
       </ConeCard>
+      )}
+
+      {/* Modal comercial Mesas (upsell mudado del sidebar — mismo contacto de soporte) */}
+      {modalMesas && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setModalMesas(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <button onClick={() => setModalMesas(false)} className="absolute top-4 right-4 p-1 text-neutral-400 hover:text-neutral-600">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="w-12 h-12 bg-neutral-100 rounded-2xl flex items-center justify-center mb-4 text-2xl">🪑</div>
+            <h3 className="font-black text-neutral-900 text-lg mb-2">Pedidos desde la Mesa</h3>
+            <p className="text-neutral-500 text-sm mb-5">Tus clientes escanean un QR en la mesa y piden desde su celular: el pedido cae directo a cocina. Cobrás en caja (incluso dividido entre varios medios) o pagan con Mercado Pago. Con generador de QRs imprimibles incluido.</p>
+            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent('Hola, quiero activar el módulo Mesas en ConeOS')}`}
+              target="_blank" rel="noopener noreferrer"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
+              💬 Contactar a {soporte.nombre}
+            </a>
+          </div>
+        </div>
       )}
     </div>
   )

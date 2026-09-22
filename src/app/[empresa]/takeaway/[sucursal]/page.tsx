@@ -5,6 +5,8 @@
 // server-side por modulos.takeaway + takeaway_config.activo. Composición:
 // componentes de kiosk/delivery reutilizados (KioskCatalogo + carrito y
 // confirmación en modo canal='takeaway'). Checkout: SOLO NOMBRE + método.
+// CICLO COSTO TA: costo_servicio del contexto pasa como costoEnvio a los
+// componentes compartidos (espejo exacto de delivery; 0 = inercia total).
 
 import { useEffect, useState, useCallback } from 'react'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
@@ -16,7 +18,7 @@ import type { EmpresaConfig, Accesorio, ItemCarrito } from '@/app/[empresa]/deli
 interface Contexto {
   empresa_id: string; sucursal_id: string; nombre: string; sucursal_nombre: string
   config: EmpresaConfig
-  takeaway: { abierto: boolean; horarios: { desde: string; hasta: string }[]; mensaje_fuera_horario: string; tolerancia_cierre: number; slots_retiro?: { iso: string; label: string }[] }
+  takeaway: { abierto: boolean; horarios: { desde: string; hasta: string }[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio?: number; slots_retiro?: { iso: string; label: string }[] }
   pagos: { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; titular_transferencia: string | null }
 }
 
@@ -222,6 +224,8 @@ export default function TakeawayPage() {
     .map(h => `${h.desde} a ${h.hasta}`)
     .join(' y ')
   const pseudoDispositivo = { id: 'takeaway', empresa_id: ctx.empresa_id, sucursal_id: ctx.sucursal_id, empresas: { nombre: ctx.nombre } }
+  // Espejo del costo de envío: el servicio de retiro del contexto (0 = como siempre)
+  const costoServicio = Number(ctx.takeaway.costo_servicio ?? 0)
 
   return (
     <div className="min-h-screen">
@@ -249,7 +253,7 @@ export default function TakeawayPage() {
           config={ctx.config} dispositivo={pseudoDispositivo}
           carrito={carrito} setCarrito={setCarrito}
           accesorios={accesorios}
-          costoEnvio={0}
+          costoEnvio={costoServicio}
           canal="takeaway"
           onConfirmar={extras => { setAvisoPrecios(false); handleConfirmarCarrito(extras) }}
           onSeguirComprando={() => setPaso('catalogo')}
@@ -258,7 +262,7 @@ export default function TakeawayPage() {
       {paso === 'confirmacion' && (
         <KioskConfirmacionDelivery
           config={ctx.config} dispositivo={pseudoDispositivo}
-          carrito={carrito} costoEnvio={0}
+          carrito={carrito} costoEnvio={costoServicio}
           canal="takeaway"
           mpPermitido={ctx.pagos.acepta_mp}
           // F-C: pagosIniciales ya NO se inyecta del contexto (venía sin canal

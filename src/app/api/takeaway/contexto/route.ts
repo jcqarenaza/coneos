@@ -9,6 +9,8 @@ import { generarSlots } from '@/lib/takeaway/slots'
 // FASE 4: MP y TRANSFERENCIA se resuelven por resolverPago() — mapeo explícito
 // del canal TAKEAWAY o legacy exacto. Flags del comercio respetados; la
 // credencial además debe ser utilizable. Server-side siempre.
+// CICLO COSTO TA: expone costo_servicio (espejo del costo de envío de
+// delivery) — 0 = el canal se comporta idéntico a siempre.
 
 function estaEnHorario(horarios: { desde: string; hasta: string }[], horaArg: string, toleranciaMin = 0): boolean {
   if (!horarios || horarios.length === 0) return true
@@ -49,7 +51,7 @@ export async function GET(request: Request) {
   }
 
   const [{ data: ta }, { data: pagos }, resMp, resTransfer] = await Promise.all([
-    supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre').eq('sucursal_id', sucursal.id).maybeSingle(),
+    supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio').eq('sucursal_id', sucursal.id).maybeSingle(),
     supabase.from('sucursal_pagos').select('acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_takeaway').eq('sucursal_id', sucursal.id).maybeSingle(),
     resolverPago(empresa.id, sucursal.id, 'TAKEAWAY', 'MERCADO_PAGO'),
     resolverPago(empresa.id, sucursal.id, 'TAKEAWAY', 'TRANSFERENCIA'),
@@ -88,6 +90,8 @@ export async function GET(request: Request) {
       horarios,
       mensaje_fuera_horario: ta.mensaje_fuera_horario ?? 'El take away no está disponible en este momento. ¡Volvemos pronto!',
       tolerancia_cierre: Number(ta.tolerancia_cierre ?? 5),
+      // Espejo del costo de envío: 0 si no está configurado (inercia total)
+      costo_servicio: Number(ta.costo_servicio ?? 0),
       // V1.5: slots de retiro del día (15' fijos, margen 15'), server-side de
       // la MISMA fuente que valida /api/pedidos. Vacío si sin franjas o cerrado.
       slots_retiro: abierto ? generarSlots(horarios) : [],

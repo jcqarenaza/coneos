@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, Armchair, TrendingUp, CreditCard, Clock } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, TrendingUp, CreditCard, Clock } from 'lucide-react'
 
 interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean>; logoUrl?: string | null }
 
@@ -24,7 +24,6 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
   const [modalDelivery, setModalDelivery] = useState(false)
   const [modalBeneficios, setModalBeneficios] = useState(false)
   const [modalFacturacion, setModalFacturacion] = useState(false)
-  const [modalMesas, setModalMesas] = useState(false)
 
   const NAV = [
     { href: `/${slug}/admin`, label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -99,15 +98,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             </button>
           )}
 
-          {/* Módulo Mesas — bloqueado si no está contratado */}
-          {modulos.mesas !== true && (
-            <button onClick={() => setModalMesas(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-neutral-300 hover:bg-neutral-50 transition-all">
-              <Armchair className="h-4 w-4 flex-shrink-0" />
-              Mesas
-              <Lock className="h-3 w-3 ml-auto" />
-            </button>
-          )}
+          {/* CASA: el candado de Mesas se mudó a la fila 🪑 de Config. del negocio */}
 
           {/* Módulo Beneficios — bloqueado si no está contratado */}
           {modulos.beneficios !== true && (
@@ -150,28 +141,6 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             <h3 className="font-black text-neutral-900 text-lg mb-2">Facturación Electrónica</h3>
             <p className="text-neutral-500 text-sm mb-5">Emití Facturas C ante ARCA automáticamente al cobrar, con CAE y QR en el ticket. Incluye listado de comprobantes y notas de crédito. Cumplí con la facturación sin salir del sistema.</p>
             <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar la Facturación Electrónica en ConeOS`)}`}
-              target="_blank" rel="noopener noreferrer"
-              className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
-              💬 Contactar a {soporte.nombre}
-            </a>
-          </div>
-        </div>
-      )}
-
-      {/* Modal mesas bloqueado */}
-      {modalMesas && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setModalMesas(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <button onClick={() => setModalMesas(false)} className="absolute top-4 right-4 p-1 text-neutral-400 hover:text-neutral-600">
-              <X className="h-5 w-5" />
-            </button>
-            <div className="w-12 h-12 bg-neutral-100 rounded-2xl flex items-center justify-center mb-4">
-              <Armchair className="h-6 w-6 text-neutral-400" />
-            </div>
-            <h3 className="font-black text-neutral-900 text-lg mb-2">Pedidos desde la Mesa</h3>
-            <p className="text-neutral-500 text-sm mb-5">Tus clientes escanean un QR en la mesa y piden desde su celular: el pedido cae directo a cocina. Cobrás en caja (incluso dividido entre varios medios) o pagan con Mercado Pago. Con generador de QRs imprimibles incluido.</p>
-            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar el módulo Mesas en ConeOS`)}`}
               target="_blank" rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
               💬 Contactar a {soporte.nombre}

@@ -41,7 +41,7 @@ function ResumenTotal({ subtotal, costoEnvio, total, config, esTakeaway = false 
         <span className="font-medium text-neutral-600">{formatPrecio(subtotal)}</span>
       </div>
       <div className="flex justify-between text-sm mb-2.5">
-        {!esTakeaway && <><span className="text-neutral-400 flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Envío</span>
+        {(!esTakeaway || costoEnvio > 0) && <><span className="text-neutral-400 flex items-center gap-1">{esTakeaway ? <>🥡 Servicio de retiro</> : <><Truck className="h-3.5 w-3.5" /> Envío</>}</span>
         <span className="font-medium text-neutral-600">{formatPrecio(costoEnvio)}</span></>}
       </div>
       <div className="flex justify-between border-t border-neutral-100 pt-2.5">
@@ -59,7 +59,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   // Hora CONFIRMADA por el server (viaja en la respuesta solo si quedó guardada)
   const [horaConfirmada, setHoraConfirmada] = useState<string | null>(null)
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
-  const total = subtotal + (canal === 'takeaway' ? 0 : costoEnvio)
+  const total = subtotal + costoEnvio // espejo: TA recibe su costo de servicio (0 = inercia)
 
   const [paso, setPaso] = useState<'datos' | 'pago' | 'transferencia' | 'exito'>('datos')
   const [benefPesosPorPunto, setBenefPesosPorPunto] = useState<number | null>(null)
@@ -157,7 +157,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     }))
     const res = await fetch('/api/pedidos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: esTakeaway ? 0 : costoEnvio, datos_delivery: datos, ...(esTakeaway && horaRetiro ? { hora_retiro: horaRetiro } : {}) }),
+      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(esTakeaway && horaRetiro ? { hora_retiro: horaRetiro } : {}) }),
     })
     const data = await res.json().catch(() => null)
     setCreando(false)
@@ -486,7 +486,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       })
     }
     const W = 640
-    const lineas = carrito.length + (costoEnvio > 0 && !esTakeaway ? 1 : 0)
+    const lineas = carrito.length + (costoEnvio > 0 ? 1 : 0)
     const H = 460 + lineas * 34 + (esTakeaway && cod ? 110 : 0) + (esTakeaway && cod && (horaConfirmada || slotsRetiro.length > 0) ? 40 : 0) + (logo ? 96 : 0)
     const cv = document.createElement('canvas')
     cv.width = W; cv.height = H
@@ -536,8 +536,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       cx.textAlign = 'right'; cx.fillText(formatPrecio(it.precio * it.cantidad), W - 48, y)
       cx.textAlign = 'left'; y += 34
     }
-    if (costoEnvio > 0 && !esTakeaway) {
-      cx.fillStyle = '#737373'; cx.fillText('Envío', 48, y)
+    if (costoEnvio > 0) {
+      cx.fillStyle = '#737373'; cx.fillText(esTakeaway ? 'Servicio de retiro' : 'Envío', 48, y)
       cx.textAlign = 'right'; cx.fillText(formatPrecio(costoEnvio), W - 48, y)
       cx.textAlign = 'left'; y += 34
     }

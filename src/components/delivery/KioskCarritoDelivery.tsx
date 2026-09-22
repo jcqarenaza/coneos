@@ -27,7 +27,9 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
 
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const subtotalAcc = accesorios.reduce((acc, a) => acc + (cantAccesorios[a.id] ?? 0) * a.precio_adicional, 0)
-  const total = subtotal + subtotalAcc + (esTakeaway ? 0 : costoEnvio)
+  // Espejo delivery↔TA: el costo del canal SIEMPRE suma (delivery: envío ·
+  // TA: servicio de retiro, que llega 0 si no está configurado = inercia)
+  const total = subtotal + subtotalAcc + costoEnvio
 
   function cambiarCantidad(id: string, delta: number) {
     setCarrito(carrito.map(i => i.id === id ? { ...i, cantidad: Math.max(0, i.cantidad + delta) } : i).filter(i => i.cantidad > 0))
@@ -258,9 +260,9 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
           <span className="text-neutral-400 text-sm">Subtotal</span>
           <span className="text-neutral-600 font-semibold text-sm">{formatPrecio(subtotal + subtotalAcc)}</span>
         </div>
-        {!esTakeaway && (
+        {(!esTakeaway || costoEnvio > 0) && (
           <div className="flex justify-between items-center mb-3">
-            <span className="text-neutral-400 text-sm flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Envío</span>
+            <span className="text-neutral-400 text-sm flex items-center gap-1">{esTakeaway ? <>🥡 Servicio de retiro</> : <><Truck className="h-3.5 w-3.5" /> Envío</>}</span>
             <span className="text-neutral-600 font-semibold text-sm">{formatPrecio(costoEnvio)}</span>
           </div>
         )}
