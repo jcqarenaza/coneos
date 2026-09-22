@@ -67,23 +67,14 @@ export default function EntradaPedidosPage() {
       // visible — la URL directa del canal ni se entera de esta llave
       const mostrables = [d, t].filter(c => c.configurado && c.visible !== false)
       const disponibles = mostrables.filter(c => c.disponible)
-      // ANTICIPADO: jamás redirige solo — se ofrece en el selector y se elige
-      // con un toque (el redirect directo es solo para abiertos DE VERDAD)
-      const abiertosYa = disponibles.filter(c => !c.anticipado)
 
       if (mostrables.length === 0) { setEstado('no-disponible'); return }
-      // Puerta coherente: si entró por el QR de DELIVERY (trae token), jamás
-      // lo teletransportamos a OTRO servicio — ve el selector y elige. El
-      // redirect silencioso queda para: entrada orgánica con uno solo abierto,
-      // o entrada por delivery con delivery abierto (el caso de siempre).
-      const esDelivery = (c: Canal) => c.url.includes('/delivery/')
-      const puertaCoherente = !token || esDelivery(disponibles[0] ?? d)
-      if (abiertosYa.length === 1 && disponibles.length === 1 && puertaCoherente) {
-        // Regla CTO: uno solo disponible → directo, sin pantalla intermedia
-        setEstado('redirigiendo')
-        window.location.replace(disponibles[0].url)
-        return
-      }
+      // DECISIÓN JC 22/09 (mata el redirect del Ciclo 2): la App es LA puerta,
+      // SIEMPRE. El selector se muestra aunque haya un solo servicio — una
+      // tarjeta también es selector. Cero teletransportes, cero clientes
+      // atrapados en un slug cuando la config cambia: F5 y la puerta dice
+      // la verdad del momento. (El token sigue viajando en la tarjeta de
+      // delivery — passthrough intacto.)
       setEstado(disponibles.length >= 1 ? 'selector' : 'cerrado')
     }
     init()

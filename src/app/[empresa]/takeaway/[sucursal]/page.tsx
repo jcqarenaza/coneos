@@ -36,6 +36,9 @@ export default function TakeawayPage() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   const [accesorios, setAccesorios] = useState<Accesorio[]>([])
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
+  // Vuelta al selector: solo si el cliente LLEGÓ desde la App (anti-loop ya existente)
+  const [vinoDeApp, setVinoDeApp] = useState(false)
+  useEffect(() => { try { setVinoDeApp(new URLSearchParams(window.location.search).get('desde') === 'app') } catch {} }, [])
 
   useEffect(() => {
     async function init() {
@@ -231,6 +234,13 @@ export default function TakeawayPage() {
   return (
     <div className="min-h-screen">
       <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id} canal="TAKEAWAY" />
+      {vinoDeApp && (
+        <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedidos/${window.location.pathname.split('/').filter(Boolean)[2]}`}
+          className="fixed bottom-4 left-4 z-30 bg-white/95 backdrop-blur border border-neutral-200 shadow-md rounded-full px-3.5 py-2 text-xs font-bold text-neutral-500 active:scale-95 transition-transform">
+          ← Ver otras opciones
+        </a>
+      )}
+
       {ctx.takeaway.anticipado && (
         <div className="sticky top-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-center">
           <p className="text-xs font-bold text-amber-700">🕗 Abrimos a las {ctx.takeaway.abre_a_las} — pedí ahora y tu pedido será de los primeros. Retiro desde las {ctx.takeaway.abre_a_las}.</p>

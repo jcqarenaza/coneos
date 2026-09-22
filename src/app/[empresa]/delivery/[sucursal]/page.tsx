@@ -78,6 +78,8 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   // DELIVERY PROGRAMADO V1: franjas de entrega (llave del comercio; misma
   // fuente de slots que TA — el server valida con esSlotValido igual)
   const [slotsEntrega, setSlotsEntrega] = useState<{ iso: string; label: string }[]>([])
+  const [vinoDeApp, setVinoDeApp] = useState(false)
+  useEffect(() => { try { setVinoDeApp(new URLSearchParams(window.location.search).get('desde') === 'app') } catch {} }, [])
   // Cartel de cierre: los horarios se muestran SOLOS desde la config —
   // nunca más tipearlos a mano en el mensaje.
   const horariosTexto = [...horariosConfig]
@@ -375,6 +377,13 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   return (
     <div className="min-h-screen">
       <RegistroVisita empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} canal="DELIVERY" />
+      {vinoDeApp && (
+        <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedidos/${window.location.pathname.split('/').filter(Boolean)[2]}`}
+          className="fixed bottom-4 left-4 z-30 bg-white/95 backdrop-blur border border-neutral-200 shadow-md rounded-full px-3.5 py-2 text-xs font-bold text-neutral-500 active:scale-95 transition-transform">
+          ← Ver otras opciones
+        </a>
+      )}
+
       {paso === 'inicio' && (
         <KioskInicio config={config} dispositivo={dispositivo}
             onComenzar={(catId) => { setCategoriaInicial(catId); setPaso('catalogo') }} />
