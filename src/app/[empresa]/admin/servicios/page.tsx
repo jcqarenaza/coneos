@@ -95,6 +95,7 @@ export default function ServiciosPage() {
   const [soporte, setSoporte] = useState<{ nombre: string; wa: string }>({ nombre: 'QP C&IA', wa: '542302456497' })
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState<string | null>(null)
+  const [sucio, setSucio] = useState(false)
   // Orden de flujo (decisión JC): creás el dispositivo → horarios y servicios → mensajes → QR
   const [tab, setTab] = useState<'dispositivos' | 'equipo' | 'servicios' | 'mensajes' | 'qr'>('dispositivos')
   const [aviso, setAviso] = useState<string | null>(null)
@@ -139,6 +140,7 @@ export default function ServiciosPage() {
       acepta_anticipado: tc?.acepta_anticipado === true,
     })
     setCargando(false)
+    setSucio(false)
   }, [ctx?.empresaId, supabase])
 
   useEffect(() => {
@@ -184,6 +186,7 @@ export default function ServiciosPage() {
     setGuardando(null)
     const errs = [r1.error && `negocio: ${r1.error.message}`, r2.error && `delivery: ${r2.error.message}`, r3.error && `take away: ${r3.error.message}`].filter(Boolean)
     if (errs.length) { setError(`No se pudo guardar — ${errs.join(' · ')}`); return }
+    setSucio(false)
     avisar(delivery.pausado ? 'Guardado — Delivery quedó EN PAUSA' : 'Guardado')
     cargar(sucursalSel)
   }
@@ -279,7 +282,7 @@ export default function ServiciosPage() {
         <div className="flex items-center justify-between gap-3 mb-4">
           <h3 className="font-bold text-neutral-800">Qué servicio atiende y cuándo</h3>
           <div className="flex items-center gap-2">
-          <BotonGuardar id="todo" onClick={guardarTodo} />
+          <span className={`text-xs font-bold text-amber-600 mr-2 transition-opacity ${sucio ? 'opacity-100' : 'opacity-0'}`}>● Hay cambios sin guardar</span><BotonGuardar id="todo" onClick={guardarTodo} />
           {sucursales.length > 1 && (
             <select value={sucursalSel} onChange={e => { setSucursalSel(e.target.value); cargar(e.target.value) }}
               className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
@@ -310,8 +313,8 @@ export default function ServiciosPage() {
                     <p className="text-[11px] text-neutral-400">rige el Kiosk y techa el Delivery</p>
                   </td>
                   <td className="py-3 pr-3"><span className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Siempre</span></td>
-                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={negocio.horario_general} onChange={f => setNegocio({ ...negocio, horario_general: f })} /></td>
-                  <td className="py-3 pr-3"><input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
+                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={negocio.horario_general} onChange={f => { setSucio(true); setNegocio({ ...negocio, horario_general: f }) }} /></td>
+                  <td className="py-3 pr-3"><input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => { setSucio(true); setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) }) }} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   
@@ -324,18 +327,18 @@ export default function ServiciosPage() {
                     <p className="font-semibold text-neutral-700 whitespace-nowrap">🛵 Delivery</p>
                     {delivery.pausado && <p className="text-[11px] font-semibold text-amber-600">⏸️ EN PAUSA</p>}
                   </td>
-                  <td className="py-3 pr-3"><Toggle on={delivery.activo} onClick={() => setDelivery({ ...delivery, activo: !delivery.activo })} /></td>
-                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={delivery.horarios} onChange={f => setDelivery({ ...delivery, horarios: f })} deshabilitado={!delivery.activo} /></td>
-                  <td className="py-3 pr-3"><input type="number" min={0} max={120} value={delivery.tolerancia_cierre} onChange={e => setDelivery({ ...delivery, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
+                  <td className="py-3 pr-3"><Toggle on={delivery.activo} onClick={() => { setSucio(true); setDelivery({ ...delivery, activo: !delivery.activo }) }} /></td>
+                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={delivery.horarios} onChange={f => { setSucio(true); setDelivery({ ...delivery, horarios: f }) }} deshabilitado={!delivery.activo} /></td>
+                  <td className="py-3 pr-3"><input type="number" min={0} max={120} value={delivery.tolerancia_cierre} onChange={e => { setSucio(true); setDelivery({ ...delivery, tolerancia_cierre: Number(e.target.value) }) }} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-1" title="Costo de envío — se suma al pedido de delivery">
                       <span className="text-xs text-neutral-400">$</span>
-                      <input type="number" min={0} value={delivery.costo_envio} onChange={e => setDelivery({ ...delivery, costo_envio: Number(e.target.value) })} disabled={!delivery.activo} className="w-20 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700 disabled:opacity-40" />
+                      <input type="number" min={0} value={delivery.costo_envio} onChange={e => { setSucio(true); setDelivery({ ...delivery, costo_envio: Number(e.target.value) }) }} disabled={!delivery.activo} className="w-20 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700 disabled:opacity-40" />
                     </div>
                     <p className="text-[10px] text-neutral-300 mt-0.5">envío</p>
                   </td>
                   <td className="py-3 pr-3">
-                    <button onClick={() => setDelivery({ ...delivery, pausado: !delivery.pausado })} title="Pausa momentánea: lluvia o demanda desbordada — misma llave que el botón de la caja"
+                    <button onClick={() => { setSucio(true); setDelivery({ ...delivery, pausado: !delivery.pausado }) }} title="Pausa momentánea: lluvia o demanda desbordada — misma llave que el botón de la caja"
                       className={`p-1.5 rounded-lg border transition-colors ${delivery.pausado ? 'bg-amber-100 border-amber-300 text-amber-600' : 'bg-white border-neutral-200 text-neutral-300 hover:text-neutral-500'}`}>
                       <CloudRain className="h-4 w-4" />
                     </button>
@@ -347,19 +350,19 @@ export default function ServiciosPage() {
               {ta && tieneTa && (
                 <tr className="border-t border-neutral-100 align-top">
                   <td className="py-3 pr-3"><p className="font-semibold text-neutral-700 whitespace-nowrap">🥡 Take Away</p></td>
-                  <td className="py-3 pr-3"><Toggle on={ta.activo} onClick={() => setTa({ ...ta, activo: !ta.activo })} /></td>
+                  <td className="py-3 pr-3"><Toggle on={ta.activo} onClick={() => { setSucio(true); setTa({ ...ta, activo: !ta.activo }) }} /></td>
                   <td className="py-3 pr-3 min-w-[230px]">
-                    <FranjasEditor franjas={ta.horarios} onChange={f => setTa({ ...ta, horarios: f })} deshabilitado={!ta.activo} />
+                    <FranjasEditor franjas={ta.horarios} onChange={f => { setSucio(true); setTa({ ...ta, horarios: f }) }} deshabilitado={!ta.activo} />
                     <div className="flex items-center gap-2 mt-2 pt-2 border-t border-neutral-50" title="Con el TA aún cerrado pero con horario hoy por delante, el cliente puede pedir igual: su pedido entra ya y retira desde la apertura">
-                      <Toggle on={ta.acepta_anticipado} onClick={() => setTa({ ...ta, acepta_anticipado: !ta.acepta_anticipado })} disabled={!ta.activo} />
+                      <Toggle on={ta.acepta_anticipado} onClick={() => { setSucio(true); setTa({ ...ta, acepta_anticipado: !ta.acepta_anticipado }) }} disabled={!ta.activo} />
                       <span className="text-[11px] font-semibold text-neutral-500">Aceptar pedidos antes de abrir <span className="text-neutral-300">(anticipado)</span></span>
                     </div>
                   </td>
-                  <td className="py-3 pr-3"><input type="number" min={0} max={120} value={ta.tolerancia_cierre} onChange={e => setTa({ ...ta, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
+                  <td className="py-3 pr-3"><input type="number" min={0} max={120} value={ta.tolerancia_cierre} onChange={e => { setSucio(true); setTa({ ...ta, tolerancia_cierre: Number(e.target.value) }) }} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-1" title="Costo de servicio de retiro (aderezos, salsas, packaging) — se suma al pedido de take away">
                       <span className="text-xs text-neutral-400">$</span>
-                      <input type="number" min={0} value={ta.costo_servicio} onChange={e => setTa({ ...ta, costo_servicio: Number(e.target.value) })} disabled={!ta.activo} className="w-20 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700 disabled:opacity-40" />
+                      <input type="number" min={0} value={ta.costo_servicio} onChange={e => { setSucio(true); setTa({ ...ta, costo_servicio: Number(e.target.value) }) }} disabled={!ta.activo} className="w-20 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700 disabled:opacity-40" />
                     </div>
                     <p className="text-[10px] text-neutral-300 mt-0.5">servicio</p>
                   </td>
@@ -395,7 +398,7 @@ export default function ServiciosPage() {
                     <p className="font-semibold text-neutral-700 whitespace-nowrap">🪑 Mesas</p>
                     <p className="text-[11px] text-neutral-400">pedidos desde el salón</p>
                   </td>
-                  <td className="py-3 pr-3"><Toggle on={mesasActivo} onClick={() => setMesasActivo(!mesasActivo)} /></td>
+                  <td className="py-3 pr-3"><Toggle on={mesasActivo} onClick={() => { setSucio(true); setMesasActivo(!mesasActivo) }} /></td>
                   <td className="py-3 pr-3 min-w-[230px]"><span className="text-xs text-neutral-400">Abre con el local (horario del negocio)</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
@@ -418,23 +421,23 @@ export default function ServiciosPage() {
           {negocio && (
             <div>
               <label className="text-xs font-semibold text-neutral-500">🏪 Negocio cerrado</label>
-              <input value={negocio.mensaje_cerrado} placeholder="¡Volvemos pronto!" onChange={e => setNegocio({ ...negocio, mensaje_cerrado: e.target.value })} className={inp} />
+              <input value={negocio.mensaje_cerrado} placeholder="¡Volvemos pronto!" onChange={e => { setSucio(true); setNegocio({ ...negocio, mensaje_cerrado: e.target.value }) }} className={inp} />
             </div>
           )}
           {delivery && tieneDelivery && (<>
             <div>
               <label className="text-xs font-semibold text-neutral-500">🛵 Delivery fuera de horario</label>
-              <input value={delivery.mensaje_fuera_horario} placeholder="El delivery no está disponible ahora." onChange={e => setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value })} className={inp} />
+              <input value={delivery.mensaje_fuera_horario} placeholder="El delivery no está disponible ahora." onChange={e => { setSucio(true); setDelivery({ ...delivery, mensaje_fuera_horario: e.target.value }) }} className={inp} />
             </div>
             <div>
               <label className="text-xs font-semibold text-neutral-500">⏸️ Delivery en pausa</label>
-              <input value={delivery.mensaje_pausa} placeholder="Pausado momentáneamente — ¡ya volvemos!" onChange={e => setDelivery({ ...delivery, mensaje_pausa: e.target.value })} className={inp} />
+              <input value={delivery.mensaje_pausa} placeholder="Pausado momentáneamente — ¡ya volvemos!" onChange={e => { setSucio(true); setDelivery({ ...delivery, mensaje_pausa: e.target.value }) }} className={inp} />
             </div>
           </>)}
           {ta && tieneTa && (
             <div>
               <label className="text-xs font-semibold text-neutral-500">🥡 Take Away fuera de horario</label>
-              <input value={ta.mensaje_fuera_horario} placeholder="El take away no está disponible ahora. ¡Volvemos pronto!" onChange={e => setTa({ ...ta, mensaje_fuera_horario: e.target.value })} className={inp} />
+              <input value={ta.mensaje_fuera_horario} placeholder="El take away no está disponible ahora. ¡Volvemos pronto!" onChange={e => { setSucio(true); setTa({ ...ta, mensaje_fuera_horario: e.target.value }) }} className={inp} />
             </div>
           )}
         </div>
