@@ -51,7 +51,7 @@ export async function GET(request: Request) {
   }
 
   const [{ data: ta }, { data: pagos }, resMp, resTransfer] = await Promise.all([
-    supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio').eq('sucursal_id', sucursal.id).maybeSingle(),
+    supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio, acepta_anticipado').eq('sucursal_id', sucursal.id).maybeSingle(),
     supabase.from('sucursal_pagos').select('acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_takeaway').eq('sucursal_id', sucursal.id).maybeSingle(),
     resolverPago(empresa.id, sucursal.id, 'TAKEAWAY', 'MERCADO_PAGO'),
     resolverPago(empresa.id, sucursal.id, 'TAKEAWAY', 'TRANSFERENCIA'),
@@ -79,7 +79,8 @@ export async function GET(request: Request) {
   // primero"). TA se rige por SUS franjas/slots — sin techo (espejo exacto
   // del guard de /api/pedidos). Cerrado de verdad = sin slots restantes.
   const slotsHoy = generarSlots(horarios)
-  const anticipado = !abierto && slotsHoy.length > 0
+  // Regla 5: la llave nace OFF — el comercio decide ofrecer anticipado
+  const anticipado = !abierto && slotsHoy.length > 0 && ta.acepta_anticipado === true
 
   return NextResponse.json({
     empresa_id: empresa.id,

@@ -76,7 +76,7 @@ export async function POST(request: Request) {
   if (tipo_pedido === 'takeaway') {
     const { data: tc } = await supabase
       .from('takeaway_config')
-      .select('activo, horarios, tolerancia_cierre, mensaje_fuera_horario')
+      .select('activo, horarios, tolerancia_cierre, mensaje_fuera_horario, acepta_anticipado')
       .eq('sucursal_id', sucursal_id)
       .maybeSingle()
     if (!tc?.activo) {
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
         // por delante → el pedido entra igual — "será el primero". Sin hora
         // elegida, se le asigna el PRIMER slot (la apertura). Sin slots
         // restantes (ya cerró de verdad) → rechazo de siempre.
-        const slotsHoy = generarSlots(horariosTa)
+        const slotsHoy = tc.acepta_anticipado === true ? generarSlots(horariosTa) : []
         if (slotsHoy.length === 0) {
           return NextResponse.json({ error: tc.mensaje_fuera_horario ?? 'El take away ya cerró por hoy.' }, { status: 409 })
         }

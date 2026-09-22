@@ -32,7 +32,7 @@ interface Sucursal { id: string; nombre: string }
 
 interface NegocioCfg { horario_general: Franja[]; mensaje_cerrado: string; tolerancia_cierre: number }
 interface DeliveryCfg { activo: boolean; pausado: boolean; mensaje_pausa: string; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_envio: number }
-interface TaCfg { activo: boolean; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio: number }
+interface TaCfg { activo: boolean; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio: number; acepta_anticipado: boolean }
 
 // ── Editor de franjas horarias (compartido por las tres tarjetas) ──
 function FranjasEditor({ franjas, onChange, deshabilitado }: { franjas: Franja[]; onChange: (f: Franja[]) => void; deshabilitado?: boolean }) {
@@ -107,7 +107,7 @@ export default function ServiciosPage() {
     const [{ data: suc }, { data: dc }, { data: tc }, { data: cfg }] = await Promise.all([
       supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre').eq('id', sucId).maybeSingle(),
       supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio').eq('sucursal_id', sucId).maybeSingle(),
-      supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio').eq('sucursal_id', sucId).maybeSingle(),
+      supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio, acepta_anticipado').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('empresa_config').select('modulos, mesas_activo, soporte_nombre, soporte_whatsapp').eq('empresa_id', ctx.empresaId).maybeSingle(),
     ])
     const mods = (cfg?.modulos ?? {}) as Record<string, boolean>
@@ -136,6 +136,7 @@ export default function ServiciosPage() {
       mensaje_fuera_horario: tc?.mensaje_fuera_horario ?? '',
       tolerancia_cierre: Number(tc?.tolerancia_cierre ?? 5),
       costo_servicio: Number(tc?.costo_servicio ?? 0),
+      acepta_anticipado: tc?.acepta_anticipado === true,
     })
     setCargando(false)
   }, [ctx?.empresaId, supabase])
@@ -176,6 +177,7 @@ export default function ServiciosPage() {
         mensaje_fuera_horario: ta.mensaje_fuera_horario || null,
         tolerancia_cierre: ta.tolerancia_cierre,
         costo_servicio: ta.costo_servicio,
+        acepta_anticipado: ta.acepta_anticipado,
       }, { onConflict: 'sucursal_id' }),
       ...(tieneMesas ? [supabase.from('empresa_config').update({ mesas_activo: mesasActivo }).eq('empresa_id', ctx.empresaId)] : []),
     ])
@@ -346,7 +348,13 @@ export default function ServiciosPage() {
                 <tr className="border-t border-neutral-100 align-top">
                   <td className="py-3 pr-3"><p className="font-semibold text-neutral-700 whitespace-nowrap">🥡 Take Away</p></td>
                   <td className="py-3 pr-3"><Toggle on={ta.activo} onClick={() => setTa({ ...ta, activo: !ta.activo })} /></td>
-                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={ta.horarios} onChange={f => setTa({ ...ta, horarios: f })} deshabilitado={!ta.activo} /></td>
+                  <td className="py-3 pr-3 min-w-[230px]">
+                    <FranjasEditor franjas={ta.horarios} onChange={f => setTa({ ...ta, horarios: f })} deshabilitado={!ta.activo} />
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-neutral-50" title="Con el TA aún cerrado pero con horario hoy por delante, el cliente puede pedir igual: su pedido entra ya y retira desde la apertura">
+                      <Toggle on={ta.acepta_anticipado} onClick={() => setTa({ ...ta, acepta_anticipado: !ta.acepta_anticipado })} disabled={!ta.activo} />
+                      <span className="text-[11px] font-semibold text-neutral-500">Aceptar pedidos antes de abrir <span className="text-neutral-300">(anticipado)</span></span>
+                    </div>
+                  </td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={ta.tolerancia_cierre} onChange={e => setTa({ ...ta, tolerancia_cierre: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-1" title="Costo de servicio de retiro (aderezos, salsas, packaging) — se suma al pedido de take away">
@@ -397,7 +405,7 @@ export default function ServiciosPage() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · el horario del Negocio <b>techa</b> Kiosk y Delivery (local cerrado = no entran) · <b>Take Away se rige solo por sus franjas</b> y acepta pedidos anticipados del día: el cliente pide antes de abrir y retira desde la apertura · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · el costo de <b>servicio</b> de Take Away se suma al pedido (0 = no se muestra). Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
+        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · el horario del Negocio <b>techa</b> Kiosk y Delivery (local cerrado = no entran) · <b>Take Away se rige solo por sus franjas</b>; con su llave de <b>anticipado</b> activada acepta pedidos antes de abrir (entran ya, retiro desde la apertura) · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · el costo de <b>servicio</b> de Take Away se suma al pedido (0 = no se muestra). Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
       </ConeCard>
       )}
 

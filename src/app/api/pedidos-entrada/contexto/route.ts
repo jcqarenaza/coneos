@@ -73,7 +73,7 @@ export async function GET(request: Request) {
       .select('activo, pausado, horarios, tolerancia_cierre, mensaje_fuera_horario, mensaje_pausa')
       .eq('sucursal_id', sucursal.id).maybeSingle(),
     supabase.from('takeaway_config')
-      .select('activo, horarios, tolerancia_cierre, mensaje_fuera_horario')
+      .select('activo, horarios, tolerancia_cierre, mensaje_fuera_horario, acepta_anticipado')
       .eq('sucursal_id', sucursal.id).maybeSingle(),
   ])
 
@@ -120,7 +120,7 @@ export async function GET(request: Request) {
   // ANTICIPADO (decisión JC): TA cerrado pero con franja de HOY por delante →
   // la tarjeta queda ELEGIBLE con "🟠 Abre a las HH — pedí ahora" (la page de
   // TA recibe al cliente en modo anticipado). Sin franja restante = cerrado.
-  const taAnticipado = taConfigurado && !taDisponible && !!taProximo
+  const taAnticipado = taConfigurado && !taDisponible && !!taProximo && (tc?.acepta_anticipado === true)
 
   return NextResponse.json({
     nombre: empresa.nombre,
