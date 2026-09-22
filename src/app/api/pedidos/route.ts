@@ -44,6 +44,15 @@ export async function POST(request: Request) {
     }
   }
 
+  // Guard de la llave de MESAS (FIX matriz 22/09): espejo del contexto —
+  // el server manda aunque la pestaña del QR haya quedado abierta de antes
+  if (tipo_pedido === 'mesa') {
+    const { data: cfgMesa } = await supabase.from('empresa_config').select('mesas_activo').eq('empresa_id', empresa_id).maybeSingle()
+    if (cfgMesa?.mesas_activo === false) {
+      return NextResponse.json({ error: 'Los pedidos desde la mesa están pausados en este momento — pedí en el mostrador.' }, { status: 409 })
+    }
+  }
+
   // Validación server-side para pedidos DELIVERY: pausa y horario con tolerancia
   // (CICLO A: la evaluación de franjas se unificó en la fuente única @/lib/horarios)
   if (origen === 'DELIVERY') {

@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   if (!empresa) return NextResponse.json({ error: 'Local no encontrado' }, { status: 404 })
 
   const [{ data: cfg }, { data: sucursal }] = await Promise.all([
-    supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, modulos').eq('empresa_id', empresa.id).maybeSingle(),
+    supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, modulos, mesas_activo').eq('empresa_id', empresa.id).maybeSingle(),
     supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
   ])
   if (!sucursal) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
@@ -28,6 +28,11 @@ export async function GET(request: Request) {
   const modulos = (cfg?.modulos ?? {}) as Record<string, boolean>
   if (modulos.mesas !== true) {
     return NextResponse.json({ error: 'El pedido desde la mesa no está disponible en este local' }, { status: 403 })
+  }
+  // FIX (matriz 22/09): la LLAVE del comercio (grilla de la casa) por fin
+  // gobierna — antes se grababa y nadie la leía. OFF = pausado.
+  if (cfg?.mesas_activo === false) {
+    return NextResponse.json({ error: 'Los pedidos desde la mesa están pausados en este momento — pedí en el mostrador.' }, { status: 403 })
   }
 
   // Llaves del comercio (default true = comportamiento histórico intacto)

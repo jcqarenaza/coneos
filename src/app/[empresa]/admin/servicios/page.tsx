@@ -158,7 +158,7 @@ export default function ServiciosPage() {
   async function guardarTodo() {
     if (!negocio || !delivery || !ta || !sucursalSel || !ctx?.empresaId) return
     setGuardando('todo'); setError(null)
-    const [r1, r2, r3] = await Promise.all([
+    const [r1, r2, r3, r4] = await Promise.all([
       supabase.from('sucursales').update({
         horario_general: negocio.horario_general,
         mensaje_cerrado: negocio.mensaje_cerrado || null,
@@ -184,7 +184,7 @@ export default function ServiciosPage() {
       ...(tieneMesas ? [supabase.from('empresa_config').update({ mesas_activo: mesasActivo }).eq('empresa_id', ctx.empresaId)] : []),
     ])
     setGuardando(null)
-    const errs = [r1.error && `negocio: ${r1.error.message}`, r2.error && `delivery: ${r2.error.message}`, r3.error && `take away: ${r3.error.message}`].filter(Boolean)
+    const errs = [r1.error && `negocio: ${r1.error.message}`, r2.error && `delivery: ${r2.error.message}`, r3.error && `take away: ${r3.error.message}`, r4?.error && `mesas: ${r4.error.message}`].filter(Boolean)
     if (errs.length) { setError(`No se pudo guardar — ${errs.join(' · ')}`); return }
     setSucio(false)
     avisar(delivery.pausado ? 'Guardado — Delivery quedó EN PAUSA' : 'Guardado')
