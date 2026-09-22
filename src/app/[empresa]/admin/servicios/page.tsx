@@ -279,7 +279,7 @@ export default function ServiciosPage() {
       {/* ═══ TAB DISPOSITIVOS (tokens/URLs/modal idénticos a siempre) ═══ */}
       {/* Selector de sucursal — gobierna las tabs POR SUCURSAL (horarios,
           mensajes, app). Dispositivos/Equipo/QR manejan lo suyo adentro. */}
-      {(tab === 'servicios' || tab === 'mensajes' || tab === 'app') && sucursales.length > 1 && (
+      {(tab === 'servicios' || tab === 'mensajes' || tab === 'app' || tab === 'qr') && sucursales.length > 1 && (
         <div className="flex items-center gap-2 mb-4">
           <span className="text-xs font-bold text-neutral-400 uppercase tracking-wide">Sucursal</span>
           <select value={sucursalSel} onChange={e => { setSucursalSel(e.target.value); cargar(e.target.value); setSucio(false) }}
@@ -323,7 +323,7 @@ export default function ServiciosPage() {
           </div>
                   </div>
       )}
-      {tab === 'qr' && <QrAccesosTab />}
+      {tab === 'qr' && <QrAccesosTab sucursalId={sucursalSel} />}
 
       {tab === 'servicios' && (
       <ConeCard>

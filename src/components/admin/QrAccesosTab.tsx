@@ -31,11 +31,17 @@ const DESTINOS = [
   { id: 'takeaway', emoji: '🥡', titulo: 'Take Away directo', desc: 'Entra derecho al pedido para retirar, sin selector.', path: 'takeaway' },
 ] as const
 
-export default function QrAccesosTab() {
+// UN solo selector (orden JC): el de la casa manda; este tab obedece la
+// sucursal que le pasan y esconde su selector propio.
+export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {}) {
   const { ctx, loading: ctxLoading } = useEmpresa()
   const supabase = useMemo(() => createClient(), [])
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalSel, setSucursalSel] = useState<Sucursal | null>(null)
+  useEffect(() => {
+    if (!sucursalId || sucursales.length === 0) return
+    setSucursalSel(prev => prev?.id === sucursalId ? prev : (sucursales.find(s => s.id === sucursalId) ?? prev))
+  }, [sucursalId, sucursales])
   const [appEncendida, setAppEncendida] = useState<boolean | null>(null)
   const [qrs, setQrs] = useState<Record<string, string>>({})
   const [copiado, setCopiado] = useState<string | null>(null)
@@ -50,7 +56,7 @@ export default function QrAccesosTab() {
     ]).then(([{ data: sucs }, { data: cfg }]) => {
       const lista = (sucs ?? []) as Sucursal[]
       setSucursales(lista)
-      if (lista.length > 0) setSucursalSel(lista[0])
+      if (lista.length > 0) setSucursalSel(lista.find(s => s.id === sucursalId) ?? lista[0])
       setAppEncendida(cfg?.entrada_unificada === true)
       setModuloMesas(((cfg?.modulos ?? {}) as Record<string, boolean>).mesas === true)
       setCargando(false)
@@ -111,7 +117,7 @@ export default function QrAccesosTab() {
     <div className="space-y-5">
 
       <div className="flex items-center gap-2">
-        {sucursales.length > 1 && (
+        {!sucursalId && sucursales.length > 1 && (
           <select value={sucursalSel?.id ?? ''} onChange={e => setSucursalSel(sucursales.find(s => s.id === e.target.value) ?? null)}
             className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
             {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
