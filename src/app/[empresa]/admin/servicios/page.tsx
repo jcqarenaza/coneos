@@ -378,15 +378,15 @@ export default function ServiciosPage() {
                 <tr className="border-t border-neutral-100 align-top opacity-70">
                   <td className="py-3 pr-3">
                     <p className="font-semibold text-neutral-400 whitespace-nowrap">🪑 Mesas</p>
-                    <p className="text-[11px] text-neutral-300">módulo no contratado</p>
+                    <p className="text-[11px] font-semibold text-amber-500">módulo disponible — sumalo a tu plan</p>
                   </td>
                   <td className="py-3 pr-3">
                     <button onClick={() => setModalMesas(true)} title="Activar el módulo Mesas"
-                      className="p-1.5 rounded-lg border border-neutral-200 text-neutral-300 hover:text-neutral-500 hover:border-neutral-300 transition-colors">
+                      className="p-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100 hover:border-amber-300 transition-colors">
                       <Lock className="h-4 w-4" />
                     </button>
                   </td>
-                  <td className="py-3 pr-3 min-w-[230px]"><span className="text-xs text-neutral-300">Tus clientes piden con un QR desde la mesa</span></td>
+                  <td className="py-3 pr-3 min-w-[230px]"><span className="text-xs text-neutral-400">Tus clientes piden con un QR desde la mesa 🪑</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
