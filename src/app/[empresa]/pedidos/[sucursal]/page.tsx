@@ -125,7 +125,7 @@ export default function EntradaPedidosPage() {
   const tarjetas: { emoji: string; titulo: string; sub: string; canal: Canal }[] = [
     { emoji: '🛵', titulo: 'Delivery', sub: 'Te lo llevamos', canal: ctx.servicios.delivery },
     { emoji: '🥡', titulo: 'Take Away', sub: 'Pedí y pasá a retirarlo', canal: ctx.servicios.takeaway },
-  ].filter(x => x.canal.configurado)
+  ].filter(x => x.canal.configurado && x.canal.visible !== false) // En App OFF = ni tarjeta ni cerrado: NADA
   // Cerrado global: "volvemos a atender a las X" = la próxima apertura más
   // temprana entre los servicios configurados (dato del agregador, no cálculo)
   const proximos = tarjetas.map(t => t.canal.proximo).filter((x): x is string => !!x).sort()
