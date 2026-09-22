@@ -28,7 +28,7 @@ import QrAccesosTab from '@/components/admin/QrAccesosTab'
 import EquipoTab from '@/components/admin/EquipoTab'
 
 interface Franja { desde: string; hasta: string }
-interface Sucursal { id: string; nombre: string }
+interface Sucursal { id: string; nombre: string; slug: string }
 
 interface NegocioCfg { horario_general: Franja[]; mensaje_cerrado: string; tolerancia_cierre: number }
 interface DeliveryCfg { activo: boolean; pausado: boolean; mensaje_pausa: string; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_envio: number; mostrar_en_app: boolean; permitir_programado: boolean }
@@ -92,12 +92,13 @@ export default function ServiciosPage() {
   const [tieneMesas, setTieneMesas] = useState(false)
   const [mesasActivo, setMesasActivo] = useState(true)
   const [modalMesas, setModalMesas] = useState(false)
+  const [appEncendida, setAppEncendida] = useState(false)
   const [soporte, setSoporte] = useState<{ nombre: string; wa: string }>({ nombre: 'QP C&IA', wa: '542302456497' })
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState<string | null>(null)
   const [sucio, setSucio] = useState(false)
   // Orden de flujo (decisión JC): creás el dispositivo → horarios y servicios → mensajes → QR
-  const [tab, setTab] = useState<'dispositivos' | 'equipo' | 'servicios' | 'mensajes' | 'qr'>('dispositivos')
+  const [tab, setTab] = useState<'dispositivos' | 'equipo' | 'servicios' | 'mensajes' | 'app' | 'qr'>('dispositivos')
   const [aviso, setAviso] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const avisar = (m: string) => { setAviso(m); setTimeout(() => setAviso(null), 2500) }
@@ -109,13 +110,14 @@ export default function ServiciosPage() {
       supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre').eq('id', sucId).maybeSingle(),
       supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio, mostrar_en_app, permitir_programado').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio, acepta_anticipado, mostrar_en_app').eq('sucursal_id', sucId).maybeSingle(),
-      supabase.from('empresa_config').select('modulos, mesas_activo, soporte_nombre, soporte_whatsapp').eq('empresa_id', ctx.empresaId).maybeSingle(),
+      supabase.from('empresa_config').select('modulos, mesas_activo, soporte_nombre, soporte_whatsapp, entrada_unificada').eq('empresa_id', ctx.empresaId).maybeSingle(),
     ])
     const mods = (cfg?.modulos ?? {}) as Record<string, boolean>
     setTieneDelivery(mods.delivery !== false)
     setTieneTa(mods.takeaway !== false)
     setTieneMesas(mods.mesas === true)
     setMesasActivo(cfg?.mesas_activo !== false)
+    setAppEncendida(cfg?.entrada_unificada === true)
     if (cfg?.soporte_whatsapp) setSoporte({ nombre: cfg.soporte_nombre ?? 'tu proveedor', wa: String(cfg.soporte_whatsapp).replace(/\D/g, '') })
     setNegocio({
       horario_general: (suc?.horario_general as Franja[] | null) ?? [],
@@ -148,7 +150,7 @@ export default function ServiciosPage() {
 
   useEffect(() => {
     if (!ctx?.empresaId) return
-    supabase.from('sucursales').select('id, nombre').eq('empresa_id', ctx.empresaId).eq('activo', true).order('nombre')
+    supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', ctx.empresaId).eq('activo', true).order('nombre')
       .then(({ data }) => {
         const lista = (data ?? []) as Sucursal[]
         setSucursales(lista)
@@ -187,7 +189,7 @@ export default function ServiciosPage() {
         acepta_anticipado: ta.acepta_anticipado,
         mostrar_en_app: ta.mostrar_en_app,
       }, { onConflict: 'sucursal_id' }),
-      ...(tieneMesas ? [supabase.from('empresa_config').update({ mesas_activo: mesasActivo }).eq('empresa_id', ctx.empresaId)] : []),
+      ...(tieneMesas ? [supabase.from('empresa_config').update({ mesas_activo: mesasActivo, entrada_unificada: appEncendida }).eq('empresa_id', ctx.empresaId)] : []),
     ])
     setGuardando(null)
     const errs = [r1.error && `negocio: ${r1.error.message}`, r2.error && `delivery: ${r2.error.message}`, r3.error && `take away: ${r3.error.message}`, r4?.error && `mesas: ${r4.error.message}`].filter(Boolean)
@@ -266,7 +268,7 @@ export default function ServiciosPage() {
       {error && <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 font-medium">{error}</div>}
 
       <div className="flex gap-2">
-        {([['dispositivos', '🔧 Dispositivos'], ['equipo', '👥 Equipo'], ['servicios', '🕗 Horarios y servicios'], ['mensajes', '💬 Mensajes'], ['qr', '📱 QR y accesos']] as const).map(([id, label]) => (
+        {([['dispositivos', '🔧 Dispositivos'], ['equipo', '👥 Equipo'], ['servicios', '🕗 Horarios y servicios'], ['mensajes', '💬 Mensajes'], ['app', '🌐 App'], ['qr', '📱 QR y accesos']] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${tab === id ? 'bg-neutral-800 text-white' : 'bg-white border border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}>
             {label}
@@ -281,6 +283,39 @@ export default function ServiciosPage() {
       {tab === 'equipo' && <EquipoTab />}
 
       {/* ═══ TAB QR Y ACCESOS (entradas públicas + mesas, dominio canónico) ═══ */}
+      {tab === 'app' && delivery && ta && (
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-6 space-y-6 max-w-2xl">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <div>
+                <p className="font-bold text-neutral-800">🌐 App Pública (entrada unificada)</p>
+                <p className="text-xs text-neutral-400">La puerta única: el cliente entra y elige el servicio. Enciende la App para <b>todas las sucursales</b> de la empresa.</p>
+              </div>
+              <Toggle on={appEncendida} onClick={() => { setSucio(true); setAppEncendida(!appEncendida) }} />
+            </div>
+            <p className="text-[11px] text-neutral-300 mt-1">Con la App encendida, el QR de delivery de siempre lleva a la puerta (el token viaja solo). Apagada: cada QR va directo a su servicio, como siempre.</p>
+          </div>
+          <div className="border-t border-neutral-50 pt-5">
+            <p className="font-bold text-neutral-800 mb-1">Canales visibles en esta sucursal</p>
+            <p className="text-xs text-neutral-400 mb-3">Qué ofrece la puerta pública acá. El canal sigue OPERANDO por su link/QR directo aunque no se muestre (marcha blanda).</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-neutral-600">🛵 Mostrar Delivery</p>
+                <Toggle on={delivery.mostrar_en_app} onClick={() => { setSucio(true); setDelivery({ ...delivery, mostrar_en_app: !delivery.mostrar_en_app }) }} disabled={!delivery.activo} />
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-neutral-600">🥡 Mostrar Take Away</p>
+                <Toggle on={ta.mostrar_en_app} onClick={() => { setSucio(true); setTa({ ...ta, mostrar_en_app: !ta.mostrar_en_app }) }} disabled={!ta.activo} />
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-neutral-50 pt-5">
+            <p className="font-bold text-neutral-800 mb-1">Entrada</p>
+            <p className="text-xs font-mono bg-neutral-50 border border-neutral-100 rounded-lg px-3 py-2 text-neutral-600 break-all">https://coneos.com.ar/{typeof window !== 'undefined' ? window.location.pathname.split('/').filter(Boolean)[0] : ''}/pedidos/{sucursales.find(s => s.id === sucursalSel)?.slug ?? ''}</p>
+            <p className="text-[11px] text-neutral-300 mt-1.5">El QR imprimible de esta entrada vive en la pestaña <b>📱 QR y accesos</b>.</p>
+          </div>
+        </div>
+      )}
       {tab === 'qr' && <QrAccesosTab />}
 
       {tab === 'servicios' && (
@@ -307,8 +342,7 @@ export default function ServiciosPage() {
                 <th className="py-2 pr-3 font-semibold">Franjas horarias</th>
                 <th className="py-2 pr-3 font-semibold">Tolerancia</th>
                 <th className="py-2 pr-3 font-semibold">Costo</th>
-                <th className="py-2 pr-3 font-semibold">Pausa</th>
-                <th className="py-2 font-semibold">En App</th>
+                <th className="py-2 font-semibold">Pausa</th>
               </tr>
             </thead>
             <tbody>
@@ -322,7 +356,6 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3"><span className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Siempre</span></td>
                   <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={negocio.horario_general} onChange={f => { setSucio(true); setNegocio({ ...negocio, horario_general: f }) }} /></td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => { setSucio(true); setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) }) }} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
-                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
                 </tr>
@@ -355,9 +388,6 @@ export default function ServiciosPage() {
                       <CloudRain className="h-4 w-4" />
                     </button>
                   </td>
-                  <td className="py-3" title="¿Aparece Delivery en la puerta pública (App)? La URL directa y el QR siguen andando igual">
-                    <Toggle on={delivery.mostrar_en_app} onClick={() => { setSucio(true); setDelivery({ ...delivery, mostrar_en_app: !delivery.mostrar_en_app }) }} disabled={!delivery.activo} />
-                  </td>
                   
                 </tr>
               )}
@@ -382,9 +412,6 @@ export default function ServiciosPage() {
                     <p className="text-[10px] text-neutral-300 mt-0.5">servicio</p>
                   </td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
-                  <td className="py-3" title="¿Aparece Take Away en la puerta pública (App)? La URL directa y el QR siguen andando igual">
-                    <Toggle on={ta.mostrar_en_app} onClick={() => { setSucio(true); setTa({ ...ta, mostrar_en_app: !ta.mostrar_en_app }) }} disabled={!ta.activo} />
-                  </td>
                   
                 </tr>
               )}
@@ -407,7 +434,6 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3 min-w-[230px]"><span className="text-xs text-neutral-400">Tus clientes piden con un QR desde la mesa 🪑</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
-                  <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
                 </tr>
               )}
@@ -422,13 +448,12 @@ export default function ServiciosPage() {
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
-                  <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · el horario del Negocio <b>techa</b> Kiosk y Delivery (local cerrado = no entran) · <b>Take Away se rige solo por sus franjas</b>; con su llave de <b>anticipado</b> activada acepta pedidos antes de abrir (entran ya, retiro desde la apertura) · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · el costo de <b>servicio</b> de Take Away se suma al pedido (0 = no se muestra). con <b>entregas programadas</b> el cliente elige franja del día (delivery abierto; el pedido entra ya a Preparación con su hora) · la columna <b>En App</b> decide si el canal aparece en la puerta pública — su URL directa y su QR siguen andando igual. Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
+        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · el horario del Negocio <b>techa</b> Kiosk y Delivery (local cerrado = no entran) · <b>Take Away se rige solo por sus franjas</b>; con su llave de <b>anticipado</b> activada acepta pedidos antes de abrir (entran ya, retiro desde la apertura) · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · el costo de <b>servicio</b> de Take Away se suma al pedido (0 = no se muestra). con <b>entregas programadas</b> el cliente elige franja del día (delivery abierto; el pedido entra ya a Preparación con su hora) · qué canales muestra la puerta pública se maneja en la pestaña <b>🌐 App</b>. Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
       </ConeCard>
       )}
 
