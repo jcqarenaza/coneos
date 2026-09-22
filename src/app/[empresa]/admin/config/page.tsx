@@ -25,6 +25,8 @@ export default function ConfigPage() {
   const [config, setConfig] = useState<Config | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [sucio, setSucio] = useState(false)
+  const tocar = (parcial: Partial<typeof config> & object) => { setSucio(true); setConfig(c => c ? ({ ...c, ...parcial } as typeof c) : c) }
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const logoRef = useRef<HTMLInputElement>(null)
 
@@ -69,7 +71,7 @@ export default function ConfigPage() {
     if (!ctx || !config) return
     setSaving(true)
     const supabase = createClient()
-    await supabase.from('empresa_config').update({
+    const upd = await supabase.from('empresa_config').update({
       primary_color: config.primary_color,
       secondary_color: config.secondary_color,
       logo_url: config.logo_url,
@@ -84,7 +86,10 @@ export default function ConfigPage() {
       mostrar_agotados: config.mostrar_agotados === true,
       entrada_unificada: config.entrada_unificada === true,
     }).eq('empresa_id', ctx.empresaId)
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
+    setSaving(false)
+    if (upd.error) { alert(`No se pudo guardar: ${upd.error.message}`); return }
+    setSucio(false)
+    setSaved(true); setTimeout(() => setSaved(false), 2500)
   }
 
   if (ctxLoading || !config || !empresa) return (
@@ -121,7 +126,7 @@ export default function ConfigPage() {
             {config.logo_url ? (
               <div className="relative h-28 rounded-xl overflow-hidden border border-neutral-200 bg-neutral-50 group">
                 <Image src={config.logo_url} alt="Logo" fill className="object-contain p-3" />
-                <button onClick={() => setConfig({ ...config, logo_url: null })}
+                <button onClick={() => tocar({ logo_url: null })}
                   className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
                   <X className="h-4 w-4" />
                 </button>
@@ -145,21 +150,21 @@ export default function ConfigPage() {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label>Mensaje de bienvenida (Kiosk)</Label>
-              <Input value={config.texto_bienvenida} onChange={e => setConfig({ ...config, texto_bienvenida: e.target.value })} placeholder="¡Bienvenido!" />
+              <Input value={config.texto_bienvenida} onChange={e => tocar({ texto_bienvenida: e.target.value })} placeholder="¡Bienvenido!" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Color primario</Label>
                 <div className="flex gap-2 items-center">
-                  <input type="color" value={config.primary_color} onChange={e => setConfig({ ...config, primary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
-                  <Input value={config.primary_color} onChange={e => setConfig({ ...config, primary_color: e.target.value })} className="font-mono text-sm" maxLength={7} />
+                  <input type="color" value={config.primary_color} onChange={e => tocar({ primary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
+                  <Input value={config.primary_color} onChange={e => tocar({ primary_color: e.target.value })} className="font-mono text-sm" maxLength={7} />
                 </div>
               </div>
               <div className="space-y-1.5">
                 <Label>Color secundario</Label>
                 <div className="flex gap-2 items-center">
-                  <input type="color" value={config.secondary_color} onChange={e => setConfig({ ...config, secondary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
-                  <Input value={config.secondary_color} onChange={e => setConfig({ ...config, secondary_color: e.target.value })} className="font-mono text-sm" maxLength={7} />
+                  <input type="color" value={config.secondary_color} onChange={e => tocar({ secondary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
+                  <Input value={config.secondary_color} onChange={e => tocar({ secondary_color: e.target.value })} className="font-mono text-sm" maxLength={7} />
                 </div>
               </div>
             </div>
@@ -187,7 +192,7 @@ export default function ConfigPage() {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label>Nombre de la app</Label>
-              <Input value={config.pwa_nombre ?? ''} onChange={e => setConfig({ ...config, pwa_nombre: e.target.value })}
+              <Input value={config.pwa_nombre ?? ''} onChange={e => tocar({ pwa_nombre: e.target.value })}
                 placeholder="Cecchetto Delivery" />
               <p className="text-xs text-neutral-400">Nombre que aparece al instalar la app en el celular. Vacío = nombre de la empresa.</p>
             </div>
@@ -197,7 +202,7 @@ export default function ConfigPage() {
               {config.pwa_icono_url ? (
                 <div className="flex items-center gap-3">
                   <img src={config.pwa_icono_url} alt="Ícono PWA" className="w-16 h-16 rounded-xl object-cover border border-neutral-200" />
-                  <ConeButton variant="outline" onClick={() => setConfig({ ...config, pwa_icono_url: null })} icon={<X className="h-4 w-4" />}>Quitar</ConeButton>
+                  <ConeButton variant="outline" onClick={() => tocar({ pwa_icono_url: null })} icon={<X className="h-4 w-4" />}>Quitar</ConeButton>
                 </div>
               ) : (
                 <label className="flex items-center gap-2 px-4 py-2.5 border border-neutral-200 rounded-xl cursor-pointer hover:bg-neutral-50 transition-colors w-fit">
@@ -210,7 +215,7 @@ export default function ConfigPage() {
                     const path = `pwa-icons/${ctx.empresaId}.png`
                     await supabase.storage.from('logos').upload(path, file, { upsert: true })
                     const { data } = supabase.storage.from('logos').getPublicUrl(path)
-                    setConfig({ ...config, pwa_icono_url: data.publicUrl + '?v=' + Date.now() })
+                    tocar({ pwa_icono_url: data.publicUrl + '?v=' + Date.now() })
                   }} />
                 </label>
               )}
@@ -229,16 +234,16 @@ export default function ConfigPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Razón social</Label>
-              <Input value={config.razon_social ?? ''} onChange={e => setConfig({ ...config, razon_social: e.target.value })} placeholder="Cecchetto S.R.L." />
+              <Input value={config.razon_social ?? ''} onChange={e => tocar({ razon_social: e.target.value })} placeholder="Cecchetto S.R.L." />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>CUIT</Label>
-                <Input value={config.cuit ?? ''} onChange={e => setConfig({ ...config, cuit: e.target.value })} placeholder="30-12345678-9" className="font-mono" />
+                <Input value={config.cuit ?? ''} onChange={e => tocar({ cuit: e.target.value })} placeholder="30-12345678-9" className="font-mono" />
               </div>
               <div className="space-y-1.5">
                 <Label>Condición IVA</Label>
-                <select value={config.condicion_iva ?? 'RI'} onChange={e => setConfig({ ...config, condicion_iva: e.target.value })}
+                <select value={config.condicion_iva ?? 'RI'} onChange={e => tocar({ condicion_iva: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400 bg-white">
                   <option value="RI">Responsable Inscripto</option>
                   <option value="MT">Monotributista</option>
@@ -249,7 +254,7 @@ export default function ConfigPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Punto de venta</Label>
-              <Input type="number" value={config.punto_venta ?? 1} onChange={e => setConfig({ ...config, punto_venta: Number(e.target.value) })} className="w-24 font-mono" />
+              <Input type="number" value={config.punto_venta ?? 1} onChange={e => tocar({ punto_venta: Number(e.target.value) })} className="w-24 font-mono" />
               <p className="text-xs text-neutral-400">Número de punto de venta habilitado en AFIP</p>
             </div>
           </div>
@@ -260,10 +265,10 @@ export default function ConfigPage() {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label>Moneda</Label>
-              <Input value={config.moneda} onChange={e => setConfig({ ...config, moneda: e.target.value })} placeholder="ARS" className="w-32" />
+              <Input value={config.moneda} onChange={e => tocar({ moneda: e.target.value })} placeholder="ARS" className="w-32" />
             </div>
             {/* Toggle agotados (default OFF = ocultar, comportamiento histórico) */}
-            <button type="button" onClick={() => setConfig({ ...config, mostrar_agotados: !config.mostrar_agotados })}
+            <button type="button" onClick={() => tocar({ mostrar_agotados: !config.mostrar_agotados })}
               className="w-full flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100 hover:bg-neutral-100 transition-colors text-left">
               <div>
                 <p className="text-sm font-semibold text-neutral-700">Mostrar productos agotados en el catálogo</p>
@@ -276,7 +281,7 @@ export default function ConfigPage() {
             {/* Ciclo 2 — Entrada unificada de pedidos (default OFF: la ruta
                 /pedidos/ es inalcanzable hasta encender esto; las URLs y QR
                 actuales de delivery/TA funcionan SIEMPRE, con esto ON u OFF) */}
-            <button type="button" onClick={() => setConfig({ ...config, entrada_unificada: !config.entrada_unificada })}
+            <button type="button" onClick={() => tocar({ entrada_unificada: !config.entrada_unificada })}
               className="w-full flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100 hover:bg-neutral-100 transition-colors text-left">
               <div>
                 <p className="text-sm font-semibold text-neutral-700">App de pedidos de la marca</p>
@@ -296,6 +301,7 @@ export default function ConfigPage() {
       </div>
 
       <div className="mt-6 flex justify-end">
+        <span className={`text-xs font-bold text-amber-600 mr-3 self-center transition-opacity ${sucio && !saving ? 'opacity-100' : 'opacity-0'}`}>● Hay cambios sin guardar</span>
         <ConeButton onClick={handleSave} loading={saving}>
           {saved ? <span className="flex items-center gap-1"><Check className="h-4 w-4" /> ¡Guardado!</span> : 'Guardar cambios'}
         </ConeButton>
