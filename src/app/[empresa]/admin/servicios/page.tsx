@@ -277,6 +277,18 @@ export default function ServiciosPage() {
       </div>
 
       {/* ═══ TAB DISPOSITIVOS (tokens/URLs/modal idénticos a siempre) ═══ */}
+      {/* Selector de sucursal — gobierna las tabs POR SUCURSAL (horarios,
+          mensajes, app). Dispositivos/Equipo/QR manejan lo suyo adentro. */}
+      {(tab === 'servicios' || tab === 'mensajes' || tab === 'app') && sucursales.length > 1 && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs font-bold text-neutral-400 uppercase tracking-wide">Sucursal</span>
+          <select value={sucursalSel} onChange={e => { setSucursalSel(e.target.value); cargar(e.target.value); setSucio(false) }}
+            className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
+            {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          </select>
+        </div>
+      )}
+
       {tab === 'dispositivos' && <DispositivosTab />}
 
       {/* ═══ TAB EQUIPO (Operadores + Colaboradores unificados, mudados de Operación) ═══ */}
@@ -296,7 +308,7 @@ export default function ServiciosPage() {
             <p className="text-[11px] text-neutral-300 mt-1">Con la App encendida, el QR de delivery de siempre lleva a la puerta (el token viaja solo). Apagada: cada QR va directo a su servicio, como siempre.</p>
           </div>
           <div className="border-t border-neutral-50 pt-5">
-            <p className="font-bold text-neutral-800 mb-1">Canales visibles en esta sucursal</p>
+            <p className="font-bold text-neutral-800 mb-1">Canales visibles en esta sucursal <span className="text-[10px] font-bold text-neutral-300 uppercase align-middle ml-1">({sucursales.find(s => s.id === sucursalSel)?.nombre ?? ""})</span></p>
             <p className="text-xs text-neutral-400 mb-3">Qué ofrece la puerta pública acá. El canal sigue OPERANDO por su link/QR directo aunque no se muestre (marcha blanda).</p>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -309,12 +321,7 @@ export default function ServiciosPage() {
               </div>
             </div>
           </div>
-          <div className="border-t border-neutral-50 pt-5">
-            <p className="font-bold text-neutral-800 mb-1">Entrada</p>
-            <p className="text-xs font-mono bg-neutral-50 border border-neutral-100 rounded-lg px-3 py-2 text-neutral-600 break-all">https://coneos.com.ar/{typeof window !== 'undefined' ? window.location.pathname.split('/').filter(Boolean)[0] : ''}/pedidos/{sucursales.find(s => s.id === sucursalSel)?.slug ?? ''}</p>
-            <p className="text-[11px] text-neutral-300 mt-1.5">El QR imprimible de esta entrada vive en la pestaña <b>📱 QR y accesos</b>.</p>
-          </div>
-        </div>
+                  </div>
       )}
       {tab === 'qr' && <QrAccesosTab />}
 
@@ -324,12 +331,6 @@ export default function ServiciosPage() {
           <h3 className="font-bold text-neutral-800">Qué servicio atiende y cuándo</h3>
           <div className="flex items-center gap-2">
           <span className={`text-xs font-bold text-amber-600 mr-2 transition-opacity ${sucio ? 'opacity-100' : 'opacity-0'}`}>● Hay cambios sin guardar</span><BotonGuardar id="todo" onClick={guardarTodo} />
-          {sucursales.length > 1 && (
-            <select value={sucursalSel} onChange={e => { setSucursalSel(e.target.value); cargar(e.target.value) }}
-              className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
-              {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-          )}
           </div>
         </div>
 

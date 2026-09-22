@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const { data: pedido } = await supabase
     .from('pedidos')
     .select(`id, numero_pedido, codigo_retiro, total, metodo_pago, created_at, costo_envio, tipo_pedido,
-      empresa_id, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva, receptor_razon_social, detalle_facturable, sucursales(nombre),
+      empresa_id, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva, receptor_razon_social, detalle_facturable, sucursales(nombre, direccion),
       pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
         pedido_item_opciones(nombre_snap, emoji_snap))`)
     .eq('id', pedido_id)
@@ -157,6 +157,7 @@ body { font-family: 'Calibri', Arial, sans-serif; font-size: 13px; background: w
 <div class="empresa">${empresa?.nombre ?? ''}</div>
 ${esFiscal ? `<div class="sub">${factCfg?.razon_social ?? cfg?.razon_social ?? ''}</div><div class="sub">CUIT: ${factCfg?.cuit ?? cfg?.cuit ?? ''}</div>` : `${cfg?.razon_social ? `<div class="sub">${cfg.razon_social}</div>` : ''}${cfg?.cuit ? `<div class="sub">CUIT: ${cfg.cuit}</div>` : ''}`}
 <div class="sub">${(pedido.sucursales as { nombre: string } | null)?.nombre ?? ''}</div>
+${pedido.tipo_pedido === 'takeaway' && (pedido.sucursales as { direccion?: string | null } | null)?.direccion ? `<div class="sub">📍 Retiro en: ${(pedido.sucursales as { direccion?: string | null }).direccion}</div>` : ''}
 ${receptor ? `<div class="linea"></div>
 <div class="sub"><b>Sr/es: ${receptor.razon}</b></div>
 <div class="sub">CUIT: ${fmtCuit(receptor.cuit)} &nbsp;·&nbsp; ${receptor.cond}</div>` : ''}

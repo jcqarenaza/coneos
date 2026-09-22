@@ -16,7 +16,7 @@ import RegistroVisita from '@/components/RegistroVisita'
 import type { EmpresaConfig, Accesorio, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface Contexto {
-  empresa_id: string; sucursal_id: string; nombre: string; sucursal_nombre: string
+  empresa_id: string; sucursal_id: string; nombre: string; sucursal_nombre: string; direccion_retiro?: string | null
   config: EmpresaConfig
   takeaway: { abierto: boolean; anticipado?: boolean; abre_a_las?: string | null; horarios: { desde: string; hasta: string }[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio?: number; slots_retiro?: { iso: string; label: string }[] }
   pagos: { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; titular_transferencia: string | null }
@@ -286,6 +286,7 @@ export default function TakeawayPage() {
           // /api/kiosk/pagos?canal=TAKEAWAY, que resuelve por canal (Capa 1)
           pagosIniciales={null}
           horarioTexto={horarioTexto}
+          direccionRetiro={ctx.direccion_retiro ?? null}
           slotsRetiro={ctx.takeaway.slots_retiro ?? []}
           pedidoCreado={pedidoCreado}
           onPedidoCreado={(num, cod) => { setPedidoCreado({ numero: num, codigo: cod }); try { if (claveCarrito) localStorage.removeItem(claveCarrito) } catch {} }}

@@ -11,6 +11,7 @@ interface Props {
   mpPermitido?: boolean
   horarioTexto?: string
   slotsRetiro?: { iso: string; label: string }[]
+  direccionRetiro?: string | null
   config: EmpresaConfig; dispositivo: DispositivoKiosk; carrito: ItemCarrito[]
   costoEnvio: number; pedidoCreado: { numero: number; codigo: string } | null
   onPedidoCreado: (numero: number, codigo: string) => void
@@ -52,7 +53,7 @@ function ResumenTotal({ subtotal, costoEnvio, total, config, esTakeaway = false 
   )
 }
 
-export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null, slotsRetiro = [] , onPreciosDesactualizados }: Props) {
+export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null, slotsRetiro = [] , direccionRetiro = null, onPreciosDesactualizados }: Props) {
   const esTakeaway = canal === 'takeaway'
   // V1.5: hora de retiro elegida. null = ⚡ Lo antes posible (default histórico)
   const [horaRetiro, setHoraRetiro] = useState<string | null>(null)
@@ -523,6 +524,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       if (horaComprobante) {
         cx.font = 'bold 20px system-ui, sans-serif'; cx.fillStyle = '#404040'
         cx.fillText(`🕐 Retiro: ${horaComprobante}`, W / 2, y); y += 36
+        if (direccionRetiro) { cx.font = 'bold 18px system-ui, sans-serif'; cx.fillText(`📍 ${direccionRetiro}`, W / 2, y); y += 32 }
       }
     }
     // separador
@@ -586,6 +588,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               <p className="text-neutral-400 text-xs uppercase tracking-wide mb-1">Código de retiro</p>
               <p className="font-black tracking-[0.3em]" style={{ fontSize: '3.2rem', lineHeight: 1, color: config.primary_color }}>{pedidoCreado?.codigo ?? codigoRetiro}</p>
               <p className="text-neutral-500 text-xs mt-2 font-semibold">Mostrá este código al retirar tu pedido</p>
+              {direccionRetiro && <p className="text-neutral-600 text-xs mt-1.5 font-bold">📍 Retirás en: {direccionRetiro}</p>}
               {horaConfirmada ? (
                 <p className="inline-block mt-3 px-4 py-2 rounded-xl text-white font-bold text-base" style={{ backgroundColor: config.primary_color }}>
                   🕐 Retiralo a las {new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConfirmada))}

@@ -41,7 +41,7 @@ export async function GET(request: Request) {
 
   const [{ data: cfg }, { data: sucursal }] = await Promise.all([
     supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, modulos').eq('empresa_id', empresa.id).maybeSingle(),
-    supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
+    supabase.from('sucursales').select('id, nombre, slug, direccion').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
   ])
   if (!sucursal) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
 
@@ -87,6 +87,7 @@ export async function GET(request: Request) {
     sucursal_id: sucursal.id,
     nombre: empresa.nombre,
     sucursal_nombre: sucursal.nombre,
+    direccion_retiro: (sucursal as { direccion?: string | null }).direccion ?? null,
     config: {
       primary_color: cfg?.primary_color ?? '#1E3A5F',
       secondary_color: cfg?.secondary_color ?? '#F5C842',
