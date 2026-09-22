@@ -18,7 +18,7 @@ import type { EmpresaConfig, Accesorio, ItemCarrito } from '@/app/[empresa]/deli
 interface Contexto {
   empresa_id: string; sucursal_id: string; nombre: string; sucursal_nombre: string
   config: EmpresaConfig
-  takeaway: { abierto: boolean; horarios: { desde: string; hasta: string }[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio?: number; slots_retiro?: { iso: string; label: string }[] }
+  takeaway: { abierto: boolean; anticipado?: boolean; abre_a_las?: string | null; horarios: { desde: string; hasta: string }[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio?: number; slots_retiro?: { iso: string; label: string }[] }
   pagos: { acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean; cbu_transferencia: string | null; titular_transferencia: string | null }
 }
 
@@ -199,7 +199,8 @@ export default function TakeawayPage() {
   )
 
   // Fuera de horario: horarios AUTOMÁTICOS desde la config (ordenados) + mensaje
-  if (!ctx.takeaway.abierto) {
+  // ANTICIPADO: cerrado pero con slots de hoy → la vidriera sigue (banner abajo)
+  if (!ctx.takeaway.abierto && !ctx.takeaway.anticipado) {
     const horariosTexto = [...ctx.takeaway.horarios]
       .sort((a, b) => a.desde.localeCompare(b.desde))
       .map(h => `${h.desde} a ${h.hasta}`)
@@ -230,6 +231,11 @@ export default function TakeawayPage() {
   return (
     <div className="min-h-screen">
       <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id} canal="TAKEAWAY" />
+      {ctx.takeaway.anticipado && (
+        <div className="sticky top-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-center">
+          <p className="text-xs font-bold text-amber-700">🕗 Abrimos a las {ctx.takeaway.abre_a_las} — pedí ahora y tu pedido será de los primeros. Retiro desde las {ctx.takeaway.abre_a_las}.</p>
+        </div>
+      )}
       {paso === 'catalogo' && (
         <KioskCatalogo
           config={ctx.config}

@@ -23,7 +23,7 @@
 
 import { useEffect, useState } from 'react'
 
-interface Canal { configurado: boolean; disponible: boolean; motivo: string | null; proximo: string | null; url: string }
+interface Canal { configurado: boolean; disponible: boolean; anticipado?: boolean; motivo: string | null; proximo: string | null; url: string }
 interface Contexto {
   nombre: string
   sucursal_nombre: string
@@ -146,7 +146,9 @@ export default function EntradaPedidosPage() {
                   <p className="text-lg font-black text-neutral-800">{emoji} {titulo}</p>
                   <p className="text-xs text-neutral-400">{sub}</p>
                   {canal.disponible
-                    ? <p className="text-sm font-semibold text-green-600 mt-1">🟢 Abierto</p>
+                    ? (canal.anticipado
+                        ? <p className="text-sm font-semibold text-amber-600 mt-1">🟠 Abre a las {canal.proximo} — pedí ahora</p>
+                        : <p className="text-sm font-semibold text-green-600 mt-1">🟢 Abierto</p>)
                     : canal.proximo
                       ? <p className="text-sm font-semibold text-amber-600 mt-1">🟠 Abre a las {canal.proximo}</p>
                       : <p className="text-sm font-semibold text-neutral-400 mt-1">{canal.motivo ?? 'No disponible'}</p>}

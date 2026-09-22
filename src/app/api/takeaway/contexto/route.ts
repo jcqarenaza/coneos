@@ -74,6 +74,12 @@ export async function GET(request: Request) {
   const hora = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())
   const horarios = (ta.horarios as { desde: string; hasta: string }[] | null) ?? []
   const abierto = horarios.length === 0 ? true : estaEnHorario(horarios, hora)
+  // ANTICIPADO (decisión JC): TA cerrado pero con slots de HOY por delante →
+  // la vidriera queda abierta en modo anticipado ("pedí ahora, será el
+  // primero"). TA se rige por SUS franjas/slots — sin techo (espejo exacto
+  // del guard de /api/pedidos). Cerrado de verdad = sin slots restantes.
+  const slotsHoy = generarSlots(horarios)
+  const anticipado = !abierto && slotsHoy.length > 0
 
   return NextResponse.json({
     empresa_id: empresa.id,
@@ -92,9 +98,12 @@ export async function GET(request: Request) {
       tolerancia_cierre: Number(ta.tolerancia_cierre ?? 5),
       // Espejo del costo de envío: 0 si no está configurado (inercia total)
       costo_servicio: Number(ta.costo_servicio ?? 0),
-      // V1.5: slots de retiro del día (15' fijos, margen 15'), server-side de
-      // la MISMA fuente que valida /api/pedidos. Vacío si sin franjas o cerrado.
-      slots_retiro: abierto ? generarSlots(horarios) : [],
+      // ANTICIPADO: pedir con el TA aún cerrado, para retirar desde la apertura
+      anticipado,
+      abre_a_las: anticipado ? slotsHoy[0].label : null,
+      // V1.5: slots del día (15' fijos, margen 15'), MISMA fuente que valida
+      // /api/pedidos. En anticipado arrancan en la apertura.
+      slots_retiro: (abierto || anticipado) ? slotsHoy : [],
     },
     pagos: {
       acepta_efectivo: pagos?.acepta_efectivo ?? true,

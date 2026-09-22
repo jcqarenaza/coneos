@@ -305,7 +305,7 @@ export default function ServiciosPage() {
                 <tr className="border-t border-neutral-100 align-top">
                   <td className="py-3 pr-3">
                     <p className="font-semibold text-neutral-700 whitespace-nowrap">🏪 Negocio</p>
-                    <p className="text-[11px] text-neutral-400">rige el Kiosk</p>
+                    <p className="text-[11px] text-neutral-400">rige el Kiosk y techa el Delivery</p>
                   </td>
                   <td className="py-3 pr-3"><span className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Siempre</span></td>
                   <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={negocio.horario_general} onChange={f => setNegocio({ ...negocio, horario_general: f })} /></td>
@@ -397,7 +397,7 @@ export default function ServiciosPage() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · el costo de <b>servicio</b> de Take Away se suma al pedido (0 = no se muestra). Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
+        <p className="text-xs text-neutral-400 mt-3 pt-3 border-t border-neutral-100"><b>Sin franjas = abierto siempre</b> · el horario del Negocio <b>techa</b> Kiosk y Delivery (local cerrado = no entran) · <b>Take Away se rige solo por sus franjas</b> y acepta pedidos anticipados del día: el cliente pide antes de abrir y retira desde la apertura · una franja que cruza medianoche (20:00 a 01:00) vale · la tolerancia extiende el cierre esos minutos · ⏸️ la pausa de Delivery frena pedidos sin apagar el servicio (misma llave que la caja) · el costo de <b>servicio</b> de Take Away se suma al pedido (0 = no se muestra). Los medios de pago se configuran en <b>Cuentas y cobros</b>.</p>
       </ConeCard>
       )}
 

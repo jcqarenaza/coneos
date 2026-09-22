@@ -104,6 +104,24 @@ export async function GET(request: Request) {
     if (!taDisponible) { taMotivo = 'Cerrado por horario'; taProximo = proximaApertura(horariosTa) }
   }
 
+  // CICLO A en la VIDRIERA: el horario del negocio es el TECHO de todos los
+  // canales — la App no ofrece lo que el server va a rechazar. Con techo
+  // cerrado, ambos servicios quedan no-disponibles y el próximo mostrado es
+  // la reapertura del NEGOCIO (la más temprana real).
+  const techoFranjas = (sucursal.horario_general as Franja[] | null) ?? []
+  const techoAbierto = techoFranjas.length === 0 ? true : estaAbierto(techoFranjas, 0)
+  if (!techoAbierto) {
+    // El techo aplica a DELIVERY (se cocina y sale con el local abierto).
+    // TA queda EXENTO: se rige por sus franjas/slots (anticipado — abajo).
+    const proximoTecho = proximaApertura(techoFranjas)
+    if (deliveryConfigurado && deliveryDisponible) { deliveryDisponible = false; deliveryMotivo = 'Cerrado por horario'; deliveryProximo = proximoTecho }
+    else if (deliveryConfigurado && deliveryProximo) { deliveryProximo = proximoTecho }
+  }
+  // ANTICIPADO (decisión JC): TA cerrado pero con franja de HOY por delante →
+  // la tarjeta queda ELEGIBLE con "🟠 Abre a las HH — pedí ahora" (la page de
+  // TA recibe al cliente en modo anticipado). Sin franja restante = cerrado.
+  const taAnticipado = taConfigurado && !taDisponible && !!taProximo
+
   return NextResponse.json({
     nombre: empresa.nombre,
     sucursal_nombre: sucursal.nombre,
@@ -123,7 +141,7 @@ export async function GET(request: Request) {
     // transporta la PAGE como passthrough — este endpoint no lo conoce.
     servicios: {
       delivery: { configurado: deliveryConfigurado, disponible: deliveryDisponible, motivo: deliveryMotivo, proximo: deliveryProximo, url: `/${empresa.slug}/delivery/${sucursal.slug}` },
-      takeaway: { configurado: taConfigurado, disponible: taDisponible, motivo: taMotivo, proximo: taProximo, url: `/${empresa.slug}/takeaway/${sucursal.slug}` },
+      takeaway: { configurado: taConfigurado, disponible: taDisponible || taAnticipado, anticipado: taAnticipado, motivo: taMotivo, proximo: taProximo, url: `/${empresa.slug}/takeaway/${sucursal.slug}` },
     },
   })
 }

@@ -14,10 +14,10 @@ export async function POST(request: Request) {
     tipo_pedido = 'kiosk', costo_envio = 0, datos_delivery = null,
     // MESA: número de mesa + nombre del cliente; pago_mp true = paga ya con MP,
     // false = "pagar al mozo" (va a cocina sin cobrar, queda por cobrar en caja)
-    numero_mesa = null, nombre_cliente = null, pago_mp = false,
-    hora_retiro = null, // V1.5: solo takeaway; null = lo antes posible
+    numero_mesa = null, nombre_cliente = null, pago_mp = false, // V1.5: solo takeaway; null = lo antes posible
     venta_caja = false, // 9c: venta manual de mostrador (nace cobrada)
   } = body
+  let hora_retiro = body.hora_retiro ?? null
 
   console.log('[pedidos] body recibido:', JSON.stringify({ empresa_id, sucursal_id, items_length: items?.length, origen }))
 
@@ -31,7 +31,10 @@ export async function POST(request: Request) {
   // Guard temprano, ANTES de la RPC: un rechazo no consume numeración ni
   // efecto alguno (patrón C). La venta manual de caja está EXENTA: el
   // operador ES el horario. null = sin restricción (contrato CTO).
-  if (!venta_caja) {
+  // ANTICIPADO (decisión JC 22/09): TAKE AWAY queda EXENTO del techo — se
+  // rige por sus propias franjas/slots más abajo (pedir a la mañana para
+  // retirar a la tarde vale: entra ya y es el primero de la cola de siempre)
+  if (!venta_caja && tipo_pedido !== 'takeaway') {
     const { data: suc } = await supabase.from('sucursales')
       .select('horario_general, mensaje_cerrado, tolerancia_cierre')
       .eq('id', sucursal_id).maybeSingle()
@@ -96,7 +99,15 @@ export async function POST(request: Request) {
         return minActual >= minDesde && minActual <= minHasta
       })
       if (!dentro) {
-        return NextResponse.json({ error: tc.mensaje_fuera_horario ?? 'El take away ya cerró por hoy.' }, { status: 409 })
+        // ANTICIPADO (decisión JC): fuera de la franja pero con slots de HOY
+        // por delante → el pedido entra igual — "será el primero". Sin hora
+        // elegida, se le asigna el PRIMER slot (la apertura). Sin slots
+        // restantes (ya cerró de verdad) → rechazo de siempre.
+        const slotsHoy = generarSlots(horariosTa)
+        if (slotsHoy.length === 0) {
+          return NextResponse.json({ error: tc.mensaje_fuera_horario ?? 'El take away ya cerró por hoy.' }, { status: 409 })
+        }
+        if (!hora_retiro) hora_retiro = slotsHoy[0].iso
       }
     }
     // V1.5: hora de retiro elegida — validación server con la MISMA fuente que
