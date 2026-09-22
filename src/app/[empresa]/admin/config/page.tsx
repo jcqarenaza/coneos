@@ -99,134 +99,20 @@ export default function ConfigPage() {
   return (
     <div>
       <ConePageHeader title="Configuración" description="Datos de empresa y preferencias del sistema" />
+      {/* Datos de la empresa: solo lectura — banner (para cambios: soporte) */}
+      <div className="mb-4 bg-neutral-50 border border-neutral-100 rounded-xl px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+        <span className="font-bold text-neutral-700">{empresa.nombre}</span>
+        <span className="font-mono text-xs text-neutral-400">/{empresa.slug}</span>
+        <span className="text-xs text-neutral-300 ml-auto">Para cambiar estos datos contactá a soporte</span>
+      </div>
+      <div className="mb-4 flex justify-end items-center">
+        <span className={`text-xs font-bold text-amber-600 mr-3 transition-opacity ${sucio && !saving ? 'opacity-100' : 'opacity-0'}`}>● Hay cambios sin guardar</span>
+        <ConeButton onClick={handleSave} loading={saving}>
+          {saved ? <span className="flex items-center gap-1"><Check className="h-4 w-4" /> ¡Guardado!</span> : 'Guardar cambios'}
+        </ConeButton>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 
-        {/* Datos empresa */}
-        <ConeCard title="Datos de empresa">
-          <div className="space-y-2.5">
-            <div className="space-y-1">
-              <Label>Nombre</Label>
-              <Input value={empresa.nombre} disabled className="bg-neutral-50 text-neutral-500" />
-              <p className="text-xs text-neutral-400">Para cambiar el nombre contactá a soporte</p>
-            </div>
-            <div className="space-y-1">
-              <Label>Slug</Label>
-              <Input value={empresa.slug} disabled className="bg-neutral-50 font-mono text-sm text-neutral-500" />
-            </div>
-            <div className="space-y-1">
-              <Label>Plan</Label>
-              <span className="inline-block px-3 py-1.5 bg-neutral-800 text-white text-sm font-semibold rounded-lg capitalize">{empresa.plan}</span>
-            </div>
-          </div>
-        </ConeCard>
-
-        {/* Logo */}
-        <ConeCard title="Logo">
-          <div className="space-y-3">
-            {config.logo_url ? (
-              <div className="relative h-28 rounded-xl overflow-hidden border border-neutral-200 bg-neutral-50 group">
-                <Image src={config.logo_url} alt="Logo" fill className="object-contain p-3" />
-                <button onClick={() => tocar({ logo_url: null })}
-                  className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <button onClick={() => logoRef.current?.click()} disabled={uploadingLogo}
-                className="w-full h-28 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:border-neutral-300 transition-colors flex flex-col items-center justify-center gap-2 text-neutral-400 disabled:opacity-50">
-                {uploadingLogo ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-5 w-5" />}
-                <span className="text-sm font-medium">{uploadingLogo ? 'Subiendo...' : 'Subir logo'}</span>
-                <span className="text-xs text-neutral-300">PNG, SVG recomendado</span>
-              </button>
-            )}
-            <input ref={logoRef} type="file" accept="image/*" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = '' }} />
-            <p className="text-xs text-neutral-400">El logo aparece en el kiosk, display y login</p>
-          </div>
-        </ConeCard>
-
-        {/* Personalización */}
-        <ConeCard title="Personalización">
-          <div className="space-y-2.5">
-            <div className="space-y-1">
-              <Label>Mensaje de bienvenida (Kiosk)</Label>
-              <Input value={config.texto_bienvenida} onChange={e => tocar({ texto_bienvenida: e.target.value })} placeholder="¡Bienvenido!" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Color primario</Label>
-                <div className="flex gap-2 items-center">
-                  <input type="color" value={config.primary_color} onChange={e => tocar({ primary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
-                  <Input value={config.primary_color} onChange={e => tocar({ primary_color: e.target.value })} className="font-mono text-sm" maxLength={7} />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label>Color secundario</Label>
-                <div className="flex gap-2 items-center">
-                  <input type="color" value={config.secondary_color} onChange={e => tocar({ secondary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
-                  <Input value={config.secondary_color} onChange={e => tocar({ secondary_color: e.target.value })} className="font-mono text-sm" maxLength={7} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </ConeCard>
-
-        {/* Vista previa */}
-        <ConeCard title="Vista previa">
-          <div className="rounded-xl overflow-hidden border border-neutral-100">
-            <div className="p-5 text-white flex items-center gap-3" style={{ backgroundColor: config.primary_color }}>
-              {config.logo_url && <Image src={config.logo_url} alt="Logo" width={48} height={48} className="object-contain bg-white rounded-lg p-1" />}
-              <div>
-                <p className="font-bold text-lg">{config.texto_bienvenida || '¡Bienvenido!'}</p>
-                <p className="text-white/60 text-sm">Color primario</p>
-              </div>
-            </div>
-            <div className="p-4" style={{ backgroundColor: config.secondary_color }}>
-              <p className="font-semibold text-sm" style={{ color: config.primary_color }}>Color secundario</p>
-            </div>
-          </div>
-        </ConeCard>
-
-        {/* App instalable PWA */}
-        <ConeCard title="App instalable (PWA)">
-          <div className="space-y-2.5">
-            <div className="space-y-1">
-              <Label>Nombre de la app</Label>
-              <Input value={config.pwa_nombre ?? ''} onChange={e => tocar({ pwa_nombre: e.target.value })}
-                placeholder="Cecchetto Delivery" />
-              <p className="text-xs text-neutral-400">Nombre que aparece al instalar la app en el celular. Vacío = nombre de la empresa.</p>
-            </div>
-            <div className="space-y-1">
-              <Label>Ícono de la app</Label>
-              <p className="text-xs text-neutral-400 mb-2">PNG cuadrado, mínimo 192×192px, ideal 512×512.</p>
-              {config.pwa_icono_url ? (
-                <div className="flex items-center gap-3">
-                  <img src={config.pwa_icono_url} alt="Ícono PWA" className="w-16 h-16 rounded-xl object-cover border border-neutral-200" />
-                  <ConeButton variant="outline" onClick={() => tocar({ pwa_icono_url: null })} icon={<X className="h-4 w-4" />}>Quitar</ConeButton>
-                </div>
-              ) : (
-                <label className="flex items-center gap-2 px-4 py-2.5 border border-neutral-200 rounded-xl cursor-pointer hover:bg-neutral-50 transition-colors w-fit">
-                  <Upload className="h-4 w-4 text-neutral-400" />
-                  <span className="text-sm text-neutral-600">Subir ícono</span>
-                  <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={async e => {
-                    const file = e.target.files?.[0]
-                    if (!file || !ctx) return
-                    const supabase = createClient()
-                    const path = `pwa-icons/${ctx.empresaId}.png`
-                    await supabase.storage.from('logos').upload(path, file, { upsert: true })
-                    const { data } = supabase.storage.from('logos').getPublicUrl(path)
-                    tocar({ pwa_icono_url: data.publicUrl + '?v=' + Date.now() })
-                  }} />
-                </label>
-              )}
-            </div>
-          </div>
-        </ConeCard>
-
-        {/* Mercado Pago — migrado a 💳 Cuentas y cobros (Fase 6.4) */}
-        {/* Ciclo 1: la tarjeta de MP/cuentas se eliminó — cero señalizadores duplicados (principio CTO); la navegación ya tiene Cuentas y cobros */}
-
-        {/* Datos fiscales */}
         <ConeCard title="Datos fiscales">
           <div className="space-y-2.5">
             <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl">
@@ -260,7 +146,6 @@ export default function ConfigPage() {
           </div>
         </ConeCard>
 
-        {/* Pedidos */}
         <ConeCard title="Configuración de pedidos">
           <div className="space-y-2.5">
             <div className="space-y-1">
@@ -298,14 +183,107 @@ export default function ConfigPage() {
           </div>
         </ConeCard>
 
+        <ConeCard title="App instalable (PWA)">
+          <div className="space-y-2.5">
+            <div className="space-y-1">
+              <Label>Nombre de la app</Label>
+              <Input value={config.pwa_nombre ?? ''} onChange={e => tocar({ pwa_nombre: e.target.value })}
+                placeholder="Cecchetto Delivery" />
+              <p className="text-xs text-neutral-400">Nombre que aparece al instalar la app en el celular. Vacío = nombre de la empresa.</p>
+            </div>
+            <div className="space-y-1">
+              <Label>Ícono de la app</Label>
+              <p className="text-xs text-neutral-400 mb-2">PNG cuadrado, mínimo 192×192px, ideal 512×512.</p>
+              {config.pwa_icono_url ? (
+                <div className="flex items-center gap-3">
+                  <img src={config.pwa_icono_url} alt="Ícono PWA" className="w-16 h-16 rounded-xl object-cover border border-neutral-200" />
+                  <ConeButton variant="outline" onClick={() => tocar({ pwa_icono_url: null })} icon={<X className="h-4 w-4" />}>Quitar</ConeButton>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 px-4 py-2.5 border border-neutral-200 rounded-xl cursor-pointer hover:bg-neutral-50 transition-colors w-fit">
+                  <Upload className="h-4 w-4 text-neutral-400" />
+                  <span className="text-sm text-neutral-600">Subir ícono</span>
+                  <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={async e => {
+                    const file = e.target.files?.[0]
+                    if (!file || !ctx) return
+                    const supabase = createClient()
+                    const path = `pwa-icons/${ctx.empresaId}.png`
+                    await supabase.storage.from('logos').upload(path, file, { upsert: true })
+                    const { data } = supabase.storage.from('logos').getPublicUrl(path)
+                    tocar({ pwa_icono_url: data.publicUrl + '?v=' + Date.now() })
+                  }} />
+                </label>
+              )}
+            </div>
+          </div>
+        </ConeCard>
+
+        <ConeCard title="Personalización">
+          <div className="space-y-2.5">
+            <div className="space-y-1">
+              <Label>Mensaje de bienvenida (Kiosk)</Label>
+              <Input value={config.texto_bienvenida} onChange={e => tocar({ texto_bienvenida: e.target.value })} placeholder="¡Bienvenido!" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label>Color primario</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" value={config.primary_color} onChange={e => tocar({ primary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
+                  <Input value={config.primary_color} onChange={e => tocar({ primary_color: e.target.value })} className="font-mono text-sm" maxLength={7} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>Color secundario</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" value={config.secondary_color} onChange={e => tocar({ secondary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
+                  <Input value={config.secondary_color} onChange={e => tocar({ secondary_color: e.target.value })} className="font-mono text-sm" maxLength={7} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </ConeCard>
+
+        <ConeCard title="Logo">
+          <div className="space-y-3">
+            {config.logo_url ? (
+              <div className="relative h-28 rounded-xl overflow-hidden border border-neutral-200 bg-neutral-50 group">
+                <Image src={config.logo_url} alt="Logo" fill className="object-contain p-3" />
+                <button onClick={() => tocar({ logo_url: null })}
+                  className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => logoRef.current?.click()} disabled={uploadingLogo}
+                className="w-full h-28 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50 hover:bg-neutral-100 hover:border-neutral-300 transition-colors flex flex-col items-center justify-center gap-2 text-neutral-400 disabled:opacity-50">
+                {uploadingLogo ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-5 w-5" />}
+                <span className="text-sm font-medium">{uploadingLogo ? 'Subiendo...' : 'Subir logo'}</span>
+                <span className="text-xs text-neutral-300">PNG, SVG recomendado</span>
+              </button>
+            )}
+            <input ref={logoRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = '' }} />
+            <p className="text-xs text-neutral-400">El logo aparece en el kiosk, display y login</p>
+          </div>
+        </ConeCard>
+
+        <ConeCard title="Vista previa">
+          <div className="rounded-xl overflow-hidden border border-neutral-100">
+            <div className="p-5 text-white flex items-center gap-3" style={{ backgroundColor: config.primary_color }}>
+              {config.logo_url && <Image src={config.logo_url} alt="Logo" width={48} height={48} className="object-contain bg-white rounded-lg p-1" />}
+              <div>
+                <p className="font-bold text-lg">{config.texto_bienvenida || '¡Bienvenido!'}</p>
+                <p className="text-white/60 text-sm">Color primario</p>
+              </div>
+            </div>
+            <div className="p-4" style={{ backgroundColor: config.secondary_color }}>
+              <p className="font-semibold text-sm" style={{ color: config.primary_color }}>Color secundario</p>
+            </div>
+          </div>
+        </ConeCard>
+
       </div>
 
-      <div className="mt-4 flex justify-end">
-        <span className={`text-xs font-bold text-amber-600 mr-3 self-center transition-opacity ${sucio && !saving ? 'opacity-100' : 'opacity-0'}`}>● Hay cambios sin guardar</span>
-        <ConeButton onClick={handleSave} loading={saving}>
-          {saved ? <span className="flex items-center gap-1"><Check className="h-4 w-4" /> ¡Guardado!</span> : 'Guardar cambios'}
-        </ConeButton>
-      </div>
     </div>
   )
 }
