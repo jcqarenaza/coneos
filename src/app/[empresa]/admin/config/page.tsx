@@ -99,21 +99,21 @@ export default function ConfigPage() {
   return (
     <div>
       <ConePageHeader title="Configuración" description="Datos de empresa y preferencias del sistema" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 
         {/* Datos empresa */}
         <ConeCard title="Datos de empresa">
-          <div className="space-y-4">
-            <div className="space-y-1.5">
+          <div className="space-y-2.5">
+            <div className="space-y-1">
               <Label>Nombre</Label>
               <Input value={empresa.nombre} disabled className="bg-neutral-50 text-neutral-500" />
               <p className="text-xs text-neutral-400">Para cambiar el nombre contactá a soporte</p>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label>Slug</Label>
               <Input value={empresa.slug} disabled className="bg-neutral-50 font-mono text-sm text-neutral-500" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label>Plan</Label>
               <span className="inline-block px-3 py-1.5 bg-neutral-800 text-white text-sm font-semibold rounded-lg capitalize">{empresa.plan}</span>
             </div>
@@ -147,20 +147,20 @@ export default function ConfigPage() {
 
         {/* Personalización */}
         <ConeCard title="Personalización">
-          <div className="space-y-4">
-            <div className="space-y-1.5">
+          <div className="space-y-2.5">
+            <div className="space-y-1">
               <Label>Mensaje de bienvenida (Kiosk)</Label>
               <Input value={config.texto_bienvenida} onChange={e => tocar({ texto_bienvenida: e.target.value })} placeholder="¡Bienvenido!" />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label>Color primario</Label>
                 <div className="flex gap-2 items-center">
                   <input type="color" value={config.primary_color} onChange={e => tocar({ primary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
                   <Input value={config.primary_color} onChange={e => tocar({ primary_color: e.target.value })} className="font-mono text-sm" maxLength={7} />
                 </div>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label>Color secundario</Label>
                 <div className="flex gap-2 items-center">
                   <input type="color" value={config.secondary_color} onChange={e => tocar({ secondary_color: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border border-neutral-200" />
@@ -189,14 +189,14 @@ export default function ConfigPage() {
 
         {/* App instalable PWA */}
         <ConeCard title="App instalable (PWA)">
-          <div className="space-y-4">
-            <div className="space-y-1.5">
+          <div className="space-y-2.5">
+            <div className="space-y-1">
               <Label>Nombre de la app</Label>
               <Input value={config.pwa_nombre ?? ''} onChange={e => tocar({ pwa_nombre: e.target.value })}
                 placeholder="Cecchetto Delivery" />
               <p className="text-xs text-neutral-400">Nombre que aparece al instalar la app en el celular. Vacío = nombre de la empresa.</p>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label>Ícono de la app</Label>
               <p className="text-xs text-neutral-400 mb-2">PNG cuadrado, mínimo 192×192px, ideal 512×512.</p>
               {config.pwa_icono_url ? (
@@ -228,20 +228,20 @@ export default function ConfigPage() {
 
         {/* Datos fiscales */}
         <ConeCard title="Datos fiscales">
-          <div className="space-y-4">
+          <div className="space-y-2.5">
             <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl">
               <p className="text-xs text-blue-700 font-medium">Estos datos se usan para los tickets de caja. La integración con ARCA para facturación electrónica estará disponible próximamente.</p>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label>Razón social</Label>
               <Input value={config.razon_social ?? ''} onChange={e => tocar({ razon_social: e.target.value })} placeholder="Cecchetto S.R.L." />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label>CUIT</Label>
                 <Input value={config.cuit ?? ''} onChange={e => tocar({ cuit: e.target.value })} placeholder="30-12345678-9" className="font-mono" />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label>Condición IVA</Label>
                 <select value={config.condicion_iva ?? 'RI'} onChange={e => tocar({ condicion_iva: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400 bg-white">
@@ -252,7 +252,7 @@ export default function ConfigPage() {
                 </select>
               </div>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label>Punto de venta</Label>
               <Input type="number" value={config.punto_venta ?? 1} onChange={e => tocar({ punto_venta: Number(e.target.value) })} className="w-24 font-mono" />
               <p className="text-xs text-neutral-400">Número de punto de venta habilitado en AFIP</p>
@@ -262,8 +262,8 @@ export default function ConfigPage() {
 
         {/* Pedidos */}
         <ConeCard title="Configuración de pedidos">
-          <div className="space-y-4">
-            <div className="space-y-1.5">
+          <div className="space-y-2.5">
+            <div className="space-y-1">
               <Label>Moneda</Label>
               <Input value={config.moneda} onChange={e => tocar({ moneda: e.target.value })} placeholder="ARS" className="w-32" />
             </div>
@@ -300,7 +300,7 @@ export default function ConfigPage() {
 
       </div>
 
-      <div className="mt-6 flex justify-end">
+      <div className="mt-4 flex justify-end">
         <span className={`text-xs font-bold text-amber-600 mr-3 self-center transition-opacity ${sucio && !saving ? 'opacity-100' : 'opacity-0'}`}>● Hay cambios sin guardar</span>
         <ConeButton onClick={handleSave} loading={saving}>
           {saved ? <span className="flex items-center gap-1"><Check className="h-4 w-4" /> ¡Guardado!</span> : 'Guardar cambios'}
