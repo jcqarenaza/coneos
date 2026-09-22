@@ -9,7 +9,7 @@ export async function POST(request: Request) {
 
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select(`id, numero_pedido, codigo_retiro, total, metodo_pago, created_at,
+    .select(`id, numero_pedido, codigo_retiro, total, metodo_pago, created_at, costo_envio, tipo_pedido,
       empresa_id, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva, receptor_razon_social, detalle_facturable, sucursales(nombre),
       pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
         pedido_item_opciones(nombre_snap, emoji_snap))`)
@@ -174,6 +174,10 @@ ${pedido.detalle_facturable ? `<div><div class="item-pres">${pedido.detalle_fact
 
 <div class="linea"></div>
 
+${Number(pedido.costo_envio ?? 0) > 0 ? `<div class="item-precio">
+  <span class="item-precio-cant">${pedido.tipo_pedido === 'takeaway' ? 'Servicio de retiro' : 'Envío'}</span>
+  <span class="item-precio-val">${fmt(Number(pedido.costo_envio))}</span>
+</div>` : ''}
 <div class="fila">
   <span class="total-label">TOTAL</span>
   <span class="total-valor">${fmt(pedido.total)}</span>

@@ -105,6 +105,10 @@ ${datos?.nombre ? `<div class="dato-sub">${datos.nombre}</div>` : ''}
 
 <div class="linea"></div>
 
+${Number(pedido.costo_envio ?? 0) > 0 ? `<div class="fila">
+  <span class="item-prod" style="display:table-cell">${p2.tipo_pedido === 'takeaway' ? 'Servicio de retiro' : 'Envío'}</span>
+  <span class="item-prod" style="display:table-cell;text-align:right">${fmt(Number(pedido.costo_envio))}</span>
+</div>` : ''}
 <div class="fila">
   <span class="total-label">TOTAL</span>
   <span class="total-valor">${fmt(pedido.total)}</span>

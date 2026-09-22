@@ -1229,6 +1229,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       )}
                     </>)
                   })()}
+                  {Number(seleccionado.costo_envio ?? 0) > 0 && (
+                    <div className="px-4 py-2 border-t border-neutral-100 flex justify-between">
+                      <span className="text-neutral-400 text-sm">{seleccionado.tipo_pedido === 'takeaway' ? '🥡 Servicio de retiro' : '🚚 Envío'}</span>
+                      <span className="text-neutral-600 text-sm font-semibold">{formatPrecio(Number(seleccionado.costo_envio))}</span>
+                    </div>
+                  )}
                   <div className="px-4 py-3 bg-neutral-50 border-t border-neutral-100 flex justify-between">
                     <span className="text-neutral-500 font-medium">Total</span>
                     <span className="text-neutral-900 font-black text-lg">{formatPrecio(seleccionado.total)}</span>
