@@ -436,7 +436,7 @@ export default function ServiciosPage() {
                       </div>
                     </>)}
                     {negocio.horario_por_dia && (
-                      <div className="space-y-1.5">
+                      <div className="grid grid-cols-2 gap-x-5 gap-y-1.5">
                         {([['L',1],['M',2],['X',3],['J',4],['V',5],['S',6],['D',0]] as const).map(([letra, d]) => {
                           const activos = negocio.dias_apertura ?? [0, 1, 2, 3, 4, 5, 6]
                           const on = activos.includes(d)
@@ -459,7 +459,7 @@ export default function ServiciosPage() {
                             </div>
                           )
                         })}
-                        <p className="text-[10px] text-neutral-300 pt-1">Día sin franjas cargadas = abierto todo ese día. El chip rojo lo cierra por completo.</p>
+                        <p className="text-[10px] text-neutral-300 pt-1 col-span-2">Día sin franjas cargadas = abierto todo ese día. El chip rojo lo cierra por completo.</p>
                       </div>
                     )}</td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => { setSucio(true); setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) }) }} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>

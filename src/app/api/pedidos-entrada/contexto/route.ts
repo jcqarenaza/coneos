@@ -115,18 +115,20 @@ export async function GET(request: Request) {
   // 📅 DÍAS (contrato CTO 23/09): el día vive en Negocio y manda sobre TODO.
   // Día no operativo (ni habilita jornada ni hay resaca vigente) = cierre
   // TOTAL, TA incluido — y el cartel dice QUÉ día reabre.
-  if (!diaOperativo(techoFranjas, diasApertura, tolNegocio, horaMinutosAR(), diaSemanaAR(), porDiaTecho)) {
+  const diaOk = diaOperativo(techoFranjas, diasApertura, tolNegocio, horaMinutosAR(), diaSemanaAR(), porDiaTecho)
+  if (!diaOk) {
     const diaVuelta = proximoDiaHabil(diasApertura)
     const franjasVuelta = franjasDeDia(techoFranjas, porDiaTecho, diaVuelta)
     const horaVuelta = franjasVuelta.length > 0 ? franjasVuelta[0].desde : null
-    const proximoDia = `el ${DIAS_NOMBRE[diaVuelta]}${horaVuelta ? ` a las ${horaVuelta}` : ''}`
+    // El front antepone "a las" — el formato queda "a las 12:00 del jueves"
+    const proximoDia = horaVuelta ? `${horaVuelta} del ${DIAS_NOMBRE[diaVuelta]}` : null
     if (deliveryConfigurado) { deliveryDisponible = false; deliveryMotivo = 'Hoy cerrado'; deliveryProximo = proximoDia }
     if (taConfigurado) { taDisponible = false; taMotivo = 'Hoy cerrado'; taProximo = proximoDia }
   }
   const techoAbierto = porDiaTecho
     ? estaAbierto(techoFranjas, 0, horaMinutosAR(), diasApertura, diaSemanaAR(), porDiaTecho)
     : (techoFranjas.length === 0 ? true : estaAbierto(techoFranjas, 0, horaMinutosAR(), diasApertura))
-  if (!techoAbierto) {
+  if (!techoAbierto && diaOk) { // día no operativo: el bloque del DÍA ya habló — no pisar
     // El techo aplica a DELIVERY (se cocina y sale con el local abierto).
     // TA queda EXENTO: se rige por sus franjas/slots (anticipado — abajo).
     const proximoTecho = proximaApertura(techoFranjas)
@@ -136,7 +138,6 @@ export async function GET(request: Request) {
   // ANTICIPADO (decisión JC): TA cerrado pero con franja de HOY por delante →
   // la tarjeta queda ELEGIBLE con "🟠 Abre a las HH — pedí ahora" (la page de
   // TA recibe al cliente en modo anticipado). Sin franja restante = cerrado.
-  const diaOk = diaOperativo(techoFranjas, diasApertura, tolNegocio, horaMinutosAR(), diaSemanaAR(), porDiaTecho)
   const taAnticipado = diaOk && taConfigurado && !taDisponible && !!taProximo && (tc?.acepta_anticipado === true)
 
   return NextResponse.json({

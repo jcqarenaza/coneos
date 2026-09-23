@@ -377,7 +377,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   return (
     <div className="min-h-screen">
       <RegistroVisita empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} canal="DELIVERY" />
-      {vinoDeApp && paso === 'catalogo' && (
+      {vinoDeApp && paso === 'catalogo' && carrito.length === 0 && (
         <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedidos/${window.location.pathname.split('/').filter(Boolean)[2]}`}
           className="fixed bottom-4 left-4 z-30 bg-white/95 backdrop-blur border border-neutral-200 shadow-md rounded-full px-3.5 py-2 text-xs font-bold text-neutral-500 active:scale-95 transition-transform">
           ← Ver otras opciones
