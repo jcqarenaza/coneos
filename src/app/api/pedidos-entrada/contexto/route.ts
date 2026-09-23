@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { estaAbierto, type Franja } from '@/lib/horarios'
+import { estaAbierto, diaOperativo, proximoDiaHabil, franjasDeDia, horaMinutosAR, diaSemanaAR, DIAS_NOMBRE, type Franja, type HorarioPorDia } from '@/lib/horarios'
 
 // 2.1a: el cerrado dice CUÁNDO abre — dato COMPUESTO de las mismas franjas
 // de config que ya gobiernan la apertura (cero regla nueva, cero duplicación:
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     supabase.from('empresa_config')
       .select('primary_color, secondary_color, logo_url, modulos, entrada_unificada')
       .eq('empresa_id', empresa.id).maybeSingle(),
-    supabase.from('sucursales').select('id, nombre, slug, direccion, horario_general, mensaje_cerrado').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
+    supabase.from('sucursales').select('id, nombre, slug, direccion, horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
   ])
   if (!sucursal) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
 
@@ -109,7 +109,23 @@ export async function GET(request: Request) {
   // cerrado, ambos servicios quedan no-disponibles y el próximo mostrado es
   // la reapertura del NEGOCIO (la más temprana real).
   const techoFranjas = (sucursal.horario_general as Franja[] | null) ?? []
-  const techoAbierto = techoFranjas.length === 0 ? true : estaAbierto(techoFranjas, 0)
+  const diasApertura = (sucursal.dias_apertura as number[] | null) ?? null
+  const porDiaTecho = (sucursal.horario_por_dia as HorarioPorDia | null) ?? null
+  const tolNegocio = Number(sucursal.tolerancia_cierre ?? 0)
+  // 📅 DÍAS (contrato CTO 23/09): el día vive en Negocio y manda sobre TODO.
+  // Día no operativo (ni habilita jornada ni hay resaca vigente) = cierre
+  // TOTAL, TA incluido — y el cartel dice QUÉ día reabre.
+  if (!diaOperativo(techoFranjas, diasApertura, tolNegocio, horaMinutosAR(), diaSemanaAR(), porDiaTecho)) {
+    const diaVuelta = proximoDiaHabil(diasApertura)
+    const franjasVuelta = franjasDeDia(techoFranjas, porDiaTecho, diaVuelta)
+    const horaVuelta = franjasVuelta.length > 0 ? franjasVuelta[0].desde : null
+    const proximoDia = `el ${DIAS_NOMBRE[diaVuelta]}${horaVuelta ? ` a las ${horaVuelta}` : ''}`
+    if (deliveryConfigurado) { deliveryDisponible = false; deliveryMotivo = 'Hoy cerrado'; deliveryProximo = proximoDia }
+    if (taConfigurado) { taDisponible = false; taMotivo = 'Hoy cerrado'; taProximo = proximoDia }
+  }
+  const techoAbierto = porDiaTecho
+    ? estaAbierto(techoFranjas, 0, horaMinutosAR(), diasApertura, diaSemanaAR(), porDiaTecho)
+    : (techoFranjas.length === 0 ? true : estaAbierto(techoFranjas, 0, horaMinutosAR(), diasApertura))
   if (!techoAbierto) {
     // El techo aplica a DELIVERY (se cocina y sale con el local abierto).
     // TA queda EXENTO: se rige por sus franjas/slots (anticipado — abajo).
@@ -120,7 +136,8 @@ export async function GET(request: Request) {
   // ANTICIPADO (decisión JC): TA cerrado pero con franja de HOY por delante →
   // la tarjeta queda ELEGIBLE con "🟠 Abre a las HH — pedí ahora" (la page de
   // TA recibe al cliente en modo anticipado). Sin franja restante = cerrado.
-  const taAnticipado = taConfigurado && !taDisponible && !!taProximo && (tc?.acepta_anticipado === true)
+  const diaOk = diaOperativo(techoFranjas, diasApertura, tolNegocio, horaMinutosAR(), diaSemanaAR(), porDiaTecho)
+  const taAnticipado = diaOk && taConfigurado && !taDisponible && !!taProximo && (tc?.acepta_anticipado === true)
 
   return NextResponse.json({
     nombre: empresa.nombre,

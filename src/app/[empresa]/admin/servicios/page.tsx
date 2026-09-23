@@ -30,7 +30,8 @@ import EquipoTab from '@/components/admin/EquipoTab'
 interface Franja { desde: string; hasta: string }
 interface Sucursal { id: string; nombre: string; slug: string }
 
-interface NegocioCfg { horario_general: Franja[]; mensaje_cerrado: string; tolerancia_cierre: number }
+type PorDia = Partial<Record<string, Franja[]>>
+interface NegocioCfg { horario_general: Franja[]; mensaje_cerrado: string; tolerancia_cierre: number; dias_apertura: number[] | null; horario_por_dia: PorDia | null }
 interface DeliveryCfg { activo: boolean; pausado: boolean; mensaje_pausa: string; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_envio: number; mostrar_en_app: boolean; permitir_programado: boolean }
 interface TaCfg { activo: boolean; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio: number; acepta_anticipado: boolean; mostrar_en_app: boolean }
 
@@ -110,7 +111,7 @@ export default function ServiciosPage() {
     if (!ctx?.empresaId || !sucId) return
     setCargando(true)
     const [{ data: suc }, { data: dc }, { data: tc }, { data: cfg }] = await Promise.all([
-      supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre').eq('id', sucId).maybeSingle(),
+      supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia').eq('id', sucId).maybeSingle(),
       supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio, mostrar_en_app, permitir_programado').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio, acepta_anticipado, mostrar_en_app').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('empresa_config').select('modulos, mesas_activo, soporte_nombre, soporte_whatsapp, entrada_unificada').eq('empresa_id', ctx.empresaId).maybeSingle(),
@@ -124,6 +125,8 @@ export default function ServiciosPage() {
     if (cfg?.soporte_whatsapp) setSoporte({ nombre: cfg.soporte_nombre ?? 'tu proveedor', wa: String(cfg.soporte_whatsapp).replace(/\D/g, '') })
     setNegocio({
       horario_general: (suc?.horario_general as Franja[] | null) ?? [],
+      dias_apertura: (suc?.dias_apertura as number[] | null) ?? null,
+      horario_por_dia: (suc?.horario_por_dia as PorDia | null) ?? null,
       mensaje_cerrado: suc?.mensaje_cerrado ?? '',
       tolerancia_cierre: Number(suc?.tolerancia_cierre ?? 5),
     })
@@ -187,6 +190,9 @@ export default function ServiciosPage() {
         horario_general: negocio.horario_general,
         mensaje_cerrado: negocio.mensaje_cerrado || null,
         tolerancia_cierre: negocio.tolerancia_cierre,
+        dias_apertura: (negocio.dias_apertura && negocio.dias_apertura.length < 7) ? negocio.dias_apertura : null,
+      horario_por_dia: negocio.horario_por_dia,
+        horario_por_dia: negocio.horario_por_dia,
       }).eq('id', sucursalSel),
       supabase.from('delivery_config').upsert({
         sucursal_id: sucursalSel, empresa_id: ctx.empresaId,
@@ -228,6 +234,8 @@ export default function ServiciosPage() {
       horario_general: negocio.horario_general,
       mensaje_cerrado: negocio.mensaje_cerrado || null,
       tolerancia_cierre: negocio.tolerancia_cierre,
+      dias_apertura: (negocio.dias_apertura && negocio.dias_apertura.length < 7) ? negocio.dias_apertura : null,
+      horario_por_dia: negocio.horario_por_dia,
     }).eq('id', sucursalSel)
     setGuardando(null)
     if (e) { setError(`No se pudo guardar el horario del negocio: ${e.message}`); return }
@@ -392,7 +400,68 @@ export default function ServiciosPage() {
                     <p className="text-[11px] text-neutral-400">rige el Kiosk y techa el Delivery</p>
                   </td>
                   <td className="py-3 pr-3"><span className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Siempre</span></td>
-                  <td className="py-3 pr-3 min-w-[230px]"><FranjasEditor franjas={negocio.horario_general} onChange={f => { setSucio(true); setNegocio({ ...negocio, horario_general: f }) }} /></td>
+                  <td className="py-3 pr-3 min-w-[230px]">
+                    {/* 🗓️ Modo (demanda real Cecchetto): mismo horario todos los días,
+                        u horarios POR DÍA (L-V uno, S-D otro). horario_por_dia null
+                        = modo simple (inercia total). Los chips de día valen en ambos. */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <Toggle on={!!negocio.horario_por_dia} onClick={() => {
+                        setSucio(true)
+                        if (negocio.horario_por_dia) { setNegocio({ ...negocio, horario_por_dia: null }); return }
+                        const semilla: PorDia = {}
+                        for (let d = 0; d <= 6; d++) semilla[String(d)] = negocio.horario_general.map(f => ({ ...f }))
+                        setNegocio({ ...negocio, horario_por_dia: semilla })
+                      }} />
+                      <span className="text-[11px] font-semibold text-neutral-500">🗓️ Horarios por día</span>
+                    </div>
+                    {!negocio.horario_por_dia && (<>
+                      <FranjasEditor franjas={negocio.horario_general} onChange={f => { setSucio(true); setNegocio({ ...negocio, horario_general: f }) }} />
+                      <div className="flex items-center gap-1 mt-2 pt-2 border-t border-neutral-50" title="Días en los que el negocio abre. Una jornada que cruza medianoche pertenece al día en que empezó.">
+                        {([['L',1],['M',2],['X',3],['J',4],['V',5],['S',6],['D',0]] as const).map(([letra, d]) => {
+                        const activos = negocio.dias_apertura ?? [0, 1, 2, 3, 4, 5, 6]
+                        const on = activos.includes(d)
+                        return (
+                          <button key={d} type="button"
+                            onClick={() => {
+                              setSucio(true)
+                              const prox = on ? activos.filter(x => x !== d) : [...activos, d].sort()
+                              setNegocio({ ...negocio, dias_apertura: prox.length >= 7 ? null : prox })
+                            }}
+                            className={`w-7 h-7 shrink-0 rounded-full text-[11px] font-bold transition-colors ${on ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-400 border border-red-200'}`}
+                            title={on ? 'Abierto — clic para cerrar este día' : 'Cerrado — clic para abrir este día'}>
+                            {letra}
+                          </button>
+                        )
+                      })}
+                      </div>
+                    </>)}
+                    {negocio.horario_por_dia && (
+                      <div className="space-y-1.5">
+                        {([['L',1],['M',2],['X',3],['J',4],['V',5],['S',6],['D',0]] as const).map(([letra, d]) => {
+                          const activos = negocio.dias_apertura ?? [0, 1, 2, 3, 4, 5, 6]
+                          const on = activos.includes(d)
+                          return (
+                            <div key={d} className="flex items-start gap-2">
+                              <button type="button"
+                                onClick={() => {
+                                  setSucio(true)
+                                  const prox = on ? activos.filter(x => x !== d) : [...activos, d].sort()
+                                  setNegocio({ ...negocio, dias_apertura: prox.length >= 7 ? null : prox })
+                                }}
+                                title={on ? 'Abierto — clic para cerrar este día' : 'Cerrado — clic para abrir este día'}
+                                className={`w-7 h-7 shrink-0 rounded-full text-[11px] font-bold transition-colors ${on ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-400 border border-red-200'}`}>
+                                {letra}
+                              </button>
+                              <div className={on ? 'flex-1' : 'flex-1 opacity-30 pointer-events-none'}>
+                                <FranjasEditor franjas={negocio.horario_por_dia?.[String(d)] ?? []}
+                                  onChange={f => { setSucio(true); setNegocio({ ...negocio, horario_por_dia: { ...negocio.horario_por_dia, [String(d)]: f } }) }} />
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <p className="text-[10px] text-neutral-300 pt-1">Día sin franjas cargadas = abierto todo ese día. El chip rojo lo cierra por completo.</p>
+                      </div>
+                    )}</td>
                   <td className="py-3 pr-3"><input type="number" min={0} max={120} value={negocio.tolerancia_cierre} onChange={e => { setSucio(true); setNegocio({ ...negocio, tolerancia_cierre: Number(e.target.value) }) }} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700" /></td>
                   <td className="py-3 pr-3"><span className="text-xs text-neutral-300">—</span></td>
                   <td className="py-3"><span className="text-xs text-neutral-300">—</span></td>

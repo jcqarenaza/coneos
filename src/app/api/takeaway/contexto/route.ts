@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolverPago } from '@/lib/pagos/resolver'
 import { generarSlots } from '@/lib/takeaway/slots'
+import { diaOperativo, type Franja as FranjaMotor, type HorarioPorDia as HorarioPorDiaMotor } from '@/lib/horarios'
 
 // Contexto público del canal TAKE AWAY (el link/QR lo abre cualquier celular).
 // GET ?empresa=<slug>&sucursal=<slug> → ids + branding + config del canal,
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
 
   const [{ data: cfg }, { data: sucursal }] = await Promise.all([
     supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, modulos').eq('empresa_id', empresa.id).maybeSingle(),
-    supabase.from('sucursales').select('id, nombre, slug, direccion').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
+    supabase.from('sucursales').select('id, nombre, slug, direccion, horario_general, tolerancia_cierre, dias_apertura, mensaje_cerrado, horario_por_dia').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
   ])
   if (!sucursal) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
 
@@ -78,9 +79,21 @@ export async function GET(request: Request) {
   // la vidriera queda abierta en modo anticipado ("pedí ahora, será el
   // primero"). TA se rige por SUS franjas/slots — sin techo (espejo exacto
   // del guard de /api/pedidos). Cerrado de verdad = sin slots restantes.
-  const slotsHoy = generarSlots(horarios)
+  // 📅 DÍAS (contrato CTO 23/09): TA es exento de HORAS, no de DÍAS —
+  // un día apagado en Negocio cierra TA por completo: sin vidriera, sin
+  // slots, sin anticipado. La jornada nocturna vigente (resaca) sí vale.
+  const sucTecho = (sucursal as { horario_general?: unknown; tolerancia_cierre?: unknown; dias_apertura?: unknown; mensaje_cerrado?: unknown; horario_por_dia?: unknown })
+  const diaOk = diaOperativo(
+    (sucTecho.horario_general as FranjaMotor[] | null) ?? [],
+    (sucTecho.dias_apertura as number[] | null) ?? null,
+    Number(sucTecho.tolerancia_cierre ?? 0),
+    undefined, undefined,
+    (sucTecho.horario_por_dia as HorarioPorDiaMotor | null) ?? null,
+  )
+  const slotsHoy = diaOk ? generarSlots(horarios) : []
   // Regla 5: la llave nace OFF — el comercio decide ofrecer anticipado
-  const anticipado = !abierto && slotsHoy.length > 0 && ta.acepta_anticipado === true
+  const anticipado = diaOk && !abierto && slotsHoy.length > 0 && ta.acepta_anticipado === true
+  const abiertoFinal = diaOk && abierto
 
   return NextResponse.json({
     empresa_id: empresa.id,
@@ -94,9 +107,11 @@ export async function GET(request: Request) {
       logo_url: cfg?.logo_url ?? null,
     },
     takeaway: {
-      abierto,
+      abierto: abiertoFinal,
       horarios,
-      mensaje_fuera_horario: ta.mensaje_fuera_horario ?? 'El take away no está disponible en este momento. ¡Volvemos pronto!',
+      mensaje_fuera_horario: !diaOk
+        ? ((sucTecho.mensaje_cerrado as string | null) ?? 'Hoy estamos cerrados. ¡Te esperamos pronto!')
+        : (ta.mensaje_fuera_horario ?? 'El take away no está disponible en este momento. ¡Volvemos pronto!'),
       tolerancia_cierre: Number(ta.tolerancia_cierre ?? 5),
       // Espejo del costo de envío: 0 si no está configurado (inercia total)
       costo_servicio: Number(ta.costo_servicio ?? 0),
@@ -105,7 +120,7 @@ export async function GET(request: Request) {
       abre_a_las: anticipado ? slotsHoy[0].label : null,
       // V1.5: slots del día (15' fijos, margen 15'), MISMA fuente que valida
       // /api/pedidos. En anticipado arrancan en la apertura.
-      slots_retiro: (abierto || anticipado) ? slotsHoy : [],
+      slots_retiro: (abiertoFinal || anticipado) ? slotsHoy : [],
     },
     pagos: {
       acepta_efectivo: pagos?.acepta_efectivo ?? true,

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { estaAbierto, type Franja } from '@/lib/horarios'
+import { estaAbierto, diaHabilita, diaSemanaAR, horaMinutosAR, type Franja, type HorarioPorDia } from '@/lib/horarios'
 
 // ═══════════════════════════════════════════════════════════════════
 // CICLO 3 — GATE DEL KIOSK POR HORARIO DEL NEGOCIO
@@ -18,12 +18,20 @@ export async function GET(request: Request) {
 
   const supabase = createAdminClient()
   const { data: suc } = await supabase.from('sucursales')
-    .select('horario_general, mensaje_cerrado, tolerancia_cierre')
+    .select('horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia')
     .eq('id', sucursalId).maybeSingle()
   if (!suc) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
 
   const horarios = (suc.horario_general as Franja[] | null) ?? []
-  const abierto = horarios.length === 0 ? true : estaAbierto(horarios, Number(suc.tolerancia_cierre ?? 5))
+  const dias = (suc.dias_apertura as number[] | null) ?? null
+  // 📅 Sin franjas: el día decide solo. Con franjas: el motor aplica el
+  // contrato de jornada (el día pertenece a su apertura).
+  const porDia = (suc.horario_por_dia as HorarioPorDia | null) ?? null
+  const abierto = porDia
+    ? estaAbierto(horarios, Number(suc.tolerancia_cierre ?? 5), horaMinutosAR(), dias, diaSemanaAR(), porDia)
+    : (horarios.length === 0
+      ? diaHabilita(dias, diaSemanaAR())
+      : estaAbierto(horarios, Number(suc.tolerancia_cierre ?? 5), horaMinutosAR(), dias))
 
   return NextResponse.json({
     abierto,

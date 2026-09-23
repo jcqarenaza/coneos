@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolverPago } from '@/lib/pagos/resolver'
 import { esSlotValido, type Franja, generarSlots } from '@/lib/takeaway/slots'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
-import { estaAbierto, type Franja } from '@/lib/horarios'
+import { estaAbierto, diaOperativo, diaHabilita, diaSemanaAR, horaMinutosAR, type Franja, type HorarioPorDia } from '@/lib/horarios'
 import { canalDePedido } from '@/lib/pagos/mp'
 
 export async function POST(request: Request) {
@@ -34,13 +34,33 @@ export async function POST(request: Request) {
   // ANTICIPADO (decisión JC 22/09): TAKE AWAY queda EXENTO del techo — se
   // rige por sus propias franjas/slots más abajo (pedir a la mañana para
   // retirar a la tarde vale: entra ya y es el primero de la cola de siempre)
-  if (!venta_caja && tipo_pedido !== 'takeaway') {
+  // 📅 HORARIO POR DÍAS (contrato CTO 23/09): los días viven en la fila
+  // Negocio y TODOS los canales los heredan — el techo horario sigue
+  // exceptuando a TA, pero un DÍA apagado cierra TODO (TA incluido):
+  // "los lunes no abrimos" = no hay quien sirva un retiro.
+  if (!venta_caja) {
     const { data: suc } = await supabase.from('sucursales')
-      .select('horario_general, mensaje_cerrado, tolerancia_cierre')
+      .select('horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia')
       .eq('id', sucursal_id).maybeSingle()
     const techo = (suc?.horario_general as Franja[] | null) ?? null
-    if (techo && techo.length > 0 && !estaAbierto(techo, Number(suc?.tolerancia_cierre ?? 0))) {
-      return NextResponse.json({ error: suc?.mensaje_cerrado ?? '🔒 El local está cerrado. Volvé a hacer tu pedido dentro del horario de atención.' }, { status: 409 })
+    const dias = (suc?.dias_apertura as number[] | null) ?? null
+    const porDia = (suc?.horario_por_dia as HorarioPorDia | null) ?? null
+    const tol = Number(suc?.tolerancia_cierre ?? 0)
+    const msgCerrado = suc?.mensaje_cerrado ?? '🔒 El local está cerrado. Volvé a hacer tu pedido dentro del horario de atención.'
+    if (tipo_pedido === 'takeaway') {
+      // TA: exento de HORAS, no de DÍAS — jornada vigente o día que habilita
+      if (!diaOperativo(techo, dias, tol, horaMinutosAR(), diaSemanaAR(), porDia)) {
+        return NextResponse.json({ error: msgCerrado }, { status: 409 })
+      }
+    } else {
+      const abierto = porDia
+        ? estaAbierto(techo, tol, horaMinutosAR(), dias, diaSemanaAR(), porDia)
+        : ((!techo || techo.length === 0)
+          ? diaHabilita(dias, diaSemanaAR())
+          : estaAbierto(techo, tol, horaMinutosAR(), dias))
+      if (!abierto) {
+        return NextResponse.json({ error: msgCerrado }, { status: 409 })
+      }
     }
   }
 
