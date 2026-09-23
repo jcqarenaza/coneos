@@ -185,7 +185,9 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         if (dc) {
           setCostoEnvio(Number(dc.costo_envio))
           const horarios = (dc.horarios as { desde: string; hasta: string }[]) ?? []
-          setHorarioActivo(dc.activo ? estaEnHorario(horarios, horaData.hora) : false)
+          // 📅 el techo con días manda (server): día cerrado = vidriera cerrada
+          const techoOk = horaData.techo_abierto !== false
+          setHorarioActivo(dc.activo && techoOk ? estaEnHorario(horarios, horaData.hora) : false)
           setHorariosConfig(horarios)
           if (dc.permitir_programado === true) setSlotsEntrega(generarSlots(horarios))
           setToleranciaCierre(Number(dc.tolerancia_cierre ?? 5))

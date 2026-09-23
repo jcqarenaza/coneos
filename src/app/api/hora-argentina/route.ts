@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { estaAbierto, diaHabilita, diaSemanaAR, horaMinutosAR, type Franja, type HorarioPorDia } from '@/lib/horarios'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
 
   const supabase = createAdminClient()
 
-  const [{ data: dc }, { data: emp }] = await Promise.all([
+  const [{ data: dc }, { data: emp }, { data: suc }] = await Promise.all([
     supabase.from('delivery_config')
       .select('costo_envio, horarios, mensaje_fuera_horario, activo, pausado, mensaje_pausa, tolerancia_cierre, permitir_programado')
       .eq('sucursal_id', sucursal_id)
@@ -23,8 +24,25 @@ export async function GET(request: Request) {
     empresa_id ? supabase.from('empresas')
       .select('nombre, config:empresa_config(primary_color, secondary_color, logo_url)')
       .eq('id', empresa_id)
-      .single() : Promise.resolve({ data: null })
+      .single() : Promise.resolve({ data: null }),
+    supabase.from('sucursales')
+      .select('horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia')
+      .eq('id', sucursal_id)
+      .maybeSingle()
   ])
 
-  return NextResponse.json({ hora, delivery_config: dc, empresa_config: emp })
+  // 📅 EL TECHO CON DÍAS, resuelto acá (server): la vidriera de delivery
+  // deja de mostrarse abierta un día cerrado — cura de raíz el agujero
+  // "vidriera no compone techo" (contrato de jornada del CTO 23/09).
+  const techoF = (suc?.horario_general as Franja[] | null) ?? []
+  const diasAp = (suc?.dias_apertura as number[] | null) ?? null
+  const porDia = (suc?.horario_por_dia as HorarioPorDia | null) ?? null
+  const tolNeg = Number(suc?.tolerancia_cierre ?? 0)
+  const techo_abierto = porDia
+    ? estaAbierto(techoF, tolNeg, horaMinutosAR(), diasAp, diaSemanaAR(), porDia)
+    : (techoF.length === 0
+      ? diaHabilita(diasAp, diaSemanaAR())
+      : estaAbierto(techoF, tolNeg, horaMinutosAR(), diasAp))
+
+  return NextResponse.json({ hora, delivery_config: dc, empresa_config: emp, techo_abierto, mensaje_negocio: suc?.mensaje_cerrado ?? null })
 }
