@@ -334,7 +334,7 @@ export default function ServiciosPage() {
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-6 space-y-6 max-w-2xl">
           {/* FIX (JC 23/09): la tab App no tenía Guardar — los toggles cambiaban
               estado pero nada persistía. Mismo guardarTodo de la casa. */}
-          <div className="flex items-center justify-end gap-2 -mb-2">
+          <div className="flex items-center justify-end gap-2 pb-4 border-b border-neutral-50">
             <span className={`text-xs font-bold text-amber-600 transition-opacity ${sucio ? 'opacity-100' : 'opacity-0'}`}>● Hay cambios sin guardar</span>
             <BotonGuardar id="todo" onClick={guardarTodo} />
           </div>
