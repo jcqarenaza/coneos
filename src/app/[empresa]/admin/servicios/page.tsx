@@ -93,6 +93,8 @@ export default function ServiciosPage() {
   const [mesasActivo, setMesasActivo] = useState(true)
   const [modalMesas, setModalMesas] = useState(false)
   const [appEncendida, setAppEncendida] = useState(false)
+  // Tab App UNIFICADA: canales visibles de TODAS las sucursales (la puerta es una)
+  const [visiblesApp, setVisiblesApp] = useState<Record<string, { d: boolean; t: boolean; dActivo: boolean; tActivo: boolean }>>({})
   const [soporte, setSoporte] = useState<{ nombre: string; wa: string }>({ nombre: 'QP C&IA', wa: '542302456497' })
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState<string | null>(null)
@@ -154,6 +156,22 @@ export default function ServiciosPage() {
       .then(({ data }) => {
         const lista = (data ?? []) as Sucursal[]
         setSucursales(lista)
+        // canales visibles de toda la empresa para la tab App
+        if (lista.length > 0) {
+          const ids = lista.map(s => s.id)
+          Promise.all([
+            supabase.from('delivery_config').select('sucursal_id, activo, mostrar_en_app').in('sucursal_id', ids),
+            supabase.from('takeaway_config').select('sucursal_id, activo, mostrar_en_app').in('sucursal_id', ids),
+          ]).then(([{ data: dcs }, { data: tcs }]) => {
+            const mapa: Record<string, { d: boolean; t: boolean; dActivo: boolean; tActivo: boolean }> = {}
+            for (const s of lista) {
+              const dc = (dcs ?? []).find(x => x.sucursal_id === s.id)
+              const tc = (tcs ?? []).find(x => x.sucursal_id === s.id)
+              mapa[s.id] = { d: dc?.mostrar_en_app !== false, t: tc?.mostrar_en_app !== false, dActivo: dc?.activo === true, tActivo: tc?.activo === true }
+            }
+            setVisiblesApp(mapa)
+          })
+        }
         if (lista.length > 0) { setSucursalSel(lista[0].id); cargar(lista[0].id) }
         else setCargando(false)
       })
@@ -177,7 +195,6 @@ export default function ServiciosPage() {
         mensaje_fuera_horario: delivery.mensaje_fuera_horario || null,
         tolerancia_cierre: delivery.tolerancia_cierre,
         costo_envio: delivery.costo_envio,
-        mostrar_en_app: delivery.mostrar_en_app,
         permitir_programado: delivery.permitir_programado,
       }, { onConflict: 'sucursal_id' }),
       supabase.from('takeaway_config').upsert({
@@ -187,11 +204,15 @@ export default function ServiciosPage() {
         tolerancia_cierre: ta.tolerancia_cierre,
         costo_servicio: ta.costo_servicio,
         acepta_anticipado: ta.acepta_anticipado,
-        mostrar_en_app: ta.mostrar_en_app,
       }, { onConflict: 'sucursal_id' }),
       ...(tieneMesas ? [supabase.from('empresa_config').update({ mesas_activo: mesasActivo, entrada_unificada: appEncendida }).eq('empresa_id', ctx.empresaId)] : []),
     ])
     setGuardando(null)
+    // Tab App: persistir canales visibles de TODAS las sucursales (fuente única)
+    await Promise.all(Object.entries(visiblesApp).flatMap(([sid, v]) => [
+      supabase.from('delivery_config').update({ mostrar_en_app: v.d }).eq('sucursal_id', sid),
+      supabase.from('takeaway_config').update({ mostrar_en_app: v.t }).eq('sucursal_id', sid),
+    ]))
     const errs = [r1.error && `negocio: ${r1.error.message}`, r2.error && `delivery: ${r2.error.message}`, r3.error && `take away: ${r3.error.message}`, r4?.error && `mesas: ${r4.error.message}`].filter(Boolean)
     if (errs.length) { setError(`No se pudo guardar — ${errs.join(' · ')}`); return }
     setSucio(false)
@@ -279,7 +300,7 @@ export default function ServiciosPage() {
       {/* ═══ TAB DISPOSITIVOS (tokens/URLs/modal idénticos a siempre) ═══ */}
       {/* Selector de sucursal — gobierna las tabs POR SUCURSAL (horarios,
           mensajes, app). Dispositivos/Equipo/QR manejan lo suyo adentro. */}
-      {(tab === 'servicios' || tab === 'mensajes' || tab === 'app' || tab === 'qr') && sucursales.length > 1 && (
+      {(tab === 'servicios' || tab === 'mensajes' || tab === 'qr' || tab === 'dispositivos') && sucursales.length > 1 && (
         <div className="flex items-center gap-2 mb-4">
           <span className="text-xs font-bold text-neutral-400 uppercase tracking-wide">Sucursal</span>
           <select value={sucursalSel} onChange={e => { setSucursalSel(e.target.value); cargar(e.target.value); setSucio(false) }}
@@ -289,39 +310,49 @@ export default function ServiciosPage() {
         </div>
       )}
 
-      {tab === 'dispositivos' && <DispositivosTab />}
+      {tab === 'dispositivos' && <DispositivosTab sucursalId={sucursales.length > 1 ? sucursalSel : undefined} />}
 
       {/* ═══ TAB EQUIPO (Operadores + Colaboradores unificados, mudados de Operación) ═══ */}
       {tab === 'equipo' && <EquipoTab />}
 
       {/* ═══ TAB QR Y ACCESOS (entradas públicas + mesas, dominio canónico) ═══ */}
-      {tab === 'app' && delivery && ta && (
+      {tab === 'app' && (
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-6 space-y-6 max-w-2xl">
           <div>
             <div className="flex items-center justify-between mb-1">
               <div>
                 <p className="font-bold text-neutral-800">🌐 App Pública (entrada unificada)</p>
-                <p className="text-xs text-neutral-400">La puerta única: el cliente entra y elige el servicio. Enciende la App para <b>todas las sucursales</b> de la empresa.</p>
+                <p className="text-xs text-neutral-400">La puerta única de la empresa: el cliente entra y elige. <b>Una sola App para todas las sucursales.</b></p>
               </div>
               <Toggle on={appEncendida} onClick={() => { setSucio(true); setAppEncendida(!appEncendida) }} />
             </div>
             <p className="text-[11px] text-neutral-300 mt-1">Con la App encendida, el QR de delivery de siempre lleva a la puerta (el token viaja solo). Apagada: cada QR va directo a su servicio, como siempre.</p>
           </div>
           <div className="border-t border-neutral-50 pt-5">
-            <p className="font-bold text-neutral-800 mb-1">Canales visibles en esta sucursal <span className="text-[10px] font-bold text-neutral-300 uppercase align-middle ml-1">({sucursales.find(s => s.id === sucursalSel)?.nombre ?? ""})</span></p>
-            <p className="text-xs text-neutral-400 mb-3">Qué ofrece la puerta pública acá. El canal sigue OPERANDO por su link/QR directo aunque no se muestre (marcha blanda).</p>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-neutral-600">🛵 Mostrar Delivery</p>
-                <Toggle on={delivery.mostrar_en_app} onClick={() => { setSucio(true); setDelivery({ ...delivery, mostrar_en_app: !delivery.mostrar_en_app }) }} disabled={!delivery.activo} />
-              </div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-neutral-600">🥡 Mostrar Take Away</p>
-                <Toggle on={ta.mostrar_en_app} onClick={() => { setSucio(true); setTa({ ...ta, mostrar_en_app: !ta.mostrar_en_app }) }} disabled={!ta.activo} />
-              </div>
-            </div>
-          </div>
+            <p className="font-bold text-neutral-800 mb-1">Qué ofrece la puerta, por sucursal</p>
+            <p className="text-xs text-neutral-400 mb-3">Cada sucursal declara sus canales visibles. El canal sigue OPERANDO por su link/QR directo aunque no se muestre (marcha blanda).</p>
+            <div className="divide-y divide-neutral-50">
+              {sucursales.map(s => {
+                const v = visiblesApp[s.id]
+                if (!v) return null
+                return (
+                  <div key={s.id} className="py-3 flex items-center gap-4">
+                    <p className="flex-1 text-sm font-bold text-neutral-700">{s.nombre}</p>
+                    <div className="flex items-center gap-2" title={v.dActivo ? '¿Se muestra Delivery de esta sucursal en la App?' : 'Delivery inactivo en esta sucursal'}>
+                      <span className="text-xs font-semibold text-neutral-500">🛵</span>
+                      <Toggle on={v.d} onClick={() => { setSucio(true); setVisiblesApp(prev => ({ ...prev, [s.id]: { ...v, d: !v.d } })) }} disabled={!v.dActivo} />
+                    </div>
+                    <div className="flex items-center gap-2" title={v.tActivo ? '¿Se muestra Take Away de esta sucursal en la App?' : 'Take Away inactivo en esta sucursal'}>
+                      <span className="text-xs font-semibold text-neutral-500">🥡</span>
+                      <Toggle on={v.t} onClick={() => { setSucio(true); setVisiblesApp(prev => ({ ...prev, [s.id]: { ...v, t: !v.t } })) }} disabled={!v.tActivo} />
+                    </div>
                   </div>
+                )
+              })}
+            </div>
+            <p className="text-[11px] text-neutral-300 mt-2">Los QRs de entrada viven en <b>📱 QR y accesos</b>. La puerta multi-sucursal (un Delivery + retiro por sucursal) llega en su ciclo — estos toggles ya son su configuración.</p>
+          </div>
+        </div>
       )}
       {tab === 'qr' && <QrAccesosTab sucursalId={sucursalSel} />}
 

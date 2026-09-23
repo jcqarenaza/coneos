@@ -15,7 +15,7 @@ import { Loader2 } from 'lucide-react'
 
 interface Sucursal { id: string; nombre: string; slug: string }
 
-export default function QrMesas() {
+export default function QrMesas({ sucursalId }: { sucursalId?: string } = {}) {
   const { ctx } = useEmpresa()
   const supabase = useMemo(() => createClient(), [])
   const [loading, setLoading] = useState(true)
@@ -24,6 +24,7 @@ export default function QrMesas() {
   const [color, setColor] = useState('#1E3A5F')
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalSel, setSucursalSel] = useState<string>('')
+  useEffect(() => { if (sucursalId) setSucursalSel(prev => prev === sucursalId ? prev : sucursalId) }, [sucursalId])
   const [cantidad, setCantidad] = useState(10)
   const [copiado, setCopiado] = useState<string | null>(null)
 
@@ -39,7 +40,7 @@ export default function QrMesas() {
       setLogoUrl(cfg?.logo_url ?? null)
       const lista = (sucs ?? []) as Sucursal[]
       setSucursales(lista)
-      if (lista.length > 0) setSucursalSel(lista[0].id)
+      if (lista.length > 0) setSucursalSel(sucursalId ?? lista[0].id)
       setLoading(false)
     })
   }, [ctx, supabase])
@@ -120,7 +121,7 @@ ${css}
 
   return (
     <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-5 space-y-4">
-      {sucursales.length > 1 && (
+      {!sucursalId && sucursales.length > 1 && (
         <div className="flex gap-2 flex-wrap">
           {sucursales.map(s => (
             <button key={s.id} onClick={() => setSucursalSel(s.id)}

@@ -38,7 +38,8 @@ const tipoBadge = (tipo: string) => {
   return 'bg-orange-50 text-orange-700'
 }
 
-export default function DispositivosTab() {
+export default function DispositivosTab({ sucursalId }: { sucursalId?: string } = {}) {
+  // UN selector (orden JC): con sucursal de la casa, la lista se filtra a ella
   const { ctx } = useEmpresa()
   const [data, setData] = useState<Dispositivo[]>([])
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
@@ -47,6 +48,7 @@ export default function DispositivosTab() {
   const [tokenModal, setTokenModal] = useState(false)
   const [selectedNombre, setSelectedNombre] = useState('')
   const [selectedDispositivo, setSelectedDispositivo] = useState<Dispositivo | null>(null)
+  const visibles = sucursalId ? dispositivos.filter(d => d.sucursal_id === sucursalId) : dispositivos
   const [form, setForm] = useState({ nombre: '', tipo: 'KIOSK', sucursal_id: '' })
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -74,7 +76,7 @@ export default function DispositivosTab() {
 
   useEffect(() => { load() }, [ctx])
 
-  function openNew() { setForm({ nombre: '', tipo: 'KIOSK', sucursal_id: sucursales[0]?.id ?? '' }); setEditId(null); setModal(true) }
+  function openNew() { setForm({ nombre: '', tipo: 'KIOSK', sucursal_id: sucursalId ?? sucursales[0]?.id ?? '' }); setEditId(null); setModal(true) }
   function openEdit(row: Dispositivo) { setForm({ nombre: row.nombre, tipo: row.tipo, sucursal_id: row.sucursal_id }); setEditId(row.id); setModal(true) }
 
   async function showToken(row: Dispositivo) {

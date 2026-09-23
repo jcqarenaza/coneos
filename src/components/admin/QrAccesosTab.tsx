@@ -167,7 +167,7 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
       {moduloMesas && (
         <div>
           <p className="font-bold text-neutral-800 mb-2">🪑 Mesas</p>
-          <QrMesas />
+          <QrMesas sucursalId={sucursalSel?.id} />
         </div>
       )}
 
