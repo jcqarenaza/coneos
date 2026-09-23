@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolverPago } from '@/lib/pagos/resolver'
-import { esSlotValido, type Franja } from '@/lib/takeaway/slots'
+import { esSlotValido, type Franja, generarSlots } from '@/lib/takeaway/slots'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 import { estaAbierto, type Franja } from '@/lib/horarios'
 import { canalDePedido } from '@/lib/pagos/mp'
