@@ -93,6 +93,7 @@ export default function ServiciosPage() {
   const [mesasActivo, setMesasActivo] = useState(true)
   const [modalMesas, setModalMesas] = useState(false)
   const [appEncendida, setAppEncendida] = useState(false)
+  const [dispTodas, setDispTodas] = useState(true) // Dispositivos: la central arranca viendo TODO
   // Tab App UNIFICADA: canales visibles de TODAS las sucursales (la puerta es una)
   const [visiblesApp, setVisiblesApp] = useState<Record<string, { d: boolean; t: boolean; dActivo: boolean; tActivo: boolean }>>({})
   const [soporte, setSoporte] = useState<{ nombre: string; wa: string }>({ nombre: 'QP C&IA', wa: '542302456497' })
@@ -303,14 +304,19 @@ export default function ServiciosPage() {
       {(tab === 'servicios' || tab === 'mensajes' || tab === 'qr' || tab === 'dispositivos') && sucursales.length > 1 && (
         <div className="flex items-center gap-2 mb-4">
           <span className="text-xs font-bold text-neutral-400 uppercase tracking-wide">Sucursal</span>
-          <select value={sucursalSel} onChange={e => { setSucursalSel(e.target.value); cargar(e.target.value); setSucio(false) }}
+          <select value={tab === 'dispositivos' && dispTodas ? '' : sucursalSel}
+            onChange={e => {
+              if (e.target.value === '') { setDispTodas(true); return }
+              setDispTodas(false); setSucursalSel(e.target.value); cargar(e.target.value); setSucio(false)
+            }}
             className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
+            {tab === 'dispositivos' && <option value="">Todas las sucursales</option>}
             {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
           </select>
         </div>
       )}
 
-      {tab === 'dispositivos' && <DispositivosTab sucursalId={sucursales.length > 1 ? sucursalSel : undefined} />}
+      {tab === 'dispositivos' && <DispositivosTab sucursalId={sucursales.length > 1 && !dispTodas ? sucursalSel : undefined} />}
 
       {/* ═══ TAB EQUIPO (Operadores + Colaboradores unificados, mudados de Operación) ═══ */}
       {tab === 'equipo' && <EquipoTab />}
