@@ -7,7 +7,6 @@ import { estaAbierto, type Franja } from '@/lib/horarios'
 import { canalDePedido } from '@/lib/pagos/mp'
 
 export async function POST(request: Request) {
-  try {
   const body = await request.json()
   const {
     empresa_id, sucursal_id, dispositivo_id, items,
@@ -319,11 +318,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ pedido: { ...(pedido as object), hora_retiro: horaRetiroConfirmada } })
-  } catch (e) {
-    // DIAGNÓSTICO TEMPORAL (matriz 23/09): el 500 fantasma sale a la luz —
-    // el checkout muestra este texto. Se retira al cerrar el bug.
-    const err = e as { message?: string; stack?: string }
-    console.error('PEDIDOS-CRASH:', err?.stack ?? err)
-    return NextResponse.json({ error: `DIAG: ${err?.message ?? String(e)} · ${String(err?.stack ?? '').split('\n')[1]?.trim() ?? ''}` }, { status: 500 })
-  }
 }
