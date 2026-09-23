@@ -42,13 +42,13 @@ export default function DispositivosTab({ sucursalId }: { sucursalId?: string } 
   // UN selector (orden JC): con sucursal de la casa, la lista se filtra a ella
   const { ctx } = useEmpresa()
   const [data, setData] = useState<Dispositivo[]>([])
+  const visibles = sucursalId ? data.filter(d => d.sucursal_id === sucursalId) : data
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [tokenModal, setTokenModal] = useState(false)
   const [selectedNombre, setSelectedNombre] = useState('')
   const [selectedDispositivo, setSelectedDispositivo] = useState<Dispositivo | null>(null)
-  const visibles = sucursalId ? dispositivos.filter(d => d.sucursal_id === sucursalId) : dispositivos
   const [form, setForm] = useState({ nombre: '', tipo: 'KIOSK', sucursal_id: '' })
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -148,8 +148,8 @@ export default function DispositivosTab({ sucursalId }: { sucursalId?: string } 
       </div>
 
       <div className="space-y-2">
-        {data.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin dispositivos</div>}
-        {data.map(row => (
+        {visibles.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin dispositivos</div>}
+        {visibles.map(row => (
           <div key={row.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-500">{tipoIcon(row.tipo)}</div>
