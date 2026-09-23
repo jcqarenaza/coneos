@@ -234,7 +234,7 @@ export default function TakeawayPage() {
   return (
     <div className="min-h-screen">
       <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id} canal="TAKEAWAY" />
-      {vinoDeApp && (
+      {vinoDeApp && paso === 'catalogo' && (
         <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedidos/${window.location.pathname.split('/').filter(Boolean)[2]}`}
           className="fixed bottom-4 left-4 z-30 bg-white/95 backdrop-blur border border-neutral-200 shadow-md rounded-full px-3.5 py-2 text-xs font-bold text-neutral-500 active:scale-95 transition-transform">
           ← Ver otras opciones
