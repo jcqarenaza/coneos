@@ -102,7 +102,7 @@ export default function SucursalesTab() {
           if ((s.dispositivos ?? []).length === 0) faltantes.push('dispositivos')
           if (!uno(s.delivery_config) && !uno(s.takeaway_config)) faltantes.push('canal online (Delivery/TA)')
           return (
-            <div key={s.id} className="py-3 flex items-center gap-3">
+            <div key={s.id} className={`py-3 flex items-center gap-3 ${!s.activo ? "opacity-55 grayscale" : ""}`}>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${colorSucursal(s.id).dot}`} title="El color de esta sucursal en toda la app" />
