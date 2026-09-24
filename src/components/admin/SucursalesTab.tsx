@@ -19,6 +19,7 @@ import { ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeCompone
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Plus, Loader2, Pencil, Store } from 'lucide-react'
+import { colorSucursal } from '@/components/admin/SucursalColor'
 
 interface SucursalRow {
   id: string; nombre: string; slug: string; direccion: string | null; activo: boolean; rubro: string | null
@@ -104,6 +105,7 @@ export default function SucursalesTab() {
             <div key={s.id} className="py-3 flex items-center gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${colorSucursal(s.id).dot}`} title="El color de esta sucursal en toda la app" />
                   <p className="font-bold text-neutral-800">{s.nombre}</p>
                   <span className="text-xs font-mono text-neutral-400">/{s.slug}</span>
                   <ConeBadge active={s.activo} />

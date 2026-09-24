@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus, Loader2, Copy, Check, Monitor, Tablet, Smartphone, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import { ChipSucursal, LeyendaSucursales } from '@/components/admin/SucursalColor'
 import QRCode from 'qrcode'
 
 interface Sucursal { id: string; nombre: string; slug: string }
@@ -152,6 +153,7 @@ export default function DispositivosTab({ sucursalId }: { sucursalId?: string } 
       </div>
 
       <div className="space-y-2">
+        {!sucursalId && <div className="mb-3"><LeyendaSucursales sucursales={sucursales} /></div>}
         {visibles.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin dispositivos</div>}
         {visibles.map(row => (
           <div key={row.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
@@ -163,7 +165,7 @@ export default function DispositivosTab({ sucursalId }: { sucursalId?: string } 
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${tipoBadge(row.tipo)}`}>{TIPOS.find(t => t.value === row.tipo)?.label}</span>
                   <ConeBadge active={row.activo} />
                 </div>
-                <p className="text-xs text-neutral-400 mt-0.5">{row.sucursal_nombre}</p>
+                <div className="mt-1"><ChipSucursal id={row.sucursal_id} nombre={row.sucursal_nombre || "—"} /></div>
               </div>
             </div>
             <div className="flex items-center gap-2">

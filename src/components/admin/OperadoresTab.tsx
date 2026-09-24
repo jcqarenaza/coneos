@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { ChipSucursal, LeyendaSucursales } from '@/components/admin/SucursalColor'
 
 interface Sucursal { id: string; nombre: string }
 interface Operador {
@@ -85,6 +86,7 @@ export default function OperadoresTab() {
       </div>
 
       <div className="space-y-2">
+        <div className="mb-3"><LeyendaSucursales sucursales={sucursales} /></div>
         {data.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin operadores</div>}
         {data.map(op => (
           <div key={op.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
@@ -96,7 +98,7 @@ export default function OperadoresTab() {
                   <ConeBadge active={op.activo} />
                 </div>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-neutral-400">{op.sucursal_nombre ?? 'Todas'}</span>
+                  <ChipSucursal id={op.sucursal_id} nombre={op.sucursal_nombre ?? "Todas"} />
                   {op.puede_cobrar && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">Caja</span>}
                   {op.puede_preparar && <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Preparación</span>}
                 </div>
