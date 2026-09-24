@@ -125,7 +125,7 @@ export default function OperadoresTab() {
           </div>
           <div className="space-y-1.5">
             <Label>{editId ? 'Nuevo PIN (dejá vacío para no cambiar)' : 'PIN *'}</Label>
-            <Input value={form.pin} onChange={e => setForm({ ...form, pin: e.target.value })} type="password" maxLength={4} placeholder="4 dígitos" />
+            <Input value={form.pin} onChange={e => setForm({ ...form, pin: e.target.value.replace(/\D/g, "").slice(0, 6) })} type="password" maxLength={6} inputMode="numeric" placeholder={editId ? "Dejar vacío para no cambiar" : "4 a 6 dígitos"} />
           </div>
           <div className="space-y-2">
             <Label>Permisos</Label>
