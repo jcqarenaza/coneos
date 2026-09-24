@@ -1135,9 +1135,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-neutral-800 text-base">#{pedido.numero_pedido}</span>
-                      {verTodas && pedido.sucursales?.nombre && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-500">📍 {pedido.sucursales.nombre}</span>}
                       {pedido.tipo_pedido === 'delivery' && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">Delivery</span>}
-                      {pedido.colaborador_nombre && <span className="text-xs bg-neutral-800 text-white px-1.5 py-0.5 rounded-full font-semibold">🛵 {pedido.colaborador_nombre}</span>}
                     </div>
                     <BadgeMesa p={pedido} /><BadgeTakeaway p={pedido} /><BadgeFiscal id={pedido.id} /><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
                   </div>
@@ -1153,7 +1151,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     {pedido.pedido_items.length > 3 && <p className="text-neutral-300 text-xs">+{pedido.pedido_items.length - 3} más</p>}
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-neutral-300 text-xs">{tiempoRelativo(pedido.created_at)}</span>
+                    <span className="text-neutral-300 text-xs flex items-center gap-1.5">{tiempoRelativo(pedido.created_at)}{verTodas && pedido.sucursales?.nombre && <span className="text-neutral-400 font-semibold">· 📍 {pedido.sucursales.nombre}</span>}{pedido.colaborador_nombre && <span className="text-neutral-500 font-semibold">· 🛵 {pedido.colaborador_nombre}</span>}</span>
                     <span className="text-neutral-600 text-xs font-bold">{formatPrecio(pedido.total)}</span>
                   </div>
                   </button>
