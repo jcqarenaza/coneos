@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { PRESETS_RUBRO } from '@/lib/presets-rubro'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { ConePageHeader, ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeComponents'
+import { colorSucursal } from '@/components/admin/SucursalColor'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -160,6 +161,11 @@ export default function CatalogoPage() {
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
   const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true, visible_kiosk: true, precio_adicional: 0 })
 
+  // Una casa por dato (regla 3): los accesorios se gestionan en SU página;
+  // acá se ocultan para que no existan dos editores del mismo dato.
+  const grupoAccesorioIds = new Set(grupos.filter(g => (g.nombre ?? '').toLowerCase().includes('accesorio')).map(g => g.id))
+  const opcionesSabores = opciones.filter(o => !grupoAccesorioIds.has(o.grupo_id))
+
   async function load(mantenerEstado = false) {
     if (!ctx) return
     const supabase = createClient()
@@ -168,7 +174,7 @@ export default function CatalogoPage() {
       supabase.from('productos').select('*').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('orden'),
       supabase.from('presentaciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
       supabase.from('grupos_opciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
-      supabase.from('opciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
+      supabase.from('opciones').select('*').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('orden'),
       supabase.from('presentacion_grupos').select('presentacion_id, grupo_id'),
     ])
     setCategorias((cats ?? []) as Categoria[])
@@ -464,7 +470,9 @@ export default function CatalogoPage() {
   }
   async function deleteOp(id: string) {
     if (!confirm('¿Eliminar opción?')) return
-    await createClient().from('opciones').delete().eq('id', id)
+    // Soft-delete (misma semántica que Accesorios): la fila sobrevive con su
+    // historial de ventas; solo deja de ofrecerse. El delete físico murió acá.
+    await createClient().from('opciones').update({ deleted_at: new Date().toISOString() }).eq('id', id)
     load(true)
   }
 
@@ -482,11 +490,11 @@ export default function CatalogoPage() {
         </button>
         <button onClick={() => setVistaActiva('sabores')}
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'sabores' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
-          Opciones <span className="ml-1 text-xs opacity-60">{opciones.length}</span>
+          🍦 Sabores y opciones <span className="ml-1 text-xs opacity-60">{opcionesSabores.length}</span>
         </button>
         <button onClick={() => { setVistaActiva('disponibilidad'); cargarDisponibilidad() }}
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'disponibilidad' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
-          ⚡ Consola
+          🏪 Disponibilidad por sucursal
         </button>
       </div>
 
@@ -649,7 +657,7 @@ export default function CatalogoPage() {
 
       {vistaActiva === 'sabores' && <div className="mt-0">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-xs text-neutral-400">{opciones.length} opciones</p>
+          <p className="text-xs text-neutral-400">{opcionesSabores.length} opciones · los accesorios se gestionan en su propia sección</p>
           <div className="flex gap-2"><ConeButton variant="outline" onClick={() => openNewGrupo()} icon={<Plus className="h-4 w-4" />}>Nuevo grupo</ConeButton><ConeButton onClick={() => openNewOp()} icon={<Plus className="h-4 w-4" />}>Nueva opción</ConeButton></div>
         </div>
         <div className="relative mb-5">
@@ -722,8 +730,8 @@ export default function CatalogoPage() {
               {sucursales.map(s => (
                 <button key={s.id}
                   onClick={() => { setSucursalDispo(s.id); cargarDisponibilidad(s.id) }}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${sucursalDispo === s.id ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
-                  {s.nombre}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 ${sucursalDispo === s.id ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
+                  <span className={`w-2 h-2 rounded-full ${colorSucursal(s.id).dot}`} />{s.nombre}
                 </button>
               ))}
             </div>
@@ -1028,7 +1036,7 @@ export default function CatalogoPage() {
             <Label>Grupo *</Label>
             <Select value={formOp.grupo_id} onValueChange={v => setFormOp({ ...formOp, grupo_id: v })}>
               <SelectTrigger><SelectValue placeholder="Seleccioná" /></SelectTrigger>
-              <SelectContent>{grupos.map(g => <SelectItem key={g.id} value={g.id}>{g.nombre}</SelectItem>)}</SelectContent>
+              <SelectContent>{grupos.filter(g => !grupoAccesorioIds.has(g.id)).map(g => <SelectItem key={g.id} value={g.id}>{g.nombre}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formOp.nombre} onChange={e => setFormOp({ ...formOp, nombre: e.target.value })} placeholder="Chocolate" autoFocus /></div>
