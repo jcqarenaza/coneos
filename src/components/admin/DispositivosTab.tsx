@@ -25,9 +25,13 @@ const TIPOS = [
 ]
 
 const tipoIcon = (tipo: string) => {
+  // Loguitos a simple vista (JC 23/09): cada tipo con su fierro
   if (tipo === 'KIOSK') return <Tablet className="h-4 w-4" />
   if (tipo === 'DISPLAY') return <Monitor className="h-4 w-4" />
-  return <Smartphone className="h-4 w-4" />
+  if (tipo === 'DELIVERY') return <span className="text-sm leading-none">🛵</span>
+  if (tipo === 'CAJA') return <span className="text-sm leading-none">💵</span>
+  if (tipo === 'PREPARACION') return <span className="text-sm leading-none">👨‍🍳</span>
+  return <Monitor className="h-4 w-4" />
 }
 
 const tipoBadge = (tipo: string) => {

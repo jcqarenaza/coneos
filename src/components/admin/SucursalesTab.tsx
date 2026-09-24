@@ -99,7 +99,7 @@ export default function SucursalesTab() {
           const faltantes: string[] = []
           if (!s.direccion) faltantes.push('dirección')
           if ((s.dispositivos ?? []).length === 0) faltantes.push('dispositivos')
-          if (!uno(s.delivery_config) && !uno(s.takeaway_config)) faltantes.push('canal configurado')
+          if (!uno(s.delivery_config) && !uno(s.takeaway_config)) faltantes.push('canal online (Delivery/TA)')
           return (
             <div key={s.id} className="py-3 flex items-center gap-3">
               <div className="flex-1 min-w-0">
