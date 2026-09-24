@@ -453,10 +453,11 @@ export default function CatalogoPage() {
   }
 
   // Sabores
-  function openNewOp(grupoId?: string) { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupoId ?? grupos[0]?.id ?? '', orden: 1, activo: true, visible_kiosk: true }); setEditId(null); setModalOp(true) }
+  function openNewOp(grupoId?: string) { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupoId ?? grupos.find(g => !grupoAccesorioIds.has(g.id))?.id ?? '', orden: 1, activo: true, visible_kiosk: true }); setEditId(null); setModalOp(true) }
   function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo, visible_kiosk: o.visible_kiosk, precio_adicional: Number(o.precio_adicional ?? 0) }); setEditId(o.id); setModalOp(true) }
   async function saveOp() {
     if (!ctx || !formOp.nombre || !formOp.grupo_id) return
+    if (!editId && grupoAccesorioIds.has(formOp.grupo_id)) { alert('Los accesorios se crean desde su propia sección.'); return }
     setSaving(true)
     const supabase = createClient()
     const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo, visible_kiosk: formOp.visible_kiosk, precio_adicional: Number(formOp.precio_adicional) > 0 ? Number(formOp.precio_adicional) : null }
@@ -726,7 +727,7 @@ export default function CatalogoPage() {
             <button onClick={() => openNewProd('')}
               className="px-4 py-2 rounded-xl bg-neutral-800 text-white text-sm font-semibold hover:bg-neutral-700 transition-colors">+ Producto</button>
             <p className="text-sm font-semibold text-neutral-700">Sucursal:</p>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {sucursales.map(s => (
                 <button key={s.id}
                   onClick={() => { setSucursalDispo(s.id); cargarDisponibilidad(s.id) }}
