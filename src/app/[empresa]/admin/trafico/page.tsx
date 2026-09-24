@@ -94,13 +94,14 @@ export default function TraficoPage() {
   const [adquisicion, setAdquisicion] = useState<{ referrers: { nombre: string; visitas: number }[]; utm_sources: { nombre: string; visitas: number }[] }>({ referrers: [], utm_sources: [] })
   const [destinos, setDestinos] = useState<{ total: number; items: { destino: string; pedidos: number; participacion: number }[] }>({ total: 0, items: [] })
   const [modulos, setModulos] = useState<Record<string, boolean>>({})
+  const [appHabilitada, setAppHabilitada] = useState(false)
 
   useEffect(() => {
     if (!ctx) return
     const supabase = createClient()
     Promise.all([
       fetch(`/api/visitas/resumen?empresa_id=${ctx.empresaId}`).then(r => r.json()),
-      supabase.from('empresa_config').select('modulos').eq('empresa_id', ctx.empresaId).maybeSingle(),
+      supabase.from('empresa_config').select('modulos, entrada_unificada').eq('empresa_id', ctx.empresaId).maybeSingle(),
     ])
       .then(([d, { data: cfg }]) => {
         setDelivery(d.delivery ?? [])
@@ -110,6 +111,7 @@ export default function TraficoPage() {
         setAdquisicion(d.adquisicion ?? { referrers: [], utm_sources: [] })
         setDestinos(d.destinos ?? { total: 0, items: [] })
         setModulos((cfg?.modulos ?? {}) as Record<string, boolean>)
+        setAppHabilitada((cfg as { entrada_unificada?: boolean } | null)?.entrada_unificada === true)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -124,7 +126,7 @@ export default function TraficoPage() {
         <p className="text-neutral-400 text-sm">Cuántos clientes entran desde el celular y cuántos terminan pidiendo — últimos 14 días</p>
       </div>
       {/* Cada canal aparece solo si el módulo está contratado (o si tuvo datos alguna vez) */}
-      {app.length > 0 && <CanalCard titulo="App de pedidos" emoji="📱" serie={app} activo={app.length > 0} />}
+      {appHabilitada && app.length > 0 && <CanalCard titulo="App de pedidos" emoji="📱" serie={app} activo={app.length > 0} />}
       {(modulos.delivery === true || delivery.length > 0) && <CanalCard titulo="Delivery" emoji="🛵" serie={delivery} activo={delivery.length > 0} />}
       {(modulos.takeaway === true || takeaway.length > 0) && <CanalCard titulo="Take Away" emoji="🥡" serie={takeaway} activo={takeaway.length > 0} />}
       {(modulos.mesas === true || mesa.length > 0) && <CanalCard titulo="Mesas" emoji="🪑" serie={mesa} activo={mesa.length > 0} />}
