@@ -13,7 +13,7 @@ interface Props {
   slotsRetiro?: { iso: string; label: string }[]
   direccionRetiro?: string | null
   config: EmpresaConfig; dispositivo: DispositivoKiosk; carrito: ItemCarrito[]
-  costoEnvio: number; pedidoCreado: { numero: number; codigo: string } | null
+  costoEnvio: number; envioAlCadete?: boolean; pedidoCreado: { numero: number; codigo: string } | null
   onPedidoCreado: (numero: number, codigo: string) => void
   onNuevoPedido: () => void; onVolver: () => void
   // 9d: el server rechazó por precios (409 del ciclo C) → el padre re-precia
@@ -34,7 +34,7 @@ function Header({ onBack, title }: { onBack?: () => void; title: string }) {
   )
 }
 
-function ResumenTotal({ subtotal, costoEnvio, total, config, esTakeaway = false }: { subtotal: number; costoEnvio: number; total: number; config: EmpresaConfig; esTakeaway?: boolean }) {
+function ResumenTotal({ subtotal, costoEnvio, envioAlCadete = false, total, config, esTakeaway = false }: { subtotal: number; costoEnvio: number; envioAlCadete?: boolean; total: number; config: EmpresaConfig; esTakeaway?: boolean }) {
   return (
     <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-4">
       <div className="flex justify-between text-sm mb-1.5">
@@ -43,7 +43,7 @@ function ResumenTotal({ subtotal, costoEnvio, total, config, esTakeaway = false 
       </div>
       <div className="flex justify-between text-sm mb-2.5">
         {(!esTakeaway || costoEnvio > 0) && <><span className="text-neutral-400 flex items-center gap-1">{esTakeaway ? <>🥡 Servicio de retiro</> : <><Truck className="h-3.5 w-3.5" /> Envío</>}</span>
-        <span className="font-medium text-neutral-600">{formatPrecio(costoEnvio)}</span></>}
+        <span className="font-medium text-neutral-600">{!esTakeaway && costoEnvio === 0 ? (envioAlCadete ? <span className="text-amber-600 text-xs font-bold">Se abona al cadete 🛵</span> : <span className="text-emerald-600 text-xs font-bold">Incluido</span>) : formatPrecio(costoEnvio)}</span></>}
       </div>
       <div className="flex justify-between border-t border-neutral-100 pt-2.5">
         <span className="font-bold text-neutral-800">Total</span>
@@ -53,7 +53,7 @@ function ResumenTotal({ subtotal, costoEnvio, total, config, esTakeaway = false 
   )
 }
 
-export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null, slotsRetiro = [] , direccionRetiro = null, onPreciosDesactualizados }: Props) {
+export default function KioskConfirmacionDelivery({ config, dispositivo, carrito, costoEnvio, envioAlCadete = false, pedidoCreado, onPedidoCreado, onNuevoPedido, onVolver, canal = 'delivery', mpPermitido = true, horarioTexto, pagosIniciales = null, slotsRetiro = [] , direccionRetiro = null, onPreciosDesactualizados }: Props) {
   const esTakeaway = canal === 'takeaway'
   // V1.5: hora de retiro elegida. null = ⚡ Lo antes posible (default histórico)
   const [horaRetiro, setHoraRetiro] = useState<string | null>(null)
@@ -315,7 +315,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-100 px-4 pt-3 pb-6 shadow-lg">
-        <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} esTakeaway={esTakeaway} />
+        <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} envioAlCadete={envioAlCadete} total={total} config={config} esTakeaway={esTakeaway} />
         <button onClick={confirmarDatos}
           className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all"
           style={{ backgroundColor: config.primary_color }}>
@@ -363,7 +363,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             ))}
           </div>
 
-          <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} total={total} config={config} esTakeaway={esTakeaway} />
+          <ResumenTotal subtotal={subtotal} costoEnvio={costoEnvio} envioAlCadete={envioAlCadete} total={total} config={config} esTakeaway={esTakeaway} />
 
           {errorPedido && (
                       <div className="fixed inset-0 z-50 flex items-center justify-center p-6">

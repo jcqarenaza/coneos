@@ -33,7 +33,7 @@ interface Sucursal { id: string; nombre: string; slug: string }
 
 type PorDia = Partial<Record<string, Franja[]>>
 interface NegocioCfg { horario_general: Franja[]; mensaje_cerrado: string; tolerancia_cierre: number; dias_apertura: number[] | null; horario_por_dia: PorDia | null }
-interface DeliveryCfg { activo: boolean; pausado: boolean; mensaje_pausa: string; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_envio: number; mostrar_en_app: boolean; permitir_programado: boolean }
+interface DeliveryCfg { activo: boolean; pausado: boolean; mensaje_pausa: string; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_envio: number; envio_al_cadete: boolean; mostrar_en_app: boolean; permitir_programado: boolean }
 interface TaCfg { activo: boolean; horarios: Franja[]; mensaje_fuera_horario: string; tolerancia_cierre: number; costo_servicio: number; acepta_anticipado: boolean; mostrar_en_app: boolean }
 
 // ── Editor de franjas horarias (compartido por las tres tarjetas) ──
@@ -113,7 +113,7 @@ export default function ServiciosPage() {
     setCargando(true)
     const [{ data: suc }, { data: dc }, { data: tc }, { data: cfg }] = await Promise.all([
       supabase.from('sucursales').select('horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia').eq('id', sucId).maybeSingle(),
-      supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio, mostrar_en_app, permitir_programado').eq('sucursal_id', sucId).maybeSingle(),
+      supabase.from('delivery_config').select('activo, pausado, mensaje_pausa, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_envio, envio_al_cadete, mostrar_en_app, permitir_programado').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('takeaway_config').select('activo, horarios, mensaje_fuera_horario, tolerancia_cierre, costo_servicio, acepta_anticipado, mostrar_en_app').eq('sucursal_id', sucId).maybeSingle(),
       supabase.from('empresa_config').select('modulos, mesas_activo, soporte_nombre, soporte_whatsapp, entrada_unificada').eq('empresa_id', ctx.empresaId).maybeSingle(),
     ])
@@ -139,6 +139,7 @@ export default function ServiciosPage() {
       mensaje_fuera_horario: dc?.mensaje_fuera_horario ?? '',
       tolerancia_cierre: Number(dc?.tolerancia_cierre ?? 5),
       costo_envio: Number(dc?.costo_envio ?? 0),
+      envio_al_cadete: dc?.envio_al_cadete === true,
       mostrar_en_app: dc?.mostrar_en_app !== false,
       permitir_programado: dc?.permitir_programado === true,
     })
@@ -203,6 +204,7 @@ export default function ServiciosPage() {
         mensaje_fuera_horario: delivery.mensaje_fuera_horario || null,
         tolerancia_cierre: delivery.tolerancia_cierre,
         costo_envio: delivery.costo_envio,
+        envio_al_cadete: delivery.envio_al_cadete,
         permitir_programado: delivery.permitir_programado,
       }, { onConflict: 'sucursal_id' }),
       supabase.from('takeaway_config').upsert({
@@ -494,6 +496,13 @@ export default function ServiciosPage() {
                     <div className="flex items-center gap-1" title="Costo de envío — se suma al pedido de delivery">
                       <span className="text-xs text-neutral-400">$</span>
                       <input type="number" min={0} value={delivery.costo_envio} onChange={e => { setSucio(true); setDelivery({ ...delivery, costo_envio: Number(e.target.value) }) }} disabled={!delivery.activo} className="w-20 px-2 py-1.5 rounded-lg border border-neutral-200 text-sm bg-white text-neutral-700 disabled:opacity-40" />
+                      {delivery.activo && Number(delivery.costo_envio) === 0 && (
+                        /* Costo 0 es ambiguo (JC 23/09): el comercio declara qué significa */
+                        <span className="flex items-center gap-3 text-[11px] text-neutral-500 ml-1">
+                          <label className="flex items-center gap-1 cursor-pointer"><input type="radio" checked={!delivery.envio_al_cadete} onChange={() => { setSucio(true); setDelivery({ ...delivery, envio_al_cadete: false }) }} /> Envío incluido</label>
+                          <label className="flex items-center gap-1 cursor-pointer"><input type="radio" checked={delivery.envio_al_cadete} onChange={() => { setSucio(true); setDelivery({ ...delivery, envio_al_cadete: true }) }} /> Se abona al cadete 🛵</label>
+                        </span>
+                      )}
                     </div>
                     <p className="text-[10px] text-neutral-300 mt-0.5">envío</p>
                   </td>

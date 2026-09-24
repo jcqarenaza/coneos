@@ -62,6 +62,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [dispositivo, setDispositivo] = useState<DispositivoKiosk | null>(null)
   const [config, setConfig] = useState<EmpresaConfig>({ primary_color: '#1E3A5F', secondary_color: '#F5C842', logo_url: null })
   const [costoEnvio, setCostoEnvio] = useState(4000)
+  const [envioAlCadete, setEnvioAlCadete] = useState(false)
   const [paso, setPaso] = useState<Paso>('inicio')
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>()
@@ -184,6 +185,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         const dc = horaData.delivery_config
         if (dc) {
           setCostoEnvio(Number(dc.costo_envio))
+          setEnvioAlCadete(dc.envio_al_cadete === true)
           const horarios = (dc.horarios as { desde: string; hasta: string }[]) ?? []
           // 📅 el techo con días manda (server): día cerrado = vidriera cerrada
           const techoOk = horaData.techo_abierto !== false
@@ -414,7 +416,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
           config={config} dispositivo={dispositivo}
           carrito={carrito} setCarrito={setCarrito}
           accesorios={accesorios}
-          costoEnvio={costoEnvio}
+          costoEnvio={costoEnvio} envioAlCadete={envioAlCadete}
           onConfirmar={extras => { setAvisoPrecios(false); handleConfirmarCarrito(extras) }}
           onSeguirComprando={() => setPaso('catalogo')}
           onVolver={() => setPaso('catalogo')} />
@@ -422,7 +424,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       {paso === 'confirmacion' && (
         <KioskConfirmacionDelivery
           config={config} dispositivo={dispositivo}
-          carrito={carrito} costoEnvio={costoEnvio}
+          carrito={carrito} costoEnvio={costoEnvio} envioAlCadete={envioAlCadete}
           slotsRetiro={slotsEntrega}
           pedidoCreado={pedidoCreado}
           onPedidoCreado={(num, cod) => { setPedidoCreado({ numero: num, codigo: cod }); try { if (claveCarrito) localStorage.removeItem(claveCarrito) } catch {} }}

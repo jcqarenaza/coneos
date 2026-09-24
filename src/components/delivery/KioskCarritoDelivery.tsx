@@ -12,7 +12,7 @@ interface Props {
   carrito: ItemCarrito[]
   setCarrito: (c: ItemCarrito[]) => void
   accesorios: Accesorio[]
-  costoEnvio: number
+  costoEnvio: number; envioAlCadete?: boolean
   canal?: 'delivery' | 'takeaway'
   onConfirmar: (extras: AccesorioExtra[]) => void
   onSeguirComprando: () => void
@@ -21,7 +21,7 @@ interface Props {
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 
-export default function KioskCarritoDelivery({ config, dispositivo, carrito, setCarrito, accesorios, costoEnvio, onConfirmar, onSeguirComprando, canal = 'delivery' }: Props) {
+export default function KioskCarritoDelivery({ config, dispositivo, carrito, setCarrito, accesorios, costoEnvio, envioAlCadete = false, onConfirmar, onSeguirComprando, canal = 'delivery' }: Props) {
   const esTakeaway = canal === 'takeaway'
   const [cantAccesorios, setCantAccesorios] = useState<Record<string, number>>({})
 
@@ -260,10 +260,12 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
           <span className="text-neutral-400 text-sm">Subtotal</span>
           <span className="text-neutral-600 font-semibold text-sm">{formatPrecio(subtotal + subtotalAcc)}</span>
         </div>
+        {/* Costo 0 en DELIVERY ≠ gratis: el envío se arregla con el cadete
+            (regla JC 23/09). En TA, 0 sigue siendo línea ausente (inercia). */}
         {(!esTakeaway || costoEnvio > 0) && (
           <div className="flex justify-between items-center mb-3">
             <span className="text-neutral-400 text-sm flex items-center gap-1">{esTakeaway ? <>🥡 Servicio de retiro</> : <><Truck className="h-3.5 w-3.5" /> Envío</>}</span>
-            <span className="text-neutral-600 font-semibold text-sm">{formatPrecio(costoEnvio)}</span>
+            <span className="text-neutral-600 font-semibold text-sm">{!esTakeaway && costoEnvio === 0 ? (envioAlCadete ? <span className="text-amber-600 text-xs font-bold">Se abona al cadete 🛵</span> : <span className="text-emerald-600 text-xs font-bold">Incluido</span>) : formatPrecio(costoEnvio)}</span>
           </div>
         )}
         <div className="flex justify-between items-center mb-3">

@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
   const [{ data: dc }, { data: emp }, { data: suc }] = await Promise.all([
     supabase.from('delivery_config')
-      .select('costo_envio, horarios, mensaje_fuera_horario, activo, pausado, mensaje_pausa, tolerancia_cierre, permitir_programado')
+      .select('costo_envio, envio_al_cadete, horarios, mensaje_fuera_horario, activo, pausado, mensaje_pausa, tolerancia_cierre, permitir_programado')
       .eq('sucursal_id', sucursal_id)
       .single(),
     empresa_id ? supabase.from('empresas')
