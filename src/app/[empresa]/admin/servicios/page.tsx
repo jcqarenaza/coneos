@@ -25,6 +25,7 @@ import { ConePageHeader, ConeCard } from '@/components/admin/ConeComponents'
 import { Loader2, Plus, X, CloudRain, Lock } from 'lucide-react'
 import DispositivosTab from '@/components/admin/DispositivosTab'
 import QrAccesosTab from '@/components/admin/QrAccesosTab'
+import SucursalesTab from '@/components/admin/SucursalesTab'
 import EquipoTab from '@/components/admin/EquipoTab'
 
 interface Franja { desde: string; hasta: string }
@@ -102,7 +103,7 @@ export default function ServiciosPage() {
   const [guardando, setGuardando] = useState<string | null>(null)
   const [sucio, setSucio] = useState(false)
   // Orden de flujo (decisión JC): creás el dispositivo → horarios y servicios → mensajes → QR
-  const [tab, setTab] = useState<'dispositivos' | 'equipo' | 'servicios' | 'mensajes' | 'app' | 'qr'>('dispositivos')
+  const [tab, setTab] = useState<'sucursales' | 'dispositivos' | 'equipo' | 'servicios' | 'mensajes' | 'app' | 'qr'>('dispositivos')
   const [aviso, setAviso] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const avisar = (m: string) => { setAviso(m); setTimeout(() => setAviso(null), 2500) }
@@ -298,7 +299,7 @@ export default function ServiciosPage() {
       {error && <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 font-medium">{error}</div>}
 
       <div className="flex gap-2">
-        {([['dispositivos', '🔧 Dispositivos'], ['equipo', '👥 Equipo'], ['servicios', '🕗 Horarios y servicios'], ['mensajes', '💬 Mensajes'], ['app', '🌐 App'], ['qr', '📱 QR y accesos']] as const).map(([id, label]) => (
+        {([['sucursales', '🏢 Sucursales'], ['dispositivos', '🔧 Dispositivos'], ['equipo', '👥 Equipo'], ['servicios', '🕗 Horarios y servicios'], ['mensajes', '💬 Mensajes'], ['app', '🌐 App'], ['qr', '📱 QR y accesos']] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${tab === id ? 'bg-neutral-800 text-white' : 'bg-white border border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}>
             {label}
@@ -324,6 +325,7 @@ export default function ServiciosPage() {
         </div>
       )}
 
+      {tab === 'sucursales' && <SucursalesTab />}
       {tab === 'dispositivos' && <DispositivosTab sucursalId={sucursales.length > 1 && !dispTodas ? sucursalSel : undefined} />}
 
       {/* ═══ TAB EQUIPO (Operadores + Colaboradores unificados, mudados de Operación) ═══ */}

@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     supabase.from('empresa_config')
       .select('primary_color, secondary_color, logo_url, modulos, entrada_unificada')
       .eq('empresa_id', empresa.id).maybeSingle(),
-    supabase.from('sucursales').select('id, nombre, slug, direccion, horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
+    supabase.from('sucursales').select('id, nombre, slug, direccion, activo, horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
   ])
   if (!sucursal) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
 
@@ -115,7 +115,13 @@ export async function GET(request: Request) {
   // 📅 DÍAS (contrato CTO 23/09): el día vive en Negocio y manda sobre TODO.
   // Día no operativo (ni habilita jornada ni hay resaca vigente) = cierre
   // TOTAL, TA incluido — y el cartel dice QUÉ día reabre.
+  const sucursalInactiva = (sucursal as { activo?: boolean }).activo === false
   const diaOk = diaOperativo(techoFranjas, diasApertura, tolNegocio, horaMinutosAR(), diaSemanaAR(), porDiaTecho)
+  if (sucursalInactiva) {
+    // activo con dientes: la puerta entera muda, con mensaje digno (QRs impresos)
+    if (deliveryConfigurado) { deliveryDisponible = false; deliveryMotivo = 'No disponible'; deliveryProximo = null }
+    if (taConfigurado) { taDisponible = false; taMotivo = 'No disponible'; taProximo = null }
+  }
   if (!diaOk) {
     const diaVuelta = proximoDiaHabil(diasApertura)
     const franjasVuelta = franjasDeDia(techoFranjas, porDiaTecho, diaVuelta)
@@ -138,7 +144,7 @@ export async function GET(request: Request) {
   // ANTICIPADO (decisión JC): TA cerrado pero con franja de HOY por delante →
   // la tarjeta queda ELEGIBLE con "🟠 Abre a las HH — pedí ahora" (la page de
   // TA recibe al cliente en modo anticipado). Sin franja restante = cerrado.
-  const taAnticipado = diaOk && taConfigurado && !taDisponible && !!taProximo && (tc?.acepta_anticipado === true)
+  const taAnticipado = !sucursalInactiva && diaOk && taConfigurado && !taDisponible && !!taProximo && (tc?.acepta_anticipado === true)
 
   return NextResponse.json({
     nombre: empresa.nombre,
@@ -147,7 +153,7 @@ export async function GET(request: Request) {
     negocio: {
       direccion: sucursal.direccion ?? null,
       horarios: (sucursal.horario_general as Franja[] | null) ?? [],
-      mensaje: sucursal.mensaje_cerrado ?? null,
+      mensaje: sucursalInactiva ? '🟠 Esta sucursal no se encuentra disponible.' : sucursal.mensaje_cerrado ?? null,
     },
     config: {
       primary_color: cfg?.primary_color ?? '#1E3A5F',

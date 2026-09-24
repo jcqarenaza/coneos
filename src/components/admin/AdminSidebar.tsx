@@ -30,7 +30,6 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
   // administrativo. seccion = caption gris sobre el grupo.
   const NAV = [
     { href: `/${slug}/admin`, label: 'Dashboard', icon: LayoutDashboard, exact: true },
-    { href: `/${slug}/admin/sucursales`, label: 'Sucursales', icon: Store },
     { href: `/${slug}/admin/servicios`, label: 'Config. del negocio', icon: Clock },
     { href: `/${slug}/admin/catalogo`, label: 'Catálogo', icon: BookOpen, seccion: 'Config. de productos' },
     { href: `/${slug}/admin/accesorios`, label: 'Accesorios', icon: Cherry },

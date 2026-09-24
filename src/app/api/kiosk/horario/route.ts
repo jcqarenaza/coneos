@@ -18,11 +18,14 @@ export async function GET(request: Request) {
 
   const supabase = createAdminClient()
   const { data: suc } = await supabase.from('sucursales')
-    .select('horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia')
+    .select('activo, horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia')
     .eq('id', sucursalId).maybeSingle()
   if (!suc) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
 
   const horarios = (suc.horario_general as Franja[] | null) ?? []
+  if ((suc as { activo?: boolean }).activo === false) {
+    return NextResponse.json({ abierto: false, mensaje: '🟠 Esta sucursal no se encuentra disponible.' })
+  }
   const dias = (suc.dias_apertura as number[] | null) ?? null
   // 📅 Sin franjas: el día decide solo. Con franjas: el motor aplica el
   // contrato de jornada (el día pertenece a su apertura).

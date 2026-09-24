@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       .eq('id', empresa_id)
       .single() : Promise.resolve({ data: null }),
     supabase.from('sucursales')
-      .select('horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia')
+      .select('activo, horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia')
       .eq('id', sucursal_id)
       .maybeSingle()
   ])
@@ -38,11 +38,12 @@ export async function GET(request: Request) {
   const diasAp = (suc?.dias_apertura as number[] | null) ?? null
   const porDia = (suc?.horario_por_dia as HorarioPorDia | null) ?? null
   const tolNeg = Number(suc?.tolerancia_cierre ?? 0)
-  const techo_abierto = porDia
+  const sucursalInactiva = (suc as { activo?: boolean } | null)?.activo === false
+  const techo_abierto = !sucursalInactiva && (porDia
     ? estaAbierto(techoF, tolNeg, horaMinutosAR(), diasAp, diaSemanaAR(), porDia)
     : (techoF.length === 0
       ? diaHabilita(diasAp, diaSemanaAR())
-      : estaAbierto(techoF, tolNeg, horaMinutosAR(), diasAp))
+      : estaAbierto(techoF, tolNeg, horaMinutosAR(), diasAp)))
 
-  return NextResponse.json({ hora, delivery_config: dc, empresa_config: emp, techo_abierto, mensaje_negocio: suc?.mensaje_cerrado ?? null })
+  return NextResponse.json({ hora, delivery_config: dc, empresa_config: emp, techo_abierto, mensaje_negocio: sucursalInactiva ? '🟠 Esta sucursal no se encuentra disponible.' : (suc?.mensaje_cerrado ?? null) })
 }

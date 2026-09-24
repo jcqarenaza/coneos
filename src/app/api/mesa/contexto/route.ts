@@ -21,9 +21,10 @@ export async function GET(request: Request) {
 
   const [{ data: cfg }, { data: sucursal }] = await Promise.all([
     supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, modulos, mesas_activo').eq('empresa_id', empresa.id).maybeSingle(),
-    supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
+    supabase.from('sucursales').select('id, nombre, slug, activo').eq('empresa_id', empresa.id).eq('slug', sucursalSlug).maybeSingle(),
   ])
   if (!sucursal) return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
+  if ((sucursal as { activo?: boolean }).activo === false) return NextResponse.json({ error: '🟠 Esta sucursal no se encuentra disponible.' }, { status: 403 })
 
   const modulos = (cfg?.modulos ?? {}) as Record<string, boolean>
   if (modulos.mesas !== true) {

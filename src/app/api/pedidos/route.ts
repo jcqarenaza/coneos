@@ -40,8 +40,13 @@ export async function POST(request: Request) {
   // "los lunes no abrimos" = no hay quien sirva un retiro.
   if (!venta_caja) {
     const { data: suc } = await supabase.from('sucursales')
-      .select('horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia')
+      .select('activo, horario_general, mensaje_cerrado, tolerancia_cierre, dias_apertura, horario_por_dia')
       .eq('id', sucursal_id).maybeSingle()
+    // CICLO SUCURSALES (orden CTO): activo con dientes — sucursal
+    // desactivada NO OPERA, ningún canal, ninguna pestaña vieja.
+    if (suc && (suc as { activo?: boolean }).activo === false) {
+      return NextResponse.json({ error: '🟠 Esta sucursal no se encuentra disponible.' }, { status: 409 })
+    }
     const techo = (suc?.horario_general as Franja[] | null) ?? null
     const dias = (suc?.dias_apertura as number[] | null) ?? null
     const porDia = (suc?.horario_por_dia as HorarioPorDia | null) ?? null
