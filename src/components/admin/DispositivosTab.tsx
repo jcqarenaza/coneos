@@ -7,7 +7,7 @@ import { ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeCompone
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Loader2, Copy, Check, Monitor, Tablet, Smartphone, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import { Plus, Loader2, Copy, Check, Pencil, Trash2, ExternalLink } from 'lucide-react'
 import { ChipSucursal, LeyendaSucursales } from '@/components/admin/SucursalColor'
 import QRCode from 'qrcode'
 
@@ -26,13 +26,13 @@ const TIPOS = [
 ]
 
 const tipoIcon = (tipo: string) => {
-  // Loguitos a simple vista (JC 23/09): cada tipo con su fierro
-  if (tipo === 'KIOSK') return <Tablet className="h-4 w-4" />
-  if (tipo === 'DISPLAY') return <Monitor className="h-4 w-4" />
+  // Loguitos con color a simple vista (JC 23/09): cada tipo con su fierro
+  if (tipo === 'KIOSK') return <span className="text-sm leading-none">🖥️</span>
+  if (tipo === 'DISPLAY') return <span className="text-sm leading-none">📺</span>
   if (tipo === 'DELIVERY') return <span className="text-sm leading-none">🛵</span>
   if (tipo === 'CAJA') return <span className="text-sm leading-none">💵</span>
   if (tipo === 'PREPARACION') return <span className="text-sm leading-none">👨‍🍳</span>
-  return <Monitor className="h-4 w-4" />
+  return <span className="text-sm leading-none">📱</span>
 }
 
 const tipoBadge = (tipo: string) => {
