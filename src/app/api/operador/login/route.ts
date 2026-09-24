@@ -32,7 +32,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'PIN incorrecto' }, { status: 401 })
   }
 
-  // Crear sesión
+  // Crear sesión — EQUIPO V1 (H1, orden CTO 24/09): la tabla gobierna por
+  // `estado` text ('ACTIVA'/'CERRADA') + inicio/fin; la columna `activa` que
+  // se insertaba acá NO EXISTE → el insert fallaba mudo y las sesiones nunca
+  // se registraban (nadie lo notó porque las pantallas solo usan `operador`).
+  // El logout ya hablaba el idioma correcto; el desalineado era este insert.
   const { data: sesion } = await supabase
     .from('operator_sessions')
     .insert({
@@ -40,7 +44,8 @@ export async function POST(request: Request) {
       dispositivo_id,
       sucursal_id,
       empresa_id,
-      activa: true,
+      estado: 'ACTIVA',
+      inicio: new Date().toISOString(),
     })
     .select('id')
     .single()
