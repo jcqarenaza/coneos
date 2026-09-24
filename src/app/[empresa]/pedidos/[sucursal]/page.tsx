@@ -22,11 +22,14 @@
 // ============================================================
 
 import { useEffect, useState } from 'react'
+import RegistroVisita from '@/components/RegistroVisita'
 
 interface Canal { configurado: boolean; visible?: boolean; disponible: boolean; anticipado?: boolean; motivo: string | null; proximo: string | null; url: string }
 interface Contexto {
   nombre: string
   sucursal_nombre: string
+  empresa_id?: string
+  sucursal_id?: string
   negocio: { direccion: string | null; horarios: { desde: string; hasta: string }[]; mensaje: string | null }
   config: { primary_color: string; secondary_color: string; logo_url: string | null }
   servicios: { delivery: Canal; takeaway: Canal }
@@ -102,6 +105,7 @@ export default function EntradaPedidosPage() {
     const horariosNegocio = [...(ctx.negocio?.horarios ?? [])].sort((a, b) => a.desde.localeCompare(b.desde)).map(h => `${h.desde} a ${h.hasta}`).join(' y ')
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3 text-center" style={{ backgroundColor: '#faf8f5' }}>
+        {ctx.empresa_id && <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id ?? null} canal="APP" />}
         {ctx.config.logo_url && <img src={ctx.config.logo_url} alt="Logo" className="w-28 h-28 object-contain" />}
         <h1 className="text-2xl font-black text-neutral-800">{ctx.nombre}</h1>
         <p className="text-sm text-neutral-400 -mt-2">{ctx.sucursal_nombre}</p>
@@ -113,6 +117,7 @@ export default function EntradaPedidosPage() {
   }
 
   const color = ctx.config.primary_color
+  const visita = ctx.empresa_id ? <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id ?? null} canal="APP" /> : null
   const tarjetas: { emoji: string; titulo: string; sub: string; canal: Canal }[] = [
     { emoji: '🛵', titulo: 'Delivery', sub: 'Te lo llevamos', canal: ctx.servicios.delivery },
     { emoji: '🥡', titulo: 'Take Away', sub: 'Pedí y pasá a retirarlo', canal: ctx.servicios.takeaway },
@@ -124,6 +129,7 @@ export default function EntradaPedidosPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-5 py-10" style={{ backgroundColor: '#faf8f5' }}>
+      {visita}
       <div className="w-full max-w-md text-center">
         {ctx.config.logo_url
           ? <img src={ctx.config.logo_url} alt="Logo" className="w-28 h-28 object-contain mx-auto mb-4" />

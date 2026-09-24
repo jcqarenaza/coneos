@@ -89,6 +89,10 @@ export default function TraficoPage() {
   const [loading, setLoading] = useState(true)
   const [delivery, setDelivery] = useState<Dia[]>([])
   const [mesa, setMesa] = useState<Dia[]>([])
+  const [takeaway, setTakeaway] = useState<Dia[]>([])
+  const [app, setApp] = useState<Dia[]>([])
+  const [adquisicion, setAdquisicion] = useState<{ referrers: { nombre: string; visitas: number }[]; utm_sources: { nombre: string; visitas: number }[] }>({ referrers: [], utm_sources: [] })
+  const [destinos, setDestinos] = useState<{ total: number; items: { destino: string; pedidos: number; participacion: number }[] }>({ total: 0, items: [] })
   const [modulos, setModulos] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
@@ -101,6 +105,10 @@ export default function TraficoPage() {
       .then(([d, { data: cfg }]) => {
         setDelivery(d.delivery ?? [])
         setMesa(d.mesa ?? [])
+        setTakeaway(d.takeaway ?? [])
+        setApp(d.app ?? [])
+        setAdquisicion(d.adquisicion ?? { referrers: [], utm_sources: [] })
+        setDestinos(d.destinos ?? { total: 0, items: [] })
         setModulos((cfg?.modulos ?? {}) as Record<string, boolean>)
         setLoading(false)
       })
@@ -116,15 +124,63 @@ export default function TraficoPage() {
         <p className="text-neutral-400 text-sm">Cuántos clientes entran desde el celular y cuántos terminan pidiendo — últimos 14 días</p>
       </div>
       {/* Cada canal aparece solo si el módulo está contratado (o si tuvo datos alguna vez) */}
+      {app.length > 0 && <CanalCard titulo="App de pedidos" emoji="📱" serie={app} activo={app.length > 0} />}
       {(modulos.delivery === true || delivery.length > 0) && <CanalCard titulo="Delivery" emoji="🛵" serie={delivery} activo={delivery.length > 0} />}
+      {(modulos.takeaway === true || takeaway.length > 0) && <CanalCard titulo="Take Away" emoji="🥡" serie={takeaway} activo={takeaway.length > 0} />}
       {(modulos.mesas === true || mesa.length > 0) && <CanalCard titulo="Mesas" emoji="🪑" serie={mesa} activo={mesa.length > 0} />}
+
+      {/* ¿De dónde vienen? — adquisición (referrer + utm_source, 14 días) */}
+      {(adquisicion.referrers.length > 0 || adquisicion.utm_sources.length > 0) && (
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-5">
+          <h2 className="font-black text-neutral-800 mb-3">🌐 ¿De dónde vienen?</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {adquisicion.utm_sources.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wide mb-1.5">Campañas (utm_source)</p>
+                {adquisicion.utm_sources.map(r => (
+                  <div key={r.nombre} className="flex justify-between text-sm py-0.5"><span className="text-neutral-600 font-semibold">{r.nombre}</span><span className="text-neutral-400 font-bold">{r.visitas}</span></div>
+                ))}
+              </div>
+            )}
+            {adquisicion.referrers.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wide mb-1.5">Sitios que derivan (referrer)</p>
+                {adquisicion.referrers.map(r => (
+                  <div key={r.nombre} className="flex justify-between text-sm py-0.5"><span className="text-neutral-600 font-semibold truncate mr-2">{r.nombre}</span><span className="text-neutral-400 font-bold">{r.visitas}</span></div>
+                ))}
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-neutral-300 mt-3">Solo se registra el primer origen conocido de cada visitante por día. Sin campaña ni sitio derivador, la visita cuenta igual pero no aparece acá.</p>
+        </div>
+      )}
+
+      {/* ¿A dónde entregamos? — destino delivery desde datos_delivery, sin captura nueva */}
+      {destinos.items.length > 0 && (
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-5">
+          <h2 className="font-black text-neutral-800 mb-1">📦 ¿A dónde entregamos?</h2>
+          <p className="text-xs text-neutral-400 mb-3">Direcciones más pedidas por delivery — últimos 14 días ({destinos.total} entregas)</p>
+          <div className="space-y-1.5">
+            {destinos.items.map(d => (
+              <div key={d.destino} className="flex items-center gap-2 text-sm">
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <div className="h-4 rounded bg-neutral-800/80" style={{ width: `${Math.max(4, d.participacion)}%` }} />
+                  <span className="text-neutral-600 font-semibold text-xs truncate">{d.destino}</span>
+                </div>
+                <span className="w-10 text-right font-bold text-neutral-700">{d.pedidos}</span>
+                <span className="w-12 text-right text-neutral-400 font-semibold text-xs">{d.participacion}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {modulos.delivery !== true && modulos.mesas !== true && delivery.length === 0 && mesa.length === 0 && (
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-8 text-center">
           <span className="text-4xl block mb-2">📈</span>
           <p className="text-neutral-500 text-sm">El tráfico se mide en los canales donde tus clientes entran desde el celular: Delivery y Mesas. Activá alguno para empezar a medir.</p>
         </div>
       )}
-      <p className="text-xs text-neutral-300 text-center">Visitantes = celulares únicos por día (anónimo). Conversión = pedidos ÷ visitantes.</p>
+      <p className="text-xs text-neutral-300 text-center">Visitantes = celulares únicos por día (anónimo). Conversión = pedidos ÷ visitantes. La App convierte contra los pedidos online (Delivery + Take Away).</p>
     </div>
   )
 }

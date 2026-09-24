@@ -158,7 +158,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     }))
     const res = await fetch('/api/pedidos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(horaRetiro ? { hora_retiro: horaRetiro } : {}) /* programado: ambos canales; el server exige la llave en delivery */ }),
+      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', visitante_id: (() => { try { return localStorage.getItem('coneos_visitante_id') } catch { return null } })(), tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(horaRetiro ? { hora_retiro: horaRetiro } : {}) /* programado: ambos canales; el server exige la llave en delivery */ }),
     })
     const data = await res.json().catch(() => null)
     setCreando(false)

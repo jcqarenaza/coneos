@@ -2,12 +2,19 @@
 
 import { useEffect } from 'react'
 
-// Registro de visita de cliente final — soltar en delivery y mesa:
+// Registro de visita de cliente final — soltar en las puertas públicas:
 //   <RegistroVisita empresaId={...} sucursalId={...} canal="DELIVERY" />
 // Un ping por carga; id anónimo persistente por navegador; dedupe de 10 min
 // por sesión para no inflar hits con re-renders. No renderiza nada.
+//
+// ══ TRÁFICO V1 (GO CTO 24/09) ══
+// · Unión de canales completa: DELIVERY | MESA | TAKEAWAY | APP.
+// · Adquisición: viaja document.referrer (solo si es EXTERNO — la navegación
+//   interna no es un origen) + utm_source/medium/campaign de la URL. El
+//   server los guarda con regla first-known: jamás pisa un origen ya sabido.
+// · Sin IP, sin UA, sin geo, sin fingerprinting (regla 21 del ciclo).
 export default function RegistroVisita({ empresaId, sucursalId, canal }: {
-  empresaId: string; sucursalId?: string | null; canal: 'DELIVERY' | 'MESA'
+  empresaId: string; sucursalId?: string | null; canal: 'DELIVERY' | 'MESA' | 'TAKEAWAY' | 'APP'
 }) {
   useEffect(() => {
     if (!empresaId) return
@@ -25,10 +32,26 @@ export default function RegistroVisita({ empresaId, sucursalId, canal }: {
         localStorage.setItem('coneos_visitante_id', vid)
       }
     } catch { vid = 'v_mem_' + Math.random().toString(36).substring(2) }
+
+    // Adquisición (best-effort): referrer externo + UTM de la URL actual
+    let referrer: string | null = null
+    let utm: Record<string, string> | null = null
+    try {
+      const ref = document.referrer
+      if (ref && !ref.startsWith(window.location.origin)) referrer = ref.slice(0, 300)
+      const sp = new URLSearchParams(window.location.search)
+      const u: Record<string, string> = {}
+      for (const k of ['utm_source', 'utm_medium', 'utm_campaign']) {
+        const v = sp.get(k)
+        if (v) u[k.replace('utm_', '')] = v.slice(0, 80)
+      }
+      if (Object.keys(u).length) utm = u
+    } catch {}
+
     fetch('/api/visitas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visitante_id: vid, empresa_id: empresaId, sucursal_id: sucursalId ?? null, canal }),
+      body: JSON.stringify({ visitante_id: vid, empresa_id: empresaId, sucursal_id: sucursalId ?? null, canal, referrer, utm }),
     }).catch(() => {})
   }, [empresaId, sucursalId, canal])
   return null

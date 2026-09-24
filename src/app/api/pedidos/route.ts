@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const body = await request.json()
   const {
     empresa_id, sucursal_id, dispositivo_id, items,
-    metodo_pago, origen = 'KIOSK',
+    metodo_pago, origen = 'KIOSK', visitante_id = null,
     tipo_pedido = 'kiosk', costo_envio = 0, datos_delivery = null,
     // MESA: número de mesa + nombre del cliente; pago_mp true = paga ya con MP,
     // false = "pagar al mozo" (va a cocina sin cobrar, queda por cobrar en caja)
@@ -342,5 +342,11 @@ export async function POST(request: Request) {
     }
   }
 
+  const pedidoId = (pedido as { id?: string } | null)?.id
+  if (visitante_id && pedidoId) {
+    await supabase.from('pedidos')
+      .update({ visitante_id: String(visitante_id).slice(0, 80) })
+      .eq('id', pedidoId).then(() => {}, () => {})
+  }
   return NextResponse.json({ pedido: { ...(pedido as object), hora_retiro: horaRetiroConfirmada } })
 }

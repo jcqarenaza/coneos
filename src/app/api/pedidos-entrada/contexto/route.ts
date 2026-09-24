@@ -149,6 +149,8 @@ export async function GET(request: Request) {
   return NextResponse.json({
     nombre: empresa.nombre,
     sucursal_nombre: sucursal.nombre,
+    empresa_id: empresa.id,
+    sucursal_id: sucursal.id,
     // 2.1a: la página del negocio como fallback — datos que YA viven en sucursales
     negocio: {
       direccion: sucursal.direccion ?? null,
