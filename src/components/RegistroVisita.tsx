@@ -18,11 +18,23 @@ export default function RegistroVisita({ empresaId, sucursalId, canal }: {
 }) {
   useEffect(() => {
     if (!empresaId) return
+    // Adquisición se detecta ANTES del dedupe: un ping que trae origen no se
+    // puede tirar (fix T2: el dedupe se comía la campaña si hubo entrada
+    // limpia primero). Perfora una sola vez por sesión.
+    let hayOrigen = false
+    try {
+      const sp0 = new URLSearchParams(window.location.search)
+      const refExt = document.referrer && !document.referrer.startsWith(window.location.origin)
+      hayOrigen = refExt || !!(sp0.get('utm_source') || sp0.get('utm_medium') || sp0.get('utm_campaign'))
+    } catch {}
     try {
       const clave = `coneos_visita_${canal}_${empresaId}`
+      const claveOrigen = clave + '_origen'
       const ultima = Number(sessionStorage.getItem(clave) ?? 0)
-      if (Date.now() - ultima < 600000) return
+      const origenYaEnviado = sessionStorage.getItem(claveOrigen) === '1'
+      if (Date.now() - ultima < 600000 && (!hayOrigen || origenYaEnviado)) return
       sessionStorage.setItem(clave, String(Date.now()))
+      if (hayOrigen) sessionStorage.setItem(claveOrigen, '1')
     } catch {}
     let vid = ''
     try {
