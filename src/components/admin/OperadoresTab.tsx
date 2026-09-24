@@ -7,7 +7,7 @@ import { ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeCompone
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Loader2, Pencil } from 'lucide-react'
 import { ChipSucursal, LeyendaSucursales } from '@/components/admin/SucursalColor'
 
 interface Sucursal { id: string; nombre: string }
@@ -49,8 +49,9 @@ export default function OperadoresTab() {
     const supabase = createClient()
     let pin_hash = undefined
     if (form.pin) {
-      const res = await fetch('/api/operador/hash-pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: form.pin }) })
+      const res = await fetch('/api/operador/hash-pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: form.pin, empresa_id: ctx.empresaId, operador_id: editId }) })
       const data = await res.json()
+      if (!res.ok) { alert(data.error ?? 'PIN inválido'); setSaving(false); return }
       pin_hash = data.hash
     }
     const payload: Record<string, unknown> = {
@@ -70,12 +71,6 @@ export default function OperadoresTab() {
     load()
   }
 
-  async function handleDelete(op: Operador) {
-    if (!confirm(`¿Eliminar al operador "${op.nombre}"?`)) return
-    const supabase = createClient()
-    await supabase.from('operadores').delete().eq('id', op.id)
-    load()
-  }
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
 
@@ -89,7 +84,7 @@ export default function OperadoresTab() {
         <div className="mb-3"><LeyendaSucursales sucursales={sucursales} /></div>
         {data.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin operadores</div>}
         {data.map(op => (
-          <div key={op.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
+          <div key={op.id} className={`bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm ${!op.activo ? "opacity-55 grayscale" : ""}`}>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-neutral-800 flex items-center justify-center text-white font-bold">{op.nombre[0].toUpperCase()}</div>
               <div>
@@ -109,7 +104,6 @@ export default function OperadoresTab() {
                 {op.activo ? 'Desactivar' : 'Activar'}
               </button>
               <button onClick={() => openEdit(op)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
-              <button onClick={() => handleDelete(op)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
         ))}

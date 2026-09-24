@@ -6,13 +6,13 @@ import { useEmpresa } from '@/lib/useEmpresa'
 import { ConeButton, ConeModal } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Loader2, Pencil } from 'lucide-react'
 
 interface Colaborador { id: string; nombre: string; rol: string; activo: boolean }
 
 const ROLES = [
   { value: 'cadete', label: '🛵 Cadete' },
-  { value: 'otro',   label: '👤 Otro' },
+  { value: 'mozo', label: '🍽️ Mozo' },
 ]
 
 export default function ColaboradoresTab() {
@@ -61,12 +61,6 @@ export default function ColaboradoresTab() {
     load()
   }
 
-  async function handleDelete(row: Colaborador) {
-    if (!confirm(`¿Eliminar a "${row.nombre}"?`)) return
-    const supabase = createClient()
-    await supabase.from('colaboradores').delete().eq('id', row.id)
-    load()
-  }
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-neutral-300" /></div>
 
@@ -78,7 +72,7 @@ export default function ColaboradoresTab() {
       <div className="space-y-2">
         {data.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin colaboradores</div>}
         {data.map(row => (
-          <div key={row.id} className="bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm">
+          <div key={row.id} className={`bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm ${!row.activo ? "opacity-55 grayscale" : ""}`}>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center text-xl">
                 {row.rol === 'cadete' ? '🛵' : '👤'}
@@ -101,7 +95,6 @@ export default function ColaboradoresTab() {
                 <span className={`absolute top-0.5 h-5 w-5 bg-white rounded-full shadow transition-all ${row.activo ? 'left-[22px]' : 'left-0.5'}`} />
               </button>
               <button onClick={() => openEdit(row)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
-              <button onClick={() => handleDelete(row)} className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
         ))}

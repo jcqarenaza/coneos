@@ -30,6 +30,7 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
     function onKey(e: KeyboardEvent) {
       if (e.key >= '0' && e.key <= '9') handlePin(e.key)
       else if (e.key === 'Backspace') handleDelete()
+      else if (e.key === 'Enter' && pin.length >= 4) submitPin(pin)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -47,12 +48,14 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
       .catch(() => setLoadingOps(false))
   }, [dispositivo])
 
+  // EQUIPO V1: PIN de 4 a 6 dígitos. El gesto de siempre casi no cambia:
+  // desde el 4to dígito aparece ✓ (o Enter) para confirmar; al 6to entra solo.
   function handlePin(digit: string) {
-    if (pin.length >= 4) return
+    if (pin.length >= 6) return
     const nuevo = pin + digit
     setPin(nuevo)
     setError('')
-    if (nuevo.length === 4) submitPin(nuevo)
+    if (nuevo.length === 6) submitPin(nuevo)
   }
 
   function handleDelete() { setPin(p => p.slice(0, -1)); setError('') }
@@ -75,7 +78,7 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
     onLogin(data)
   }
 
-  const digits = ['1','2','3','4','5','6','7','8','9','','0','⌫']
+  const digits = ['1','2','3','4','5','6','7','8','9','✓','0','⌫']
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center p-6">
@@ -122,7 +125,7 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
 
             {/* Dots */}
             <div className="flex justify-center gap-4 mb-3">
-              {[0,1,2,3].map(i => (
+              {Array.from({ length: Math.max(4, pin.length) }).map((_, i) => (
                 <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all duration-150 ${i < pin.length ? 'bg-neutral-800 border-neutral-800 scale-110' : 'bg-transparent border-neutral-300'}`} />
               ))}
             </div>
@@ -134,10 +137,10 @@ export default function SeleccionOperador({ dispositivo, onLogin }: Props) {
             <div className="grid grid-cols-3 gap-3">
               {digits.map((d, i) => (
                 <button key={i}
-                  onClick={() => { if (d === '⌫') handleDelete(); else if (d !== '') handlePin(d) }}
-                  disabled={loading || d === ''}
+                  onClick={() => { if (d === '⌫') handleDelete(); else if (d === '✓') { if (pin.length >= 4) submitPin(pin) } else handlePin(d) }}
+                  disabled={loading || (d === '✓' && pin.length < 4)}
                   className={`py-5 rounded-2xl text-xl font-bold transition-all active:scale-95 ${
-                    d === '' ? 'invisible' :
+                    d === '✓' ? 'bg-neutral-800 text-white hover:bg-neutral-700 disabled:opacity-30' :
                     d === '⌫' ? 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200' :
                     'bg-white border border-neutral-200 text-neutral-800 hover:bg-neutral-50 shadow-sm'
                   } disabled:opacity-50`}>
