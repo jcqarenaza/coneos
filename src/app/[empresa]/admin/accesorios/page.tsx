@@ -106,6 +106,7 @@ export default function AccesoriosPage() {
         precio_adicional: form.precio,
         imagen_url: form.imagen_url,
         activo: form.activo,
+        visible_kiosk: true, // el endpoint del kiosk lo exige; asegura viejos cargados a mano
       }).eq('id', editId)
     } else {
       await supabase.from('opciones').insert({
@@ -115,6 +116,7 @@ export default function AccesoriosPage() {
         precio_adicional: form.precio,
         imagen_url: form.imagen_url,
         activo: form.activo,
+        visible_kiosk: true, // BUG cazado 23/09: sin esto el accesorio nace invisible en el kiosk
       })
     }
     setGuardando(false)
@@ -156,6 +158,9 @@ export default function AccesoriosPage() {
                 <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${a.activo ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-400'}`}>
                   {a.activo ? 'Activo' : 'Inactivo'}
                 </span>
+                {Number(a.precio_adicional) === 0 && (
+                  <span className="ml-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-600" title="Los accesorios con precio 0 no se ofrecen en el pedido">$0 → no se ofrece</span>
+                )}
               </div>
               <div className="flex flex-col gap-1">
                 <button onClick={() => openEdit(a)} className="p-2 text-neutral-300 hover:text-neutral-600 transition-colors"><Pencil className="h-4 w-4" /></button>
@@ -181,6 +186,7 @@ export default function AccesoriosPage() {
               <div className="space-y-1.5">
                 <Label>Precio ($)</Label>
                 <Input type="number" value={form.precio} onChange={e => setForm({ ...form, precio: Number(e.target.value) })} />
+                {form.precio === 0 && <p className="text-xs text-amber-600">Con precio 0 el accesorio no se ofrece en el pedido.</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>Imagen</Label>
