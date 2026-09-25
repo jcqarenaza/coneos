@@ -86,6 +86,7 @@ export default function TakeawayPage() {
           if (d.estado === 'PAID' || d.estado === 'PREPARING' || d.estado === 'READY' || d.estado === 'DELIVERED') {
             try { sessionStorage.removeItem('coneos_mp_pedido') } catch {}
             setPedidoCreado({ numero: d.numero_pedido, codigo: d.codigo_retiro })
+            setCarrito([])
             setPaso('confirmacion')
             return
           }
