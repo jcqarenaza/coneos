@@ -21,15 +21,18 @@ export async function GET(request: Request) {
   const empresa_id = searchParams.get('empresa_id')
   if (!empresa_id) return NextResponse.json({ error: 'empresa_id requerido' }, { status: 400 })
   const supabase = createAdminClient()
-  const [{ data }, { data: pagos }] = await Promise.all([
+  // MULTI-CUIT B1.1 (JC 25/09): el chip MP salía de dos llaves viejas de
+  // sucursal_pagos (pre-C1) que ya no representan la realidad. Fuente única:
+  // hay credencial MP ACTIVA en la empresa → MP se ofrece para facturar.
+  const [{ data }, { count: credsMp }] = await Promise.all([
     supabase.from('facturacion_config')
       .select('activo, cert_pem, key_pem, auto_facturar, metodos_auto').eq('empresa_id', empresa_id).is('sucursal_id', null).maybeSingle(),
-    supabase.from('sucursal_pagos').select('acepta_mp_kiosk, acepta_mp_delivery').eq('empresa_id', empresa_id),
+    supabase.from('mp_credenciales').select('id', { count: 'exact', head: true }).eq('empresa_id', empresa_id).eq('activo', true),
   ])
   const configurada = !!(data?.activo && data?.cert_pem && data?.key_pem)
   const auto = data?.auto_facturar !== false
   const metodos = Array.isArray(data?.metodos_auto) ? (data!.metodos_auto as string[]).filter(m => METODOS_VALIDOS.includes(m)) : ['transferencia']
-  const hayMP = (pagos ?? []).some(p => p.acepta_mp_kiosk || p.acepta_mp_delivery)
+  const hayMP = (credsMp ?? 0) > 0
   const disponibles = hayMP ? METODOS_VALIDOS : METODOS_VALIDOS.filter(m => m !== 'mp')
   return NextResponse.json({ configurada, auto, metodos, disponibles, activa: configurada && auto && metodos.length > 0 })
 }
