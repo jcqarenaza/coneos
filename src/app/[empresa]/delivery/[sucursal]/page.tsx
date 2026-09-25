@@ -269,6 +269,34 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
   // Carrito persistente: si el cliente recarga o cambia de app (ej. va al home
   // banking a hacer la transferencia), el carrito lo espera. TTL 2 horas.
+
+  // Despertar de pestaña (pago hecho en la APP de MP y vuelta con "atrás"):
+  // el bfcache revive la página sin recargar — verificamos el pendiente
+  // cada vez que la vidriera vuelve a estar visible.
+  useEffect(() => {
+    const despertar = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      let pend: { id?: string; ts?: number; tipo?: string } | null = null
+      try { pend = JSON.parse(localStorage.getItem('coneos_mp_pedido') ?? 'null') } catch {}
+      if (!pend?.id || (pend.tipo && pend.tipo !== 'delivery')) return
+      if (Date.now() - (pend.ts ?? 0) > 3600000) return
+      fetch(`/api/pedidos/estado?pedido_id=${pend.id}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          if (d && (d.estado === 'PAID' || d.estado === 'PREPARING' || d.estado === 'READY' || d.estado === 'DELIVERED')) {
+            try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
+            setPedidoCreado({ numero: d.numero_pedido, codigo: d.codigo_retiro })
+            setCarrito([])
+            setPaso('confirmacion')
+          }
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('pageshow', despertar)
+    document.addEventListener('visibilitychange', despertar)
+    return () => { window.removeEventListener('pageshow', despertar); document.removeEventListener('visibilitychange', despertar) }
+  }, [])
+
   const claveCarrito = dispositivo ? `coneos_carrito_delivery_${dispositivo.sucursal_id}` : null
   const [carritoRestaurado, setCarritoRestaurado] = useState(false)
   useEffect(() => {
