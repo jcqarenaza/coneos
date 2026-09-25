@@ -1,0 +1,9 @@
+-- PODA LEGACY PAGOS · 24/09 (GO JC — un solo cliente, costo mínimo histórico)
+-- El resolver ya NO usa fallback: sin mapeo en Cobros = sin medio.
+-- DROP DIFERIDO (correr recién tras el smoke de transferencia y MP en Federal
+-- y confirmar que ningún endpoint lee estos campos — patrón delete_sucursal):
+-- alter table sucursal_pagos drop column cbu_transferencia;
+-- alter table sucursal_pagos drop column mp_alias;
+-- alter table sucursal_pagos drop column titular_transferencia;
+-- alter table sucursal_pagos drop column mp_access_token;
+-- alter table sucursal_pagos drop column mp_public_key;

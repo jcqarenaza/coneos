@@ -102,37 +102,15 @@ export async function resolverPago(
     }
   }
 
-  // ── SIN mapeo → LEGACY EXACTO (test A/C/J: jamás fabrica mapeos) ──
+  // ── SIN mapeo → SIN medio (PODA LEGACY 24/09, GO JC) ──
+  // Murió el fallback a sucursal_pagos (transferencia) y la cascada implícita
+  // de credenciales (MP). Cobros (canales_medios_pago) es LA ÚNICA fuente:
+  // canal sin cuenta asignada = medio sin datos, y las UIs ya saben mostrarlo.
+  // Los campos legacy de sucursal_pagos (cbu_transferencia, mp_alias,
+  // titular_transferencia, mp_access_token, mp_public_key) quedan huérfanos
+  // a la espera del DROP (documentado en supabase/poda-legacy-pagos.sql).
   if (medio === 'TRANSFERENCIA') {
-    // Comportamiento actual: datos planos de sucursal_pagos, tal cual están.
-    const { data: sp } = await supabase.from('sucursal_pagos')
-      .select('cbu_transferencia, mp_alias, titular_transferencia, empresa_id, sucursal_id')
-      .eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id).maybeSingle()
-    if (!sp || (!sp.cbu_transferencia && !sp.mp_alias && !sp.titular_transferencia)) {
-      return { ok: true, medio, origen: 'legacy', cuenta: null }
-    }
-    return {
-      ok: true, medio, origen: 'legacy',
-      cuenta: {
-        id: null, nombre: null,
-        alias: sp.mp_alias || null,          // semántica cruda del legacy:
-        cbu: sp.cbu_transferencia || null,   // hoy los consumidores exhiben
-        titular: sp.titular_transferencia || null, // cbu_transferencia bajo la etiqueta "Alias"
-        empresa_id: sp.empresa_id, sucursal_id: sp.sucursal_id,
-      },
-    }
+    return { ok: true, medio, origen: 'explicito', cuenta: null }
   }
-
-  // MERCADO_PAGO legacy: cascada sucursal → marca, idéntica a /api/mp/preferencia.
-  const { data: credSuc } = await supabase.from('mp_credenciales')
-    .select('id, mp_user_id, access_token, public_key, expires_at, activo, empresa_id, sucursal_id')
-    .eq('empresa_id', empresa_id).eq('sucursal_id', sucursal_id).maybeSingle()
-  const cred = credSuc ?? (await supabase.from('mp_credenciales')
-    .select('id, mp_user_id, access_token, public_key, expires_at, activo, empresa_id, sucursal_id')
-    .eq('empresa_id', empresa_id).is('sucursal_id', null).maybeSingle()).data
-  if (!cred) return { ok: true, medio, origen: 'legacy', credencial: null }
-  return {
-    ok: true, medio, origen: 'legacy',
-    credencial: { id: cred.id, mp_user_id: cred.mp_user_id, access_token: cred.access_token, public_key: cred.public_key, expires_at: cred.expires_at, activo: cred.activo, empresa_id: cred.empresa_id, sucursal_id: cred.sucursal_id },
-  }
+  return { ok: true, medio, origen: 'explicito', credencial: null }
 }

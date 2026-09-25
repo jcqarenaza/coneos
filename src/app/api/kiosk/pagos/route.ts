@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('sucursal_pagos')
-    .select('empresa_id, acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, acepta_mp_takeaway, cbu_transferencia, titular_transferencia, acepta_efectivo_kiosk, acepta_efectivo_delivery, acepta_efectivo_takeaway, acepta_transferencia_kiosk, acepta_transferencia_delivery, acepta_transferencia_takeaway')
+    .select('empresa_id, acepta_efectivo, acepta_transferencia, acepta_mp, acepta_mp_kiosk, acepta_mp_delivery, acepta_mp_takeaway, acepta_efectivo_kiosk, acepta_efectivo_delivery, acepta_efectivo_takeaway, acepta_transferencia_kiosk, acepta_transferencia_delivery, acepta_transferencia_takeaway')
     .eq('sucursal_id', sucursal_id)
     .single()
 
@@ -31,16 +31,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ acepta_efectivo: true, acepta_transferencia: false, acepta_mp: false, acepta_mp_kiosk: false, acepta_mp_delivery: false, cbu_transferencia: null, titular_transferencia: null })
   }
 
-  // F-C: TAKEAWAY entra al modo canal-aware (antes caía al legacy)
+  // PODA LEGACY 24/09: el modo sin-canal (flags crudos de sucursal_pagos)
+  // murió — era la migración pendiente del kiosk físico. Sin canal = KIOSK,
+  // y la respuesta SIEMPRE sale del resolver: Cobros es la única verdad.
   const esCanalValido = canalParam === 'KIOSK' || canalParam === 'DELIVERY' || canalParam === 'TAKEAWAY'
-  if (!esCanalValido) {
-    // Legacy exacto (Kiosk sigue acá hasta su migración)
-    const { empresa_id: _omitir, ...legacy } = data
-    void _omitir
-    return NextResponse.json(legacy)
-  }
-
-  const canal = canalParam as CanalPago
+  const canal = (esCanalValido ? canalParam : 'KIOSK') as CanalPago
   const [resMp, resTransfer] = await Promise.all([
     resolverPago(data.empresa_id, sucursal_id, canal, 'MERCADO_PAGO'),
     resolverPago(data.empresa_id, sucursal_id, canal, 'TRANSFERENCIA'),
@@ -50,9 +45,7 @@ export async function GET(request: Request) {
   const mpUsable = resMp.ok && resMp.medio === 'MERCADO_PAGO' && !!resMp.credencial && resMp.credencial.activo !== false
 
   const cuenta = resTransfer.ok && resTransfer.medio === 'TRANSFERENCIA' ? resTransfer.cuenta : null
-  const transferMostrar = cuenta
-    ? (resTransfer.ok && resTransfer.origen === 'explicito' ? (cuenta.alias ?? cuenta.cbu) : cuenta.cbu)
-    : null
+  const transferMostrar = cuenta ? (cuenta.alias ?? cuenta.cbu) : null
 
   // F-C: efectivo y transferencia también resueltos POR CANAL (base && llave
   // del canal, default true = histórico). La UI muestra lo que el server dice
