@@ -198,12 +198,15 @@ function buildTRA(): string {
 </loginTicketRequest>`;
 }
 
+// B4 — TOKENS POR CONTRIBUYENTE: la identidad del token es
+// empresa + ambiente + facturacion_config_id (el token WSAA está firmado por
+// EL certificado de UN CUIT: jamás se comparte entre contribuyentes).
+// Requiere el SQL 0.5 corrido (columna + PK nueva) — salen JUNTOS en ventana.
 async function getARCAToken(cfg: FactConfig): Promise<{ token: string; sign: string }> {
-  let q = supabase.from('arca_tokens')
+  const { data: cached } = await supabase.from('arca_tokens')
     .select('token, sign, expira_at')
-    .eq('empresa_id', cfg.empresa_id).eq('ambiente', cfg.ambiente);
-  q = cfg.scope_sucursal ? q.eq('sucursal_id', cfg.scope_sucursal) : q.is('sucursal_id', null);
-  const { data: cached } = await q.maybeSingle();
+    .eq('empresa_id', cfg.empresa_id).eq('ambiente', cfg.ambiente)
+    .eq('facturacion_config_id', cfg.id).maybeSingle();
   if (cached && new Date(cached.expira_at) > new Date(Date.now()+5*60*1000)) {
     console.log('Token desde cache'); return { token: cached.token, sign: cached.sign };
   }
@@ -224,9 +227,10 @@ async function getARCAToken(cfg: FactConfig): Promise<{ token: string; sign: str
   const expTime = extractXmlTag(innerXml, 'expirationTime');
   if (!token || !sign) throw new Error(`Sin token/sign: ${innerXml.slice(0,300)}`);
   const expiraAt = expTime ? new Date(expTime).toISOString() : new Date(Date.now()+11*3600*1000).toISOString();
-  await supabase.from('arca_tokens').upsert(
-    { empresa_id: cfg.empresa_id, ambiente: cfg.ambiente, sucursal_id: cfg.scope_sucursal, token, sign, expira_at: expiraAt, updated_at: new Date().toISOString() },
-    { onConflict: 'empresa_id,ambiente,sucursal_id' });
+  const up = await supabase.from('arca_tokens').upsert(
+    { empresa_id: cfg.empresa_id, ambiente: cfg.ambiente, sucursal_id: cfg.scope_sucursal, facturacion_config_id: cfg.id, token, sign, expira_at: expiraAt, updated_at: new Date().toISOString() },
+    { onConflict: 'empresa_id,ambiente,facturacion_config_id' });
+  if (up.error) console.error('arca_tokens upsert:', up.error.message); // jamás silencioso (lección B4)
   console.log('Token OK, expira:', expiraAt);
   return { token, sign };
 }
