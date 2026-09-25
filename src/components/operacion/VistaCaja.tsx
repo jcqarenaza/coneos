@@ -457,16 +457,26 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     }
   }
 
+  // Impresión por iframe oculto: el popup-blocker mataba el window.open del
+  // disparo AUTOMÁTICO (sin gesto de usuario) y la comanda moría muda.
+  function imprimirHtml(html: string) {
+    const frame = document.createElement('iframe')
+    frame.style.position = 'fixed'; frame.style.right = '0'; frame.style.bottom = '0'
+    frame.style.width = '0'; frame.style.height = '0'; frame.style.border = '0'
+    document.body.appendChild(frame)
+    const doc = frame.contentDocument
+    if (!doc) { document.body.removeChild(frame); return }
+    const disparo = '<script>window.onload=function(){setTimeout(function(){window.print()},150)};window.onafterprint=function(){parent.postMessage("coneos_print_done","*")}</' + 'script>'
+    doc.open(); doc.write(html + disparo); doc.close()
+    setTimeout(() => { try { document.body.removeChild(frame) } catch {} }, 60000)
+  }
+
   async function imprimirComanda(pedidoId: string) {
     const res = await fetch('/api/comprobantes/comanda', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pedido_id: pedidoId }),
     })
-    if (res.ok) {
-      const html = await res.text()
-      const win = window.open('', '_blank', 'width=400,height=700')
-      if (win) { win.document.write(html); win.document.close() }
-    }
+    if (res.ok) imprimirHtml(await res.text())
   }
 
   async function imprimirTicket(pedidoId: string, nombre?: string) {
@@ -477,11 +487,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       body: JSON.stringify({ pedido_id: pedidoId, nombre_cliente: nombre || null }),
     })
     setGenerandoTicket(false)
-    if (res.ok) {
-      const html = await res.text()
-      const win = window.open('', '_blank', 'width=400,height=700')
-      if (win) { win.document.write(html); win.document.close() }
-    }
+    if (res.ok) imprimirHtml(await res.text())
     setModalComprobante(false)
     setNombreCliente('')
   }
