@@ -67,15 +67,22 @@ export async function POST(request: Request) {
       }],
       external_reference: pedido.id,
       notification_url: notification,
-      // MESA vuelve A SU MESA (JC 24/09): el cartel genérico de pago-ok no
-      // tenía salida y la mesa vive de rondas — el retorno cae en la misma
-      // URL de mesa con ?pago=, que muestra el éxito y ofrece "Pedir algo más".
-      // Los demás canales conservan su retorno de siempre.
+      // TODOS LOS MEDIOS VUELVEN A LA APP (JC 24/09): cada tipo de pedido
+      // regresa a SU vidriera, donde la maquinaria de recepción YA vivía:
+      // · mesa → su mesa (?pago= muestra resultado + "Pedir algo más")
+      // · delivery/TA → su vidriera: el sessionStorage coneos_mp_pedido
+      //   verifica el pago solo (pagado → éxito con código; no pagado →
+      //   reanudación del pendiente — el mismo Caso B del Ciclo 2)
+      // · kiosk (tótem) → pago-ok genérica, su único hogar posible
       back_urls: (() => {
         const suc = Array.isArray(pedido.sucursales) ? pedido.sucursales[0] : pedido.sucursales
         if (pedido.tipo_pedido === 'mesa' && pedido.numero_mesa != null && suc?.slug) {
           const mesaUrl = `${base}/${emp?.slug}/mesa/${suc.slug}?m=${pedido.numero_mesa}`
           return { success: `${mesaUrl}&pago=ok&pedido=${pedido.numero_pedido}`, failure: `${mesaUrl}&pago=error&pedido=${pedido.numero_pedido}`, pending: `${mesaUrl}&pago=ok&pedido=${pedido.numero_pedido}` }
+        }
+        if ((pedido.tipo_pedido === 'delivery' || pedido.tipo_pedido === 'takeaway') && suc?.slug) {
+          const vidriera = `${base}/${emp?.slug}/${pedido.tipo_pedido}/${suc.slug}`
+          return { success: vidriera, failure: vidriera, pending: vidriera }
         }
         return {
           success: `${base}/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
