@@ -63,7 +63,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [config, setConfig] = useState<EmpresaConfig>({ primary_color: '#1E3A5F', secondary_color: '#F5C842', logo_url: null })
   const [costoEnvio, setCostoEnvio] = useState(4000)
   const [envioAlCadete, setEnvioAlCadete] = useState(false)
-  const [paso, setPaso] = useState<Paso>('inicio')
+  const [paso, setPaso] = useState<Paso>('catalogo')
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>()
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
@@ -338,7 +338,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   }
 
   function nuevoPedido() {
-    setCarrito([]); setPedidoCreado(null); setPaso('inicio'); setCategoriaInicial(undefined); setAvisoPrecios(false); setItemsQuitados(0)
+    setCarrito([]); setPedidoCreado(null); setPaso('catalogo'); setCategoriaInicial(undefined); setAvisoPrecios(false); setItemsQuitados(0)
   }
 
   if (loading) return (
@@ -400,7 +400,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
           categoriaIdInicial={categoriaInicial}
           onAgregar={agregarAlCarrito}
           onVerCarrito={() => setPaso('carrito')}
-          onVolver={() => { setCategoriaInicial(undefined); setPaso('inicio') }}
+          onVolver={() => setCategoriaInicial(undefined)}
         />
       )}
       {paso === 'carrito' && (<>
