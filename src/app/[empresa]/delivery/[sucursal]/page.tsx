@@ -276,20 +276,31 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   useEffect(() => {
     const despertar = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      const alConfirmar = (numero: number, codigo: string) => {
+        try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
+        setPedidoCreado({ numero, codigo })
+        setCarrito([])
+        setPaso('confirmacion')
+      }
+      const PAGADOS = ['PAID', 'PREPARING', 'READY', 'DELIVERED']
       let pend: { id?: string; ts?: number; tipo?: string } | null = null
       try { pend = JSON.parse(localStorage.getItem('coneos_mp_pedido') ?? 'null') } catch {}
-      if (!pend?.id || (pend.tipo && pend.tipo !== 'delivery')) return
-      if (Date.now() - (pend.ts ?? 0) > 3600000) return
-      fetch(`/api/pedidos/estado?pedido_id=${pend.id}`)
+      if (pend?.id && (!pend.tipo || pend.tipo === 'delivery') && Date.now() - (pend.ts ?? 0) <= 3600000) {
+        fetch(`/api/pedidos/estado?pedido_id=${pend.id}`)
+          .then(r => (r.ok ? r.json() : null))
+          .then(d => { if (d && PAGADOS.includes(d.estado)) alConfirmar(d.numero_pedido, d.codigo_retiro) })
+          .catch(() => {})
+        return
+      }
+      // Sin memoria local (pago hecho en la app de MP, navegador interno):
+      // EL SERVER RECUERDA — visitante_id ancló el pedido (Tráfico B, hoy).
+      let vid = ''
+      try { vid = localStorage.getItem('coneos_visitante_id') ?? '' } catch {}
+      if (!vid) return
+      const partes = window.location.pathname.split('/').filter(Boolean)
+      fetch(`/api/pedidos/pendiente-mp?empresa=${partes[0]}&sucursal=${partes[2]}&visitante=${encodeURIComponent(vid)}&tipo=delivery`)
         .then(r => (r.ok ? r.json() : null))
-        .then(d => {
-          if (d && (d.estado === 'PAID' || d.estado === 'PREPARING' || d.estado === 'READY' || d.estado === 'DELIVERED')) {
-            try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
-            setPedidoCreado({ numero: d.numero_pedido, codigo: d.codigo_retiro })
-            setCarrito([])
-            setPaso('confirmacion')
-          }
-        })
+        .then(d => { const ped = d?.pedido; if (ped && PAGADOS.includes(ped.estado)) alConfirmar(ped.numero_pedido, ped.codigo_retiro) })
         .catch(() => {})
     }
     window.addEventListener('pageshow', despertar)
