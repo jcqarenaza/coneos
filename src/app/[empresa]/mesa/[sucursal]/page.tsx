@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import RegistroVisita from '@/components/RegistroVisita'
+import { useRetornoMp } from '@/lib/useRetornoMp'
 
 // ═══════════════════════════════════════════════════════════════════
 // MODO MESA — F1 (núcleo)
@@ -85,6 +86,16 @@ export default function MesaPage() {
       .catch(() => { setError('No se pudo cargar el local'); setLoading(false) })
   }, [])
 
+  // Retorno MP: una sola casa (src/lib/useRetornoMp.ts). Hooks SIEMPRE antes de
+  // cualquier return — antes vivían después de los returns tempranos y React
+  // rompía la página al pasar de 'datos' a 'catalogo' (más hooks que el render previo).
+  const [pagoMp, setPagoMp] = useState<{ numero: number } | null>(null)
+  const { verificando: verificandoMp } = useRetornoMp('mesa', ({ numero }) => {
+    setPagoMp({ numero })
+    setCarrito([])
+    setPaso(p => (p === 'carrito' || p === 'datos' ? 'catalogo' : p))
+  })
+
   const total = carrito.reduce((a, i) => a + i.precio * i.cantidad, 0)
 
   async function enviarPedido(pagoMP: boolean) {
@@ -161,6 +172,14 @@ export default function MesaPage() {
 
   const config = ctx.config
 
+  if (verificandoMp && !pagoMp && !searchParams.get('pago')) return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="w-10 h-10 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
+      <p className="text-lg font-black text-neutral-800">Verificando tu pago…</p>
+      <p className="text-sm text-neutral-400 max-w-xs">Estamos confirmando con Mercado Pago. Esto tarda unos segundos.</p>
+    </div>
+  )
+
   // ── Paso 1: nombre (+ mesa si el QR es general) ──
   if (paso === 'datos') return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
@@ -210,42 +229,15 @@ export default function MesaPage() {
   // ── Paso éxito ──
   // Retorno de MP (JC 24/09): la mesa recibe ?pago=ok|error&pedido=N y muestra
   // el resultado CON salida — "Pedir algo más" limpia la URL y vuelve al menú.
-  const [pagoMp, setPagoMp] = useState<{ numero: number } | null>(null)
-  // Despertar de pestaña (pago hecho en la APP de MP y vuelta con "atrás"):
-  // el bfcache revive la página sin recargar — verificamos el pendiente
-  // cada vez que la mesa vuelve a estar visible.
-  useEffect(() => {
-    const despertar = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      let pend: { id?: string; numero?: number; ts?: number; tipo?: string } | null = null
-      try { pend = JSON.parse(localStorage.getItem('coneos_mp_pedido') ?? 'null') } catch {}
-      if (!pend?.id || pend.tipo !== 'mesa') return
-      if (Date.now() - (pend.ts ?? 0) > 3600000) { try { localStorage.removeItem('coneos_mp_pedido') } catch {}; return }
-      fetch(`/api/pedidos/estado?pedido_id=${pend.id}`)
-        .then(r => (r.ok ? r.json() : null))
-        .then(d => {
-          if (d && (d.estado === 'PAID' || d.estado === 'PREPARING' || d.estado === 'READY' || d.estado === 'DELIVERED')) {
-            try { localStorage.removeItem('coneos_mp_pedido') } catch {}
-            setPagoMp({ numero: d.numero_pedido })
-            setCarrito([])
-          }
-        })
-        .catch(() => {})
-    }
-    window.addEventListener('pageshow', despertar)
-    document.addEventListener('visibilitychange', despertar)
-    despertar()
-    return () => { window.removeEventListener('pageshow', despertar); document.removeEventListener('visibilitychange', despertar) }
-  }, [])
   const pagoParam = searchParams.get('pago') ?? (pagoMp ? 'ok' : null)
   const pedidoParam = searchParams.get('pedido') ?? (pagoMp ? String(pagoMp.numero) : null)
   const limpiarYSeguir = () => {
     const url = new URL(window.location.href)
     url.searchParams.delete('pago'); url.searchParams.delete('pedido')
     window.history.replaceState({}, '', url.toString())
-    setPagoMp(null); setPedidoCreado(null); setPaso('catalogo')
+    setPagoMp(null); setPedidoCreado(null); setPaso(nombre.trim() && mesa ? 'catalogo' : 'datos')
   }
-  if (pagoParam && paso !== 'carrito' && paso !== 'datos') return (
+  if (pagoParam && paso !== 'carrito') return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
       <div className="w-full max-w-sm text-center">
         <span className="text-6xl block mb-4">{pagoParam === 'ok' ? '✅' : '😕'}</span>

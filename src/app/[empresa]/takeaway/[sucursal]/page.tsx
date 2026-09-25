@@ -13,6 +13,7 @@ import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarritoDelivery from '@/components/delivery/KioskCarritoDelivery'
 import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDelivery'
 import RegistroVisita from '@/components/RegistroVisita'
+import { useRetornoMp } from '@/lib/useRetornoMp'
 import type { EmpresaConfig, Accesorio, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface Contexto {
@@ -36,7 +37,12 @@ export default function TakeawayPage() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   const [accesorios, setAccesorios] = useState<Accesorio[]>([])
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
-  const [verificandoMp, setVerificandoMp] = useState(false)
+  // Retorno MP: una sola casa (src/lib/useRetornoMp.ts) — URL, memoria local y server por visitante_id, con reintentos
+  const { verificando: verificandoMp } = useRetornoMp('takeaway', ({ numero, codigo }) => {
+    setPedidoCreado({ numero, codigo })
+    setCarrito([])
+    setPaso('confirmacion')
+  })
   // Vuelta al selector: solo si el cliente LLEGÓ desde la App (anti-loop ya existente)
   const [vinoDeApp, setVinoDeApp] = useState(false)
   useEffect(() => { try { setVinoDeApp(new URLSearchParams(window.location.search).get('desde') === 'app') } catch {} }, [])
@@ -67,99 +73,16 @@ export default function TakeawayPage() {
     }
     init()
 
-    // Retorno del checkout de MP: retomar el pedido pendiente (mismo mecanismo que delivery)
-    let pendiente: { id: string; ts: number; tipo?: string } | null = null
-    try {
-      const spMp = new URLSearchParams(window.location.search)
-      const extRef = spMp.get('external_reference')
-      if (extRef) {
-        pendiente = { id: extRef, ts: Date.now() }
-        const url = new URL(window.location.href)
-        for (const k of ['collection_id', 'collection_status', 'payment_id', 'status', 'external_reference', 'payment_type', 'merchant_order_id', 'preference_id', 'site_id', 'processing_mode', 'merchant_account_id']) url.searchParams.delete(k)
-        window.history.replaceState({}, '', url.toString())
-      }
-    } catch {}
-    if (!pendiente) {
-      const raw = (() => { try { return (localStorage.getItem('coneos_mp_pedido') ?? sessionStorage.getItem('coneos_mp_pedido')) } catch { return null } })()
-      if (!raw) return
-      try { pendiente = JSON.parse(raw) } catch {}
-      if (pendiente?.tipo && pendiente.tipo !== 'takeaway') return // pendiente de otra vidriera
-    }
-    if (!pendiente?.id || Date.now() - (pendiente.ts ?? 0) > 3600000) {
-      try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
-      return
-    }
-    setVerificandoMp(true)
-    let intentos = 0
-    let cancelado = false
-    async function verificar() {
-      if (cancelado || !pendiente) return
-      try {
-        const r = await fetch(`/api/pedidos/estado?pedido_id=${pendiente.id}`)
-        if (r.ok) {
-          const d = await r.json()
-          if (d.estado === 'PAID' || d.estado === 'PREPARING' || d.estado === 'READY' || d.estado === 'DELIVERED') {
-            try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
-            setPedidoCreado({ numero: d.numero_pedido, codigo: d.codigo_retiro })
-            setCarrito([])
-            setPaso('confirmacion')
-            setVerificandoMp(false)
-            return
-          }
-        }
-      } catch {}
-      intentos++
-      if (intentos < 15) setTimeout(verificar, 2000)
-      else { setVerificandoMp(false); try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {} }
-    }
-    verificar()
-    return () => { cancelado = true }
   }, [])
 
-
-  // Despertar de pestaña (pago hecho en la APP de MP y vuelta con "atrás"):
-  // el bfcache revive la página sin recargar — verificamos el pendiente
-  // cada vez que la vidriera vuelve a estar visible.
-  useEffect(() => {
-    const despertar = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      const alConfirmar = (numero: number, codigo: string) => {
-        try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
-        setPedidoCreado({ numero, codigo })
-        setCarrito([])
-        setPaso('confirmacion')
-      }
-      const PAGADOS = ['PAID', 'PREPARING', 'READY', 'DELIVERED']
-      let pend: { id?: string; ts?: number; tipo?: string } | null = null
-      try { pend = JSON.parse(localStorage.getItem('coneos_mp_pedido') ?? 'null') } catch {}
-      if (pend?.id && (!pend.tipo || pend.tipo === 'takeaway') && Date.now() - (pend.ts ?? 0) <= 3600000) {
-        fetch(`/api/pedidos/estado?pedido_id=${pend.id}`)
-          .then(r => (r.ok ? r.json() : null))
-          .then(d => { if (d && PAGADOS.includes(d.estado)) alConfirmar(d.numero_pedido, d.codigo_retiro) })
-          .catch(() => {})
-        return
-      }
-      // Sin memoria local (pago hecho en la app de MP, navegador interno):
-      // EL SERVER RECUERDA — visitante_id ancló el pedido (Tráfico B, hoy).
-      let vid = ''
-      try { vid = localStorage.getItem('coneos_visitante_id') ?? '' } catch {}
-      if (!vid) return
-      const partes = window.location.pathname.split('/').filter(Boolean)
-      fetch(`/api/pedidos/pendiente-mp?empresa=${partes[0]}&sucursal=${partes[2]}&visitante=${encodeURIComponent(vid)}&tipo=takeaway`)
-        .then(r => (r.ok ? r.json() : null))
-        .then(d => { const ped = d?.pedido; if (ped && PAGADOS.includes(ped.estado)) alConfirmar(ped.numero_pedido, ped.codigo_retiro) })
-        .catch(() => {})
-    }
-    window.addEventListener('pageshow', despertar)
-    document.addEventListener('visibilitychange', despertar)
-    return () => { window.removeEventListener('pageshow', despertar); document.removeEventListener('visibilitychange', despertar) }
-  }, [])
 
   // Carrito persistente CON CLAVE PROPIA DEL CANAL (identidad por canal — orden CTO §5)
   const claveCarrito = ctx ? `coneos_carrito_takeaway_${ctx.sucursal_id}` : null
   const [carritoRestaurado, setCarritoRestaurado] = useState(false)
   useEffect(() => {
     if (!claveCarrito || carritoRestaurado) return
+    // Si el retorno MP ya confirmó, el carrito murió con el pago: jamás restaurarlo encima del comprobante
+    if (pedidoCreado) { try { localStorage.removeItem(claveCarrito) } catch {} setCarritoRestaurado(true); return }
     try {
       const raw = localStorage.getItem(claveCarrito)
       if (raw) {
@@ -171,7 +94,7 @@ export default function TakeawayPage() {
       }
     } catch {}
     setCarritoRestaurado(true)
-  }, [claveCarrito, carritoRestaurado])
+  }, [claveCarrito, carritoRestaurado, pedidoCreado])
   useEffect(() => {
     if (!claveCarrito || !carritoRestaurado) return
     try {
