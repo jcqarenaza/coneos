@@ -218,6 +218,7 @@ export default function ServiciosPage() {
       supabase.from('empresa_config').update({ entrada_unificada: appEncendida, ...(tieneMesas ? { mesas_activo: mesasActivo } : {}) }).eq('empresa_id', ctx.empresaId),
     ])
     setGuardando(null)
+    setVisiblesApp(prev => prev[sucursalSel] ? { ...prev, [sucursalSel]: { ...prev[sucursalSel], dActivo: delivery.activo, tActivo: ta.activo } } : prev)
     // Tab App: persistir canales visibles de TODAS las sucursales (fuente única)
     await Promise.all(Object.entries(visiblesApp).flatMap(([sid, v]) => [
       supabase.from('delivery_config').update({ mostrar_en_app: v.d }).eq('sucursal_id', sid),
