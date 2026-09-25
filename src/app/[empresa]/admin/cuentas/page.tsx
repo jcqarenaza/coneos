@@ -166,6 +166,20 @@ export default function CuentasPage() {
   // El selector "Factura como" aparece recién cuando hay elección real (≥2
   // usables) o la fila ya tiene un vínculo que mostrar — cero ruido single-CUIT.
   const mostrarFacturaComo = (vinculo: string | null) => modulos?.facturacion === true && (cuitsUsables.length >= 2 || !!vinculo)
+  // C (CTO 25/09): la matriz NO guarda CUIT — solo MUESTRA el de la cuenta
+  // elegida (Canal → Medio → Cuenta → CUIT). Lectura derivada, cero vínculo nuevo.
+  const cuitPrincipal = cuits.find(c => c.es_fallback) ?? null
+  function ChipFacturaComo({ vinculo, hayCuenta }: { vinculo: string | null | undefined; hayCuenta: boolean }) {
+    if (modulos?.facturacion !== true || !hayCuenta || cuits.length === 0) return null
+    const c = vinculo ? cuits.find(x => x.id === vinculo) : null
+    const efectivo = c ?? cuitPrincipal
+    if (!efectivo) return null
+    return (
+      <p className="text-[11px] mt-1 font-semibold text-neutral-400 truncate" title="El CUIT lo define la cuenta (tab Transferencias / Mercado Pago / CUITs) — acá solo se muestra">
+        🧾 Factura como: {efectivo.razon_social} · {efectivo.cuit}{!c ? ' (principal)' : ''}{c && !(c.estado === 'validado' && c.activo) ? ' ⚠️ no usable' : ''}
+      </p>
+    )
+  }
   function FacturaComo({ tipo, cuentaId, vinculo }: { tipo: 'transferencia' | 'mp'; cuentaId: string; vinculo: string | null }) {
     if (!mostrarFacturaComo(vinculo)) return null
     return (
@@ -379,6 +393,18 @@ export default function CuentasPage() {
                       </div>
                       <p className="text-xs text-neutral-400 mt-0.5">CUIT {c.cuit} · PV {c.punto_venta} · {c.condicion_fiscal === 'ri' ? 'Resp. Inscripto' : 'Monotributo'} · Certificado {c.cert_cargado ? '✓' : '✗ falta'} · Clave {c.clave_cargada ? '✓' : '✗ falta'}</p>
                       {testOk[c.id] && <p className="text-xs font-semibold text-green-600 mt-0.5">{testOk[c.id]}</p>}
+                      {(() => { // D (CTO 25/09): la relación vista desde el CUIT — misma fuente, cero duplicación
+                        const usos = [
+                          ...cuentas.filter(x => x.facturacion_config_id === c.id).map(x => `🏦 ${x.nombre}`),
+                          ...credenciales.filter(x => x.facturacion_config_id === c.id).map(x => `🟦 ${x.nombre}`),
+                        ]
+                        if (usos.length === 0 && !c.es_fallback) return <p className="text-[11px] text-neutral-300 mt-1">Sin cuentas vinculadas todavía — asignalo desde 🧾 Factura como en cada cuenta</p>
+                        return (usos.length > 0 || c.es_fallback) ? (
+                          <p className="text-[11px] text-neutral-400 mt-1">
+                            <span className="font-bold uppercase tracking-wide">Usado por:</span> {usos.join(' · ')}{c.es_fallback ? `${usos.length ? ' · ' : ' '}todo lo que no tenga CUIT asignado (automático)` : ''}
+                          </p>
+                        ) : null
+                      })()}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                       <button onClick={() => setEditCuit(c)} className="p-2 rounded-lg border border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
@@ -535,6 +561,7 @@ export default function CuentasPage() {
                             <option value="">— Sin asignar (el canal no ofrece este medio) —</option>
                             {cuentasDeSucursal.map(c => <option key={c.id} value={c.id} disabled={!c.activo && mT?.transferencia_cuenta_id !== c.id}>{c.nombre}{!c.activo ? ' (inactiva)' : ''}</option>)}
                           </select>
+                          <ChipFacturaComo hayCuenta={!!mT?.transferencia_cuenta_id} vinculo={cuentasDeSucursal.find(c => c.id === mT?.transferencia_cuenta_id)?.facturacion_config_id} />
                         </td>
                         <td className="py-2.5 pr-3">
                           {s && canal.llaveMp ? <LlaveToggle canalId={canal.id} medio="MERCADO_PAGO" efectiva={!!mpOn} baseOff={llaves?.acepta_mp === false} label={canal.label} /> : <span title="La caja no cobra por Mercado Pago: sus medios manuales son efectivo, débito, crédito y transferencia. Los pagos MP llegan online ya pagados." className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-300 border border-neutral-100">No aplica</span>}
@@ -548,6 +575,7 @@ export default function CuentasPage() {
                             <option value="">— Sin asignar (el canal no ofrece este medio) —</option>
                             {credencialesAsignables.map(c => <option key={c.id} value={c.id} disabled={!c.activo && mM?.mp_credencial_id !== c.id}>{c.nombre}{c.sucursal_id === null ? ' (marca)' : ''}{!c.activo ? ' (inactiva)' : ''}</option>)}
                           </select>
+                          <ChipFacturaComo hayCuenta={!!mM?.mp_credencial_id} vinculo={credenciales.find(c => c.id === mM?.mp_credencial_id)?.facturacion_config_id} />
                         </td>
                       </tr>
                     )
@@ -557,7 +585,7 @@ export default function CuentasPage() {
             </div>
 
             <p className="text-xs text-neutral-400 pt-2 border-t border-neutral-100">
-<b>ON/OFF</b> decide qué medios ve el cliente en cada canal; <b>las cuentas</b> deciden a dónde va la plata. <b>Cuenta de siempre</b>: sin asignación, el canal usa los datos históricos de la sucursal. Para habilitar transferencia en un canal hace falta una cuenta con datos (el sistema lo exige solo). Los pedidos ya cobrados nunca cambian de cuenta. 💡 Apagar el efectivo de Take Away = solo prepago, recomendado para evitar pedidos fantasma.
+<b>ON/OFF</b> decide qué medios ve el cliente en cada canal; <b>las cuentas</b> deciden a dónde va la plata; <b>🧾 el CUIT lo define la cuenta</b> (efectivo, débito y crédito facturan siempre con el CUIT principal). <b>Cuenta de siempre</b>: sin asignación, el canal usa los datos históricos de la sucursal. Para habilitar transferencia en un canal hace falta una cuenta con datos (el sistema lo exige solo). Los pedidos ya cobrados nunca cambian de cuenta. 💡 Apagar el efectivo de Take Away = solo prepago, recomendado para evitar pedidos fantasma.
             </p>
           </div>
         </ConeCard>
