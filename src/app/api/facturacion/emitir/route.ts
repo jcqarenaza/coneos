@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolverFactConfig } from '@/lib/facturacion/facturar'
+import { resolverFactConfig, resolverEmisor } from '@/lib/facturacion/facturar'
 
 // E1: débito y crédito facturables — los valores CANÓNICOS que ya usan el
 // constraint de pedidos, METODO_UI y el pago dividido de mesa. Cierra la
@@ -59,10 +59,11 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient()
   const { data: pedido } = await supabase.from('pedidos')
-    .select('metodo_pago, sucursal_id').eq('id', pedido_id).eq('empresa_id', empresa_id).maybeSingle()
-  const cfg = await resolverFactConfig(supabase, empresa_id, pedido?.sucursal_id ?? null,
-    'activo, auto_facturar, metodos_auto') as
-    { activo: boolean; auto_facturar: boolean | null; metodos_auto: unknown } | null
+    .select('metodo_pago, sucursal_id, transferencia_cuenta_id, mp_credencial_id').eq('id', pedido_id).eq('empresa_id', empresa_id).maybeSingle()
+  // B2: emisor por cuenta→config con fallback histórico (misma casa que el hook)
+  const r = pedido ? await resolverEmisor(supabase, { empresa_id, ...pedido }, 'id, estado, activo, auto_facturar, metodos_auto') : { cfg: null, vinculada: false as const }
+  if ('error' in r && r.error) return NextResponse.json({ ok: false, error: r.error }, { status: 409 })
+  const cfg = r.cfg as { id: string; activo: boolean; auto_facturar: boolean | null; metodos_auto: unknown } | null
   if (!cfg?.activo) return NextResponse.json({ ok: false, error: 'Facturación desactivada' }, { status: 409 })
   if (cfg.auto_facturar === false) return NextResponse.json({ ok: false, error: 'Facturación automática pausada por el cliente' }, { status: 409 })
   const metodos = Array.isArray(cfg.metodos_auto) ? cfg.metodos_auto as string[] : ['transferencia']
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
   const res = await fetch(`${url}/functions/v1/arca-facturar`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ empresa_id, pedido_id, accion: 'facturar' }),
+    body: JSON.stringify({ empresa_id, pedido_id, accion: 'facturar', facturacion_config_id: cfg.id }),
   })
   const data = await res.json()
   return NextResponse.json(data, { status: res.status })
