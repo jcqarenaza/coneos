@@ -42,7 +42,7 @@ export default function MesaPage() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   // Carrito y nombre persistentes: si el celu recarga (volver del home banking,
   // cambiar de app), el pedido a medias sobrevive. TTL 2 horas.
-  const claveMesa = ctx ? `coneos_carrito_mesa_${ctx.sucursal_id}` : null
+  const claveMesa = ctx ? `coneos_carrito_mesa_${ctx.sucursal_id}_${mesaQR || 'general'}` : null
   const [restaurado, setRestaurado] = useState(false)
   useEffect(() => {
     if (!claveMesa || restaurado) return
