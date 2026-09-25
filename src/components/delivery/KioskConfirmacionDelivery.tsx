@@ -62,7 +62,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const total = subtotal + costoEnvio // espejo: TA recibe su costo de servicio (0 = inercia)
 
-  const [paso, setPaso] = useState<'datos' | 'pago' | 'transferencia' | 'exito'>('datos')
+  // Retorno de MP verificado (la page manda pedidoCreado): directo al comprobante.
+  const [paso, setPaso] = useState<'datos' | 'pago' | 'transferencia' | 'exito'>(pedidoCreado ? 'exito' : 'datos')
   const [benefPesosPorPunto, setBenefPesosPorPunto] = useState<number | null>(null)
   useEffect(() => {
     fetch(`/api/beneficios?empresa_id=${dispositivo.empresa_id}`)

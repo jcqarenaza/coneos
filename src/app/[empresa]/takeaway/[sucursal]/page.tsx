@@ -36,6 +36,7 @@ export default function TakeawayPage() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   const [accesorios, setAccesorios] = useState<Accesorio[]>([])
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
+  const [verificandoMp, setVerificandoMp] = useState(false)
   // Vuelta al selector: solo si el cliente LLEGÓ desde la App (anti-loop ya existente)
   const [vinoDeApp, setVinoDeApp] = useState(false)
   useEffect(() => { try { setVinoDeApp(new URLSearchParams(window.location.search).get('desde') === 'app') } catch {} }, [])
@@ -76,6 +77,7 @@ export default function TakeawayPage() {
       try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
       return
     }
+    setVerificandoMp(true)
     let intentos = 0
     let cancelado = false
     async function verificar() {
@@ -89,13 +91,14 @@ export default function TakeawayPage() {
             setPedidoCreado({ numero: d.numero_pedido, codigo: d.codigo_retiro })
             setCarrito([])
             setPaso('confirmacion')
+            setVerificandoMp(false)
             return
           }
         }
       } catch {}
       intentos++
       if (intentos < 15) setTimeout(verificar, 2000)
-      else { try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {} }
+      else { setVerificandoMp(false); try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {} }
     }
     verificar()
     return () => { cancelado = true }
@@ -195,6 +198,15 @@ export default function TakeawayPage() {
       <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
     </div>
   )
+
+  if (verificandoMp && !pedidoCreado) return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="w-10 h-10 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
+      <p className="text-lg font-black text-neutral-800">Verificando tu pago…</p>
+      <p className="text-sm text-neutral-400 max-w-xs">Estamos confirmando con Mercado Pago. Esto tarda unos segundos.</p>
+    </div>
+  )
+
 
   if (error || !ctx) return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#faf8f5' }}>
