@@ -9,7 +9,7 @@ export async function POST(request: Request) {
 
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select(`id, numero_pedido, codigo_retiro, total, metodo_pago, created_at, costo_envio, tipo_pedido,
+    .select(`id, numero_pedido, codigo_retiro, total, metodo_pago, created_at, costo_envio, tipo_pedido, mp_payment_id, notas,
       empresa_id, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva, receptor_razon_social, detalle_facturable, sucursales(nombre, direccion),
       pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
         pedido_item_opciones(nombre_snap, emoji_snap))`)
@@ -33,6 +33,11 @@ export async function POST(request: Request) {
   const metodoLabel: Record<string, string> = { efectivo: 'EFECTIVO', transferencia: 'TRANSFERENCIA', mp: 'MERCADO PAGO', debito: 'DÉBITO', credito: 'CRÉDITO' } // E2: gemelo del fix de comanda
   type Item = { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
   const items = (pedido.pedido_items ?? []) as Item[]
+  // Operación de Mercado Pago (JC 25/09): últimos 6 dígitos para que caja/cliente la ubiquen.
+  // Fuente: mp_payment_id; fallback a la nota del webhook para los pedidos anteriores al fix.
+  const opMp = pedido.metodo_pago === 'mp'
+    ? (String(pedido.mp_payment_id ?? '').replace(/\D/g, '') || (String(pedido.notas ?? '').match(/MP payment (\d+)/)?.[1] ?? ''))
+    : ''
 
   // ── Datos fiscales (solo si hay factura emitida) ──
   // FA-1: receptor fiscal del pedido (si existe, es completo por diseño)
@@ -184,6 +189,7 @@ ${Number(pedido.costo_envio ?? 0) > 0 ? `<div class="item-precio">
   <span class="total-valor">${fmt(pedido.total)}</span>
 </div>
 <div class="metodo">${metodoLabel[pedido.metodo_pago ?? ''] ?? pedido.metodo_pago ?? '—'}</div>
+${opMp ? `<div class="sub">Op. MP ···${opMp.slice(-6)}</div>` : ''}
 
 ${nombre_cliente ? `<div class="linea"></div><div class="sub">Cliente: ${nombre_cliente}</div>` : ''}
 

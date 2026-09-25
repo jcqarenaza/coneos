@@ -82,14 +82,19 @@ export async function POST(request: Request) {
       // reconoció el payment — una credencial jamás confirma pedidos ajenos.
       const { data: pedido } = await supabase
         .from('pedidos')
-        .select('id, estado, empresa_id')
+        .select('id, estado, empresa_id, notas')
         .eq('id', pedidoId)
         .eq('empresa_id', cred.empresa_id)
         .single()
 
       if (pedido && pedido.estado === 'PENDING_PAYMENT') {
         await supabase.from('pedidos')
-          .update({ estado: 'PREPARING', pagado: true, notas: `MP payment ${paymentId}` }) // 9c: pago confirmado → PREPARING
+          // 9c: pago confirmado → PREPARING. (JC 25/09) el id del pago va a SU columna
+          // (el ticket imprime la operación) y la nota ya no pisa las notas del cliente.
+          .update({
+            estado: 'PREPARING', pagado: true, mp_payment_id: String(paymentId),
+            notas: pedido.notas ? `${pedido.notas} · MP payment ${paymentId}` : `MP payment ${paymentId}`,
+          })
           .eq('id', pedido.id)
         console.log(`[mp/webhook] Pedido ${pedidoId} pagado via MP ${paymentId} (via ${via})`)
         await facturarSiCorresponde(supabase, pedido.id)
