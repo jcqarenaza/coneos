@@ -14,7 +14,7 @@ import { Loader2, Plus, Pencil, X } from 'lucide-react'
 // Toda escritura va por /api/admin/pagos-cuentas (server-side,
 // RLS del admin + validaciones). Esta pantalla NUNCA resuelve
 // pagos: muestra y edita CONFIGURACIÓN; el resolver es la única
-// autoridad en runtime. "Config. general (legacy)" = sin mapeo.
+// autoridad en runtime. PODA 24/09: sin mapeo = SIN medio (el legacy murió).
 // ============================================================
 
 interface Credencial { id: string; nombre: string; activo: boolean; sucursal_id: string | null; mp_user_id: string; expires_at: string | null }
@@ -230,7 +230,7 @@ export default function CuentasPage() {
               <ConeButton onClick={() => setEditCuenta({})}><Plus className="h-4 w-4 mr-1" /> Nueva cuenta</ConeButton>
             </div>
 
-            {cuentasDeSucursal.length === 0 && <p className="text-sm text-neutral-400">Esta sucursal no tiene cuentas cargadas — los canales usan los datos de pago cargados en Sucursales, como siempre.</p>}
+            {cuentasDeSucursal.length === 0 && <p className="text-sm text-neutral-400">Esta sucursal no tiene cuentas cargadas. Sin cuenta asignada, el canal no ofrece transferencia — cargá la primera acá.</p>}
             {cuentasDeSucursal.map(c => (
               <div key={c.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${c.activo ? 'border-neutral-100' : 'border-red-100 bg-red-50/40'}`}>
                 <div className="min-w-0">
@@ -338,12 +338,12 @@ export default function CuentasPage() {
                             onChange={e => e.target.value
                               ? accion({ accion: 'asignar_mapeo', sucursal_id: sucursalSel, canal: canal.id, medio: 'TRANSFERENCIA', cuenta_id: e.target.value }, `${canal.label}: transferencia asignada`)
                               : accion({ accion: 'quitar_mapeo', sucursal_id: sucursalSel, canal: canal.id, medio: 'TRANSFERENCIA' }, `${canal.label}: vuelve a la cuenta de siempre`)}>
-                            <option value="">Cuenta de siempre (Sucursales)</option>
+                            <option value="">— Sin asignar (el canal no ofrece este medio) —</option>
                             {cuentasDeSucursal.map(c => <option key={c.id} value={c.id} disabled={!c.activo && mT?.transferencia_cuenta_id !== c.id}>{c.nombre}{!c.activo ? ' (inactiva)' : ''}</option>)}
                           </select>
                         </td>
                         <td className="py-2.5 pr-3">
-                          {s && canal.llaveMp ? <LlaveToggle canalId={canal.id} medio="MERCADO_PAGO" efectiva={!!mpOn} baseOff={llaves?.acepta_mp === false} label={canal.label} /> : <span title="Venta manual: el operador cobra en mano — siempre permitido" className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-400 border border-neutral-200">Permitido</span>}
+                          {s && canal.llaveMp ? <LlaveToggle canalId={canal.id} medio="MERCADO_PAGO" efectiva={!!mpOn} baseOff={llaves?.acepta_mp === false} label={canal.label} /> : <span title="La caja no cobra por Mercado Pago: sus medios manuales son efectivo, débito, crédito y transferencia. Los pagos MP llegan online ya pagados." className="min-w-[52px] inline-block text-center px-2 py-1 rounded-full text-[11px] font-bold bg-neutral-50 text-neutral-300 border border-neutral-100">No aplica</span>}
                         </td>
                         <td className="py-2.5">
                           <select className={`${sel} ${s && mpOn === false ? 'opacity-45 bg-neutral-50' : ''}`} value={mM?.mp_credencial_id ?? ''} disabled={guardando || (s !== null && mpOn === false)}
@@ -351,7 +351,7 @@ export default function CuentasPage() {
                             onChange={e => e.target.value
                               ? accion({ accion: 'asignar_mapeo', sucursal_id: sucursalSel, canal: canal.id, medio: 'MERCADO_PAGO', cuenta_id: e.target.value }, `${canal.label}: cuenta MP asignada`)
                               : accion({ accion: 'quitar_mapeo', sucursal_id: sucursalSel, canal: canal.id, medio: 'MERCADO_PAGO' }, `${canal.label}: vuelve a la cuenta de siempre`)}>
-                            <option value="">Cuenta de siempre (Sucursales)</option>
+                            <option value="">— Sin asignar (el canal no ofrece este medio) —</option>
                             {credencialesAsignables.map(c => <option key={c.id} value={c.id} disabled={!c.activo && mM?.mp_credencial_id !== c.id}>{c.nombre}{c.sucursal_id === null ? ' (marca)' : ''}{!c.activo ? ' (inactiva)' : ''}</option>)}
                           </select>
                         </td>
