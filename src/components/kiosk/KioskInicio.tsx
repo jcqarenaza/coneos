@@ -6,7 +6,7 @@ import type { EmpresaConfig, DispositivoKiosk } from '@/app/[empresa]/kiosk/[suc
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string }
-interface Presentacion { id: string; producto_id: string; imagen_url: string | null; es_novedad?: boolean; nombre?: string }
+interface Presentacion { id: string; producto_id: string; imagen_url: string | null; es_novedad?: boolean; nombre?: string; precio?: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 interface Opcion { id: string; grupo_id: string; imagen_url: string | null; emoji: string | null }
 
@@ -171,7 +171,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
                   )}
                   <div>
                     <p className="text-sm font-bold text-neutral-800 leading-tight">{prod.nombre}</p>
-                    {pres.nombre && <p className="text-[11px] text-neutral-400 leading-tight">{pres.nombre}</p>}
+                    {pres.nombre && <p className="text-[11px] text-neutral-400 leading-tight">{pres.nombre}{pres.precio != null && <> · <span className="font-bold" style={{ color: config.primary_color }}>${Number(pres.precio).toLocaleString('es-AR')}</span></>}</p>}
                   </div>
                 </button>
               ))}
