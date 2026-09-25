@@ -16,6 +16,9 @@ export async function POST(request: Request) {
     // false = "pagar al mozo" (va a cocina sin cobrar, queda por cobrar en caja)
     numero_mesa = null, nombre_cliente = null, pago_mp = false, // V1.5: solo takeaway; null = lo antes posible
     venta_caja = false, // 9c: venta manual de mostrador (nace cobrada)
+    // COBRO CON CUENTA ELEGIDA (JC 25/09): SOLO honrados con venta_caja —
+    // vidrieras y kiosk siguen resolviendo por config del canal, intactos.
+    cuenta_transferencia_id = null, mp_credencial_id = null,
   } = body
   let hora_retiro = body.hora_retiro ?? null
 
@@ -26,6 +29,29 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient()
+
+  // ── VALIDACIÓN del override de cuenta (ANTES de la RPC: si la cuenta no
+  // sirve, el pedido NO nace — patrón server-authoritative de asignar_mapeo) ──
+  let cuentaElegida: string | null = null
+  let credencialElegida: string | null = null
+  if (venta_caja && metodo_pago === 'transferencia' && cuenta_transferencia_id) {
+    const { data: cta } = await supabase.from('cuentas_transferencia')
+      .select('id, sucursal_id, activo')
+      .eq('id', cuenta_transferencia_id).eq('empresa_id', empresa_id).maybeSingle()
+    if (!cta) return NextResponse.json({ error: 'Esa cuenta no existe o no es de tu empresa' }, { status: 403 })
+    if (cta.sucursal_id !== sucursal_id) return NextResponse.json({ error: 'Esa cuenta pertenece a otra sucursal' }, { status: 403 })
+    if (!cta.activo) return NextResponse.json({ error: 'La cuenta está inactiva — elegí otra' }, { status: 400 })
+    cuentaElegida = cta.id
+  }
+  if (venta_caja && metodo_pago === 'mp' && mp_credencial_id) {
+    const { data: cred } = await supabase.from('mp_credenciales')
+      .select('id, sucursal_id, activo')
+      .eq('id', mp_credencial_id).eq('empresa_id', empresa_id).maybeSingle()
+    if (!cred) return NextResponse.json({ error: 'Esa cuenta de MP no existe o no es de tu empresa' }, { status: 403 })
+    if (cred.sucursal_id !== null && cred.sucursal_id !== sucursal_id) return NextResponse.json({ error: 'Esa cuenta de MP es exclusiva de otra sucursal' }, { status: 403 })
+    if (!cred.activo) return NextResponse.json({ error: 'La cuenta de MP está desactivada — elegí otra' }, { status: 400 })
+    credencialElegida = cred.id
+  }
 
   // ══ CICLO A — EL TECHO: horario general de la sucursal ══
   // Guard temprano, ANTES de la RPC: un rechazo no consume numeración ni
@@ -328,6 +354,12 @@ export async function POST(request: Request) {
   // la RPC de stock no se toca; un fallo acá jamás voltea el pedido.
   if (metodo_pago === 'transferencia') {
     try {
+      // Elección manual de la caja (validada arriba): manda sobre el resolver
+      if (cuentaElegida) {
+        const pedidoId = (pedido as { id?: string })?.id
+        if (pedidoId) await supabase.from('pedidos').update({ transferencia_cuenta_id: cuentaElegida }).eq('id', pedidoId)
+        throw { snapshotManual: true }
+      }
       // FASE 5 fix: canal por canalDePedido() — ÚNICA fuente (el mapeo inline
       // anterior duplicaba la lógica y no conocía 'caja' → snapshot de KIOSK
       // en ventas de mostrador; cazado por el test crítico de la matriz)
@@ -338,8 +370,14 @@ export async function POST(request: Request) {
         if (pedidoId) await supabase.from('pedidos').update({ transferencia_cuenta_id: res.cuenta.id }).eq('id', pedidoId)
       }
     } catch (e) {
-      console.error('[pedidos] snapshot transferencia falló (pedido intacto):', e)
+      if (!(e as { snapshotManual?: boolean })?.snapshotManual) console.error('[pedidos] snapshot transferencia falló (pedido intacto):', e)
     }
+  }
+
+  // ── COBRO MP EN CAJA: credencial elegida congelada en el pedido ──
+  if (credencialElegida) {
+    const pedidoId = (pedido as { id?: string })?.id
+    if (pedidoId) await supabase.from('pedidos').update({ mp_credencial_id: credencialElegida }).eq('id', pedidoId).then(() => {}, () => {})
   }
 
   const pedidoId = (pedido as { id?: string } | null)?.id

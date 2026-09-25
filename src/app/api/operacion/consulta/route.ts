@@ -164,6 +164,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ claimed: (data ?? []).length > 0 })
   }
 
+  // ── COBRO EN CAJA CON CUENTA ELEGIDA (JC 25/09) ──
+  // Cuentas activas para el selector de Nueva Venta: transferencias de LA
+  // sucursal + credenciales MP de la sucursal o de marca (null). El default
+  // sale del mapeo del canal CAJA en Cobros — misma fuente que el resolver.
+  if (accion === 'cuentas_cobro') {
+    const [ctas, creds, mapeos] = await Promise.all([
+      supabase.from('cuentas_transferencia')
+        .select('id, nombre, alias')
+        .eq('empresa_id', disp.empresa_id).eq('sucursal_id', disp.sucursal_id)
+        .eq('activo', true).order('created_at'),
+      supabase.from('mp_credenciales')
+        .select('id, nombre, sucursal_id')
+        .eq('empresa_id', disp.empresa_id).eq('activo', true).order('created_at'),
+      supabase.from('canales_medios_pago')
+        .select('medio, mp_credencial_id, transferencia_cuenta_id')
+        .eq('sucursal_id', disp.sucursal_id).eq('canal', 'CAJA'),
+    ])
+    const credsSucursal = (creds.data ?? []).filter(c => c.sucursal_id === null || c.sucursal_id === disp.sucursal_id)
+      .map(c => ({ id: c.id, nombre: c.nombre }))
+    const mapa = mapeos.data ?? []
+    return NextResponse.json({
+      transferencias: ctas.data ?? [],
+      credenciales_mp: credsSucursal,
+      default_transferencia: mapa.find(m => m.medio === 'TRANSFERENCIA')?.transferencia_cuenta_id ?? null,
+      default_mp: mapa.find(m => m.medio === 'MERCADO_PAGO')?.mp_credencial_id ?? null,
+    })
+  }
+
   if (accion === 'delivery_pausado_get') {
     const { data } = await supabase.from('delivery_config')
       .select('pausado').eq('sucursal_id', disp.sucursal_id).maybeSingle()

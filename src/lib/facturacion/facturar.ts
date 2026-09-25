@@ -6,6 +6,13 @@
 // ============================================================
 import { createAdminClient } from '@/lib/supabase/admin'
 
+// ══ MULTI-CUIT B1 (JC 25/09) — RESOLUCIÓN ÚNICA ══
+// Este archivo es LA única casa de la resolución del emisor fiscal.
+// Las copias de /api/facturacion/emitir y /api/mp/webhook MURIERON: importan
+// de acá. En B1 el comportamiento es BYTE-IDÉNTICO al histórico (sucursal →
+// marca). La prioridad cuenta→config entra en B2, junto con la Edge que
+// honra el emisor — jamás por separado (mitad de la cadena = CUIT cruzado).
+
 export async function resolverFactConfig(supabase: ReturnType<typeof createAdminClient>, empresaId: string, sucursalId: string | null, columnas: string) {
   if (sucursalId) {
     const { data } = await supabase.from('facturacion_config')

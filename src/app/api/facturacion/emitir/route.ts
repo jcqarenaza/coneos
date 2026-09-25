@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolverFactConfig } from '@/lib/facturacion/facturar'
 
 // E1: débito y crédito facturables — los valores CANÓNICOS que ya usan el
 // constraint de pedidos, METODO_UI y el pago dividido de mesa. Cierra la
@@ -8,18 +9,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 const METODOS_VALIDOS = ['transferencia', 'efectivo', 'mp', 'debito', 'credito']
 
 
-// Resuelve la config de facturación: fila de la sucursal si existe, si no la de la
-// empresa (sucursal_id NULL). Devuelve null si no hay ninguna.
-async function resolverFactConfig(supabase: ReturnType<typeof createAdminClient>, empresaId: string, sucursalId: string | null, columnas: string) {
-  if (sucursalId) {
-    const { data } = await supabase.from('facturacion_config')
-      .select(columnas).eq('empresa_id', empresaId).eq('sucursal_id', sucursalId).maybeSingle()
-    if (data) return data
-  }
-  const { data } = await supabase.from('facturacion_config')
-    .select(columnas).eq('empresa_id', empresaId).is('sucursal_id', null).maybeSingle()
-  return data
-}
+// MULTI-CUIT B1: la copia local de resolverFactConfig MURIÓ — única casa en
+// @/lib/facturacion/facturar (T3). Mismo comportamiento, una sola fuente.
 
 // GET ?empresa_id= → { configurada, auto, metodos, disponibles }
 // configurada: módulo listo (activo del panel + certificados)

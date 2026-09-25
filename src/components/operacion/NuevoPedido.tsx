@@ -41,6 +41,13 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   const [presentacionActiva, setPresentacionActiva] = useState<Presentacion | null>(null)
   const [opcionesSeleccionadas, setOpcionesSeleccionadas] = useState<Opcion[]>([])
   const [metodoPago, setMetodoPago] = useState('efectivo')
+  // Cobro con cuenta elegida (JC 25/09): selector manual solo si hay más de
+  // una opción; default = el mapeo del canal CAJA en Cobros. La elección
+  // queda congelada en el pedido (informe por cuenta / multi-CUIT mañana).
+  const [ctasTransfer, setCtasTransfer] = useState<{ id: string; nombre: string; alias: string | null }[]>([])
+  const [credsMp, setCredsMp] = useState<{ id: string; nombre: string }[]>([])
+  const [ctaSel, setCtaSel] = useState<string | null>(null)
+  const [credSel, setCredSel] = useState<string | null>(null)
   const [notas, setNotas] = useState('')
 
   // Delivery telefónico
@@ -82,6 +89,17 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
         setCostoEnvioConfig(costo)
         setCostoEnvio(costo)
       }
+      // Cuentas para el selector de cobro (transferencia / MP)
+      try {
+        const rc = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'cuentas_cobro' }) })
+        if (rc.ok) {
+          const dc = await rc.json()
+          setCtasTransfer(dc.transferencias ?? [])
+          setCredsMp(dc.credenciales_mp ?? [])
+          setCtaSel(dc.default_transferencia ?? (dc.transferencias?.[0]?.id ?? null))
+          setCredSel(dc.default_mp ?? (dc.credenciales_mp?.[0]?.id ?? null))
+        }
+      } catch {}
       setLoading(false)
     }
     init()
@@ -216,6 +234,10 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
         empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
         dispositivo_id: dispositivo.id, session_id: sesion.session_id,
         items, metodo_pago: metodoPago, notas: notas || null,
+        // Cuenta elegida: viaja solo si hay más de una (con una sola, el
+        // server resuelve por config como siempre — inercia total)
+        ...(metodoPago === 'transferencia' && ctasTransfer.length > 1 && ctaSel ? { cuenta_transferencia_id: ctaSel } : {}),
+        ...(metodoPago === 'mp' && credsMp.length > 1 && credSel ? { mp_credencial_id: credSel } : {}),
         venta_caja: true, // 9c: mostrador nace cobrado→PREPARING; telefónica (delivery) sigue su flujo
         ...(esDelivery ? {
           tipo_pedido: 'delivery',
@@ -425,6 +447,28 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                 </button>
               ))}
             </div>
+            {metodoPago === 'transferencia' && ctasTransfer.length > 1 && (
+              <div className="flex gap-2 flex-wrap items-center">
+                <span className="text-xs text-neutral-400 font-semibold">Entra en:</span>
+                {ctasTransfer.map(c => (
+                  <button key={c.id} onClick={() => setCtaSel(c.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${ctaSel === c.id ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+                    🏦 {c.nombre}
+                  </button>
+                ))}
+              </div>
+            )}
+            {metodoPago === 'mp' && credsMp.length > 1 && (
+              <div className="flex gap-2 flex-wrap items-center">
+                <span className="text-xs text-neutral-400 font-semibold">Entra en:</span>
+                {credsMp.map(c => (
+                  <button key={c.id} onClick={() => setCredSel(c.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${credSel === c.id ? 'bg-sky-600 text-white' : 'bg-sky-50 text-sky-700 hover:bg-sky-100'}`}>
+                    📱 {c.nombre}
+                  </button>
+                ))}
+              </div>
+            )}
             <input value={notas} onChange={e => setNotas(e.target.value)} placeholder="Notas..."
               className="w-full bg-neutral-50 border border-neutral-200 text-neutral-700 text-sm rounded-xl px-3 py-2 placeholder-neutral-300 focus:outline-none focus:border-neutral-300" />
             {esDelivery && (

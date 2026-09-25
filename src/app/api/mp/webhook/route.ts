@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { credencialesParaWebhook } from '@/lib/pagos/mp'
+import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 
 // Webhook de Mercado Pago — confirma pagos (Fase 3 multi-cuenta).
 // Resolución de credencial: ?c= (exacta, con refresh on-demand) →
@@ -11,45 +12,11 @@ import { credencialesParaWebhook } from '@/lib/pagos/mp'
 // solo transiciona PENDING_PAYMENT→PAID (idempotencia), y al confirmar
 // dispara la facturación ARCA exactamente como antes.
 
-async function facturarSiCorresponde(supabase: ReturnType<typeof createAdminClient>, pedido_id: string) {
-  try {
-    const { data: pedido } = await supabase.from('pedidos')
-      .select('empresa_id, sucursal_id, metodo_pago').eq('id', pedido_id).maybeSingle()
-    if (!pedido?.metodo_pago) return
-
-    // Config fiscal: fila de la sucursal → fallback fila de empresa (sucursal_id NULL)
-    const cols = 'activo, auto_facturar, metodos_auto, cert_pem, key_pem'
-    let cfg: { activo: boolean; auto_facturar: boolean | null; metodos_auto: unknown; cert_pem: string | null; key_pem: string | null } | null = null
-    if (pedido.sucursal_id) {
-      const { data } = await supabase.from('facturacion_config')
-        .select(cols).eq('empresa_id', pedido.empresa_id).eq('sucursal_id', pedido.sucursal_id).maybeSingle()
-      cfg = data as typeof cfg
-    }
-    if (!cfg) {
-      const { data } = await supabase.from('facturacion_config')
-        .select(cols).eq('empresa_id', pedido.empresa_id).is('sucursal_id', null).maybeSingle()
-      cfg = data as typeof cfg
-    }
-    if (!cfg?.activo || !cfg.cert_pem || !cfg.key_pem) return
-    if (cfg.auto_facturar === false) return
-    const metodos = Array.isArray(cfg.metodos_auto) ? cfg.metodos_auto as string[] : ['transferencia']
-    if (!metodos.includes(pedido.metodo_pago)) return
-
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    if (!url || !serviceKey) return
-    const res = await fetch(`${url}/functions/v1/arca-facturar`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: pedido.empresa_id, pedido_id, accion: 'facturar' }),
-    })
-    const d = await res.json().catch(() => null)
-    console.log('[mp/webhook][facturacion]', pedido_id, d?.ok ? `CAE ${d.cae} Nro ${d.nro_cbte}` : (d?.error ?? 'sin respuesta'))
-  } catch (e) {
-    console.error('[mp/webhook][facturacion] hook error', e)
-  }
-}
-
+// MULTI-CUIT B1: la copia local de facturarSiCorresponde MURIÓ — única casa
+// en @/lib/facturacion/facturar (T3). Diferencia heredada A FAVOR: la del lib
+// además manda el receptor FA-1 del pedido si existe (la copia local no lo
+// hacía) — un pedido con receptor cobrado por webhook ahora factura igual que
+// cobrado por caja. Una regla, una casa.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   if (!body) return NextResponse.json({ ok: true })
@@ -97,7 +64,7 @@ export async function POST(request: Request) {
           })
           .eq('id', pedido.id)
         console.log(`[mp/webhook] Pedido ${pedidoId} pagado via MP ${paymentId} (via ${via})`)
-        await facturarSiCorresponde(supabase, pedido.id)
+        await facturarSiCorresponde(pedido.id)
       }
     }
     break
