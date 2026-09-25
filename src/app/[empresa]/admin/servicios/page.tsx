@@ -215,7 +215,7 @@ export default function ServiciosPage() {
         costo_servicio: ta.costo_servicio,
         acepta_anticipado: ta.acepta_anticipado,
       }, { onConflict: 'sucursal_id' }),
-      ...(tieneMesas ? [supabase.from('empresa_config').update({ mesas_activo: mesasActivo, entrada_unificada: appEncendida }).eq('empresa_id', ctx.empresaId)] : []),
+      supabase.from('empresa_config').update({ entrada_unificada: appEncendida, ...(tieneMesas ? { mesas_activo: mesasActivo } : {}) }).eq('empresa_id', ctx.empresaId),
     ])
     setGuardando(null)
     // Tab App: persistir canales visibles de TODAS las sucursales (fuente única)
