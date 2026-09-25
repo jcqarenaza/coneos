@@ -230,7 +230,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
       if (res.ok && data.init_point) {
         // Guardar pendiente para que la page lo retome al volver del checkout de MP
-        try { sessionStorage.setItem('coneos_mp_pedido', JSON.stringify({ id: pedido.id, ts: Date.now() })) } catch {}
+        try { localStorage.setItem('coneos_mp_pedido', JSON.stringify({ id: pedido.id, ts: Date.now(), tipo: canal })) } catch {}
         window.location.href = data.init_point
       } else {
         // Fallback: mostrar éxito igual, la caja cobra manual

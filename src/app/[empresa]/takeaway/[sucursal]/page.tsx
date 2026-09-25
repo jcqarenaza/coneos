@@ -67,12 +67,13 @@ export default function TakeawayPage() {
     init()
 
     // Retorno del checkout de MP: retomar el pedido pendiente (mismo mecanismo que delivery)
-    const raw = (() => { try { return sessionStorage.getItem('coneos_mp_pedido') } catch { return null } })()
+    const raw = (() => { try { return (localStorage.getItem('coneos_mp_pedido') ?? sessionStorage.getItem('coneos_mp_pedido')) } catch { return null } })()
     if (!raw) return
-    let pendiente: { id: string; ts: number } | null = null
+    let pendiente: { id: string; ts: number; tipo?: string } | null = null
     try { pendiente = JSON.parse(raw) } catch {}
+    if (pendiente?.tipo && pendiente.tipo !== 'takeaway') return // pendiente de otra vidriera
     if (!pendiente?.id || Date.now() - (pendiente.ts ?? 0) > 3600000) {
-      try { sessionStorage.removeItem('coneos_mp_pedido') } catch {}
+      try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
       return
     }
     let intentos = 0
@@ -84,7 +85,7 @@ export default function TakeawayPage() {
         if (r.ok) {
           const d = await r.json()
           if (d.estado === 'PAID' || d.estado === 'PREPARING' || d.estado === 'READY' || d.estado === 'DELIVERED') {
-            try { sessionStorage.removeItem('coneos_mp_pedido') } catch {}
+            try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
             setPedidoCreado({ numero: d.numero_pedido, codigo: d.codigo_retiro })
             setCarrito([])
             setPaso('confirmacion')
@@ -94,7 +95,7 @@ export default function TakeawayPage() {
       } catch {}
       intentos++
       if (intentos < 15) setTimeout(verificar, 2000)
-      else { try { sessionStorage.removeItem('coneos_mp_pedido') } catch {} }
+      else { try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {} }
     }
     verificar()
     return () => { cancelado = true }

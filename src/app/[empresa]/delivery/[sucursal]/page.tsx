@@ -120,7 +120,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       //      dispositivo; la App Pública lo transporta sin interpretarlo)
       // Cualquier error = camino de siempre. Byte-idéntico con toggle apagado.
       if (searchParams.get('desde') !== 'app') {
-        const rawMp = (() => { try { return sessionStorage.getItem('coneos_mp_pedido') } catch { return null } })()
+        const rawMp = (() => { try { return (localStorage.getItem('coneos_mp_pedido') ?? sessionStorage.getItem('coneos_mp_pedido')) } catch { return null } })()
         let mpPendiente = false
         if (rawMp) { try { const pj = JSON.parse(rawMp); mpPendiente = !!pj?.id && Date.now() - (pj.ts ?? 0) <= 3600000 } catch {} }
         if (!mpPendiente) {
@@ -218,13 +218,14 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
     init()
 
     // Retorno del checkout de MP: retomar el pedido pendiente y verificar el pago
-    const raw = (() => { try { return sessionStorage.getItem('coneos_mp_pedido') } catch { return null } })()
+    const raw = (() => { try { return (localStorage.getItem('coneos_mp_pedido') ?? sessionStorage.getItem('coneos_mp_pedido')) } catch { return null } })()
     if (!raw) return
-    let pendiente: { id: string; ts: number } | null = null
+    let pendiente: { id: string; ts: number; tipo?: string } | null = null
     try { pendiente = JSON.parse(raw) } catch {}
     // Descartar pendientes de más de 1 hora
+    if (pendiente?.tipo && pendiente.tipo !== 'delivery') return // pendiente de otra vidriera
     if (!pendiente?.id || Date.now() - (pendiente.ts ?? 0) > 3600000) {
-      try { sessionStorage.removeItem('coneos_mp_pedido') } catch {}
+      try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
       return
     }
     let intentos = 0
@@ -236,7 +237,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         if (r.ok) {
           const d = await r.json()
           if (d.estado === 'PAID' || d.estado === 'PREPARING' || d.estado === 'READY' || d.estado === 'DELIVERED') {
-            try { sessionStorage.removeItem('coneos_mp_pedido') } catch {}
+            try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
             setPedidoCreado({ numero: d.numero_pedido, codigo: d.codigo_retiro })
             setCarrito([])
             setPaso('confirmacion')
@@ -246,7 +247,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       } catch {}
       intentos++
       if (intentos < 15) setTimeout(verificar, 2000)
-      else { try { sessionStorage.removeItem('coneos_mp_pedido') } catch {} }
+      else { try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {} }
     }
     verificar()
     return () => { cancelado = true }
