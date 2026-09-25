@@ -14,7 +14,30 @@
 import { useEffect, useRef, useState } from 'react'
 
 type Tipo = 'takeaway' | 'delivery' | 'mesa'
-type Confirmado = { numero: number; codigo: string }
+// Lo que el comprobante del retorno necesita, leído de la BASE (no de la memoria del celu)
+export type PedidoRetorno = {
+  numero: number; codigo: string
+  nombre?: string | null; total?: number | null; metodo?: string | null; costoEnvio?: number | null
+  horaRetiro?: string | null; direccion?: string | null; entreCalles?: string | null; telefono?: string | null
+}
+type Confirmado = PedidoRetorno
+type FilaPedido = {
+  numero_pedido: number; codigo_retiro: string; total?: number | null; metodo_pago?: string | null; costo_envio?: number | null
+  hora_retiro?: string | null; nombre_cliente?: string | null
+  datos_delivery?: { nombre?: string; direccion?: string; entre_calles?: string; telefono?: string } | null
+}
+function aRetorno(d: FilaPedido): PedidoRetorno {
+  const dd = d.datos_delivery ?? {}
+  return {
+    numero: d.numero_pedido, codigo: d.codigo_retiro,
+    nombre: dd.nombre || d.nombre_cliente || null,
+    total: d.total != null ? Number(d.total) : null,
+    metodo: d.metodo_pago ?? null,
+    costoEnvio: d.costo_envio != null ? Number(d.costo_envio) : null,
+    horaRetiro: d.hora_retiro ?? null,
+    direccion: dd.direccion || null, entreCalles: dd.entre_calles || null, telefono: dd.telefono || null,
+  }
+}
 
 const PAGADOS = ['PAID', 'PREPARING', 'READY', 'DELIVERED']
 const CLAVE_PEND = 'coneos_mp_pedido'
@@ -66,13 +89,13 @@ export function useRetornoMp(tipo: Tipo, onConfirmado: (c: Confirmado) => void) 
       } catch {}
     }
 
-    const confirmar = (id: string, numero: number, codigo: string) => {
+    const confirmar = (id: string, pedido: PedidoRetorno) => {
       if (leerVistos().includes(id)) return
       marcarVisto(id)
       limpiarPend()
       limpiarCarritos() // antes de avisar: la restauración del carrito ya no encuentra nada
       setVerificando(false)
-      cbRef.current({ numero, codigo })
+      cbRef.current(pedido)
     }
 
     // Una pregunta: 'ok' confirmado · 'esperar' hay MP reciente sin webhook todavía · 'nada'
@@ -83,7 +106,7 @@ export function useRetornoMp(tipo: Tipo, onConfirmado: (c: Confirmado) => void) 
           const r = await fetch(`/api/pedidos/estado?pedido_id=${pendId}`, { cache: 'no-store' })
           if (r.ok) {
             const d = await r.json()
-            if (PAGADOS.includes(d.estado)) { confirmar(pendId, d.numero_pedido, d.codigo_retiro); return 'ok' }
+            if (PAGADOS.includes(d.estado)) { confirmar(pendId, aRetorno(d)); return 'ok' }
           }
         } catch {}
       }
@@ -98,7 +121,7 @@ export function useRetornoMp(tipo: Tipo, onConfirmado: (c: Confirmado) => void) 
             const d = await r.json()
             const ped = d?.pedido
             if (ped?.id && !leerVistos().includes(ped.id)) {
-              if (PAGADOS.includes(ped.estado)) { confirmar(ped.id, ped.numero_pedido, ped.codigo_retiro); return 'ok' }
+              if (PAGADOS.includes(ped.estado)) { confirmar(ped.id, aRetorno(ped)); return 'ok' }
               return 'esperar'
             }
           }

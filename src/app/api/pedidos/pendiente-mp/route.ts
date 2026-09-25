@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
   const desde = new Date(Date.now() - 3600000).toISOString() // última hora
   const { data: pedido } = await supabase.from('pedidos')
-    .select('id, numero_pedido, codigo_retiro, estado, metodo_pago, created_at')
+    .select('id, estado, numero_pedido, codigo_retiro, total, metodo_pago, costo_envio, hora_retiro, nombre_cliente, datos_delivery, created_at')
     .eq('empresa_id', empresa.id).eq('sucursal_id', sucursal.id)
     .eq('visitante_id', String(visitante).slice(0, 80))
     .eq('tipo_pedido', tipo).eq('metodo_pago', 'mp')
@@ -33,5 +33,9 @@ export async function GET(request: Request) {
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
   if (!pedido) return NextResponse.json({ pedido: null })
-  return NextResponse.json({ pedido: { id: pedido.id, numero_pedido: pedido.numero_pedido, codigo_retiro: pedido.codigo_retiro, estado: pedido.estado } })
+  return NextResponse.json({ pedido: {
+    id: pedido.id, numero_pedido: pedido.numero_pedido, codigo_retiro: pedido.codigo_retiro, estado: pedido.estado,
+    total: pedido.total, metodo_pago: pedido.metodo_pago, costo_envio: pedido.costo_envio, hora_retiro: pedido.hora_retiro,
+    nombre_cliente: pedido.nombre_cliente, datos_delivery: pedido.datos_delivery,
+  } })
 }

@@ -9,7 +9,7 @@ import KioskCarritoDelivery from '@/components/delivery/KioskCarritoDelivery'
 import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDelivery'
 import { generarSlots } from '@/lib/takeaway/slots'
 import RegistroVisita from '@/components/RegistroVisita'
-import { useRetornoMp } from '@/lib/useRetornoMp'
+import { useRetornoMp, type PedidoRetorno } from '@/lib/useRetornoMp'
 
 export interface EmpresaConfig {
   primary_color: string; secondary_color: string; logo_url: string | null
@@ -67,11 +67,11 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [paso, setPaso] = useState<Paso>('catalogo')
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   const [categoriaInicial, setCategoriaInicial] = useState<string | undefined>()
-  const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
+  const [pedidoCreado, setPedidoCreado] = useState<PedidoRetorno | null>(null)
   // Retorno MP: una sola casa (src/lib/useRetornoMp.ts) — URL, memoria local y server por visitante_id, con reintentos.
   // Declarado ANTES del init: su efecto guarda el pendiente de la URL primero, así el puente a la App no intercepta.
-  const { verificando: verificandoMp } = useRetornoMp('delivery', ({ numero, codigo }) => {
-    setPedidoCreado({ numero, codigo })
+  const { verificando: verificandoMp } = useRetornoMp('delivery', pedido => {
+    setPedidoCreado(pedido)
     setCarrito([])
     setPaso('confirmacion')
   })

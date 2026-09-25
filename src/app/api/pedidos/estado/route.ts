@@ -6,6 +6,9 @@ import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 
 // GET ?pedido_id= → estado mínimo del pedido, para que kiosk/delivery (anónimos)
 // detecten el pago MP y muestren número y código de retiro.
+// Retorno MP (JC 25/09): suma nombre/total/método/hora/datos de entrega del
+// PROPIO pedido — el comprobante del retorno se arma con la base, no con la
+// memoria del navegador (que el celu pierde al pagar en la app de MP).
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const pedido_id = searchParams.get('pedido_id')
@@ -13,7 +16,7 @@ export async function GET(request: Request) {
 
   const supabase = createAdminClient()
   const { data, error } = await supabase.from('pedidos')
-    .select('estado, numero_pedido, codigo_retiro')
+    .select('estado, numero_pedido, codigo_retiro, total, metodo_pago, costo_envio, hora_retiro, nombre_cliente, datos_delivery')
     .eq('id', pedido_id)
     .single()
 

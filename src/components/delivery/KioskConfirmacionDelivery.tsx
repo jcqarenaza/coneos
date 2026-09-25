@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import type { PedidoRetorno } from '@/lib/useRetornoMp'
 
 import { Loader2, CheckCircle, Copy, Check, Truck, Upload, X, ArrowLeft } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
@@ -13,7 +14,7 @@ interface Props {
   slotsRetiro?: { iso: string; label: string }[]
   direccionRetiro?: string | null
   config: EmpresaConfig; dispositivo: DispositivoKiosk; carrito: ItemCarrito[]
-  costoEnvio: number; envioAlCadete?: boolean; pedidoCreado: { numero: number; codigo: string } | null
+  costoEnvio: number; envioAlCadete?: boolean; pedidoCreado: PedidoRetorno | null
   onPedidoCreado: (numero: number, codigo: string) => void
   onNuevoPedido: () => void; onVolver: () => void
   // 9d: el server rechazó por precios (409 del ciclo C) → el padre re-precia
@@ -61,6 +62,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const [horaConfirmada, setHoraConfirmada] = useState<string | null>(null)
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const total = subtotal + costoEnvio // espejo: TA recibe su costo de servicio (0 = inercia)
+  // Retorno MP: el comprobante manda con lo que dice la BASE (el carrito del celu ya no existe)
+  const totalFinal = pedidoCreado?.total != null ? Number(pedidoCreado.total) : total
 
   // Retorno de MP verificado (la page manda pedidoCreado): directo al comprobante.
   const [paso, setPaso] = useState<'datos' | 'pago' | 'transferencia' | 'exito'>(pedidoCreado ? 'exito' : 'datos')
@@ -120,6 +123,21 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const [capturaPreview, setCapturaPreview] = useState<string | null>(null)
   const [subiendoCaptura, setSubiendoCaptura] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Retorno MP: nombre/dirección/tel y hora vienen del pedido guardado (el celu los perdió en la app de MP)
+  useEffect(() => {
+    if (!pedidoCreado) return
+    if (pedidoCreado.nombre || pedidoCreado.direccion || pedidoCreado.telefono) {
+      setDatos(prev => ({
+        nombre: prev.nombre || pedidoCreado.nombre || '',
+        direccion: prev.direccion || pedidoCreado.direccion || '',
+        entre_calles: prev.entre_calles || pedidoCreado.entreCalles || '',
+        telefono: prev.telefono || pedidoCreado.telefono || '',
+      }))
+    }
+    if (pedidoCreado.horaRetiro) setHoraConfirmada(pedidoCreado.horaRetiro)
+  }, [pedidoCreado])
+  // Método real del pedido (el selector nace en 'efectivo' y mentía "pagás en el mostrador" tras pagar con MP)
+  const metodoFinal = pedidoCreado?.metodo ?? metodoPago
 
   useEffect(() => {
     if (pagosIniciales) return
@@ -547,7 +565,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     cx.strokeStyle = '#e5e5e5'; cx.beginPath(); cx.moveTo(48, y); cx.lineTo(W - 48, y); cx.stroke(); y += 40
     cx.font = '900 26px system-ui, sans-serif'; cx.fillStyle = '#171717'
     cx.fillText('TOTAL', 48, y)
-    cx.textAlign = 'right'; cx.fillStyle = config.primary_color || '#171717'; cx.fillText(formatPrecio(total), W - 48, y)
+    cx.textAlign = 'right'; cx.fillStyle = config.primary_color || '#171717'; cx.fillText(formatPrecio(totalFinal), W - 48, y)
     // pie
     y += 48; cx.textAlign = 'center'; cx.font = '13px system-ui, sans-serif'; cx.fillStyle = '#a3a3a3'
     cx.fillText(esTakeaway ? 'Presentá este comprobante al retirar tu pedido' : 'Presentá este comprobante al recibir tu pedido', W / 2, y)
@@ -589,7 +607,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               <p className="text-neutral-400 text-xs uppercase tracking-wide mb-1">Código de retiro</p>
               <p className="font-black tracking-[0.3em]" style={{ fontSize: '3.2rem', lineHeight: 1, color: config.primary_color }}>{pedidoCreado?.codigo ?? codigoRetiro}</p>
               <p className="text-neutral-500 text-xs mt-2 font-semibold">Mostrá este código al retirar tu pedido</p>
-              {direccionRetiro && <p className="text-neutral-600 text-xs mt-1.5 font-bold">📍 Retirás en: {direccionRetiro}</p>}
+              {direccionRetiro && <p className="text-neutral-800 text-lg font-black mt-3 leading-snug px-2">📍 Retirás en: {direccionRetiro}</p>}
               {horaConfirmada ? (
                 <p className="inline-block mt-3 px-4 py-2 rounded-xl text-white font-bold text-base" style={{ backgroundColor: config.primary_color }}>
                   🕐 Retiralo a las {new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(horaConfirmada))}
@@ -617,9 +635,10 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
             {!esTakeaway && <p className="text-sm text-neutral-600"><span className="font-semibold">Dirección:</span> {datos.direccion}</p>}
             {!esTakeaway && datos.entre_calles && <p className="text-sm text-neutral-600"><span className="font-semibold">Entre:</span> {datos.entre_calles}</p>}
             {!esTakeaway && <p className="text-sm text-neutral-600"><span className="font-semibold">Tel:</span> {datos.telefono}</p>}
-            <p className="text-sm font-bold mt-2 pt-2 border-t border-neutral-100" style={{ color: config.primary_color }}>Total: {formatPrecio(total)}</p>
-            {metodoPago === 'efectivo' && <p className="text-xs text-amber-600">💵 {esTakeaway ? 'Pagás en el mostrador al retirar' : 'Pagás al repartidor cuando llegue'}</p>}
-            {metodoPago === 'transferencia' && <p className="text-xs text-blue-600">📲 Transferencia {captura ? 'enviada ✓' : 'pendiente de confirmación'}</p>}
+            <p className="text-sm font-bold mt-2 pt-2 border-t border-neutral-100" style={{ color: config.primary_color }}>Total: {formatPrecio(totalFinal)}</p>
+            {metodoFinal === 'efectivo' && <p className="text-xs text-amber-600">💵 {esTakeaway ? 'Pagás en el mostrador al retirar' : 'Pagás al repartidor cuando llegue'}</p>}
+            {metodoFinal === 'mp' && <p className="text-xs text-emerald-600 font-semibold">💳 Pagado con Mercado Pago ✓</p>}
+            {metodoFinal === 'transferencia' && <p className="text-xs text-blue-600">📲 Transferencia {captura ? 'enviada ✓' : 'pendiente de confirmación'}</p>}
             {benefPesosPorPunto && (() => {
               const base = carrito.reduce((s, i) => s + (i.precio > 0 ? i.precio * i.cantidad : 0), 0)
               const pts = Math.floor(base / benefPesosPorPunto)

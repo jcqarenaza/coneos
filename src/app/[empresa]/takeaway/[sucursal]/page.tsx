@@ -13,7 +13,7 @@ import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarritoDelivery from '@/components/delivery/KioskCarritoDelivery'
 import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDelivery'
 import RegistroVisita from '@/components/RegistroVisita'
-import { useRetornoMp } from '@/lib/useRetornoMp'
+import { useRetornoMp, type PedidoRetorno } from '@/lib/useRetornoMp'
 import type { EmpresaConfig, Accesorio, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface Contexto {
@@ -36,10 +36,10 @@ export default function TakeawayPage() {
   const [paso, setPaso] = useState<Paso>('catalogo')
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   const [accesorios, setAccesorios] = useState<Accesorio[]>([])
-  const [pedidoCreado, setPedidoCreado] = useState<{ numero: number; codigo: string } | null>(null)
+  const [pedidoCreado, setPedidoCreado] = useState<PedidoRetorno | null>(null)
   // Retorno MP: una sola casa (src/lib/useRetornoMp.ts) — URL, memoria local y server por visitante_id, con reintentos
-  const { verificando: verificandoMp } = useRetornoMp('takeaway', ({ numero, codigo }) => {
-    setPedidoCreado({ numero, codigo })
+  const { verificando: verificandoMp } = useRetornoMp('takeaway', pedido => {
+    setPedidoCreado(pedido)
     setCarrito([])
     setPaso('confirmacion')
   })
