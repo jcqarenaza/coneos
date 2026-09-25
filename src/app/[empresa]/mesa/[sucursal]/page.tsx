@@ -123,7 +123,10 @@ export default function MesaPage() {
           body: JSON.stringify({ pedido_id: d.pedido.id }),
         })
         const dp = await rp.json()
-        if (rp.ok && dp.init_point) { window.location.href = dp.init_point; return }
+        if (rp.ok && dp.init_point) {
+          try { localStorage.setItem('coneos_mp_pedido', JSON.stringify({ id: d.pedido.id, numero: d.pedido.numero_pedido, ts: Date.now(), tipo: 'mesa' })) } catch {}
+          window.location.href = dp.init_point; return
+        }
         // Sin MP disponible: el pedido quedó PENDING_PAYMENT — avisamos y ofrecemos mozo
         setErrorEnvio('El pago online no está disponible ahora. Llamá al mozo para pagar en la mesa.')
         setEnviando(false)
@@ -207,13 +210,40 @@ export default function MesaPage() {
   // ── Paso éxito ──
   // Retorno de MP (JC 24/09): la mesa recibe ?pago=ok|error&pedido=N y muestra
   // el resultado CON salida — "Pedir algo más" limpia la URL y vuelve al menú.
-  const pagoParam = searchParams.get('pago')
-  const pedidoParam = searchParams.get('pedido')
+  const [pagoMp, setPagoMp] = useState<{ numero: number } | null>(null)
+  // Despertar de pestaña (pago hecho en la APP de MP y vuelta con "atrás"):
+  // el bfcache revive la página sin recargar — verificamos el pendiente
+  // cada vez que la mesa vuelve a estar visible.
+  useEffect(() => {
+    const despertar = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      let pend: { id?: string; numero?: number; ts?: number; tipo?: string } | null = null
+      try { pend = JSON.parse(localStorage.getItem('coneos_mp_pedido') ?? 'null') } catch {}
+      if (!pend?.id || pend.tipo !== 'mesa') return
+      if (Date.now() - (pend.ts ?? 0) > 3600000) { try { localStorage.removeItem('coneos_mp_pedido') } catch {}; return }
+      fetch(`/api/pedidos/estado?pedido_id=${pend.id}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          if (d && (d.estado === 'PAID' || d.estado === 'PREPARING' || d.estado === 'READY' || d.estado === 'DELIVERED')) {
+            try { localStorage.removeItem('coneos_mp_pedido') } catch {}
+            setPagoMp({ numero: d.numero_pedido })
+            setCarrito([])
+          }
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('pageshow', despertar)
+    document.addEventListener('visibilitychange', despertar)
+    despertar()
+    return () => { window.removeEventListener('pageshow', despertar); document.removeEventListener('visibilitychange', despertar) }
+  }, [])
+  const pagoParam = searchParams.get('pago') ?? (pagoMp ? 'ok' : null)
+  const pedidoParam = searchParams.get('pedido') ?? (pagoMp ? String(pagoMp.numero) : null)
   const limpiarYSeguir = () => {
     const url = new URL(window.location.href)
     url.searchParams.delete('pago'); url.searchParams.delete('pedido')
     window.history.replaceState({}, '', url.toString())
-    setPedidoCreado(null); setPaso('catalogo')
+    setPagoMp(null); setPedidoCreado(null); setPaso('catalogo')
   }
   if (pagoParam && paso !== 'carrito' && paso !== 'datos') return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
