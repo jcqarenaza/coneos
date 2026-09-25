@@ -68,11 +68,23 @@ export default function TakeawayPage() {
     init()
 
     // Retorno del checkout de MP: retomar el pedido pendiente (mismo mecanismo que delivery)
-    const raw = (() => { try { return (localStorage.getItem('coneos_mp_pedido') ?? sessionStorage.getItem('coneos_mp_pedido')) } catch { return null } })()
-    if (!raw) return
     let pendiente: { id: string; ts: number; tipo?: string } | null = null
-    try { pendiente = JSON.parse(raw) } catch {}
-    if (pendiente?.tipo && pendiente.tipo !== 'takeaway') return // pendiente de otra vidriera
+    try {
+      const spMp = new URLSearchParams(window.location.search)
+      const extRef = spMp.get('external_reference')
+      if (extRef) {
+        pendiente = { id: extRef, ts: Date.now() }
+        const url = new URL(window.location.href)
+        for (const k of ['collection_id', 'collection_status', 'payment_id', 'status', 'external_reference', 'payment_type', 'merchant_order_id', 'preference_id', 'site_id', 'processing_mode', 'merchant_account_id']) url.searchParams.delete(k)
+        window.history.replaceState({}, '', url.toString())
+      }
+    } catch {}
+    if (!pendiente) {
+      const raw = (() => { try { return (localStorage.getItem('coneos_mp_pedido') ?? sessionStorage.getItem('coneos_mp_pedido')) } catch { return null } })()
+      if (!raw) return
+      try { pendiente = JSON.parse(raw) } catch {}
+      if (pendiente?.tipo && pendiente.tipo !== 'takeaway') return // pendiente de otra vidriera
+    }
     if (!pendiente?.id || Date.now() - (pendiente.ts ?? 0) > 3600000) {
       try { localStorage.removeItem('coneos_mp_pedido'); sessionStorage.removeItem('coneos_mp_pedido') } catch {}
       return

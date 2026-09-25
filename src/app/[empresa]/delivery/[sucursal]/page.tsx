@@ -220,9 +220,20 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
     // Retorno del checkout de MP: retomar el pedido pendiente y verificar el pago
     const raw = (() => { try { return (localStorage.getItem('coneos_mp_pedido') ?? sessionStorage.getItem('coneos_mp_pedido')) } catch { return null } })()
-    if (!raw) return
     let pendiente: { id: string; ts: number; tipo?: string } | null = null
-    try { pendiente = JSON.parse(raw) } catch {}
+    // URL PRIMERO (fix celu 24/09): la app de MP vuelve en su navegador
+    // interno sin nuestro storage — pero pega external_reference en la URL.
+    try {
+      const spMp = new URLSearchParams(window.location.search)
+      const extRef = spMp.get('external_reference')
+      if (extRef) {
+        pendiente = { id: extRef, ts: Date.now() }
+        const url = new URL(window.location.href)
+        for (const k of ['collection_id', 'collection_status', 'payment_id', 'status', 'external_reference', 'payment_type', 'merchant_order_id', 'preference_id', 'site_id', 'processing_mode', 'merchant_account_id']) url.searchParams.delete(k)
+        window.history.replaceState({}, '', url.toString())
+      }
+    } catch {}
+    if (!pendiente && raw) { try { pendiente = JSON.parse(raw) } catch {} }
     // Descartar pendientes de más de 1 hora
     if (pendiente?.tipo && pendiente.tipo !== 'delivery') return // pendiente de otra vidriera
     if (!pendiente?.id || Date.now() - (pendiente.ts ?? 0) > 3600000) {
