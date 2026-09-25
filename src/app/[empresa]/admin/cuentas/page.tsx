@@ -123,7 +123,7 @@ export default function CuentasPage() {
     const ocupada = celdaGuardando === key
     return (
       <button disabled={guardando || baseOff} onClick={() => toggleLlave(canalId, medio, !efectiva, label)}
-        title={baseOff ? 'El medio está apagado a nivel general — hasta la poda del ciclo se ajusta en Sucursales' : undefined}
+        title={baseOff ? 'El medio está apagado a nivel general de la sucursal (se destraba por soporte hasta la poda del ciclo de pagos)' : undefined}
         className={`min-w-[52px] px-2 py-1 rounded-full text-[11px] font-bold border transition-colors disabled:opacity-40 ${efectiva ? 'bg-green-50 text-green-700 border-green-200' : 'bg-neutral-100 text-neutral-400 border-neutral-200'}`}>
         {ocupada ? <Loader2 className="h-3.5 w-3.5 animate-spin inline" /> : efectiva ? 'ON' : 'OFF'}
       </button>
@@ -183,6 +183,11 @@ export default function CuentasPage() {
                   <p className="text-xs text-neutral-400 mt-0.5">{nombreSucursal(c.sucursal_id)} · MP #{c.mp_user_id}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => { const n = prompt('Nuevo nombre de la cuenta:', c.nombre); if (n?.trim() && n.trim() !== c.nombre) accion({ accion: 'renombrar_credencial', credencial_id: c.id, nombre: n.trim() }, 'Cuenta renombrada') }}
+                    title="Renombrar esta cuenta"
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 transition-colors">
+                    ✏️
+                  </button>
                   <button onClick={() => copiarLinkMP(c.sucursal_id ?? undefined, c.id)}
                     className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 transition-colors">
                     {linkCopiado === c.id ? '✓ Copiado' : 'Link de reconexión'}
