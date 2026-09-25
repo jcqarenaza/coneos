@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select('id, numero_pedido, total, empresa_id, sucursal_id, tipo_pedido, empresas(nombre, slug)')
+    .select('id, numero_pedido, total, empresa_id, sucursal_id, tipo_pedido, numero_mesa, empresas(nombre, slug), sucursales(slug)')
     .eq('id', pedido_id)
     .single()
 
@@ -67,11 +67,22 @@ export async function POST(request: Request) {
       }],
       external_reference: pedido.id,
       notification_url: notification,
-      back_urls: {
-        success: `${base}/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
-        failure: `${base}/${emp?.slug}/pago-error?pedido=${pedido.numero_pedido}`,
-        pending: `${base}/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
-      },
+      // MESA vuelve A SU MESA (JC 24/09): el cartel genérico de pago-ok no
+      // tenía salida y la mesa vive de rondas — el retorno cae en la misma
+      // URL de mesa con ?pago=, que muestra el éxito y ofrece "Pedir algo más".
+      // Los demás canales conservan su retorno de siempre.
+      back_urls: (() => {
+        const suc = Array.isArray(pedido.sucursales) ? pedido.sucursales[0] : pedido.sucursales
+        if (pedido.tipo_pedido === 'mesa' && pedido.numero_mesa != null && suc?.slug) {
+          const mesaUrl = `${base}/${emp?.slug}/mesa/${suc.slug}?m=${pedido.numero_mesa}`
+          return { success: `${mesaUrl}&pago=ok&pedido=${pedido.numero_pedido}`, failure: `${mesaUrl}&pago=error&pedido=${pedido.numero_pedido}`, pending: `${mesaUrl}&pago=ok&pedido=${pedido.numero_pedido}` }
+        }
+        return {
+          success: `${base}/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
+          failure: `${base}/${emp?.slug}/pago-error?pedido=${pedido.numero_pedido}`,
+          pending: `${base}/${emp?.slug}/pago-ok?pedido=${pedido.numero_pedido}`,
+        }
+      })(),
       auto_return: 'approved',
       statement_descriptor: emp?.nombre?.substring(0, 22) ?? 'ConeOS',
     }),

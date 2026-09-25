@@ -205,6 +205,35 @@ export default function MesaPage() {
   )
 
   // ── Paso éxito ──
+  // Retorno de MP (JC 24/09): la mesa recibe ?pago=ok|error&pedido=N y muestra
+  // el resultado CON salida — "Pedir algo más" limpia la URL y vuelve al menú.
+  const pagoParam = searchParams.get('pago')
+  const pedidoParam = searchParams.get('pedido')
+  const limpiarYSeguir = () => {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('pago'); url.searchParams.delete('pedido')
+    window.history.replaceState({}, '', url.toString())
+    setPedidoCreado(null); setPaso('catalogo')
+  }
+  if (pagoParam && paso !== 'carrito' && paso !== 'datos') return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="w-full max-w-sm text-center">
+        <span className="text-6xl block mb-4">{pagoParam === 'ok' ? '✅' : '😕'}</span>
+        <h1 className="text-2xl font-black mb-2" style={{ color: config.primary_color }}>{pagoParam === 'ok' ? '¡Pago recibido!' : 'El pago no se completó'}</h1>
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-5 mb-6">
+          {pedidoParam && <p className="text-4xl font-black text-neutral-800 mb-1">#{pedidoParam}</p>}
+          <p className="text-neutral-500 font-semibold">🪑 Mesa {mesa}</p>
+          <p className="text-neutral-400 text-sm mt-2">{pagoParam === 'ok' ? 'Tu pedido ya está en la cocina. Te lo llevamos a la mesa.' : 'No te preocupes: podés intentar de nuevo o pedirle al mozo.'}</p>
+        </div>
+        <button onClick={limpiarYSeguir}
+          className="w-full py-4 rounded-2xl text-white font-bold active:scale-95 transition-all"
+          style={{ backgroundColor: config.primary_color }}>
+          Pedir algo más
+        </button>
+      </div>
+    </div>
+  )
+
   if (paso === 'exito' && pedidoCreado) return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
       <div className="w-full max-w-sm text-center">
