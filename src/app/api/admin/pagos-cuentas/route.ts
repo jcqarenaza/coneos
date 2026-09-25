@@ -64,10 +64,10 @@ export async function GET(request: Request) {
 
   const [creds, cuentas, sucursales] = await Promise.all([
     db.from('mp_credenciales')
-      .select('id, nombre, activo, sucursal_id, mp_user_id, expires_at, created_at')
+      .select('id, nombre, activo, sucursal_id, mp_user_id, expires_at, created_at, facturacion_config_id') // B5: vínculo al emisor
       .eq('empresa_id', empresa_id).order('created_at'),
     db.from('cuentas_transferencia')
-      .select('id, nombre, alias, cbu, titular, activo, sucursal_id, created_at')
+      .select('id, nombre, alias, cbu, titular, activo, sucursal_id, created_at, facturacion_config_id') // B5: vínculo al emisor
       .eq('empresa_id', empresa_id).order('created_at'),
     db.from('sucursales').select('id, nombre').eq('empresa_id', empresa_id).order('nombre'),
   ])

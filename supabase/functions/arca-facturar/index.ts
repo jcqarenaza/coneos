@@ -133,13 +133,15 @@ interface FactConfig {
   scope_sucursal: string | null;
 }
 const SELECT_CFG = 'id, empresa_id, sucursal_id, cuit, razon_social, condicion_fiscal, punto_venta, cert_pem, key_pem, ambiente, activo, emite_factura_a, estado';
-async function getConfig(empresaId: string, sucursalId?: string | null, configId?: string | null): Promise<FactConfig> {
+async function getConfig(empresaId: string, sucursalId?: string | null, configId?: string | null, permitirBorrador = false): Promise<FactConfig> {
   let data: Record<string, unknown> | null = null;
   if (configId) {
     const r = await supabase.from('facturacion_config')
       .select(SELECT_CFG).eq('id', configId).eq('empresa_id', empresaId).maybeSingle();
     if (!r.data) throw new Error('El emisor indicado no existe o no pertenece a la empresa');
-    if ((r.data as { estado?: string }).estado !== 'validado') throw new Error('El emisor indicado no está validado');
+    // B5: la acción 'test' es justamente la que VALIDA — acepta borrador.
+    // Todo lo que emite sigue exigiendo estado='validado'.
+    if (!permitirBorrador && (r.data as { estado?: string }).estado !== 'validado') throw new Error('El emisor indicado no está validado');
     data = r.data;
   }
   if (!data && sucursalId) {
@@ -380,7 +382,7 @@ Deno.serve(async (req: Request) => {
     sucursalPedido = (ped?.sucursal_id as string | null) ?? null;
   }
   let cfg: FactConfig;
-  try { cfg = await getConfig(p.empresa_id, sucursalPedido ?? p.sucursal_id ?? null, p.facturacion_config_id ?? null); }
+  try { cfg = await getConfig(p.empresa_id, sucursalPedido ?? p.sucursal_id ?? null, p.facturacion_config_id ?? null, p.accion === 'test'); }
   catch(err) { return json({ok:false,error:err instanceof Error?err.message:String(err)},400); }
 
   // FA-2: coherencia de configuración — autoridad final, antes de cualquier

@@ -17,8 +17,10 @@ import { Loader2, Plus, Pencil, X } from 'lucide-react'
 // autoridad en runtime. PODA 24/09: sin mapeo = SIN medio (el legacy murió).
 // ============================================================
 
-interface Credencial { id: string; nombre: string; activo: boolean; sucursal_id: string | null; mp_user_id: string; expires_at: string | null }
-interface Cuenta { id: string; nombre: string; alias: string | null; cbu: string | null; titular: string | null; activo: boolean; sucursal_id: string }
+interface Credencial { id: string; nombre: string; activo: boolean; sucursal_id: string | null; mp_user_id: string; expires_at: string | null; facturacion_config_id: string | null }
+interface Cuenta { id: string; nombre: string; alias: string | null; cbu: string | null; titular: string | null; activo: boolean; sucursal_id: string; facturacion_config_id: string | null }
+// B5 MULTI-CUIT: emisor fiscal autoservicio (key/cert jamás vuelven: booleans)
+interface Cuit { id: string; sucursal_id: string | null; cuit: string; razon_social: string; condicion_fiscal: 'monotributo' | 'ri'; punto_venta: number; activo: boolean; estado: 'borrador' | 'validado'; es_fallback: boolean; auto_facturar: boolean; metodos_auto: string[] | null; cert_cargado: boolean; clave_cargada: boolean }
 interface Mapeo { canal: string; medio: string; mp_credencial_id: string | null; transferencia_cuenta_id: string | null }
 interface Llaves {
   acepta_efectivo: boolean; acepta_transferencia: boolean; acepta_mp: boolean
@@ -38,7 +40,7 @@ const CANALES: { id: string; label: string; emoji: string; llaveMp: keyof Llaves
 
 export default function CuentasPage() {
   const { ctx, loading: ctxLoading } = useEmpresa()
-  const [tab, setTab] = useState<'mp' | 'transfer' | 'matriz'>('mp')
+  const [tab, setTab] = useState<'mp' | 'transfer' | 'matriz' | 'cuits'>('mp')
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -53,6 +55,11 @@ export default function CuentasPage() {
   const [modulos, setModulos] = useState<Record<string, boolean> | null>(null)
 
   const [editCuenta, setEditCuenta] = useState<Partial<Cuenta> | null>(null) // null=cerrado, {}=nueva
+  // ── B5 MULTI-CUIT ──
+  const [cuits, setCuits] = useState<Cuit[]>([])
+  const [editCuit, setEditCuit] = useState<Partial<Cuit> | null>(null)
+  const [probando, setProbando] = useState<string | null>(null)
+  const [testOk, setTestOk] = useState<Record<string, string>>({})
   const [guardando, setGuardando] = useState(false)
   const [linkCopiado, setLinkCopiado] = useState<string | null>(null)
 
@@ -62,6 +69,20 @@ export default function CuentasPage() {
     if (!session) throw new Error('Sesión vencida — recargá la página')
     const url = `/api/admin/pagos-cuentas${metodo === 'GET' && sucursal ? `?sucursal_id=${sucursal}` : ''}`
     const res = await fetch(url, {
+      method: metodo,
+      headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      ...(metodo === 'POST' ? { body: JSON.stringify(payload) } : {}),
+    })
+    const d = await res.json()
+    if (!res.ok) throw new Error(d.error ?? 'Error inesperado')
+    return d
+  }, [])
+
+  const apiCuits = useCallback(async (metodo: 'GET' | 'POST', payload?: Record<string, unknown>) => {
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) throw new Error('Sesión vencida — recargá la página')
+    const res = await fetch('/api/admin/cuits', {
       method: metodo,
       headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
       ...(metodo === 'POST' ? { body: JSON.stringify(payload) } : {}),
@@ -81,13 +102,16 @@ export default function CuentasPage() {
       setMapeos(d.mapeos)
       setLlaves(d.llaves)
       setModulos(d.modulos ?? null)
+      if (d.modulos?.facturacion) {
+        try { const c = await apiCuits('GET'); setCuits(c.cuits ?? []) } catch { /* la tab avisa sola */ }
+      }
       if (!sucursal && d.sucursales.length > 0) setSucursalSel(d.sucursales[0].id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando')
     } finally {
       setCargando(false)
     }
-  }, [api])
+  }, [api, apiCuits])
 
   useEffect(() => { if (ctx) cargar(sucursalSel || undefined) }, [ctx, sucursalSel, cargar])
 
@@ -105,6 +129,58 @@ export default function CuentasPage() {
     } finally {
       setGuardando(false)
     }
+  }
+
+  async function accionCuit(payload: Record<string, unknown>, ok?: string) {
+    setGuardando(true)
+    setError(null)
+    try {
+      const d = await apiCuits('POST', payload)
+      if (ok) { setAviso(ok); setTimeout(() => setAviso(null), 2500) }
+      await cargar(sucursalSel)
+      return d
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error')
+      return null
+    } finally {
+      setGuardando(false)
+    }
+  }
+  // Probar conexión: llama a ARCA de verdad (sin emitir) — puede tardar unos segundos
+  async function probarCuit(c: Cuit) {
+    setProbando(c.id); setError(null)
+    try {
+      const d = await apiCuits('POST', { accion: 'probar_cuit', cuit_id: c.id })
+      setTestOk(t => ({ ...t, [c.id]: `✓ ARCA respondió OK — último comprobante: ${d.ultimo_cbte ?? '0'}` }))
+      await cargar(sucursalSel)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error probando la conexión')
+    } finally { setProbando(null) }
+  }
+  const leerArchivo = (file: File, destinoId: string) => {
+    const r = new FileReader()
+    r.onload = () => { const el = document.getElementById(destinoId) as HTMLTextAreaElement; if (el && typeof r.result === 'string') el.value = r.result }
+    r.readAsText(file)
+  }
+  const cuitsUsables = cuits.filter(c => c.estado === 'validado' && c.activo)
+  // El selector "Factura como" aparece recién cuando hay elección real (≥2
+  // usables) o la fila ya tiene un vínculo que mostrar — cero ruido single-CUIT.
+  const mostrarFacturaComo = (vinculo: string | null) => modulos?.facturacion === true && (cuitsUsables.length >= 2 || !!vinculo)
+  function FacturaComo({ tipo, cuentaId, vinculo }: { tipo: 'transferencia' | 'mp'; cuentaId: string; vinculo: string | null }) {
+    if (!mostrarFacturaComo(vinculo)) return null
+    return (
+      <div className="flex items-center gap-2 mt-1.5">
+        <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wide flex-shrink-0">🧾 Factura como</span>
+        <select value={vinculo ?? ''} disabled={guardando}
+          className="px-2 py-1 rounded-lg border border-neutral-200 text-xs font-semibold bg-white text-neutral-700 min-w-0"
+          onChange={e => accionCuit({ accion: 'vincular_cuit', tipo, cuenta_id: cuentaId, cuit_id: e.target.value || null }, e.target.value ? 'Cuenta vinculada al CUIT' : 'La cuenta vuelve al CUIT principal')}>
+          <option value="">CUIT principal (automático)</option>
+          {cuits.filter(c => (c.estado === 'validado' && c.activo) || c.id === vinculo).map(c => (
+            <option key={c.id} value={c.id}>{c.razon_social} · {c.cuit}{c.id === vinculo && !(c.estado === 'validado' && c.activo) ? ' (no usable)' : ''}</option>
+          ))}
+        </select>
+      </div>
+    )
   }
 
   // ── CICLO 1 — GRILLA ON/OFF (llaves por canal) ──
@@ -154,8 +230,8 @@ export default function CuentasPage() {
       {aviso && <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 text-white rounded-full text-sm font-semibold shadow-lg pointer-events-none ${avisoEsApagado ? 'bg-amber-500' : 'bg-green-600'}`}>✓ {aviso}</div>}
 
       <div className="flex gap-2">
-        {([['mp', '🟦 Mercado Pago'], ['transfer', '🏦 Transferencias'], ['matriz', '🎛️ Canales y medios']] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)}
+        {([['mp', '🟦 Mercado Pago'], ['transfer', '🏦 Transferencias'], ['matriz', '🎛️ Canales y medios'], ...(modulos?.facturacion === true ? [['cuits', '🧾 CUITs']] : [])] as [string, string][]).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id as typeof tab)}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${tab === id ? 'bg-neutral-800 text-white' : 'bg-white border border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}>
             {label}
           </button>
@@ -181,6 +257,7 @@ export default function CuentasPage() {
                       : <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-50 text-red-600">Inactiva — reconectá o reactivala</span>}
                   </div>
                   <p className="text-xs text-neutral-400 mt-0.5">{nombreSucursal(c.sucursal_id)} · MP #{c.mp_user_id}</p>
+                  <FacturaComo tipo="mp" cuentaId={c.id} vinculo={c.facturacion_config_id} />
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => { const n = prompt('Nuevo nombre de la cuenta:', c.nombre); if (n?.trim() && n.trim() !== c.nombre) accion({ accion: 'renombrar_credencial', credencial_id: c.id, nombre: n.trim() }, 'Cuenta renombrada') }}
@@ -241,6 +318,7 @@ export default function CuentasPage() {
                   <p className="text-xs text-neutral-400 mt-0.5 truncate">
                     {[c.alias && `Alias: ${c.alias}`, c.cbu && `CBU: ${c.cbu}`, c.titular && `Titular: ${c.titular}`].filter(Boolean).join(' · ')}
                   </p>
+                  <FacturaComo tipo="transferencia" cuentaId={c.id} vinculo={c.facturacion_config_id} />
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => setEditCuenta(c)} className="p-2 rounded-lg border border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
@@ -273,6 +351,122 @@ export default function CuentasPage() {
                 </div>
               </div>
             )}
+          </div>
+        </ConeCard>
+      )}
+
+
+      {/* ═══ TAB CUITs — B5 MULTI-CUIT: emisores fiscales autoservicio ═══ */}
+      {tab === 'cuits' && (
+        <ConeCard title="CUITs que facturan">
+          <div className="space-y-3">
+            <p className="text-xs text-neutral-400">Cada CUIT es un emisor fiscal completo: certificado ARCA propio, punto de venta propio y numeración propia. El <b>principal</b> factura todo lo que no tenga otro CUIT asignado; los adicionales facturan solo las cuentas que los elijan (🧾 Factura como, en cada cuenta).</p>
+            {cuits.length === 0 && <p className="text-sm text-neutral-400">Todavía no hay ningún CUIT cargado. El primero que cargues va a ser el principal.</p>}
+            {cuits.map(c => {
+              const completa = c.cert_cargado && c.clave_cargada
+              return (
+                <div key={c.id} className="p-3 rounded-xl border border-neutral-100 space-y-2">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-neutral-800 text-sm">🧾 {c.razon_social}</span>
+                        {c.es_fallback && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700">Principal</span>}
+                        {c.estado === 'borrador'
+                          ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-700">Borrador — falta probar conexión</span>
+                          : c.activo
+                            ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-50 text-green-700">Validado · Emitiendo</span>
+                            : <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-neutral-100 text-neutral-500">Validado · Apagado</span>}
+                      </div>
+                      <p className="text-xs text-neutral-400 mt-0.5">CUIT {c.cuit} · PV {c.punto_venta} · {c.condicion_fiscal === 'ri' ? 'Resp. Inscripto' : 'Monotributo'} · Certificado {c.cert_cargado ? '✓' : '✗ falta'} · Clave {c.clave_cargada ? '✓' : '✗ falta'}</p>
+                      {testOk[c.id] && <p className="text-xs font-semibold text-green-600 mt-0.5">{testOk[c.id]}</p>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                      <button onClick={() => setEditCuit(c)} className="p-2 rounded-lg border border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button disabled={!completa || probando === c.id} onClick={() => probarCuit(c)}
+                        title={completa ? 'Prueba real contra ARCA: certificado, relación wsfe y numeración. No emite nada.' : 'Cargá certificado y clave primero'}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 transition-colors disabled:opacity-40">
+                        {probando === c.id ? '⏳ Probando…' : '🔌 Probar conexión'}
+                      </button>
+                      <button disabled={guardando || (c.estado !== 'validado' && !c.activo)}
+                        onClick={() => {
+                          if (!c.activo && !confirm(`¿Activar la emisión de facturas REALES con el CUIT ${c.cuit}?`)) return
+                          accionCuit({ accion: 'toggle_activo_cuit', cuit_id: c.id, activo: !c.activo }, c.activo ? 'CUIT apagado — no emite más' : 'CUIT emitiendo facturas reales')
+                        }}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:border-neutral-400 transition-colors disabled:opacity-40">
+                        {c.activo ? 'Desactivar' : 'Activar'}
+                      </button>
+                    </div>
+                  </div>
+                  {!c.es_fallback && (
+                    <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-neutral-50">
+                      <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wide">Factura autom. al cobrar:</span>
+                      {(['transferencia', 'mp', 'efectivo', 'debito', 'credito'] as const).map(m => {
+                        const on = (c.metodos_auto ?? []).includes(m)
+                        return (
+                          <button key={m} disabled={guardando}
+                            onClick={() => accionCuit({ accion: 'metodos_cuit', cuit_id: c.id, metodos_auto: on ? (c.metodos_auto ?? []).filter(x => x !== m) : [...(c.metodos_auto ?? []), m] }, 'Métodos actualizados')}
+                            className={`text-[11px] font-bold px-2 py-0.5 rounded-full border transition-colors ${on ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-neutral-400 border-neutral-200'}`}>
+                            {m === 'mp' ? 'Mercado Pago' : m}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {editCuit ? (
+              <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50 space-y-3">
+                <p className="text-sm font-bold text-neutral-700">{editCuit.id ? `Editar ${editCuit.razon_social}` : 'Nuevo CUIT'}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><Label className="text-xs">CUIT (11 dígitos) *</Label><Input defaultValue={editCuit.cuit ?? ''} id="fc-cuit" placeholder="27173271064" /></div>
+                  <div><Label className="text-xs">Razón social *</Label><Input defaultValue={editCuit.razon_social ?? ''} id="fc-razon" placeholder="Como figura en ARCA" /></div>
+                  <div><Label className="text-xs">Condición fiscal *</Label>
+                    <select id="fc-cond" defaultValue={editCuit.condicion_fiscal ?? 'monotributo'} className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm bg-white">
+                      <option value="monotributo">Monotributo</option>
+                      <option value="ri">Responsable Inscripto</option>
+                    </select>
+                  </div>
+                  <div><Label className="text-xs">Punto de venta *</Label><Input defaultValue={editCuit.punto_venta ?? ''} id="fc-pv" placeholder="3" type="number" /></div>
+                  <div>
+                    <Label className="text-xs">Certificado (.crt / .pem) {editCuit.id && editCuit.cert_cargado ? '· ✓ cargado — dejá vacío para conservarlo' : '*'}</Label>
+                    <input type="file" accept=".crt,.pem,.cer" className="block w-full text-xs text-neutral-500 mb-1" onChange={e => e.target.files?.[0] && leerArchivo(e.target.files[0], 'fc-cert')} />
+                    <textarea id="fc-cert" rows={3} placeholder="-----BEGIN CERTIFICATE-----" className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono bg-white" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Clave privada (.key) {editCuit.id && editCuit.clave_cargada ? '· ✓ cargada — dejá vacío para conservarla' : '*'}</Label>
+                    <input type="file" accept=".key,.pem" className="block w-full text-xs text-neutral-500 mb-1" onChange={e => e.target.files?.[0] && leerArchivo(e.target.files[0], 'fc-key')} />
+                    <textarea id="fc-key" rows={3} placeholder="-----BEGIN PRIVATE KEY-----" className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono bg-white" />
+                    <p className="text-[11px] text-neutral-400 mt-1">🔒 La clave se guarda cifrada del lado del servidor y nunca vuelve a mostrarse.</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <ConeButton disabled={guardando} onClick={async () => {
+                    const v = (id: string) => (document.getElementById(id) as HTMLInputElement)?.value ?? ''
+                    const base = { cuit: v('fc-cuit'), razon_social: v('fc-razon'), condicion_fiscal: v('fc-cond'), punto_venta: Number(v('fc-pv')), cert_pem: v('fc-cert'), key_pem: v('fc-key') }
+                    const d = await accionCuit(editCuit.id ? { accion: 'editar_cuit', cuit_id: editCuit.id, ...base } : { accion: 'crear_cuit', ...base },
+                      editCuit.id ? 'CUIT actualizado' : 'CUIT creado — ahora probá la conexión')
+                    if (d) { setEditCuit(null); if (d.revalidar) { setAviso('Cambiaron datos fiscales: probá la conexión de nuevo antes de activar'); setTimeout(() => setAviso(null), 4000) } }
+                  }}>{guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar'}</ConeButton>
+                  <button onClick={() => setEditCuit(null)} className="text-sm font-semibold px-4 py-2 rounded-xl border border-neutral-200 text-neutral-500"><X className="h-4 w-4" /></button>
+                </div>
+              </div>
+            ) : (
+              <div className="pt-3 border-t border-neutral-100">
+                <ConeButton onClick={() => setEditCuit({})}><Plus className="h-4 w-4 mr-1" /> Cargar CUIT</ConeButton>
+              </div>
+            )}
+
+            <details className="text-xs text-neutral-500 pt-2 border-t border-neutral-100">
+              <summary className="font-semibold cursor-pointer text-neutral-600">📋 ¿Cómo consigo el certificado en ARCA? (guía paso a paso)</summary>
+              <ol className="list-decimal ml-4 mt-2 space-y-1.5">
+                <li><b>Certificado digital:</b> en arca.gob.ar con tu clave fiscal → <b>Administración de Certificados Digitales</b> → agregá un alias (ej: el nombre del negocio) → descargá el archivo <b>.crt</b>. La <b>clave privada (.key)</b> es la que se generó junto al pedido del certificado — si la hizo tu contador/a, pedísela.</li>
+                <li><b>Autorizar el servicio:</b> → <b>Administrador de Relaciones de Clave Fiscal</b> → Nueva relación → servicio <b>"Facturación Electrónica" (wsfe)</b> → autorizá el certificado del paso 1.</li>
+                <li><b>Punto de venta:</b> → <b>Comprobantes en línea</b> → A/B/M de puntos de venta → creá uno del tipo <b>"Factura Electrónica – Webservice"</b> y anotá el número acá.</li>
+              </ol>
+              <p className="mt-2">Después tocá <b>Probar conexión</b>: el sistema verifica todo contra ARCA sin emitir ningún comprobante. Si da OK, activás y listo.</p>
+            </details>
           </div>
         </ConeCard>
       )}
