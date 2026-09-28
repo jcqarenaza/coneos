@@ -89,6 +89,22 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [slotsEntrega, setSlotsEntrega] = useState<{ iso: string; label: string }[]>([])
   const [vinoDeApp, setVinoDeApp] = useState(false)
   useEffect(() => { try { setVinoDeApp(new URLSearchParams(window.location.search).get('desde') === 'app') } catch {} }, [])
+
+  // REPARTO V1: si este celu hizo un pedido hace < 3 h, ofrecer el seguimiento
+  // al volver a entrar (localStorage, patrón coneos_mp_pedido). Solo banner,
+  // nunca redirect: el cliente puede estar queriendo pedir OTRA cosa.
+  const [seguimiento, setSeguimiento] = useState<{ slug: string; numero: number } | null>(null)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('coneos_ultimo_pedido')
+      if (!raw) return
+      const u = JSON.parse(raw) as { slug: string; numero: number; tipo: string; ts: number }
+      const slugAca = window.location.pathname.split('/').filter(Boolean)[0]
+      if (u.slug !== slugAca || u.tipo !== 'delivery') return
+      if (Date.now() - u.ts > 3 * 60 * 60 * 1000) { localStorage.removeItem('coneos_ultimo_pedido'); return }
+      setSeguimiento({ slug: u.slug, numero: u.numero })
+    } catch {}
+  }, [])
   // Cartel de cierre: los horarios se muestran SOLOS desde la config —
   // nunca más tipearlos a mano en el mensaje.
   const horariosTexto = [...horariosConfig]
@@ -369,6 +385,17 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   return (
     <div className="min-h-screen">
       <RegistroVisita empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} canal="DELIVERY" />
+      {seguimiento && paso !== 'confirmacion' && (
+        <div className="fixed top-3 left-3 right-3 z-40 max-w-lg mx-auto bg-white border border-neutral-200 shadow-lg rounded-2xl px-4 py-3 flex items-center gap-3">
+          <span className="text-2xl">🛵</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-neutral-800 leading-tight">Tu pedido #{seguimiento.numero} está en marcha</p>
+            <a href={`/${seguimiento.slug}/pedido/${seguimiento.numero}`} className="text-xs font-black underline" style={{ color: config.primary_color }}>Ver seguimiento →</a>
+          </div>
+          <button onClick={() => { setSeguimiento(null); try { localStorage.removeItem('coneos_ultimo_pedido') } catch {} }}
+            className="text-neutral-300 font-black text-lg px-1">✕</button>
+        </div>
+      )}
       {vinoDeApp && paso === 'catalogo' && carrito.length === 0 && (
         <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedidos/${window.location.pathname.split('/').filter(Boolean)[2]}`}
           className="fixed bottom-4 left-4 z-30 bg-white/95 backdrop-blur border border-neutral-200 shadow-md rounded-full px-3.5 py-2 text-xs font-bold text-neutral-500 active:scale-95 transition-transform">
