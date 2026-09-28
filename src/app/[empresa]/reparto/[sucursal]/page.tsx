@@ -54,7 +54,6 @@ export default function RepartoPage() {
   useEffect(() => {
     const { empresa, sucursal } = slugsDesdeURL()
     if (!empresa || !sucursal) { setFase('apagado'); return }
-    setSucursalId(sucursal)
     const supabase = createClient()
     ;(async () => {
       const { data: emp } = await supabase.from('empresas')
@@ -63,9 +62,15 @@ export default function RepartoPage() {
       if (!emp) { setFase('apagado'); return }
       const cfg = Array.isArray(emp.config) ? emp.config[0] : emp.config
       if ((cfg?.modulos as Record<string, unknown> | null)?.reparto !== true) { setFase('apagado'); return }
-      const { data: suc } = await supabase.from('sucursales').select('nombre').eq('id', sucursal).maybeSingle()
+      // La URL pública usa el SLUG de la sucursal (como delivery/takeaway);
+      // se acepta también el UUID por compatibilidad. El id real va a la API.
+      const { data: sucs } = await supabase.from('sucursales')
+        .select('id, nombre, slug').eq('empresa_id', emp.id).eq('activo', true)
+      const suc = (sucs ?? []).find(x => x.slug === sucursal) ?? (sucs ?? []).find(x => x.id === sucursal)
+      if (!suc) { setFase('apagado'); return }
+      setSucursalId(suc.id)
       setEmpresaId(emp.id)
-      setMarca({ nombre: emp.nombre, color: cfg?.primary_color || '#1E3A5F', logo: cfg?.logo_url ?? null, sucursal: suc?.nombre ?? '' })
+      setMarca({ nombre: emp.nombre, color: cfg?.primary_color || '#1E3A5F', logo: cfg?.logo_url ?? null, sucursal: suc.nombre })
       const guardado = localStorage.getItem(`reparto_token_${emp.id}`)
       if (guardado) { tokenRef.current = guardado; setFase('panel') } else setFase('login')
     })()

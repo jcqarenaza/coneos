@@ -6,13 +6,13 @@ import { useEmpresa } from '@/lib/useEmpresa'
 import { ConeButton, ConeModal } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Loader2, Pencil } from 'lucide-react'
+import { Plus, Loader2, Pencil, Link2, Check } from 'lucide-react'
 
 // REPARTO V1: el cadete gana PUERTA — sucursal (null = todas) + PIN de 4
 // dígitos hasheado en Postgres (RPC set_pin_colaborador, mismo bcrypt que
 // operadores). El PIN JAMÁS se lee ni se muestra: solo se setea/cambia.
 interface Colaborador { id: string; nombre: string; rol: string; activo: boolean; sucursal_id: string | null; pin_cargado?: boolean }
-interface Sucursal { id: string; nombre: string }
+interface Sucursal { id: string; nombre: string; slug: string }
 
 const ROLES = [
   { value: 'cadete', label: '🛵 Cadete' },
@@ -28,6 +28,23 @@ export default function ColaboradoresTab() {
   const [form, setForm] = useState({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '' })
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [saving, setSaving] = useState(false)
+  const [copiado, setCopiado] = useState<string | null>(null)
+
+  // REPARTO V1: link de la app del cadete — [host]/[slug]/reparto/[sucursal]
+  // El slug sale del pathname del admin (/[empresa]/admin/...). Cadete "Todas
+  // las sucursales": usa la primera sucursal (la puerta necesita una).
+  function linkReparto(row: Colaborador): string | null {
+    const slugEmpresa = window.location.pathname.split('/').filter(Boolean)[0]
+    const suc = sucursales.find(su => su.id === row.sucursal_id) ?? sucursales[0]
+    if (!slugEmpresa || !suc) return null
+    return `${window.location.origin}/${slugEmpresa}/reparto/${suc.slug}`
+  }
+  async function copiarLink(row: Colaborador) {
+    const link = linkReparto(row)
+    if (!link) { alert('No hay sucursal para armar el link.'); return }
+    try { await navigator.clipboard.writeText(link) } catch { prompt('Copiá el link:', link); return }
+    setCopiado(row.id); setTimeout(() => setCopiado(null), 2000)
+  }
 
   async function load() {
     if (!ctx) return
@@ -37,7 +54,7 @@ export default function ColaboradoresTab() {
         .select('id, nombre, rol, activo, sucursal_id, pin_hash')
         .eq('empresa_id', ctx.empresaId)
         .order('nombre'),
-      supabase.from('sucursales').select('id, nombre').eq('empresa_id', ctx.empresaId).order('nombre'),
+      supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', ctx.empresaId).order('nombre'),
     ])
     // pin_hash no viaja al estado: solo el boolean (write-only)
     setData((rows ?? []).map((r: Record<string, unknown>) => ({
@@ -120,6 +137,12 @@ export default function ColaboradoresTab() {
                 className={`relative w-11 h-6 rounded-full transition-colors ${row.activo ? 'bg-green-500' : 'bg-neutral-200'}`}>
                 <span className={`absolute top-0.5 h-5 w-5 bg-white rounded-full shadow transition-all ${row.activo ? 'left-[22px]' : 'left-0.5'}`} />
               </button>
+              {row.rol === 'cadete' && (
+                <button onClick={() => copiarLink(row)} title="Copiar link de la app de reparto (el cadete lo abre y lo agrega a su pantalla de inicio)"
+                  className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors">
+                  {copiado === row.id ? <Check className="h-4 w-4 text-green-600" /> : <Link2 className="h-4 w-4" />}
+                </button>
+              )}
               <button onClick={() => openEdit(row)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
             </div>
           </div>
