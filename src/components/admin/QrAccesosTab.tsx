@@ -29,7 +29,10 @@ const DESTINOS = [
   { id: 'app', emoji: '📱', titulo: 'App de pedidos', desc: 'La puerta única: el cliente elige Delivery o Take Away y ve los horarios. Recomendado para imprimir.', path: 'pedidos' },
   { id: 'delivery', emoji: '🛵', titulo: 'Delivery directo', desc: 'Entra derecho al pedido a domicilio, sin selector.', path: 'delivery' },
   { id: 'takeaway', emoji: '🥡', titulo: 'Take Away directo', desc: 'Entra derecho al pedido para retirar, sin selector.', path: 'takeaway' },
-] as const
+]
+// REPARTO V1: entrada de los CADETES (no de clientes) — aparece solo con el
+// módulo reparto prendido. Misma naturaleza: URL estable, login adentro.
+const DESTINO_REPARTO = { id: 'reparto', emoji: '🛵', titulo: 'App de cadetes', desc: 'Solo para tus repartidores: entran con su nombre y PIN, ven sus entregas y comparten ubicación.', path: 'reparto' }
 
 // UN solo selector (orden JC): el de la casa manda; este tab obedece la
 // sucursal que le pasan y esconde su selector propio.
@@ -47,6 +50,7 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
   const [copiado, setCopiado] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
   const [moduloMesas, setModuloMesas] = useState(false)
+  const [moduloReparto, setModuloReparto] = useState(false)
 
   useEffect(() => {
     if (!ctx?.empresaId) return
@@ -59,6 +63,7 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
       if (lista.length > 0) setSucursalSel(lista.find(s => s.id === sucursalId) ?? lista[0])
       setAppEncendida(cfg?.entrada_unificada === true)
       setModuloMesas(((cfg?.modulos ?? {}) as Record<string, boolean>).mesas === true)
+      setModuloReparto(((cfg?.modulos ?? {}) as Record<string, boolean>).reparto === true)
       setCargando(false)
     })
   }, [ctx?.empresaId, supabase])
@@ -71,17 +76,19 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
     return `https://coneos.com.ar/${ctx.empresaSlug}/${path}/${sucursalSel.slug}`
   }
 
-  // Dibujar los 3 QRs cada vez que cambia la sucursal
+  const destinos = moduloReparto ? [...DESTINOS, DESTINO_REPARTO] : DESTINOS
+
+  // Dibujar los QRs cada vez que cambia la sucursal (o el set de destinos)
   useEffect(() => {
     if (!sucursalSel || !ctx) return
     let vivo = true
-    Promise.all(DESTINOS.map(d =>
+    Promise.all(destinos.map(d =>
       QRCode.toDataURL(urlDe(d.path), { width: 640, margin: 2, color: { dark: '#1a1a1a', light: '#ffffff' } })
         .then(png => [d.id, png] as const)
     )).then(pares => { if (vivo) setQrs(Object.fromEntries(pares)) })
     return () => { vivo = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sucursalSel, ctx])
+  }, [sucursalSel, ctx, moduloReparto])
 
   async function copiar(id: string, url: string) {
     try { await navigator.clipboard.writeText(url); setCopiado(id); setTimeout(() => setCopiado(null), 1800) } catch {}
@@ -129,7 +136,7 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {DESTINOS.map(d => {
+        {destinos.map(d => {
           const url = urlDe(d.path)
           return (
             <ConeCard key={d.id}>

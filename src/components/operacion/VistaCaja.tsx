@@ -82,6 +82,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [filtroEstado, setFiltroEstado] = useState<string | null>(null)
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [modalAsignar, setModalAsignar] = useState(false)
+  // ═══ REPARTO V1: mapa general de cadetes (solo caja, F3) ═══
+  const [repartoOn, setRepartoOn] = useState(false)
+  const [modalMapa, setModalMapa] = useState(false)
   const [pedidosSeleccionados, setPedidosSeleccionados] = useState<string[]>([])
   const [colaboradorSeleccionado, setColaboradorSeleccionado] = useState<string>('')
   const [asignando, setAsignando] = useState(false)
@@ -314,6 +317,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       }
     }
     setColaboradores((dp.colaboradores ?? []) as Colaborador[])
+    setRepartoOn(dp.reparto_on === true)
     // Pedidos con comprobante fiscal (no se pueden eliminar)
     try {
       const rf = await fetch(`/api/facturacion/nc?empresa_id=${dispositivo.empresa_id}`)
@@ -777,6 +781,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
               </>
             )}
           </div>
+        )}
+        {repartoOn && colaboradores.length > 0 && (
+          <button onClick={() => setModalMapa(true)} title="Mapa de cadetes en reparto"
+            className="p-2 rounded-lg border border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-700 transition-colors text-base leading-none">
+            🗺️
+          </button>
         )}
         {deliveryPausado !== null && (
           <button onClick={togglePausaDelivery}
@@ -1393,6 +1403,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         </div>
       </div>
     )}
+    {/* ═══ REPARTO V1: modal mapa general de cadetes ═══ */}
+    {modalMapa && (
+      <MapaCadetes dispositivoId={dispositivo.id} onClose={() => setModalMapa(false)} />
+    )}
     {/* Modal comprobante */}
     {modalComprobante && seleccionado && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1523,3 +1537,64 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     </div>
   )
 }
+
+// ═══ REPARTO V1 — MAPA GENERAL DE CADETES (solo caja/operación, F3-F4) ═══
+// Posiciones frescas (<10 min) vía consulta validada por dispositivo.
+function MapaCadetes({ dispositivoId, onClose }: { dispositivoId: string; onClose: () => void }) {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const divRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<any>(null)
+  const marcasRef = useRef<Record<string, any>>({})
+  const [vacio, setVacio] = useState(false)
+  useEffect(() => {
+    let vivo = true
+    let intervalo: ReturnType<typeof setInterval> | null = null
+    import('@/components/reparto/leaflet').then(({ cargarLeaflet, iconoEmoji, OSM_TILES, OSM_ATTR }) => {
+      cargarLeaflet().then(L => {
+        if (!vivo || !divRef.current) return
+        const map = L.map(divRef.current, { zoomControl: true }).setView([-35.66, -63.75], 13)
+        L.tileLayer(OSM_TILES, { attribution: OSM_ATTR, maxZoom: 19 }).addTo(map)
+        mapRef.current = map
+        const traer = async () => {
+          try {
+            const res = await fetch('/api/operacion/consulta', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dispositivo_id: dispositivoId, accion: 'posiciones_cadetes' }),
+            })
+            const d = await res.json()
+            if (!vivo) return
+            const pos: { nombre: string; lat: number; lng: number }[] = d.posiciones ?? []
+            setVacio(pos.length === 0)
+            const vistos = new Set<string>()
+            pos.forEach(p => {
+              vistos.add(p.nombre)
+              if (marcasRef.current[p.nombre]) marcasRef.current[p.nombre].setLatLng([p.lat, p.lng])
+              else marcasRef.current[p.nombre] = L.marker([p.lat, p.lng], { icon: iconoEmoji(L, '🛵', 34) })
+                .addTo(map).bindTooltip(p.nombre, { permanent: true, direction: 'top', offset: [0, -18] })
+            })
+            Object.keys(marcasRef.current).forEach(n => { if (!vistos.has(n)) { map.removeLayer(marcasRef.current[n]); delete marcasRef.current[n] } })
+            const puntos = pos.map(p => [p.lat, p.lng])
+            if (puntos.length > 0) map.fitBounds(L.latLngBounds(puntos as any), { padding: [50, 50], maxZoom: 16 })
+          } catch { /* siguiente */ }
+        }
+        traer()
+        intervalo = setInterval(traer, 10000)
+      }).catch(() => setVacio(true))
+    })
+    return () => { vivo = false; if (intervalo) clearInterval(intervalo); if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; marcasRef.current = {} } }
+  }, [dispositivoId])
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-neutral-100 flex items-center justify-between">
+          <h3 className="font-bold text-neutral-900">🗺️ Cadetes en reparto</h3>
+          <button onClick={onClose} className="text-neutral-400 text-sm font-semibold px-2 py-1">Cerrar</button>
+        </div>
+        <div ref={divRef} style={{ height: 420, width: '100%' }} />
+        {vacio && <p className="text-sm text-neutral-400 text-center py-3">Ningún cadete compartiendo ubicación ahora.</p>}
+      </div>
+    </div>
+  )
+}
+
