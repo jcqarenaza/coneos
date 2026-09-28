@@ -218,12 +218,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ posiciones: [] })
     }
     const corte = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+    // Dos consultas planas (el join embebido dependía del cache de relaciones
+    // de PostgREST sobre la FK compuesta nueva — fallaba en silencio)
     const { data: pos } = await supabase.from('reparto_posiciones')
-      .select('lat, lng, updated_at, colaboradores(nombre)')
+      .select('colaborador_id, lat, lng, updated_at')
       .eq('empresa_id', disp.empresa_id).gte('updated_at', corte)
+    const ids = (pos ?? []).map(p => p.colaborador_id)
+    const { data: cols } = ids.length
+      ? await supabase.from('colaboradores').select('id, nombre').in('id', ids)
+      : { data: [] }
+    const nombreDe = Object.fromEntries((cols ?? []).map(c => [c.id, c.nombre]))
     const posiciones = (pos ?? []).map(p => ({
-      nombre: (Array.isArray(p.colaboradores) ? p.colaboradores[0] : p.colaboradores)?.nombre ?? '🛵',
-      lat: p.lat, lng: p.lng, updated_at: p.updated_at,
+      nombre: nombreDe[p.colaborador_id] ?? '🛵', lat: p.lat, lng: p.lng, updated_at: p.updated_at,
     }))
     return NextResponse.json({ posiciones })
   }
