@@ -96,6 +96,18 @@ export default function ColaboradoresTab() {
 
   async function toggleActivo(row: Colaborador) {
     const supabase = createClient()
+    // FIX 28/09 (hallazgo P7): no se puede desactivar un cadete con pedidos
+    // EN REPARTO — quedaría un pedido en la calle sin cadete operativo.
+    if (row.activo && row.rol === 'cadete') {
+      const { count } = await supabase.from('pedidos')
+        .select('id', { count: 'exact', head: true })
+        .eq('colaborador_id', row.id)
+        .in('estado', ['PREPARING', 'READY'])
+      if ((count ?? 0) > 0) {
+        alert(`${row.nombre} tiene ${count} pedido${count === 1 ? '' : 's'} activo${count === 1 ? '' : 's'} en reparto. Esperá que los entregue (o reasignalos desde Caja) antes de desactivarlo.`)
+        return
+      }
+    }
     const { error, data: upd } = await supabase.from('colaboradores')
       .update({ activo: !row.activo }).eq('id', row.id).select('id')
     if (error) { alert(`No se pudo actualizar: ${error.message}`); return }
