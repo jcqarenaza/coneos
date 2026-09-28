@@ -60,30 +60,47 @@ export async function POST(request: Request) {
   // SERVER-SIDE — la tabla sucursales no es legible por el anon del browser
   // (RLS), y la puerta no debe depender de policies públicas nuevas.
   if (body.accion === 'contexto') {
-    const { empresa_id, sucursal } = body
-    if (!empresa_id || !sucursal) return err('Datos requeridos')
-    if (!(await moduloReparto(supabase, empresa_id))) return NextResponse.json({ ok: true, habilitado: false })
+    // La puerta NO usa Supabase desde el browser (RLS anon la frenaba en
+    // celulares sin sesión de admin — R2): empresa por SLUG, marca, módulo,
+    // sucursal y lista de cadetes salen TODOS de acá, admin client.
+    const { empresa_slug, sucursal } = body
+    if (!empresa_slug || !sucursal) return err('Datos requeridos')
+    const { data: emp } = await supabase.from('empresas')
+      .select('id, nombre').eq('slug', empresa_slug).maybeSingle()
+    if (!emp) return NextResponse.json({ ok: true, habilitado: false, motivo: 'empresa' })
+    const { data: cfg } = await supabase.from('empresa_config')
+      .select('modulos, primary_color, logo_url').eq('empresa_id', emp.id).maybeSingle()
+    if ((cfg?.modulos as Record<string, unknown> | null)?.reparto !== true) {
+      return NextResponse.json({ ok: true, habilitado: false, motivo: 'modulo' })
+    }
     const { data: sucs } = await supabase.from('sucursales')
-      .select('id, nombre, slug, activo').eq('empresa_id', empresa_id).eq('activo', true)
+      .select('id, nombre, slug, activo').eq('empresa_id', emp.id).eq('activo', true)
     const suc = (sucs ?? []).find(x => x.slug === sucursal) ?? (sucs ?? []).find(x => x.id === sucursal)
-    if (!suc) return NextResponse.json({ ok: true, habilitado: false })
-    return NextResponse.json({ ok: true, habilitado: true, sucursal_id: suc.id, sucursal_nombre: suc.nombre })
+    if (!suc) return NextResponse.json({ ok: true, habilitado: false, motivo: 'sucursal' })
+    // Cadetes elegibles de la puerta (UX CTO: lista → tap → PIN)
+    const { data: cads } = await supabase.from('colaboradores')
+      .select('id, nombre, sucursal_id').eq('empresa_id', emp.id)
+      .eq('rol', 'cadete').eq('activo', true).order('nombre')
+    const cadetes = (cads ?? []).filter(c => c.sucursal_id === suc.id || c.sucursal_id === null)
+      .map(c => ({ id: c.id, nombre: c.nombre }))
+    return NextResponse.json({ ok: true, habilitado: true, empresa_id: emp.id, empresa_nombre: emp.nombre,
+      color: cfg?.primary_color ?? '#1E3A5F', logo: cfg?.logo_url ?? null,
+      sucursal_id: suc.id, sucursal_nombre: suc.nombre, cadetes })
   }
 
-  // ── LOGIN: nombre + PIN dentro de la sucursal de la puerta ──
+  // ── LOGIN: cadete elegido de la lista + PIN (UX CTO 28/09) ──
   if (body.accion === 'login') {
-    const { empresa_id, sucursal_id, nombre, pin } = body
-    if (!empresa_id || !sucursal_id || !nombre || !pin) return err('Datos requeridos')
+    const { empresa_id, sucursal_id, colaborador_id, pin } = body
+    if (!empresa_id || !sucursal_id || !colaborador_id || !pin) return err('Datos requeridos')
     if (!(await moduloReparto(supabase, empresa_id))) return err('Módulo no disponible', 403)
-    const { data: candidatos } = await supabase.from('colaboradores')
+    const { data: col } = await supabase.from('colaboradores')
       .select('id, nombre, pin_hash, sucursal_id')
-      .eq('empresa_id', empresa_id).eq('rol', 'cadete').eq('activo', true)
-      .ilike('nombre', String(nombre).trim())
-    // De la sucursal de la puerta, o "toda la empresa" (sucursal null)
-    const col = (candidatos ?? []).find(c => c.sucursal_id === sucursal_id || c.sucursal_id === null)
-    if (!col?.pin_hash) return err('Nombre o PIN incorrecto', 401)  // genérico: no filtra existencia
+      .eq('id', colaborador_id).eq('empresa_id', empresa_id)
+      .eq('rol', 'cadete').eq('activo', true).maybeSingle()
+    const valido = col && (col.sucursal_id === sucursal_id || col.sucursal_id === null) && col.pin_hash
+    if (!valido) return err('PIN incorrecto', 401)  // genérico
     const { data: pinValido } = await supabase.rpc('verificar_pin_operador', { p_pin: String(pin), p_hash: col.pin_hash })
-    if (!pinValido) return err('Nombre o PIN incorrecto', 401)
+    if (!pinValido) return err('PIN incorrecto', 401)
     const expira = new Date(Date.now() + SESION_DIAS * 24 * 3600 * 1000).toISOString()
     const { data: ses, error: e } = await supabase.from('colaborador_sesiones')
       .insert({ colaborador_id: col.id, empresa_id, expira_at: expira }).select('token').single()

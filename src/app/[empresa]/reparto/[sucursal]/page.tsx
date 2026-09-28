@@ -10,7 +10,6 @@
 // Lock pedido); background con app cerrada = V2/nativa.
 // ═══════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Loader2 } from 'lucide-react'
 
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
@@ -29,7 +28,8 @@ export default function RepartoPage() {
   const [empresaId, setEmpresaId] = useState('')
   const [sucursalId, setSucursalId] = useState('')
   const [marca, setMarca] = useState<{ nombre: string; color: string; logo: string | null; sucursal: string }>({ nombre: '', color: '#1E3A5F', logo: null, sucursal: '' })
-  const [nombre, setNombre] = useState('')
+  const [cadetes, setCadetes] = useState<{ id: string; nombre: string }[]>([])
+  const [cadeteSel, setCadeteSel] = useState<{ id: string; nombre: string } | null>(null)
   const [pin, setPin] = useState('')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -51,31 +51,26 @@ export default function RepartoPage() {
     return d
   }, [empresaId])
 
-  // ── Arranque: resolver empresa/sucursal + módulo + token guardado ──
+  // ── Arranque: UNA llamada a la API resuelve TODO (cero Supabase anon
+  // desde el browser — lección R2: en la PC "andaba" por la sesión de admin) ──
   useEffect(() => {
     const { empresa, sucursal } = slugsDesdeURL()
     if (!empresa || !sucursal) { setMotivo('R1: URL sin empresa/sucursal'); setFase('apagado'); return }
-    const supabase = createClient()
     ;(async () => {
-      const { data: emp } = await supabase.from('empresas')
-        .select('id, nombre, config:empresa_config(primary_color, logo_url, modulos)')
-        .eq('slug', empresa).single()
-      if (!emp) { setMotivo(`R2: empresa "${empresa}" no resuelta (anon)`); setFase('apagado'); return }
-      const cfg = Array.isArray(emp.config) ? emp.config[0] : emp.config
-      // Módulo + sucursal (slug o id) se resuelven SERVER-SIDE (acción
-      // contexto): la tabla sucursales no es legible por el anon (RLS) y la
-      // llave del módulo tiene UNA autoridad, la API.
-      const rc = await fetch('/api/reparto', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accion: 'contexto', empresa_id: emp.id, sucursal }),
-      })
-      const dc = await rc.json().catch(() => null)
-      if (!dc?.habilitado) { setMotivo(`R3: contexto ${rc.status} — ${dc ? (dc.error ?? 'módulo o sucursal') : 'sin respuesta'}`); setFase('apagado'); return }
-      setSucursalId(dc.sucursal_id)
-      setEmpresaId(emp.id)
-      setMarca({ nombre: emp.nombre, color: cfg?.primary_color || '#1E3A5F', logo: cfg?.logo_url ?? null, sucursal: dc.sucursal_nombre ?? '' })
-      const guardado = localStorage.getItem(`reparto_token_${emp.id}`)
-      if (guardado) { tokenRef.current = guardado; setFase('panel') } else setFase('login')
+      try {
+        const rc = await fetch('/api/reparto', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accion: 'contexto', empresa_slug: empresa, sucursal }),
+        })
+        const dc = await rc.json().catch(() => null)
+        if (!dc?.habilitado) { setMotivo(`R3: ${dc?.motivo ?? dc?.error ?? `contexto ${rc.status}`}`); setFase('apagado'); return }
+        setSucursalId(dc.sucursal_id)
+        setEmpresaId(dc.empresa_id)
+        setMarca({ nombre: dc.empresa_nombre, color: dc.color || '#1E3A5F', logo: dc.logo ?? null, sucursal: dc.sucursal_nombre ?? '' })
+        setCadetes(dc.cadetes ?? [])
+        const guardado = localStorage.getItem(`reparto_token_${dc.empresa_id}`)
+        if (guardado) { tokenRef.current = guardado; setFase('panel') } else setFase('login')
+      } catch { setMotivo('R4: sin conexión con la API'); setFase('apagado') }
     })()
   }, [])
 
@@ -119,12 +114,12 @@ export default function RepartoPage() {
   }, [fase, pedidos.length, api])
 
   async function ingresar() {
-    if (!nombre.trim() || pin.length !== 4) { setErrorMsg('Completá nombre y PIN de 4 dígitos'); return }
+    if (!cadeteSel || pin.length !== 4) { setErrorMsg('Elegí tu nombre y poné el PIN de 4 dígitos'); return }
     setEnviando(true); setErrorMsg(null)
     try {
       const res = await fetch('/api/reparto', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accion: 'login', empresa_id: empresaId, sucursal_id: sucursalId, nombre: nombre.trim(), pin }),
+        body: JSON.stringify({ accion: 'login', empresa_id: empresaId, sucursal_id: sucursalId, colaborador_id: cadeteSel.id, pin }),
       })
       const d = await res.json()
       if (!res.ok) { setErrorMsg(d?.error ?? 'No se pudo ingresar'); return }
@@ -172,19 +167,36 @@ export default function RepartoPage() {
           <h1 className="text-2xl font-black text-neutral-800">REPARTO</h1>
           <p className="text-neutral-400 text-sm mt-1">{marca.nombre}{marca.sucursal ? ` · ${marca.sucursal}` : ''}</p>
         </div>
-        <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wide mb-1">Nombre</label>
-        <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Juan" autoComplete="off"
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 bg-white text-lg font-semibold mb-4" />
-        <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wide mb-1">PIN</label>
-        <input value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="• • • •"
-          type="password" inputMode="numeric" autoComplete="off"
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 bg-white text-2xl font-black tracking-[0.5em] text-center mb-4" />
-        {errorMsg && <p className="text-sm font-semibold text-red-500 text-center mb-3">{errorMsg}</p>}
-        <button onClick={ingresar} disabled={enviando}
-          className="w-full py-4 rounded-xl text-white font-black text-lg shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
-          style={{ backgroundColor: marca.color }}>
-          {enviando ? <Loader2 className="h-5 w-5 animate-spin" /> : 'INGRESAR'}
-        </button>
+        {!cadeteSel ? (
+          <>
+            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wide mb-2 text-center">¿Quién sos?</label>
+            <div className="space-y-2">
+              {cadetes.map(c => (
+                <button key={c.id} onClick={() => { setCadeteSel(c); setPin(''); setErrorMsg(null) }}
+                  className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-neutral-200 bg-white text-left hover:border-neutral-400 transition-colors">
+                  <span className="text-2xl">🛵</span>
+                  <span className="font-bold text-lg text-neutral-800">{c.nombre}</span>
+                </button>
+              ))}
+              {cadetes.length === 0 && <p className="text-center text-neutral-400 text-sm py-6">No hay cadetes cargados para esta sucursal.<br />Se cargan en Admin → Equipo → Colaboradores.</p>}
+            </div>
+          </>
+        ) : (
+          <>
+            <button onClick={() => { setCadeteSel(null); setPin('') }} className="text-xs text-neutral-400 font-semibold mb-3">← Cambiar</button>
+            <p className="text-center font-bold text-xl text-neutral-800 mb-4">🛵 {cadeteSel.nombre}</p>
+            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wide mb-1 text-center">Tu PIN</label>
+            <input value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="• • • •"
+              type="password" inputMode="numeric" autoComplete="off" autoFocus
+              className="w-full px-4 py-3 rounded-xl border border-neutral-200 bg-white text-2xl font-black tracking-[0.5em] text-center mb-4" />
+            {errorMsg && <p className="text-sm font-semibold text-red-500 text-center mb-3">{errorMsg}</p>}
+            <button onClick={ingresar} disabled={enviando || pin.length !== 4}
+              className="w-full py-4 rounded-xl text-white font-black text-lg shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ backgroundColor: marca.color }}>
+              {enviando ? <Loader2 className="h-5 w-5 animate-spin" /> : 'INGRESAR'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
