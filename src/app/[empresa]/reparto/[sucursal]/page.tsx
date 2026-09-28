@@ -61,16 +61,18 @@ export default function RepartoPage() {
         .eq('slug', empresa).single()
       if (!emp) { setFase('apagado'); return }
       const cfg = Array.isArray(emp.config) ? emp.config[0] : emp.config
-      if ((cfg?.modulos as Record<string, unknown> | null)?.reparto !== true) { setFase('apagado'); return }
-      // La URL pública usa el SLUG de la sucursal (como delivery/takeaway);
-      // se acepta también el UUID por compatibilidad. El id real va a la API.
-      const { data: sucs } = await supabase.from('sucursales')
-        .select('id, nombre, slug').eq('empresa_id', emp.id).eq('activo', true)
-      const suc = (sucs ?? []).find(x => x.slug === sucursal) ?? (sucs ?? []).find(x => x.id === sucursal)
-      if (!suc) { setFase('apagado'); return }
-      setSucursalId(suc.id)
+      // Módulo + sucursal (slug o id) se resuelven SERVER-SIDE (acción
+      // contexto): la tabla sucursales no es legible por el anon (RLS) y la
+      // llave del módulo tiene UNA autoridad, la API.
+      const rc = await fetch('/api/reparto', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'contexto', empresa_id: emp.id, sucursal }),
+      })
+      const dc = await rc.json().catch(() => null)
+      if (!dc?.habilitado) { setFase('apagado'); return }
+      setSucursalId(dc.sucursal_id)
       setEmpresaId(emp.id)
-      setMarca({ nombre: emp.nombre, color: cfg?.primary_color || '#1E3A5F', logo: cfg?.logo_url ?? null, sucursal: suc.nombre })
+      setMarca({ nombre: emp.nombre, color: cfg?.primary_color || '#1E3A5F', logo: cfg?.logo_url ?? null, sucursal: dc.sucursal_nombre ?? '' })
       const guardado = localStorage.getItem(`reparto_token_${emp.id}`)
       if (guardado) { tokenRef.current = guardado; setFase('panel') } else setFase('login')
     })()

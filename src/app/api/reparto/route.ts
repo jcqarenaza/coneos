@@ -56,6 +56,20 @@ export async function POST(request: Request) {
   if (!body?.accion) return err('Acción requerida')
   const supabase = createAdminClient()
 
+  // ── CONTEXTO de la puerta (público): resuelve la sucursal por slug o id
+  // SERVER-SIDE — la tabla sucursales no es legible por el anon del browser
+  // (RLS), y la puerta no debe depender de policies públicas nuevas.
+  if (body.accion === 'contexto') {
+    const { empresa_id, sucursal } = body
+    if (!empresa_id || !sucursal) return err('Datos requeridos')
+    if (!(await moduloReparto(supabase, empresa_id))) return NextResponse.json({ ok: true, habilitado: false })
+    const { data: sucs } = await supabase.from('sucursales')
+      .select('id, nombre, slug, activo').eq('empresa_id', empresa_id).eq('activo', true)
+    const suc = (sucs ?? []).find(x => x.slug === sucursal) ?? (sucs ?? []).find(x => x.id === sucursal)
+    if (!suc) return NextResponse.json({ ok: true, habilitado: false })
+    return NextResponse.json({ ok: true, habilitado: true, sucursal_id: suc.id, sucursal_nombre: suc.nombre })
+  }
+
   // ── LOGIN: nombre + PIN dentro de la sucursal de la puerta ──
   if (body.accion === 'login') {
     const { empresa_id, sucursal_id, nombre, pin } = body
