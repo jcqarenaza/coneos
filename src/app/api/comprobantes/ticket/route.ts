@@ -18,12 +18,21 @@ export async function POST(request: Request) {
 
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
 
-  const [{ data: cfg }, { data: empresa }, { data: factura }, { data: factCfg }] = await Promise.all([
+  const [{ data: cfg }, { data: empresa }, { data: factura }] = await Promise.all([
     supabase.from('empresa_config').select('primary_color, cuit, razon_social, logo_url').eq('empresa_id', pedido.empresa_id).single(),
     supabase.from('empresas').select('nombre').eq('id', pedido.empresa_id).single(),
-    supabase.from('facturas').select('tipo_cbte, punto_venta, nro_cbte, cae, cae_vencimiento, doc_tipo, doc_nro, total, created_at').eq('pedido_id', pedido_id).eq('estado', 'emitida').maybeSingle(),
-    supabase.from('facturacion_config').select('cuit, razon_social').eq('empresa_id', pedido.empresa_id).maybeSingle(),
+    supabase.from('facturas').select('tipo_cbte, punto_venta, nro_cbte, cae, cae_vencimiento, doc_tipo, doc_nro, total, created_at, facturacion_config_id').eq('pedido_id', pedido_id).eq('estado', 'emitida').maybeSingle(),
   ])
+  // MULTI-CUIT (bug certificación 28/09): el emisor del ticket es EL DE LA
+  // FACTURA (facturacion_config_id congelado) — jamás "la config de la
+  // empresa": con ≥2 CUITs aquel maybeSingle devolvía null y el ticket de
+  // Renata salía vestido de Lucía (header y QR de ARCA con CUIT ajeno).
+  // Facturas pre multi-CUIT (config_id null) → la config fallback (principal).
+  const { data: factCfg } = factura
+    ? (factura.facturacion_config_id
+        ? await supabase.from('facturacion_config').select('cuit, razon_social').eq('id', factura.facturacion_config_id).maybeSingle()
+        : await supabase.from('facturacion_config').select('cuit, razon_social').eq('empresa_id', pedido.empresa_id).eq('es_fallback', true).maybeSingle())
+    : { data: null }
 
   // E2: insert a comprobantes retirado — tabla legacy ROTA (fallaba en silencio
   // desde siempre, 0 filas, sin lectores; el registro real vive en facturas).
