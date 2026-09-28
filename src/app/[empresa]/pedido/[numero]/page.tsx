@@ -47,7 +47,16 @@ function estadoDeliveryLabel(estado: string, cadete: string | null): string {
   }
 }
 
-export default function PedidoPage({ params }: { params: { empresa: string; numero: string } }) {
+// Next 16 (regla del repo): los params de client pages son Promise — la ruta
+// se lee del pathname, como kiosk/TA/mesa/reparto. Con el estilo viejo,
+// params.empresa llegaba undefined y TODO pedido daba "no encontrado".
+function rutaDesdeURL() {
+  const partes = window.location.pathname.split('/').filter(Boolean)
+  return { empresa: partes[0] ?? '', numero: partes[2] ?? '' }
+}
+
+export default function PedidoPage() {
+  const params = rutaDesdeURL()
   const [pedido, setPedido] = useState<Pedido | null>(null)
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -92,7 +101,8 @@ export default function PedidoPage({ params }: { params: { empresa: string; nume
     // Polling cada 15s para actualizar estado
     const interval = setInterval(cargar, 15000)
     return () => clearInterval(interval)
-  }, [params])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
