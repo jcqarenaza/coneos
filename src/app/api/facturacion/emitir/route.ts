@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolverFactConfig, resolverEmisor } from '@/lib/facturacion/facturar'
 
 // E1: débito y crédito facturables — los valores CANÓNICOS que ya usan el
 // constraint de pedidos, METODO_UI y el pago dividido de mesa. Cierra la
@@ -8,18 +9,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 const METODOS_VALIDOS = ['transferencia', 'efectivo', 'mp', 'debito', 'credito']
 
 
-// Resuelve la config de facturación: fila de la sucursal si existe, si no la de la
-// empresa (sucursal_id NULL). Devuelve null si no hay ninguna.
-async function resolverFactConfig(supabase: ReturnType<typeof createAdminClient>, empresaId: string, sucursalId: string | null, columnas: string) {
-  if (sucursalId) {
-    const { data } = await supabase.from('facturacion_config')
-      .select(columnas).eq('empresa_id', empresaId).eq('sucursal_id', sucursalId).maybeSingle()
-    if (data) return data
-  }
-  const { data } = await supabase.from('facturacion_config')
-    .select(columnas).eq('empresa_id', empresaId).is('sucursal_id', null).maybeSingle()
-  return data
-}
+// MULTI-CUIT B1: la copia local de resolverFactConfig MURIÓ — única casa en
+// @/lib/facturacion/facturar (T3). Mismo comportamiento, una sola fuente.
 
 // GET ?empresa_id= → { configurada, auto, metodos, disponibles }
 // configurada: módulo listo (activo del panel + certificados)
@@ -30,15 +21,18 @@ export async function GET(request: Request) {
   const empresa_id = searchParams.get('empresa_id')
   if (!empresa_id) return NextResponse.json({ error: 'empresa_id requerido' }, { status: 400 })
   const supabase = createAdminClient()
-  const [{ data }, { data: pagos }] = await Promise.all([
+  // MULTI-CUIT B1.1 (JC 25/09): el chip MP salía de dos llaves viejas de
+  // sucursal_pagos (pre-C1) que ya no representan la realidad. Fuente única:
+  // hay credencial MP ACTIVA en la empresa → MP se ofrece para facturar.
+  const [{ data }, { count: credsMp }] = await Promise.all([
     supabase.from('facturacion_config')
       .select('activo, cert_pem, key_pem, auto_facturar, metodos_auto').eq('empresa_id', empresa_id).is('sucursal_id', null).maybeSingle(),
-    supabase.from('sucursal_pagos').select('acepta_mp_kiosk, acepta_mp_delivery').eq('empresa_id', empresa_id),
+    supabase.from('mp_credenciales').select('id', { count: 'exact', head: true }).eq('empresa_id', empresa_id).eq('activo', true),
   ])
   const configurada = !!(data?.activo && data?.cert_pem && data?.key_pem)
   const auto = data?.auto_facturar !== false
   const metodos = Array.isArray(data?.metodos_auto) ? (data!.metodos_auto as string[]).filter(m => METODOS_VALIDOS.includes(m)) : ['transferencia']
-  const hayMP = (pagos ?? []).some(p => p.acepta_mp_kiosk || p.acepta_mp_delivery)
+  const hayMP = (credsMp ?? 0) > 0
   const disponibles = hayMP ? METODOS_VALIDOS : METODOS_VALIDOS.filter(m => m !== 'mp')
   return NextResponse.json({ configurada, auto, metodos, disponibles, activa: configurada && auto && metodos.length > 0 })
 }
@@ -65,10 +59,11 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient()
   const { data: pedido } = await supabase.from('pedidos')
-    .select('metodo_pago, sucursal_id').eq('id', pedido_id).eq('empresa_id', empresa_id).maybeSingle()
-  const cfg = await resolverFactConfig(supabase, empresa_id, pedido?.sucursal_id ?? null,
-    'activo, auto_facturar, metodos_auto') as
-    { activo: boolean; auto_facturar: boolean | null; metodos_auto: unknown } | null
+    .select('metodo_pago, sucursal_id, transferencia_cuenta_id, mp_credencial_id').eq('id', pedido_id).eq('empresa_id', empresa_id).maybeSingle()
+  // B2: emisor por cuenta→config con fallback histórico (misma casa que el hook)
+  const r = pedido ? await resolverEmisor(supabase, { empresa_id, ...pedido }, 'id, estado, activo, auto_facturar, metodos_auto') : { cfg: null, vinculada: false as const }
+  if ('error' in r && r.error) return NextResponse.json({ ok: false, error: r.error }, { status: 409 })
+  const cfg = r.cfg as { id: string; activo: boolean; auto_facturar: boolean | null; metodos_auto: unknown } | null
   if (!cfg?.activo) return NextResponse.json({ ok: false, error: 'Facturación desactivada' }, { status: 409 })
   if (cfg.auto_facturar === false) return NextResponse.json({ ok: false, error: 'Facturación automática pausada por el cliente' }, { status: 409 })
   const metodos = Array.isArray(cfg.metodos_auto) ? cfg.metodos_auto as string[] : ['transferencia']
@@ -83,7 +78,7 @@ export async function POST(request: Request) {
   const res = await fetch(`${url}/functions/v1/arca-facturar`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ empresa_id, pedido_id, accion: 'facturar' }),
+    body: JSON.stringify({ empresa_id, pedido_id, accion: 'facturar', facturacion_config_id: cfg.id }),
   })
   const data = await res.json()
   return NextResponse.json(data, { status: res.status })

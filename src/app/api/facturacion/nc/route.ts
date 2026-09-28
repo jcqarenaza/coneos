@@ -28,9 +28,11 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient()
   // Validación rápida antes de ir a la Edge: debe existir factura emitida tipo 11 del pedido
+  // B3: sin hardcode 11 — una Factura A (1) o B (6) también encuentra su
+  // original (espejo del fix que la Edge ya tenía adentro).
   const { data: factura } = await supabase.from('facturas')
     .select('id').eq('pedido_id', pedido_id).eq('empresa_id', empresa_id)
-    .eq('estado', 'emitida').eq('tipo_cbte', 11).maybeSingle()
+    .eq('estado', 'emitida').in('tipo_cbte', [1, 6, 11]).maybeSingle()
   if (!factura) return NextResponse.json({ ok: false, error: 'El pedido no tiene factura emitida para anular' }, { status: 404 })
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
