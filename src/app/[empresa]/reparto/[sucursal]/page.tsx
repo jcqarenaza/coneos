@@ -37,6 +37,7 @@ export default function RepartoPage() {
   const [pedidos, setPedidos] = useState<PedidoCadete[]>([])
   const [entregando, setEntregando] = useState<string | null>(null)
   const [dirCopiada, setDirCopiada] = useState<string | null>(null)
+  const [confirmando, setConfirmando] = useState<string | null>(null)  // confirmación amigable, sin confirm() del browser
   const [gps, setGps] = useState<'ok' | 'off' | 'pedir'>('pedir')
   const tokenRef = useRef<string | null>(null)
   const ultimaPosRef = useRef(0)
@@ -131,12 +132,11 @@ export default function RepartoPage() {
   }
 
   async function entregar(p: PedidoCadete) {
-    if (!confirm(`¿Marcar ENTREGADO el pedido #${p.numero_pedido}?`)) return
     setEntregando(p.id)
     try {
       await api({ accion: 'entregar', pedido_id: p.id })
       setPedidos(prev => prev.filter(x => x.id !== p.id))
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo marcar') } finally { setEntregando(null) }
+    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo marcar') } finally { setEntregando(null); setConfirmando(null) }
   }
 
   function salir() {
@@ -260,13 +260,29 @@ export default function RepartoPage() {
                   className="py-3 rounded-xl border-2 border-neutral-200 text-neutral-700 font-bold text-sm text-center">
                   {dirCopiada === p.id ? '✓ COPIADA' : '📋 COPIAR DIRECCIÓN'}
                 </button>
-                <button onClick={() => entregar(p)} disabled={!listo || entregando === p.id}
+                <button onClick={() => setConfirmando(p.id)} disabled={!listo || entregando === p.id}
                   title={listo ? '' : 'Se habilita cuando el local lo marque LISTO'}
                   className="py-3 rounded-xl text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-1"
                   style={{ backgroundColor: listo ? '#16a34a' : '#9ca3af' }}>
-                  {entregando === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '✅ ENTREGADO'}
+                  ✅ ENTREGADO
                 </button>
               </div>
+              {confirmando === p.id && (
+                <div className="mt-2 p-3 rounded-xl bg-green-50 border border-green-200">
+                  <p className="text-sm font-bold text-green-800 text-center mb-2">¿Le entregaste el pedido a {dd?.nombre?.split(' ')[0] ?? 'el cliente'}?</p>
+                  {cobra && <p className="text-xs font-bold text-red-600 text-center mb-2">Acordate: cobraste {fmt(p.total)} en efectivo 💵</p>}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setConfirmando(null)} disabled={entregando === p.id}
+                      className="py-3 rounded-xl border-2 border-neutral-200 bg-white text-neutral-600 font-bold text-sm">
+                      ← Todavía no
+                    </button>
+                    <button onClick={() => entregar(p)} disabled={entregando === p.id}
+                      className="py-3 rounded-xl bg-green-600 text-white font-black text-sm flex items-center justify-center gap-1">
+                      {entregando === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : '✔️ SÍ, ENTREGADO'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
