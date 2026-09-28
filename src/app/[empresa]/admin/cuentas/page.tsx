@@ -157,10 +157,24 @@ export default function CuentasPage() {
       setError(e instanceof Error ? e.message : 'Error probando la conexión')
     } finally { setProbando(null) }
   }
+  // Lee el archivo ACEPTANDO lo que ARCA entregue: PEM (texto) o DER (binario,
+  // se convierte a PEM acá). Sin filtros de extensión: el diálogo lista todo.
   const leerArchivo = (file: File, destinoId: string) => {
     const r = new FileReader()
-    r.onload = () => { const el = document.getElementById(destinoId) as HTMLTextAreaElement; if (el && typeof r.result === 'string') el.value = r.result }
-    r.readAsText(file)
+    r.onload = () => {
+      const el = document.getElementById(destinoId) as HTMLTextAreaElement
+      if (!el || !(r.result instanceof ArrayBuffer)) return
+      const bytes = new Uint8Array(r.result)
+      const texto = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+      if (texto.includes('-----BEGIN')) { el.value = texto.trim(); return }
+      // Binario (DER) → envolver en PEM
+      let b64 = ''
+      for (let i = 0; i < bytes.length; i += 0x8000) b64 += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+      const cuerpo = btoa(b64).replace(/(.{64})/g, '$1\n').trim()
+      const tipo = destinoId === 'fc-key' ? 'PRIVATE KEY' : 'CERTIFICATE'
+      el.value = `-----BEGIN ${tipo}-----\n${cuerpo}\n-----END ${tipo}-----`
+    }
+    r.readAsArrayBuffer(file)
   }
   const cuitsUsables = cuits.filter(c => c.estado === 'validado' && c.activo)
   // El selector "Factura como" aparece recién cuando hay elección real (≥2
@@ -472,12 +486,12 @@ export default function CuentasPage() {
                   <div><Label className="text-xs">Punto de venta *</Label><Input defaultValue={editCuit.punto_venta ?? ''} id="fc-pv" placeholder="3" type="number" /></div>
                   <div>
                     <Label className="text-xs">Certificado (.crt / .pem) {editCuit.id && editCuit.cert_cargado ? '· ✓ cargado — dejá vacío para conservarlo' : '*'}</Label>
-                    <input type="file" accept=".crt,.pem,.cer" className="block w-full text-xs text-neutral-500 mb-1" onChange={e => e.target.files?.[0] && leerArchivo(e.target.files[0], 'fc-cert')} />
+                    <input type="file" className="block w-full text-xs text-neutral-500 mb-1" onChange={e => e.target.files?.[0] && leerArchivo(e.target.files[0], 'fc-cert')} />
                     <textarea id="fc-cert" rows={3} placeholder="-----BEGIN CERTIFICATE-----" className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono bg-white" />
                   </div>
                   <div>
                     <Label className="text-xs">Clave privada (.key) {editCuit.id && editCuit.clave_cargada ? '· ✓ cargada — dejá vacío para conservarla' : '*'}</Label>
-                    <input type="file" accept=".key,.pem" className="block w-full text-xs text-neutral-500 mb-1" onChange={e => e.target.files?.[0] && leerArchivo(e.target.files[0], 'fc-key')} />
+                    <input type="file" className="block w-full text-xs text-neutral-500 mb-1" onChange={e => e.target.files?.[0] && leerArchivo(e.target.files[0], 'fc-key')} />
                     <textarea id="fc-key" rows={3} placeholder="-----BEGIN PRIVATE KEY-----" className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono bg-white" />
                     <p className="text-[11px] text-neutral-400 mt-1">🔒 La clave se guarda cifrada del lado del servidor y nunca vuelve a mostrarse.</p>
                   </div>
