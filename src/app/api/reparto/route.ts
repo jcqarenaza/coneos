@@ -171,15 +171,14 @@ export async function POST(request: Request) {
     if (!ped || ped.colaborador_id !== col.id) return err('Ese pedido no está asignado a vos', 403)
     if (ped.estado === 'DELIVERED') return NextResponse.json({ ok: true, ya_entregado: true })  // idempotente (E3)
     if (ped.estado !== 'READY') return err('El pedido todavía no está listo para entregar', 409)  // E4
-    // Guard atómico: solo transiciona si SIGUE en READY
+    // Guard atómico: solo transiciona si SIGUE en READY.
+    // entregado_at = la marca de tiempo de la entrega en la puerta — base de
+    // la métrica de tiempo promedio (pedido_estados no existía: el insert de
+    // historial fallaba en silencio y se reemplazó por este timestamp)
     const { data: upd } = await supabase.from('pedidos')
-      .update({ estado: 'DELIVERED', updated_at: new Date().toISOString() })
+      .update({ estado: 'DELIVERED', updated_at: new Date().toISOString(), entregado_at: new Date().toISOString() })
       .eq('id', pedido_id).eq('empresa_id', col.empresa_id).eq('estado', 'READY').select('id')
     if (!upd?.length) return err('El pedido cambió de estado — actualizá', 409)
-    // Historial (mismo registro que usa la caja; el cadete no es operador → null)
-    await supabase.from('pedido_estados').insert({
-      pedido_id, operador_id: null, estado_anterior: 'READY', estado_nuevo: 'DELIVERED',
-    })
     // Limpieza garantizada server-side (C6/E6): ¿era el último?
     const restantes = await pedidosActivos(supabase, col.id, col.empresa_id)
     if (restantes.length === 0) await supabase.from('reparto_posiciones').delete().eq('colaborador_id', col.id)
