@@ -203,9 +203,15 @@ export default function CuentasPage() {
           className="px-2 py-1 rounded-lg border border-neutral-200 text-xs font-semibold bg-white text-neutral-700 min-w-0"
           onChange={e => accionCuit({ accion: 'vincular_cuit', tipo, cuenta_id: cuentaId, cuit_id: e.target.value || null }, e.target.value ? 'Cuenta vinculada al CUIT' : 'La cuenta vuelve al CUIT principal')}>
           <option value="">CUIT principal (automático)</option>
-          {cuits.filter(c => (c.estado === 'validado' && c.activo) || c.id === vinculo).map(c => (
-            <option key={c.id} value={c.id}>{c.razon_social} · {c.cuit}{c.id === vinculo && !(c.estado === 'validado' && c.activo) ? ' (no usable)' : ''}</option>
-          ))}
+          {/* JC 29/09: un CUIT no usable (apagado/borrador) se VE si es el
+              vínculo actual pero no se puede ELEGIR — la opción queda
+              deshabilitada (el server ya lo rechazaba; ahora la UI no miente) */}
+          {cuits.filter(c => (c.estado === 'validado' && c.activo) || c.id === vinculo).map(c => {
+            const usable = c.estado === 'validado' && c.activo
+            return (
+              <option key={c.id} value={c.id} disabled={!usable}>{c.razon_social} · {c.cuit}{!usable ? ' (apagado — activalo en el tab CUITs)' : ''}</option>
+            )
+          })}
         </select>
       </div>
     )
