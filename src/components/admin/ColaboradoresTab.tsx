@@ -8,7 +8,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Plus, Loader2, Pencil } from 'lucide-react'
 
-interface Colaborador { id: string; nombre: string; rol: string; activo: boolean }
+// REPARTO V1: el cadete gana PUERTA — sucursal (null = todas) + PIN de 4
+// dígitos hasheado en Postgres (RPC set_pin_colaborador, mismo bcrypt que
+// operadores). El PIN JAMÁS se lee ni se muestra: solo se setea/cambia.
+interface Colaborador { id: string; nombre: string; rol: string; activo: boolean; sucursal_id: string | null; pin_cargado?: boolean }
+interface Sucursal { id: string; nombre: string }
 
 const ROLES = [
   { value: 'cadete', label: '🛵 Cadete' },
@@ -21,33 +25,54 @@ export default function ColaboradoresTab() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ nombre: '', rol: 'cadete' })
+  const [form, setForm] = useState({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '' })
+  const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [saving, setSaving] = useState(false)
 
   async function load() {
     if (!ctx) return
     const supabase = createClient()
-    const { data: rows } = await supabase.from('colaboradores')
-      .select('id, nombre, rol, activo')
-      .eq('empresa_id', ctx.empresaId)
-      .order('nombre')
-    setData((rows ?? []) as Colaborador[])
+    const [{ data: rows }, { data: sucs }] = await Promise.all([
+      supabase.from('colaboradores')
+        .select('id, nombre, rol, activo, sucursal_id, pin_hash')
+        .eq('empresa_id', ctx.empresaId)
+        .order('nombre'),
+      supabase.from('sucursales').select('id, nombre').eq('empresa_id', ctx.empresaId).order('nombre'),
+    ])
+    // pin_hash no viaja al estado: solo el boolean (write-only)
+    setData((rows ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id, nombre: r.nombre, rol: r.rol, activo: r.activo,
+      sucursal_id: r.sucursal_id ?? null, pin_cargado: !!r.pin_hash,
+    })) as Colaborador[])
+    setSucursales((sucs ?? []) as Sucursal[])
     setLoading(false)
   }
 
   useEffect(() => { load() }, [ctx])
 
-  function openNew() { setForm({ nombre: '', rol: 'cadete' }); setEditId(null); setModal(true) }
-  function openEdit(row: Colaborador) { setForm({ nombre: row.nombre, rol: row.rol }); setEditId(row.id); setModal(true) }
+  function openNew() { setForm({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '' }); setEditId(null); setModal(true) }
+  function openEdit(row: Colaborador) { setForm({ nombre: row.nombre, rol: row.rol, sucursal_id: row.sucursal_id ?? 'todas', pin: '' }); setEditId(row.id); setModal(true) }
 
   async function handleSave() {
     if (!ctx || !form.nombre.trim()) return
+    if (form.pin && !/^\d{4}$/.test(form.pin)) { alert('El PIN debe ser de 4 dígitos numéricos.'); return }
     setSaving(true)
     const supabase = createClient()
+    const payload = { nombre: form.nombre.trim(), rol: form.rol, sucursal_id: form.sucursal_id === 'todas' ? null : form.sucursal_id }
+    let id = editId
     if (editId) {
-      await supabase.from('colaboradores').update({ nombre: form.nombre.trim(), rol: form.rol }).eq('id', editId)
+      await supabase.from('colaboradores').update(payload).eq('id', editId)
     } else {
-      await supabase.from('colaboradores').insert({ nombre: form.nombre.trim(), rol: form.rol, empresa_id: ctx.empresaId })
+      const { data: nuevo } = await supabase.from('colaboradores')
+        .insert({ ...payload, empresa_id: ctx.empresaId }).select('id').single()
+      id = nuevo?.id ?? null
+    }
+    // PIN: vacío = no pisar; con valor → hash EN POSTGRES (jamás plano)
+    if (form.pin && id) {
+      const { error: ePin } = await supabase.rpc('set_pin_colaborador', {
+        p_colaborador: id, p_empresa: ctx.empresaId, p_pin: form.pin,
+      })
+      if (ePin) alert(`Colaborador guardado, pero el PIN no se pudo setear: ${ePin.message}`)
     }
     setSaving(false); setModal(false); load()
   }
@@ -86,6 +111,7 @@ export default function ColaboradoresTab() {
                 </div>
                 <span className={`text-xs font-semibold mt-0.5 ${row.activo ? 'text-green-600' : 'text-neutral-400'}`}>
                   {row.activo ? '● Activo' : '○ Inactivo'}
+                  {row.rol === 'cadete' && <span className="text-neutral-400 font-normal"> · {sucursales.find(su => su.id === row.sucursal_id)?.nombre ?? 'Todas las sucursales'} · PIN {row.pin_cargado ? '✓' : '✗ sin cargar'}</span>}
                 </span>
               </div>
             </div>
@@ -103,6 +129,20 @@ export default function ColaboradoresTab() {
         footer={<><ConeButton variant="outline" onClick={() => setModal(false)}>Cancelar</ConeButton><ConeButton onClick={handleSave} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="María García" autoFocus /></div>
+          <div className="space-y-1.5">
+            <Label>Sucursal</Label>
+            <select value={form.sucursal_id} onChange={e => setForm({ ...form, sucursal_id: e.target.value })}
+              className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm bg-white">
+              <option value="todas">Todas las sucursales</option>
+              {sucursales.map(su => <option key={su.id} value={su.id}>{su.nombre}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>PIN de reparto (4 dígitos){editId ? ' — dejá vacío para conservar el actual' : ''}</Label>
+            <Input value={form.pin} onChange={e => setForm({ ...form, pin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+              placeholder="1234" inputMode="numeric" type="password" autoComplete="new-password" />
+            <p className="text-[11px] text-neutral-400">Con este PIN el cadete entra a su app de reparto. Se guarda cifrado y no se puede volver a ver — solo cambiar.</p>
+          </div>
           <div className="space-y-1.5">
             <Label>Rol *</Label>
             <div className="flex gap-2">

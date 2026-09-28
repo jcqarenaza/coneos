@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, CheckCircle, Clock, ChefHat, Package, Truck } from 'lucide-react'
+import MapaCliente from '@/components/reparto/MapaCliente'
 
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface PedidoItem { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
@@ -11,10 +12,11 @@ interface Pedido {
   id: string; numero_pedido: number; codigo_retiro: string; estado: string
   total: number; metodo_pago: string | null; created_at: string
   tipo_pedido: string | null; costo_envio: number; datos_delivery: DatosDelivery | null
+  colaborador_id: string | null; colaborador_nombre: string | null  // REPARTO V1
   pedido_items: PedidoItem[]
 }
 
-interface EmpresaConfig { primary_color: string; secondary_color: string; logo_url: string | null; nombre: string }
+interface EmpresaConfig { primary_color: string; secondary_color: string; logo_url: string | null; nombre: string; empresa_id: string; reparto: boolean }
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
 function formatHora(ts: string) {
@@ -30,13 +32,19 @@ const ESTADOS = [
   { key: 'CANCELLED', label: 'Cancelado', icon: Clock, color: '#EF4444', desc: 'Tu pedido fue cancelado. Contactanos si tenés dudas.' },
 ]
 
-const ESTADO_DELIVERY: Record<string, string> = {
-  PENDING_PAYMENT: 'Esperando confirmación',
-  PAID: 'Confirmado — preparando pronto',
-  PREPARING: 'Preparando tu pedido 🍦',
-  READY: 'Salió para entrega 🛵',
-  DELIVERED: '¡Entregado! Buen provecho 🎉',
-  CANCELLED: 'Cancelado',
+// REPARTO V1: los textos de delivery se vuelven honestos — la asignación
+// es el discriminador (una sola máquina de estados, sello CTO):
+// READY sin cadete = listo en el local · READY + cadete = EN REPARTO (mapa).
+function estadoDeliveryLabel(estado: string, cadete: string | null): string {
+  switch (estado) {
+    case 'PENDING_PAYMENT': return 'Esperando confirmación'
+    case 'PAID': return 'Confirmado — preparando pronto'
+    case 'PREPARING': return cadete ? `Preparando 🍦 — ${cadete} va a llevar tu pedido` : 'Preparando tu pedido 🍦'
+    case 'READY': return cadete ? `¡${cadete} va en camino! 🛵` : 'Listo — preparando la salida 📦'
+    case 'DELIVERED': return '¡Entregado! Buen provecho 🎉'
+    case 'CANCELLED': return 'Cancelado'
+    default: return estado
+  }
 }
 
 export default function PedidoPage({ params }: { params: { empresa: string; numero: string } }) {
@@ -49,7 +57,7 @@ export default function PedidoPage({ params }: { params: { empresa: string; nume
     const supabase = createClient()
     // Buscar empresa
     const { data: emp } = await supabase.from('empresas')
-      .select('id, nombre, config:empresa_config(primary_color, secondary_color, logo_url)')
+      .select('id, nombre, config:empresa_config(primary_color, secondary_color, logo_url, modulos)')
       .eq('slug', params.empresa).single()
     if (!emp) { setNotFound(true); setLoading(false); return }
 
@@ -59,11 +67,13 @@ export default function PedidoPage({ params }: { params: { empresa: string; nume
       secondary_color: cfg?.secondary_color || '#F5C842',
       logo_url: cfg?.logo_url || null,
       nombre: emp.nombre,
+      empresa_id: emp.id,
+      reparto: (cfg?.modulos as Record<string, unknown> | null)?.reparto === true,
     })
 
     // Buscar pedido por número
     const { data: p } = await supabase.from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, created_at, tipo_pedido, costo_envio, datos_delivery,
+      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, created_at, tipo_pedido, costo_envio, datos_delivery, colaborador_id, colaborador_nombre,
         pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
       .eq('empresa_id', emp.id)
@@ -129,10 +139,16 @@ export default function PedidoPage({ params }: { params: { empresa: string; nume
           </div>
           <p className="text-xs text-neutral-400 uppercase tracking-widest mb-1">Pedido #{pedido.numero_pedido}</p>
           <h1 className="text-xl font-black mb-1" style={{ color: estadoActual.color }}>
-            {esDelivery ? ESTADO_DELIVERY[pedido.estado] : estadoActual.label}
+            {esDelivery ? estadoDeliveryLabel(pedido.estado, pedido.colaborador_nombre) : estadoActual.label}
           </h1>
           <p className="text-neutral-400 text-sm">{estadoActual.desc}</p>
         </div>
+
+        {/* ═══ REPARTO V1 — mapa en vivo: SOLO delivery + READY + cadete + módulo ON ═══ */}
+        {esDelivery && pedido.estado === 'READY' && pedido.colaborador_id && config.reparto && (
+          <MapaCliente empresaId={config.empresa_id} numeroPedido={pedido.numero_pedido}
+            nombreCadete={pedido.colaborador_nombre} color={config.primary_color} />
+        )}
 
         {/* Timeline */}
         {pedido.estado !== 'CANCELLED' && (

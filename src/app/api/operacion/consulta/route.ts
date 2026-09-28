@@ -51,7 +51,11 @@ export async function POST(request: Request) {
     const stockBajos = enAlerta.filter(r => r.cantidad > 0).length
     const { data: sucCfg } = await supabase.from('sucursales')
       .select('comanda_auto, ticket_auto').eq('id', disp.sucursal_id).maybeSingle()
-    return NextResponse.json({ pedidos: pedidos ?? [], colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta }, comanda_auto: sucCfg?.comanda_auto ?? false, ticket_auto: sucCfg?.ticket_auto ?? false })
+    // REPARTO V1: llave del módulo para que la caja muestre (o no) el mapa
+    const { data: empCfg } = await supabase.from('empresa_config')
+      .select('modulos').eq('empresa_id', disp.empresa_id).maybeSingle()
+    const repartoOn = (empCfg?.modulos as Record<string, unknown> | null)?.reparto === true
+    return NextResponse.json({ reparto_on: repartoOn, pedidos: pedidos ?? [], colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta }, comanda_auto: sucCfg?.comanda_auto ?? false, ticket_auto: sucCfg?.ticket_auto ?? false })
   }
 
   if (accion === 'historial') {
@@ -164,6 +168,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ claimed: (data ?? []).length > 0 })
   }
 
+  // ── COBRO EN CAJA CON CUENTA ELEGIDA (JC 25/09) ──
+  // Cuentas activas para el selector de Nueva Venta: transferencias de LA
+  // sucursal + credenciales MP de la sucursal o de marca (null). El default
+  // sale del mapeo del canal CAJA en Cobros — misma fuente que el resolver.
+  if (accion === 'cuentas_cobro') {
+    const [ctas, creds, mapeos] = await Promise.all([
+      supabase.from('cuentas_transferencia')
+        .select('id, nombre, alias')
+        .eq('empresa_id', disp.empresa_id).eq('sucursal_id', disp.sucursal_id)
+        .eq('activo', true).order('created_at'),
+      supabase.from('mp_credenciales')
+        .select('id, nombre, sucursal_id')
+        .eq('empresa_id', disp.empresa_id).eq('activo', true).order('created_at'),
+      supabase.from('canales_medios_pago')
+        .select('medio, mp_credencial_id, transferencia_cuenta_id')
+        .eq('sucursal_id', disp.sucursal_id).eq('canal', 'CAJA'),
+    ])
+    const credsSucursal = (creds.data ?? []).filter(c => c.sucursal_id === null || c.sucursal_id === disp.sucursal_id)
+      .map(c => ({ id: c.id, nombre: c.nombre }))
+    const mapa = mapeos.data ?? []
+    return NextResponse.json({
+      transferencias: ctas.data ?? [],
+      credenciales_mp: credsSucursal,
+      default_transferencia: mapa.find(m => m.medio === 'TRANSFERENCIA')?.transferencia_cuenta_id ?? null,
+      default_mp: mapa.find(m => m.medio === 'MERCADO_PAGO')?.mp_credencial_id ?? null,
+    })
+  }
+
   if (accion === 'delivery_pausado_get') {
     const { data } = await supabase.from('delivery_config')
       .select('pausado').eq('sucursal_id', disp.sucursal_id).maybeSingle()
@@ -174,6 +206,26 @@ export async function POST(request: Request) {
     await supabase.from('delivery_config')
       .update({ pausado: !!body.pausado }).eq('sucursal_id', disp.sucursal_id)
     return NextResponse.json({ ok: true })
+  }
+
+  // ═══ REPARTO V1: posiciones para el MAPA GENERAL DE CAJA (F3) ═══
+  // Solo dispositivo de operación validado — nunca el cliente. Devuelve los
+  // cadetes de la empresa con posición fresca (< 10 min).
+  if (accion === 'posiciones_cadetes') {
+    const { data: empCfg } = await supabase.from('empresa_config')
+      .select('modulos').eq('empresa_id', disp.empresa_id).maybeSingle()
+    if ((empCfg?.modulos as Record<string, unknown> | null)?.reparto !== true) {
+      return NextResponse.json({ posiciones: [] })
+    }
+    const corte = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+    const { data: pos } = await supabase.from('reparto_posiciones')
+      .select('lat, lng, updated_at, colaboradores(nombre)')
+      .eq('empresa_id', disp.empresa_id).gte('updated_at', corte)
+    const posiciones = (pos ?? []).map(p => ({
+      nombre: (Array.isArray(p.colaboradores) ? p.colaboradores[0] : p.colaboradores)?.nombre ?? '🛵',
+      lat: p.lat, lng: p.lng, updated_at: p.updated_at,
+    }))
+    return NextResponse.json({ posiciones })
   }
 
   if (accion === 'asignar_cadete') {
