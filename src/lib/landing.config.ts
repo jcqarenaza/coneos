@@ -30,7 +30,7 @@ export const LANDING = {
         bajada: 'Toda tu operación integrada',
         precio: 'USD 200*', detalle: 'implementación · única vez por sucursal',
         base: 'Todo Pro +',
-        modulos: ['Facturación electrónica automática', 'Control de stock', 'Cobros por canal (multi-cuenta)'],
+        modulos: ['Facturación electrónica automática', 'Control de stock', 'Cobros por canal (multi-cuenta)', 'Seguimiento de pedidos en vivo: tu cliente ve por dónde viene su pedido', 'App de cadetes con mapa en la caja', 'Multi-CUIT: cada cuenta de cobro factura con su propio emisor ante ARCA'],
       },
     ],
     mensualidad: 'Después de la implementación: fee mensual de USD 50, con hasta 4 dispositivos incluidos en cualquiera de los planes.',
