@@ -36,6 +36,7 @@ export default function RepartoPage() {
   const [cadete, setCadete] = useState<{ id: string; nombre: string } | null>(null)
   const [pedidos, setPedidos] = useState<PedidoCadete[]>([])
   const [entregando, setEntregando] = useState<string | null>(null)
+  const [dirCopiada, setDirCopiada] = useState<string | null>(null)
   const [gps, setGps] = useState<'ok' | 'off' | 'pedir'>('pedir')
   const tokenRef = useRef<string | null>(null)
   const ultimaPosRef = useRef(0)
@@ -250,11 +251,15 @@ export default function RepartoPage() {
                 {cobra ? `💵 COBRAR ${fmt(p.total)} EN EFECTIVO` : `✔️ Pagado · ${fmt(p.total)}`}
               </p>
               <div className="grid grid-cols-2 gap-2">
-                <a href={`https://maps.google.com/?q=${encodeURIComponent(`${dd?.direccion ?? ''} ${marca.sucursal}`.trim())}`}
-                  target="_blank" rel="noopener noreferrer"
+                {/* Sin link de navegación (decisión JC 28/09: el intent de
+                    Android fuerza la app de Maps) — copiar y pegar donde quiera */}
+                <button onClick={async () => {
+                    try { await navigator.clipboard.writeText(`${dd?.direccion ?? ''}${dd?.entre_calles ? ` entre ${dd.entre_calles}` : ''}`) } catch { return }
+                    setDirCopiada(p.id); setTimeout(() => setDirCopiada(null), 1800)
+                  }}
                   className="py-3 rounded-xl border-2 border-neutral-200 text-neutral-700 font-bold text-sm text-center">
-                  🗺️ NAVEGAR
-                </a>
+                  {dirCopiada === p.id ? '✓ COPIADA' : '📋 COPIAR DIRECCIÓN'}
+                </button>
                 <button onClick={() => entregar(p)} disabled={!listo || entregando === p.id}
                   title={listo ? '' : 'Se habilita cuando el local lo marque LISTO'}
                   className="py-3 rounded-xl text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-1"
