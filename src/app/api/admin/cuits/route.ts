@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import forge from 'node-forge'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -94,6 +95,39 @@ export async function POST(request: Request) {
       }).select('id').single()
       if (error || !data) return err('No se pudo crear el CUIT')
       return NextResponse.json({ ok: true, id: data.id, principal: esPrimera })
+    }
+
+    // B6: pedido de certificado 100% desde la UI — el server genera el par de
+    // claves, guarda la privada (write-only, jamás vuelve) y devuelve el .csr
+    // para subir a ARCA. Lo ÚNICO que queda en ARCA es lo que solo ARCA puede
+    // hacer: emitir el certificado, autorizar wsfe y crear el punto de venta.
+    case 'generar_csr': {
+      const { cuit_id } = body
+      if (!cuit_id) return err('Datos incompletos')
+      const { data: fc } = await admin.from('facturacion_config')
+        .select('id, cuit, razon_social, estado, activo').eq('id', cuit_id).eq('empresa_id', empresa_id).maybeSingle()
+      if (!fc) return err('Ese CUIT no existe o no es de tu empresa', 403)
+      const keys = forge.pki.rsa.generateKeyPair(2048)
+      const csr = forge.pki.createCertificationRequest()
+      csr.publicKey = keys.publicKey
+      // Subject formato ARCA: O = razón social (ASCII), CN = alias, serialNumber = CUIT
+      const razonAscii = fc.razon_social.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, '')
+      csr.setSubject([
+        { name: 'countryName', value: 'AR' },
+        { name: 'organizationName', value: razonAscii || 'CONEOS' },
+        { name: 'commonName', value: 'coneos' },
+        { name: 'serialNumber', value: `CUIT ${fc.cuit}` },
+      ])
+      csr.sign(keys.privateKey, forge.md.sha256.create())
+      const csr_pem = forge.pki.certificationRequestToPem(csr)
+      const key_pem = forge.pki.privateKeyToPem(keys.privateKey)
+      // La key nueva invalida el cert anterior: la config vuelve a borrador y
+      // se apaga hasta que suban el cert nuevo de ARCA y re-prueben.
+      const { error } = await admin.from('facturacion_config')
+        .update({ key_pem, cert_pem: null, estado: 'borrador', activo: false }).eq('id', fc.id)
+      if (error) return err('No se pudo guardar la clave generada')
+      return NextResponse.json({ ok: true, csr_pem, cuit: fc.cuit,
+        regenerado: fc.estado === 'validado' || fc.activo })
     }
 
     case 'editar_cuit': {

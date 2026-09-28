@@ -408,6 +408,21 @@ export default function CuentasPage() {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                       <button onClick={() => setEditCuit(c)} className="p-2 rounded-lg border border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button disabled={guardando}
+                        title="Genera la clave privada acá (queda guardada, nunca se muestra) y descarga el pedido .csr para subir a ARCA"
+                        onClick={async () => {
+                          if ((c.cert_cargado || c.estado === 'validado') && !confirm(`Esto genera una clave privada NUEVA para el CUIT ${c.cuit}: el certificado actual deja de servir y hay que subir uno nuevo de ARCA (mientras tanto no emite). ¿Continuar?`)) return
+                          const d = await accionCuit({ accion: 'generar_csr', cuit_id: c.id }, 'Clave generada y guardada — bajando el pedido .csr para ARCA')
+                          if (d?.csr_pem) {
+                            const a = document.createElement('a')
+                            a.href = URL.createObjectURL(new Blob([d.csr_pem], { type: 'application/pkcs10' }))
+                            a.download = `pedido-certificado-${c.cuit}.csr`
+                            a.click(); URL.revokeObjectURL(a.href)
+                          }
+                        }}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 transition-colors disabled:opacity-40">
+                        🔑 Pedido de certificado
+                      </button>
                       <button disabled={!completa || probando === c.id} onClick={() => probarCuit(c)}
                         title={completa ? 'Prueba real contra ARCA: certificado, relación wsfe y numeración. No emite nada.' : 'Cargá certificado y clave primero'}
                         className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 transition-colors disabled:opacity-40">
@@ -487,7 +502,8 @@ export default function CuentasPage() {
             <details className="text-xs text-neutral-500 pt-2 border-t border-neutral-100">
               <summary className="font-semibold cursor-pointer text-neutral-600">📋 ¿Cómo consigo el certificado en ARCA? (guía paso a paso)</summary>
               <ol className="list-decimal ml-4 mt-2 space-y-1.5">
-                <li><b>Certificado digital:</b> en arca.gob.ar con tu clave fiscal → <b>Administración de Certificados Digitales</b> → agregá un alias (ej: el nombre del negocio) → descargá el archivo <b>.crt</b>. La <b>clave privada (.key)</b> es la que se generó junto al pedido del certificado — si la hizo tu contador/a, pedísela.</li>
+                <li><b>Pedido de certificado:</b> tocá <b>🔑 Pedido de certificado</b> acá arriba en tu CUIT — la clave privada queda guardada sola (nunca la vas a ver ni la necesitás) y se descarga un archivo <b>.csr</b>.</li>
+                <li><b>Certificado digital:</b> en arca.gob.ar con tu clave fiscal → <b>Administración de Certificados Digitales</b> → agregá un alias (ej: el nombre del negocio) → subí el <b>.csr</b> del paso anterior → descargá el archivo <b>.crt</b> y cargalo acá con el lápiz ✏️ (la clave dejala vacía: ya está guardada).</li>
                 <li><b>Autorizar el servicio:</b> → <b>Administrador de Relaciones de Clave Fiscal</b> → Nueva relación → servicio <b>"Facturación Electrónica" (wsfe)</b> → autorizá el certificado del paso 1.</li>
                 <li><b>Punto de venta:</b> → <b>Comprobantes en línea</b> → A/B/M de puntos de venta → creá uno del tipo <b>"Factura Electrónica – Webservice"</b> y anotá el número acá.</li>
               </ol>
