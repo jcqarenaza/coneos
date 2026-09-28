@@ -25,6 +25,7 @@ const fmt = (n: number) => `$${Number(n).toLocaleString('es-AR')}`
 
 export default function RepartoPage() {
   const [fase, setFase] = useState<'cargando' | 'apagado' | 'login' | 'panel'>('cargando')
+  const [motivo, setMotivo] = useState('')  // diagnóstico visible del rechazo
   const [empresaId, setEmpresaId] = useState('')
   const [sucursalId, setSucursalId] = useState('')
   const [marca, setMarca] = useState<{ nombre: string; color: string; logo: string | null; sucursal: string }>({ nombre: '', color: '#1E3A5F', logo: null, sucursal: '' })
@@ -53,13 +54,13 @@ export default function RepartoPage() {
   // ── Arranque: resolver empresa/sucursal + módulo + token guardado ──
   useEffect(() => {
     const { empresa, sucursal } = slugsDesdeURL()
-    if (!empresa || !sucursal) { setFase('apagado'); return }
+    if (!empresa || !sucursal) { setMotivo('R1: URL sin empresa/sucursal'); setFase('apagado'); return }
     const supabase = createClient()
     ;(async () => {
       const { data: emp } = await supabase.from('empresas')
         .select('id, nombre, config:empresa_config(primary_color, logo_url, modulos)')
         .eq('slug', empresa).single()
-      if (!emp) { setFase('apagado'); return }
+      if (!emp) { setMotivo(`R2: empresa "${empresa}" no resuelta (anon)`); setFase('apagado'); return }
       const cfg = Array.isArray(emp.config) ? emp.config[0] : emp.config
       // Módulo + sucursal (slug o id) se resuelven SERVER-SIDE (acción
       // contexto): la tabla sucursales no es legible por el anon (RLS) y la
@@ -69,7 +70,7 @@ export default function RepartoPage() {
         body: JSON.stringify({ accion: 'contexto', empresa_id: emp.id, sucursal }),
       })
       const dc = await rc.json().catch(() => null)
-      if (!dc?.habilitado) { setFase('apagado'); return }
+      if (!dc?.habilitado) { setMotivo(`R3: contexto ${rc.status} — ${dc ? (dc.error ?? 'módulo o sucursal') : 'sin respuesta'}`); setFase('apagado'); return }
       setSucursalId(dc.sucursal_id)
       setEmpresaId(emp.id)
       setMarca({ nombre: emp.nombre, color: cfg?.primary_color || '#1E3A5F', logo: cfg?.logo_url ?? null, sucursal: dc.sucursal_nombre ?? '' })
@@ -158,6 +159,8 @@ export default function RepartoPage() {
       <p className="text-5xl">🛵</p>
       <p className="font-bold text-neutral-700">Reparto no disponible</p>
       <p className="text-neutral-400 text-sm text-center">Este link no está habilitado. Consultá con el local.</p>
+      {motivo && <p className="text-[10px] text-neutral-300 text-center">{motivo}</p>}
+      <p className="text-[10px] text-neutral-300">v1.2 · {typeof window !== 'undefined' ? window.location.pathname : ''}</p>
     </div>
   )
 
