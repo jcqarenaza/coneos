@@ -243,6 +243,18 @@ export async function POST(request: Request) {
     await supabase.from('pedidos')
       .update({ colaborador_id: col.id, colaborador_nombre: col.nombre })
       .in('id', pedido_ids).eq('empresa_id', disp.empresa_id)
+    // ASIGNAR = LISTO (JC 29/09): asignar cadete en PREPARANDO es decir "está
+    // listo, que salga" — el mismo acto pasa esos pedidos a READY (los que ya
+    // estaban READY quedan igual; Marcar listo sigue para pedidos sin cadete).
+    const { data: pasados } = await supabase.from('pedidos')
+      .update({ estado: 'READY', updated_at: new Date().toISOString() })
+      .in('id', pedido_ids).eq('empresa_id', disp.empresa_id).eq('estado', 'PREPARING')
+      .select('id')
+    for (const pp of pasados ?? []) {
+      await supabase.from('pedido_estados_log').insert({
+        pedido_id: pp.id, operador_id: null, estado_anterior: 'PREPARING', estado_nuevo: 'READY',
+      })
+    }
     return NextResponse.json({ ok: true })
   }
 

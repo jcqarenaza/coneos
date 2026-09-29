@@ -300,7 +300,12 @@ export async function POST(request: Request) {
     p_codigo_retiro: codigo_retiro,
     p_mesa_cuenta_id: mesa_cuenta_id,
     p_numero_mesa: esMesa ? Number(numero_mesa) : null,
-    p_pagado: esMesa ? false : null,
+    // COBRO EN LA PUERTA (JC 29/09): un delivery en EFECTIVO nace pagado=false
+    // — la plata no existe hasta que el cadete la cobra al entregar. Antes
+    // "pagado nace TRUE en no-mesa" y el circuito entero mentía: caja cobraba
+    // plata inexistente, el resumen la sumaba antes de tiempo y la franja
+    // 💵 COBRAR del cadete jamás aparecía en pedidos reales.
+    p_pagado: esMesa || (tipo_pedido === 'delivery' && metodo_pago === 'efectivo') ? false : null,
     p_nombre_cliente: esMesa
       ? (nombre_cliente || null)
       : (tipo_pedido === 'takeaway' && datos_delivery?.nombre ? datos_delivery.nombre : null),

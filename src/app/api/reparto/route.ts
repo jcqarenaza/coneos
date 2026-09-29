@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 
 // ============================================================
 // /api/reparto — REPARTO V1 (brief CTO 28/09)
@@ -55,6 +56,33 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   if (!body?.accion) return err('Acción requerida')
   const supabase = createAdminClient()
+
+  // ── PEDIDO PÚBLICO: la pantalla del cliente (/pedido/[numero]) — resuelto
+  // SERVER-SIDE (bug 29/09: la page leía pedidos/empresas con el anon del
+  // browser; en la PC "andaba" por la sesión de admin, en el celu del cliente
+  // real RLS la bloqueaba → "Pedido no encontrado"). SIN gate de módulo:
+  // el estado del pedido es de todos los canales; reparto solo gobierna el mapa.
+  if (body.accion === 'pedido_publico') {
+    const { empresa_slug, numero } = body
+    if (!empresa_slug || !numero) return err('Datos requeridos')
+    const { data: emp } = await supabase.from('empresas')
+      .select('id, nombre').eq('slug', empresa_slug).maybeSingle()
+    if (!emp) return NextResponse.json({ ok: true, encontrado: false })
+    const { data: cfg } = await supabase.from('empresa_config')
+      .select('primary_color, secondary_color, logo_url, modulos').eq('empresa_id', emp.id).maybeSingle()
+    const { data: p } = await supabase.from('pedidos')
+      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, created_at, tipo_pedido, costo_envio, datos_delivery, colaborador_id, colaborador_nombre,
+        pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
+          pedido_item_opciones(nombre_snap, emoji_snap))`)
+      .eq('empresa_id', emp.id).eq('numero_pedido', Number(numero))
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (!p) return NextResponse.json({ ok: true, encontrado: false })
+    return NextResponse.json({ ok: true, encontrado: true, pedido: p,
+      marca: { nombre: emp.nombre, empresa_id: emp.id,
+        primary_color: cfg?.primary_color ?? '#1E3A5F', secondary_color: cfg?.secondary_color ?? '#F5C842',
+        logo_url: cfg?.logo_url ?? null,
+        reparto: ((cfg?.modulos ?? {}) as Record<string, unknown>).reparto === true } })
+  }
 
   // ── CONTEXTO de la puerta (público): resuelve la sucursal por slug o id
   // SERVER-SIDE — la tabla sucursales no es legible por el anon del browser
@@ -172,13 +200,24 @@ export async function POST(request: Request) {
     if (ped.estado === 'DELIVERED') return NextResponse.json({ ok: true, ya_entregado: true })  // idempotente (E3)
     if (ped.estado !== 'READY') return err('El pedido todavía no está listo para entregar', 409)  // E4
     // Guard atómico: solo transiciona si SIGUE en READY.
-    // entregado_at = la marca de tiempo de la entrega en la puerta — base de
-    // la métrica de tiempo promedio (pedido_estados no existía: el insert de
-    // historial fallaba en silencio y se reemplazó por este timestamp)
+    // entregado_at = la marca de tiempo de la entrega en la puerta.
+    // COBRO EN LA PUERTA (JC 29/09): si el pedido era EFECTIVO sin pagar, la
+    // entrega ES el cobro — el cadete confirmó "cobraste $X" en el panel
+    // verde. pagado=true recién acá: la plata entra al resumen del día cuando
+    // existe. La facturación automática decide sola (idempotente, respeta
+    // auto_facturar + metodos_auto del cliente).
+    const { data: pedCobro } = await supabase.from('pedidos')
+      .select('metodo_pago, pagado').eq('id', pedido_id).eq('empresa_id', col.empresa_id).maybeSingle()
+    const cobraEnPuerta = pedCobro?.metodo_pago === 'efectivo' && pedCobro?.pagado === false
     const { data: upd } = await supabase.from('pedidos')
-      .update({ estado: 'DELIVERED', updated_at: new Date().toISOString(), entregado_at: new Date().toISOString() })
+      .update({ estado: 'DELIVERED', updated_at: new Date().toISOString(), entregado_at: new Date().toISOString(),
+        ...(cobraEnPuerta ? { pagado: true } : {}) })
       .eq('id', pedido_id).eq('empresa_id', col.empresa_id).eq('estado', 'READY').select('id')
     if (!upd?.length) return err('El pedido cambió de estado — actualizá', 409)
+    await supabase.from('pedido_estados_log').insert({
+      pedido_id, operador_id: null, estado_anterior: 'READY', estado_nuevo: 'DELIVERED',
+    }).then(() => {}, () => {})
+    if (cobraEnPuerta) await facturarSiCorresponde(pedido_id).catch(() => {})
     // Limpieza garantizada server-side (C6/E6): ¿era el último?
     const restantes = await pedidosActivos(supabase, col.id, col.empresa_id)
     if (restantes.length === 0) await supabase.from('reparto_posiciones').delete().eq('colaborador_id', col.id)

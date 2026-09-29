@@ -434,7 +434,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     if (p.numero_mesa == null) return null
     return <>
       <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-violet-50 text-violet-700">🪑 Mesa {p.numero_mesa}{p.nombre_cliente ? ` — ${p.nombre_cliente}` : ''}</span>
-      {p.pagado === false && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-50 text-red-600">Por cobrar</span>}
+      {p.pagado === false && (p.tipo_pedido === 'delivery' && p.metodo_pago === 'efectivo'
+        ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-600">💵 Cobra el cadete</span>
+        : <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-50 text-red-600">Por cobrar</span>)}
     </>
   }
   function BadgeFiscal({ id }: { id: string }) {
@@ -656,7 +658,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   // Resumen del día: solo plata COBRADA. Los pedidos de mesa "por cobrar"
   // (pagado=false) quedan afuera del total y se muestran como pendiente aparte.
   const calcResumen = (lista: Pedido[]) => {
-    const cobrados = lista.filter(p => p.estado !== 'PENDING_PAYMENT' && p.estado !== 'CANCELLED' && !(p.numero_mesa != null && p.pagado === false))
+    // JC 29/09: el efectivo de delivery en la calle (pagado=false) NO suma
+    // hasta que el cadete entrega — recién ahí la plata existe.
+    const cobrados = lista.filter(p => p.estado !== 'PENDING_PAYMENT' && p.estado !== 'CANCELLED' && p.pagado !== false)
     const sum = (arr: Pedido[], f: (p: Pedido) => number) => arr.reduce((a, p) => a + f(p), 0)
     const envios = sum(cobrados, p => Number(p.costo_envio ?? 0))
     const total = sum(cobrados, p => Number(p.total))
@@ -1323,13 +1327,17 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Confirmar pago'}
                       </button>
                     ) : (<>
+                    {/* JC 29/09: delivery en EFECTIVO no se "cobra" en caja — la
+                        plata la trae el cadete de la puerta (pagado queda false;
+                        la entrega del cadete lo marca). Aceptar solo habilita
+                        la preparación. */}
                     <button onClick={async () => {
                         await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
                         if (comandaAutoRef.current) comandaAutomatica(seleccionado.id)
                         if (ticketAutoRef.current) { /* 9g: el watcher imprime (espera-CAE) */ } else imprimirTicket(seleccionado.id)
                       }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
-                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Cobrar efectivo'}
+                      {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : (seleccionado.tipo_pedido === 'delivery' && seleccionado.metodo_pago === 'efectivo' ? '✓ Aceptar pedido — 💵 cobra el cadete' : '✓ Cobrar efectivo')}
                     </button>
                     <button onClick={async () => { const r = receptorActivo(); await cambiarEstado(seleccionado.id, 'PAID', r); if (comandaAutoRef.current) comandaAutomatica(seleccionado.id); setModalComprobante(true) }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">

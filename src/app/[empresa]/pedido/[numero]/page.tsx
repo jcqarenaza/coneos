@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase/client'
 import { Loader2, CheckCircle, Clock, ChefHat, Package, Truck } from 'lucide-react'
 import MapaCliente from '@/components/reparto/MapaCliente'
 
@@ -63,37 +62,19 @@ export default function PedidoPage() {
   const [notFound, setNotFound] = useState(false)
 
   async function cargar() {
-    const supabase = createClient()
-    // Buscar empresa
-    const { data: emp } = await supabase.from('empresas')
-      .select('id, nombre, config:empresa_config(primary_color, secondary_color, logo_url, modulos)')
-      .eq('slug', params.empresa).single()
-    if (!emp) { setNotFound(true); setLoading(false); return }
-
-    const cfg = Array.isArray(emp.config) ? emp.config[0] : emp.config
-    setConfig({
-      primary_color: cfg?.primary_color || '#1E3A5F',
-      secondary_color: cfg?.secondary_color || '#F5C842',
-      logo_url: cfg?.logo_url || null,
-      nombre: emp.nombre,
-      empresa_id: emp.id,
-      reparto: (cfg?.modulos as Record<string, unknown> | null)?.reparto === true,
-    })
-
-    // Buscar pedido por número
-    const { data: p } = await supabase.from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, created_at, tipo_pedido, costo_envio, datos_delivery, colaborador_id, colaborador_nombre,
-        pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
-          pedido_item_opciones(nombre_snap, emoji_snap))`)
-      .eq('empresa_id', emp.id)
-      .eq('numero_pedido', Number(params.numero))
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (!p) { setNotFound(true); setLoading(false); return }
-    setPedido(p as Pedido)
-    setLoading(false)
+    // TODO server-side por la API (bug 29/09: el anon del browser no lee
+    // pedidos/empresas — en el celu del cliente real daba "no encontrado")
+    try {
+      const res = await fetch('/api/reparto', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'pedido_publico', empresa_slug: params.empresa, numero: params.numero }),
+      })
+      const d = await res.json().catch(() => null)
+      if (!d?.encontrado) { setNotFound(true); setLoading(false); return }
+      setConfig(d.marca as EmpresaConfig)
+      setPedido(d.pedido as Pedido)
+      setLoading(false)
+    } catch { setNotFound(true); setLoading(false) }
   }
 
   useEffect(() => {
