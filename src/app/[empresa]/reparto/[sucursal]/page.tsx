@@ -136,7 +136,7 @@ export default function RepartoPage() {
   async function entregar(p: PedidoCadete) {
     setEntregando(p.id)
     try {
-      await api({ accion: 'entregar', pedido_id: p.id })
+      const d = await api({ accion: 'entregar', pedido_id: p.id })
       setPedidos(prev => prev.filter(x => x.id !== p.id))
       if (d?.modo_regreso) setModoRegreso(true)
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo marcar') } finally { setEntregando(null); setConfirmando(null) }
