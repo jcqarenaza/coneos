@@ -91,7 +91,19 @@ export default function RepartoPage() {
     }
     traer()
     const i = setInterval(traer, 10000)
-    return () => { vivo = false; clearInterval(i) }
+    // DESPERTADOR (JC 29/09): iOS congela el JS en segundo plano — al volver
+    // al frente la pantalla quedaba vieja hasta el próximo timer o un toque.
+    // visibilitychange + pageshow + focus refrescan AL INSTANTE al volver.
+    const despertar = () => { if (document.visibilityState === 'visible') traer() }
+    document.addEventListener('visibilitychange', despertar)
+    window.addEventListener('pageshow', despertar)
+    window.addEventListener('focus', despertar)
+    return () => {
+      vivo = false; clearInterval(i)
+      document.removeEventListener('visibilitychange', despertar)
+      window.removeEventListener('pageshow', despertar)
+      window.removeEventListener('focus', despertar)
+    }
   }, [fase, empresaId, api])
 
   // ── Tracking: watchPosition con reparto activo O en modo regreso
