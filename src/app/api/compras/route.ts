@@ -183,6 +183,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, id: nuevo.id })
   }
 
+  if (accion === 'presentacion_borrar') {
+    // JC 29/09: una presentación SIN USO en documentos no es historial —
+    // fue un typo, se borra físico. Con uso (OC o remitos): es historial,
+    // solo desactivar. El server es el juez, la UI solo ofrece.
+    const { id } = body
+    if (!id) return err('Datos requeridos')
+    const [{ count: enOC }, { count: enRemitos }] = await Promise.all([
+      supabase.from('ordenes_compra_items').select('id', { count: 'exact', head: true })
+        .eq('presentacion_id', id).eq('empresa_id', empresaId),
+      supabase.from('remitos_compra_items').select('id', { count: 'exact', head: true })
+        .eq('presentacion_id', id).eq('empresa_id', empresaId),
+    ])
+    if ((enOC ?? 0) + (enRemitos ?? 0) > 0) {
+      return err('Esta presentación ya se usó en documentos de compra — es historial: desactivala en lugar de borrarla', 409)
+    }
+    const { data: del } = await supabase.from('articulo_presentaciones_compra')
+      .delete().eq('id', id).eq('empresa_id', empresaId).select('id')
+    if (!del?.length) return err('Presentación no encontrada', 404)
+    return NextResponse.json({ ok: true })
+  }
+
   if (accion === 'presentacion_toggle') {
     const { id, activo } = body
     if (!id || typeof activo !== 'boolean') return err('Datos requeridos')

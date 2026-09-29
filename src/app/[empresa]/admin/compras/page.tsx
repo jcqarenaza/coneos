@@ -123,6 +123,10 @@ export default function ComprasPage() {
       setPresEdit(null); setFPres({ nombre: '', factor: '' }); await recargar()
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo guardar') } finally { setSaving(false) }
   }
+  async function borrarPresentacion(id: string) {
+    try { await api({ accion: 'presentacion_borrar', id }); await recargar() }
+    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo borrar') }
+  }
   async function togglePresentacion(pr: Presentacion) {
     try { await api({ accion: 'presentacion_toggle', id: pr.id, activo: !pr.activo }); await recargar() }
     catch (e) { alert(e instanceof Error ? e.message : 'No se pudo actualizar') }
@@ -302,13 +306,13 @@ export default function ComprasPage() {
             </button>
           </div>
           <div className="space-y-1.5">
-            <Label>Producto de venta vinculado</Label>
+            <Label>Es reventa de un producto del catálogo</Label>
             <select value={fArt.producto_id} onChange={e => setFArt({ ...fArt, producto_id: e.target.value })}
               className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm bg-white">
               <option value="">Sin vínculo (insumo/material)</option>
               {productosDisponibles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
-            <p className="text-[11px] text-neutral-400">Al recibir este artículo, el stock suma en el producto de venta. Un producto solo puede ser la ficha de UN artículo.</p>
+            <p className="text-[11px] text-neutral-400">Solo si comprás EXACTAMENTE lo que vendés (la recepción suma en su stock de venta; un producto = un solo artículo). Los ingredientes de un producto elaborado van SIN vínculo — recetas: próximamente.</p>
           </div>
         </div>
       </ConeModal>
@@ -317,9 +321,13 @@ export default function ComprasPage() {
       <ConeModal open={!!modalPres} onClose={() => { setModalPres(null); setPresEdit(null) }}
         title={presEdit ? `Editar presentación · ${modalPres?.articuloNombre ?? ''}` : `Nueva presentación de compra · ${modalPres?.articuloNombre ?? ''}`}
         footer={<>
-          {presEdit && (() => { const pr = presentaciones.find(x => x.id === presEdit); return pr ? (
+          {presEdit && (() => { const pr = presentaciones.find(x => x.id === presEdit); return pr ? (<>
+            <button onClick={async () => { await borrarPresentacion(pr.id); setModalPres(null); setPresEdit(null) }}
+              className="px-4 py-2 rounded-xl border border-red-200 text-red-500 text-sm font-bold hover:bg-red-50 transition-colors">
+              Borrar
+            </button>
             <ConeButton variant="outline" onClick={() => { togglePresentacion(pr); setModalPres(null); setPresEdit(null) }}>{pr.activo ? 'Desactivar' : 'Activar'}</ConeButton>
-          ) : null })()}
+          </>) : null })()}
           <ConeButton variant="outline" onClick={() => { setModalPres(null); setPresEdit(null) }}>Cancelar</ConeButton>
           <ConeButton onClick={async () => { await guardarPresentacion(); setModalPres(null) }} loading={saving}>Guardar</ConeButton>
         </>}>
