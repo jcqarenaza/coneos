@@ -1143,7 +1143,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                 </div>
               ) : pedidosFiltrados.map(pedido => (
                 <div key={pedido.id} className={`w-full text-left border-b border-neutral-50 border-l-4 transition-colors ${seleccionado?.id === pedido.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[pedido.estado]}`}>
-                  {pedido.tipo_pedido === 'delivery' && (
+                  {/* JC 29/09: asignable SOLO en curso — un pedido ENTREGADO
+                      (o cancelado) no ofrece el tildado de asignación */}
+                  {pedido.tipo_pedido === 'delivery' && (pedido.estado === 'PREPARING' || pedido.estado === 'READY') && (
                     <div className="flex items-center gap-2 px-4 pt-2">
                       <input type="checkbox" checked={pedidosSeleccionados.includes(pedido.id)}
                         onChange={e => { e.stopPropagation(); setPedidosSeleccionados(prev => e.target.checked ? [...prev, pedido.id] : prev.filter(id => id !== pedido.id)) }}

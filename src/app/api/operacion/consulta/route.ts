@@ -240,9 +240,12 @@ export async function POST(request: Request) {
     const { data: col } = await supabase.from('colaboradores')
       .select('id, nombre').eq('id', colaborador_id).eq('empresa_id', disp.empresa_id).maybeSingle()
     if (!col) return NextResponse.json({ error: 'Colaborador no válido' }, { status: 404 })
+    // JC 29/09: el server tampoco re-asigna pedidos terminados — asignar
+    // solo toca pedidos EN CURSO (la UI ya no lo ofrece; esto es el cinturón)
     await supabase.from('pedidos')
       .update({ colaborador_id: col.id, colaborador_nombre: col.nombre })
       .in('id', pedido_ids).eq('empresa_id', disp.empresa_id)
+      .in('estado', ['PREPARING', 'READY'])
     // ASIGNAR = LISTO (JC 29/09): asignar cadete en PREPARANDO es decir "está
     // listo, que salga" — el mismo acto pasa esos pedidos a READY (los que ya
     // estaban READY quedan igual; Marcar listo sigue para pedidos sin cadete).
