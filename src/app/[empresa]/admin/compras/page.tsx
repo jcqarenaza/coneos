@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Plus, Loader2, Pencil, Package, Truck, Boxes } from 'lucide-react'
 
-interface Proveedor { id: string; nombre: string; cuit: string | null; telefono: string | null; email: string | null; direccion: string | null; observaciones: string | null; activo: boolean }
+interface Proveedor { id: string; nombre: string; razon_social: string | null; cuit: string | null; telefono: string | null; email: string | null; direccion: string | null; observaciones: string | null; activo: boolean }
 interface Articulo { id: string; nombre: string; tipo: string; unidad_stock: string; producto_id: string | null; controla_stock: boolean; activo: boolean }
 interface Presentacion { id: string; articulo_id: string; nombre: string; factor: number; activo: boolean }
 interface ProductoVenta { id: string; nombre: string }
@@ -42,7 +42,7 @@ export default function ComprasPage() {
   // Modales
   const [modalProv, setModalProv] = useState(false)
   const [provEdit, setProvEdit] = useState<string | null>(null)
-  const [fProv, setFProv] = useState({ nombre: '', cuit: '', telefono: '', email: '', direccion: '', observaciones: '' })
+  const [fProv, setFProv] = useState({ nombre: '', razon_social: '', cuit: '', telefono: '', email: '', direccion: '', observaciones: '' })
   const [modalArt, setModalArt] = useState(false)
   const [artEdit, setArtEdit] = useState<string | null>(null)
   const [fArt, setFArt] = useState({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' })
@@ -153,7 +153,7 @@ export default function ComprasPage() {
           <p className="text-sm text-neutral-400">Proveedores y artículos de compra</p>
         </div>
         <ConeButton onClick={() => {
-          if (tab === 'proveedores') { setFProv({ nombre: '', cuit: '', telefono: '', email: '', direccion: '', observaciones: '' }); setProvEdit(null); setModalProv(true) }
+          if (tab === 'proveedores') { setFProv({ nombre: '', razon_social: '', cuit: '', telefono: '', email: '', direccion: '', observaciones: '' }); setProvEdit(null); setModalProv(true) }
           else { setFArt({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' }); setArtEdit(null); setModalArt(true) }
         }} icon={<Plus className="h-4 w-4" />}>
           {tab === 'proveedores' ? 'Nuevo proveedor' : 'Nuevo artículo'}
@@ -183,7 +183,7 @@ export default function ComprasPage() {
                   {p.cuit && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-neutral-100 text-neutral-600">CUIT {p.cuit}</span>}
                 </div>
                 <p className="text-xs text-neutral-400 mt-0.5 truncate">
-                  {[p.telefono, p.email, p.direccion].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
+                  {[p.razon_social, p.telefono, p.email, p.direccion].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -191,7 +191,7 @@ export default function ComprasPage() {
                   className={`relative w-11 h-6 rounded-full transition-colors ${p.activo ? 'bg-green-500' : 'bg-neutral-200'}`}>
                   <span className={`absolute top-0.5 h-5 w-5 bg-white rounded-full shadow transition-all ${p.activo ? 'left-[22px]' : 'left-0.5'}`} />
                 </button>
-                <button onClick={() => { setFProv({ nombre: p.nombre, cuit: p.cuit ?? '', telefono: p.telefono ?? '', email: p.email ?? '', direccion: p.direccion ?? '', observaciones: p.observaciones ?? '' }); setProvEdit(p.id); setModalProv(true) }}
+                <button onClick={() => { setFProv({ nombre: p.nombre, razon_social: p.razon_social ?? '', cuit: p.cuit ?? '', telefono: p.telefono ?? '', email: p.email ?? '', direccion: p.direccion ?? '', observaciones: p.observaciones ?? '' }); setProvEdit(p.id); setModalProv(true) }}
                   className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
               </div>
             </div>
@@ -254,7 +254,12 @@ export default function ComprasPage() {
       <ConeModal open={modalProv} onClose={() => setModalProv(false)} title={provEdit ? 'Editar proveedor' : 'Nuevo proveedor'}
         footer={<><ConeButton variant="outline" onClick={() => setModalProv(false)}>Cancelar</ConeButton><ConeButton onClick={guardarProveedor} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
-          <div className="space-y-1.5"><Label>Nombre *</Label><Input value={fProv.nombre} onChange={e => setFProv({ ...fProv, nombre: e.target.value })} placeholder="Almacén Sur" autoFocus /></div>
+          <div className="space-y-1.5"><Label>Nombre de fantasía *</Label><Input value={fProv.nombre} onChange={e => setFProv({ ...fProv, nombre: e.target.value })} placeholder="Almacén Sur" autoFocus /></div>
+          <div className="space-y-1.5">
+            <Label>Razón social</Label>
+            <Input value={fProv.razon_social} onChange={e => setFProv({ ...fProv, razon_social: e.target.value })} placeholder="Distribuidora Sur S.R.L." />
+            <p className="text-[11px] text-neutral-400">La de los comprobantes. Vacía = se usa el nombre de fantasía.</p>
+          </div>
           <div className="space-y-1.5"><Label>CUIT</Label><Input value={fProv.cuit} onChange={e => setFProv({ ...fProv, cuit: e.target.value.replace(/[^\d-]/g, '') })} placeholder="30-11122233-3" inputMode="numeric" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label>Teléfono</Label><Input value={fProv.telefono} onChange={e => setFProv({ ...fProv, telefono: e.target.value })} placeholder="2302..." /></div>

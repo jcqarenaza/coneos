@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   if (accion === 'listar') {
     const [{ data: proveedores }, { data: articulos }, { data: presentaciones }, { data: productos }] = await Promise.all([
       supabase.from('proveedores')
-        .select('id, nombre, cuit, telefono, email, direccion, observaciones, activo')
+        .select('id, nombre, razon_social, cuit, telefono, email, direccion, observaciones, activo')
         .eq('empresa_id', empresaId).order('nombre'),
       supabase.from('articulos')
         .select('id, nombre, tipo, unidad_stock, producto_id, controla_stock, activo')
@@ -82,12 +82,14 @@ export async function POST(request: Request) {
 
   // ── PROVEEDORES ──
   if (accion === 'proveedor_guardar') {
-    const { id, nombre, cuit, telefono, email, direccion, observaciones } = body
+    const { id, nombre, razon_social, cuit, telefono, email, direccion, observaciones } = body
     if (!nombre?.trim()) return err('El nombre es obligatorio')
     const cuitLimpio = (cuit ?? '').replace(/\D/g, '')
     if (cuitLimpio && !cuitValido(cuitLimpio)) return err('El CUIT no es válido (verificá los 11 dígitos)')
     const payload = {
-      nombre: String(nombre).trim(), cuit: cuitLimpio || null,
+      nombre: String(nombre).trim(),
+      razon_social: razon_social?.trim() || null,  // vacío = se usa la fantasía
+      cuit: cuitLimpio || null,
       telefono: telefono?.trim() || null, email: email?.trim() || null,
       direccion: direccion?.trim() || null, observaciones: observaciones?.trim() || null,
     }
