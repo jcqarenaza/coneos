@@ -399,18 +399,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     if (!colaboradorSeleccionado || !pedidosSeleccionados.length) return
     setAsignando(true)
     await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'asignar_cadete', pedido_ids: pedidosSeleccionados, colaborador_id: colaboradorSeleccionado }) })
-    // Imprimir comanda de cada pedido
-    for (const pid of pedidosSeleccionados) {
-      const res = await fetch('/api/comprobantes/comanda', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedido_id: pid }),
-      })
-      if (res.ok) {
-        const html = await res.text()
-        const win = window.open('', '_blank', 'width=400,height=700')
-        if (win) { win.document.write(html); win.document.close() }
-      }
-    }
+    // JC 29/09: se ELIMINÓ la impresión de comanda al asignar — era el diseño
+    // pre-app (papelito para el cadete) y encima salía la comanda de cocina,
+    // sin dirección. Hoy el cadete tiene la app con dirección y 📋 copiar.
+    // La comanda de COCINA sigue con su circuito propio (automática al
+    // PREPARING o botón Reimprimir) — esto no la toca.
     setAsignando(false)
     setModalAsignar(false)
     setPedidosSeleccionados([])
