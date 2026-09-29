@@ -71,13 +71,21 @@ export async function POST(request: Request) {
     const { data: cfg } = await supabase.from('empresa_config')
       .select('primary_color, secondary_color, logo_url, modulos').eq('empresa_id', emp.id).maybeSingle()
     const { data: p } = await supabase.from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, created_at, tipo_pedido, costo_envio, datos_delivery, colaborador_id, colaborador_nombre,
+      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, created_at, tipo_pedido, costo_envio, datos_delivery, colaborador_id, colaborador_nombre, sucursal_id,
         pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
       .eq('empresa_id', emp.id).eq('numero_pedido', Number(numero))
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
     if (!p) return NextResponse.json({ ok: true, encontrado: false })
-    return NextResponse.json({ ok: true, encontrado: true, pedido: p,
+    // Vuelta a la tienda (JC 29/09): la pantalla del pedido era un callejón
+    // sin salida en PWA — el server arma el link al canal de SU sucursal.
+    const { data: sucVuelta } = p.sucursal_id
+      ? await supabase.from('sucursales').select('slug').eq('id', p.sucursal_id).maybeSingle()
+      : { data: null }
+    const volver_url = sucVuelta?.slug
+      ? `/${empresa_slug}/${p.tipo_pedido === 'takeaway' ? 'takeaway' : 'delivery'}/${sucVuelta.slug}`
+      : null
+    return NextResponse.json({ ok: true, encontrado: true, pedido: p, volver_url,
       marca: { nombre: emp.nombre, empresa_id: emp.id,
         primary_color: cfg?.primary_color ?? '#1E3A5F', secondary_color: cfg?.secondary_color ?? '#F5C842',
         logo_url: cfg?.logo_url ?? null,
