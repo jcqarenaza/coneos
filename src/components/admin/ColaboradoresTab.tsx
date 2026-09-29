@@ -11,7 +11,12 @@ import { Plus, Loader2, Pencil, Link2, Check } from 'lucide-react'
 // REPARTO V1: el cadete gana PUERTA — sucursal (null = todas) + PIN de 4
 // dígitos hasheado en Postgres (RPC set_pin_colaborador, mismo bcrypt que
 // operadores). El PIN JAMÁS se lee ni se muestra: solo se setea/cambia.
-interface Colaborador { id: string; nombre: string; rol: string; activo: boolean; sucursal_id: string | null; pin_cargado?: boolean }
+interface Colaborador { id: string; nombre: string; rol: string; activo: boolean; sucursal_id: string | null; pin_cargado?: boolean; emoji_reparto?: string | null }
+
+// Identidad visual del cadete (GO CTO 29/09): catálogo CONTROLADO — cambiar
+// la lista no toca la base. NULL = 🛵 por defecto. Una casa para el dato:
+// vive en colaboradores; pedidos y posiciones lo obtienen del colaborador.
+const EMOJIS_REPARTO = ['🛵', '🏍️', '🚲', '🚴', '🚗', '🚙', '🛺', '🔵', '🟢', '🟡', '🟠', '🔴', '🟣']
 interface Sucursal { id: string; nombre: string; slug: string }
 
 const ROLES = [
@@ -25,7 +30,7 @@ export default function ColaboradoresTab() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '' })
+  const [form, setForm] = useState({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '', emoji: '' })
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [saving, setSaving] = useState(false)
   const [copiado, setCopiado] = useState<string | null>(null)
@@ -51,7 +56,7 @@ export default function ColaboradoresTab() {
     const supabase = createClient()
     const [{ data: rows }, { data: sucs }] = await Promise.all([
       supabase.from('colaboradores')
-        .select('id, nombre, rol, activo, sucursal_id, pin_hash')
+        .select('id, nombre, rol, activo, sucursal_id, pin_hash, emoji_reparto')
         .eq('empresa_id', ctx.empresaId)
         .order('nombre'),
       supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', ctx.empresaId).order('nombre'),
@@ -60,6 +65,7 @@ export default function ColaboradoresTab() {
     setData((rows ?? []).map((r: Record<string, unknown>) => ({
       id: r.id, nombre: r.nombre, rol: r.rol, activo: r.activo,
       sucursal_id: r.sucursal_id ?? null, pin_cargado: !!r.pin_hash,
+      emoji_reparto: (r.emoji_reparto as string | null) ?? null,
     })) as Colaborador[])
     setSucursales((sucs ?? []) as Sucursal[])
     setLoading(false)
@@ -67,15 +73,16 @@ export default function ColaboradoresTab() {
 
   useEffect(() => { load() }, [ctx])
 
-  function openNew() { setForm({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '' }); setEditId(null); setModal(true) }
-  function openEdit(row: Colaborador) { setForm({ nombre: row.nombre, rol: row.rol, sucursal_id: row.sucursal_id ?? 'todas', pin: '' }); setEditId(row.id); setModal(true) }
+  function openNew() { setForm({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '', emoji: '' }); setEditId(null); setModal(true) }
+  function openEdit(row: Colaborador) { setForm({ nombre: row.nombre, rol: row.rol, sucursal_id: row.sucursal_id ?? 'todas', pin: '', emoji: row.emoji_reparto ?? '' }); setEditId(row.id); setModal(true) }
 
   async function handleSave() {
     if (!ctx || !form.nombre.trim()) return
     if (form.pin && !/^\d{4}$/.test(form.pin)) { alert('El PIN debe ser de 4 dígitos numéricos.'); return }
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: form.nombre.trim(), rol: form.rol, sucursal_id: form.sucursal_id === 'todas' ? null : form.sucursal_id }
+    const payload = { nombre: form.nombre.trim(), rol: form.rol, sucursal_id: form.sucursal_id === 'todas' ? null : form.sucursal_id,
+      emoji_reparto: form.emoji && EMOJIS_REPARTO.includes(form.emoji) ? form.emoji : null }
     let id = editId
     if (editId) {
       await supabase.from('colaboradores').update(payload).eq('id', editId)
@@ -129,7 +136,7 @@ export default function ColaboradoresTab() {
           <div key={row.id} className={`bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm ${!row.activo ? "opacity-55 grayscale" : ""}`}>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center text-xl">
-                {row.rol === 'cadete' ? '🛵' : '👤'}
+                {row.rol === 'cadete' ? (row.emoji_reparto ?? '🛵') : '👤'}
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -178,6 +185,20 @@ export default function ColaboradoresTab() {
               placeholder="1234" inputMode="numeric" type="password" autoComplete="new-password" />
             <p className="text-[11px] text-neutral-400">Con este PIN el cadete entra a su app de reparto. Se guarda cifrado y no se puede volver a ver — solo cambiar.</p>
           </div>
+          {form.rol === 'cadete' && (
+            <div className="space-y-1.5">
+              <Label>Identificador visual</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {EMOJIS_REPARTO.map(em => (
+                  <button key={em} type="button" onClick={() => setForm({ ...form, emoji: form.emoji === em ? '' : em })}
+                    className={`w-10 h-10 rounded-xl border text-xl flex items-center justify-center transition-colors ${form.emoji === em ? 'border-neutral-800 bg-neutral-50' : 'border-neutral-200 hover:border-neutral-300'}`}>
+                    {em}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-neutral-400">Así aparece en el mapa de caja, la app del cadete y el seguimiento del cliente. Sin elegir = 🛵.</p>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label>Rol *</Label>
             <div className="flex gap-2">

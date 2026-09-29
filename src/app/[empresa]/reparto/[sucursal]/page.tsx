@@ -28,12 +28,12 @@ export default function RepartoPage() {
   const [empresaId, setEmpresaId] = useState('')
   const [sucursalId, setSucursalId] = useState('')
   const [marca, setMarca] = useState<{ nombre: string; color: string; logo: string | null; sucursal: string }>({ nombre: '', color: '#1E3A5F', logo: null, sucursal: '' })
-  const [cadetes, setCadetes] = useState<{ id: string; nombre: string }[]>([])
-  const [cadeteSel, setCadeteSel] = useState<{ id: string; nombre: string } | null>(null)
+  const [cadetes, setCadetes] = useState<{ id: string; nombre: string; emoji?: string }[]>([])
+  const [cadeteSel, setCadeteSel] = useState<{ id: string; nombre: string; emoji?: string } | null>(null)
   const [pin, setPin] = useState('')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
-  const [cadete, setCadete] = useState<{ id: string; nombre: string } | null>(null)
+  const [cadete, setCadete] = useState<{ id: string; nombre: string; emoji?: string } | null>(null)
   const [pedidos, setPedidos] = useState<PedidoCadete[]>([])
   const [entregando, setEntregando] = useState<string | null>(null)
   const [dirCopiada, setDirCopiada] = useState<string | null>(null)
@@ -178,7 +178,7 @@ export default function RepartoPage() {
               {cadetes.map(c => (
                 <button key={c.id} onClick={() => { setCadeteSel(c); setPin(''); setErrorMsg(null) }}
                   className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-neutral-200 bg-white text-left hover:border-neutral-400 transition-colors">
-                  <span className="text-2xl">🛵</span>
+                  <span className="text-2xl">{c.emoji ?? '🛵'}</span>
                   <span className="font-bold text-lg text-neutral-800">{c.nombre}</span>
                 </button>
               ))}
@@ -210,7 +210,7 @@ export default function RepartoPage() {
       <div className="bg-white border-b border-neutral-100 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
         <div>
           <p className="font-black text-neutral-800">🛵 Mis entregas</p>
-          <p className="text-xs text-neutral-400">Hola {cadete?.nombre ?? ''} · {marca.sucursal || marca.nombre}</p>
+          <p className="text-xs text-neutral-400">Hola {cadete?.emoji ?? '🛵'} {cadete?.nombre ?? ''} · {marca.sucursal || marca.nombre}</p>
         </div>
         <div className="flex items-center gap-2">
           {pedidos.length > 0 && (

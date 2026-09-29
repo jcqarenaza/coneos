@@ -12,6 +12,7 @@ interface Pedido {
   total: number; metodo_pago: string | null; created_at: string
   tipo_pedido: string | null; costo_envio: number; datos_delivery: DatosDelivery | null
   colaborador_id: string | null; colaborador_nombre: string | null  // REPARTO V1
+  colaborador_emoji?: string | null  // identidad visual (GO CTO 29/09)
   pedido_items: PedidoItem[]
 }
 
@@ -34,12 +35,13 @@ const ESTADOS = [
 // REPARTO V1: los textos de delivery se vuelven honestos — la asignación
 // es el discriminador (una sola máquina de estados, sello CTO):
 // READY sin cadete = listo en el local · READY + cadete = EN REPARTO (mapa).
-function estadoDeliveryLabel(estado: string, cadete: string | null): string {
+function estadoDeliveryLabel(estado: string, cadete: string | null, emoji?: string | null): string {
+  const em = emoji ?? '🛵'
   switch (estado) {
     case 'PENDING_PAYMENT': return 'Esperando confirmación'
     case 'PAID': return 'Confirmado — preparando pronto'
-    case 'PREPARING': return cadete ? `Preparando 🍦 — ${cadete} va a llevar tu pedido` : 'Preparando tu pedido 🍦'
-    case 'READY': return cadete ? `¡${cadete} va en camino! 🛵` : 'Listo — preparando la salida 📦'
+    case 'PREPARING': return cadete ? `Preparando 🍦 — ${em} ${cadete} va a llevar tu pedido` : 'Preparando tu pedido 🍦'
+    case 'READY': return cadete ? `¡${em} ${cadete} va en camino!` : 'Listo — preparando la salida 📦'
     case 'DELIVERED': return '¡Entregado! Buen provecho 🎉'
     case 'CANCELLED': return 'Cancelado'
     default: return estado
@@ -132,7 +134,7 @@ export default function PedidoPage() {
           </div>
           <p className="text-xs text-neutral-400 uppercase tracking-widest mb-1">Pedido #{pedido.numero_pedido}</p>
           <h1 className="text-xl font-black mb-1" style={{ color: estadoActual.color }}>
-            {esDelivery ? estadoDeliveryLabel(pedido.estado, pedido.colaborador_nombre) : estadoActual.label}
+            {esDelivery ? estadoDeliveryLabel(pedido.estado, pedido.colaborador_nombre, pedido.colaborador_emoji) : estadoActual.label}
           </h1>
           <p className="text-neutral-400 text-sm">{estadoActual.desc}</p>
         </div>
@@ -140,7 +142,7 @@ export default function PedidoPage() {
         {/* ═══ REPARTO V1 — mapa en vivo: SOLO delivery + READY + cadete + módulo ON ═══ */}
         {esDelivery && pedido.estado === 'READY' && pedido.colaborador_id && config.reparto && (
           <MapaCliente empresaId={config.empresa_id} numeroPedido={pedido.numero_pedido}
-            nombreCadete={pedido.colaborador_nombre} color={config.primary_color} />
+            nombreCadete={pedido.colaborador_emoji ? `${pedido.colaborador_emoji} ${pedido.colaborador_nombre ?? ''}`.trim() : pedido.colaborador_nombre} color={config.primary_color} />
         )}
 
         {/* Timeline */}

@@ -10,7 +10,7 @@ interface SesionOperador { session_id: string; operador: { id: string; nombre: s
 interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
-interface Colaborador { id: string; nombre: string }
+interface Colaborador { id: string; nombre: string; emoji_reparto?: string | null }
 interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; ticket_impreso_at?: string | null; updated_at?: string; facturas?: { estado: string }[]; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
@@ -81,6 +81,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [generandoTicket, setGenerandoTicket] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string | null>(null)
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
+  // Identidad visual (GO CTO 29/09): el emoji vive en colaboradores — acá se
+  // resuelve por id contra la lista del polling. Sin fila (cadete borrado) = 🛵.
+  const emojiCadete = (id?: string | null) => (id && colaboradores.find(c => c.id === id)?.emoji_reparto) || '🛵'
   const [modalAsignar, setModalAsignar] = useState(false)
   // ═══ REPARTO V1: mapa general de cadetes (solo caja, F3) ═══
   const [repartoOn, setRepartoOn] = useState(false)
@@ -928,7 +931,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         <span className="text-xs text-neutral-400">{p.metodo_pago ?? '—'}{cuentaDe(p) ? ` · ${cuentaDe(p)}` : ''}</span>
                         <span className="text-xs font-bold text-neutral-600">{formatPrecio(p.total)}</span>
                       </div>
-                      {p.colaborador_nombre && <p className="text-xs text-neutral-400 mt-0.5">🛵 {p.colaborador_nombre}</p>}
+                      {p.colaborador_nombre && <p className="text-xs text-neutral-400 mt-0.5">{emojiCadete(p.colaborador_id)} {p.colaborador_nombre}</p>}
                     </button>
                   ))}
                 </div>
@@ -965,7 +968,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         <span>Total</span><span>{formatPrecio(historialSeleccionado.total)}</span>
                       </div>
                       <p className="text-xs text-neutral-400 mt-1">Pago: {historialSeleccionado.metodo_pago ?? '—'}{cuentaDe(historialSeleccionado) ? ` · ${cuentaDe(historialSeleccionado)}` : ''}{horaRetiroDe(historialSeleccionado) ? ` · 🕐 ${horaRetiroDe(historialSeleccionado)}` : ''}</p>
-                      {historialSeleccionado.colaborador_nombre && <p className="text-xs text-neutral-400">🛵 {historialSeleccionado.colaborador_nombre}</p>}
+                      {historialSeleccionado.colaborador_nombre && <p className="text-xs text-neutral-400">{emojiCadete(historialSeleccionado.colaborador_id)} {historialSeleccionado.colaborador_nombre}</p>}
                       {historialSeleccionado.notas && <p className="text-xs text-amber-600 mt-1">{historialSeleccionado.notas}</p>}
                       {esBorrable(historialSeleccionado) && (
                         <button onClick={() => eliminarPedido(historialSeleccionado, true)} disabled={eliminando}
@@ -1173,7 +1176,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     {pedido.pedido_items.length > 3 && <p className="text-neutral-300 text-xs">+{pedido.pedido_items.length - 3} más</p>}
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-neutral-300 text-xs flex items-center gap-1.5">{tiempoRelativo(pedido.created_at)}{verTodas && pedido.sucursales?.nombre && <span className="text-neutral-400 font-semibold">· 📍 {pedido.sucursales.nombre}</span>}{pedido.colaborador_nombre && <span className="text-neutral-500 font-semibold">· 🛵 {pedido.colaborador_nombre}</span>}</span>
+                    <span className="text-neutral-300 text-xs flex items-center gap-1.5">{tiempoRelativo(pedido.created_at)}{verTodas && pedido.sucursales?.nombre && <span className="text-neutral-400 font-semibold">· 📍 {pedido.sucursales.nombre}</span>}{pedido.colaborador_nombre && <span className="text-neutral-500 font-semibold">· {emojiCadete(pedido.colaborador_id)} {pedido.colaborador_nombre}</span>}</span>
                     <span className="text-neutral-600 text-xs font-bold">{formatPrecio(pedido.total)}</span>
                   </div>
                   </button>
@@ -1396,7 +1399,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
             {colaboradores.map(c => (
               <button key={c.id} onClick={() => setColaboradorSeleccionado(c.id)}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${colaboradorSeleccionado === c.id ? 'border-neutral-800 bg-neutral-50' : 'border-neutral-200'}`}>
-                <span className="text-xl">🛵</span>
+                <span className="text-xl">{c.emoji_reparto ?? '🛵'}</span>
                 <span className="font-semibold text-neutral-800">{c.nombre}</span>
               </button>
             ))}
@@ -1573,13 +1576,13 @@ function MapaCadetes({ dispositivoId, onClose }: { dispositivoId: string; onClos
             })
             const d = await res.json()
             if (!vivo) return
-            const pos: { nombre: string; lat: number; lng: number }[] = d.posiciones ?? []
+            const pos: { nombre: string; emoji?: string; lat: number; lng: number }[] = d.posiciones ?? []
             setVacio(pos.length === 0)
             const vistos = new Set<string>()
             pos.forEach(p => {
               vistos.add(p.nombre)
               if (marcasRef.current[p.nombre]) marcasRef.current[p.nombre].setLatLng([p.lat, p.lng])
-              else marcasRef.current[p.nombre] = L.marker([p.lat, p.lng], { icon: iconoEmoji(L, '🛵', 34) })
+              else marcasRef.current[p.nombre] = L.marker([p.lat, p.lng], { icon: iconoEmoji(L, p.emoji ?? '🛵', 34) })
                 .addTo(map).bindTooltip(p.nombre, { permanent: true, direction: 'top', offset: [0, -18] })
             })
             Object.keys(marcasRef.current).forEach(n => { if (!vistos.has(n)) { map.removeLayer(marcasRef.current[n]); delete marcasRef.current[n] } })

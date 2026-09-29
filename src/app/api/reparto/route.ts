@@ -33,7 +33,7 @@ async function validarSesion(supabase: ReturnType<typeof createAdminClient>, tok
     .select('colaborador_id, empresa_id, expira_at').eq('token', token).maybeSingle()
   if (!ses || new Date(ses.expira_at) < new Date()) return null
   const { data: col } = await supabase.from('colaboradores')
-    .select('id, empresa_id, sucursal_id, nombre, rol, activo')
+    .select('id, empresa_id, sucursal_id, nombre, rol, activo, emoji_reparto')
     .eq('id', ses.colaborador_id).eq('empresa_id', ses.empresa_id).maybeSingle()
   if (!col?.activo || col.rol !== 'cadete') return null
   return col
@@ -85,7 +85,12 @@ export async function POST(request: Request) {
     const volver_url = sucVuelta?.slug
       ? `/${empresa_slug}/${p.tipo_pedido === 'takeaway' ? 'takeaway' : 'delivery'}/${sucVuelta.slug}`
       : null
-    return NextResponse.json({ ok: true, encontrado: true, pedido: p, volver_url,
+    // Identidad visual del cadete (GO CTO 29/09) — una casa: colaboradores
+    const { data: colPed } = p.colaborador_id
+      ? await supabase.from('colaboradores').select('emoji_reparto').eq('id', p.colaborador_id).maybeSingle()
+      : { data: null }
+    return NextResponse.json({ ok: true, encontrado: true,
+      pedido: { ...p, colaborador_emoji: colPed?.emoji_reparto ?? '🛵' }, volver_url,
       marca: { nombre: emp.nombre, empresa_id: emp.id,
         primary_color: cfg?.primary_color ?? '#1E3A5F', secondary_color: cfg?.secondary_color ?? '#F5C842',
         logo_url: cfg?.logo_url ?? null,
@@ -115,10 +120,10 @@ export async function POST(request: Request) {
     if (!suc) return NextResponse.json({ ok: true, habilitado: false, motivo: 'sucursal' })
     // Cadetes elegibles de la puerta (UX CTO: lista → tap → PIN)
     const { data: cads } = await supabase.from('colaboradores')
-      .select('id, nombre, sucursal_id').eq('empresa_id', emp.id)
+      .select('id, nombre, sucursal_id, emoji_reparto').eq('empresa_id', emp.id)
       .eq('rol', 'cadete').eq('activo', true).order('nombre')
     const cadetes = (cads ?? []).filter(c => c.sucursal_id === suc.id || c.sucursal_id === null)
-      .map(c => ({ id: c.id, nombre: c.nombre }))
+      .map(c => ({ id: c.id, nombre: c.nombre, emoji: c.emoji_reparto ?? '🛵' }))
     return NextResponse.json({ ok: true, habilitado: true, empresa_id: emp.id, empresa_nombre: emp.nombre,
       color: cfg?.primary_color ?? '#1E3A5F', logo: cfg?.logo_url ?? null,
       sucursal_id: suc.id, sucursal_nombre: suc.nombre, cadetes })
@@ -130,7 +135,7 @@ export async function POST(request: Request) {
     if (!empresa_id || !sucursal_id || !colaborador_id || !pin) return err('Datos requeridos')
     if (!(await moduloReparto(supabase, empresa_id))) return err('Módulo no disponible', 403)
     const { data: col } = await supabase.from('colaboradores')
-      .select('id, nombre, pin_hash, sucursal_id')
+      .select('id, nombre, pin_hash, sucursal_id, emoji_reparto')
       .eq('id', colaborador_id).eq('empresa_id', empresa_id)
       .eq('rol', 'cadete').eq('activo', true).maybeSingle()
     const valido = col && (col.sucursal_id === sucursal_id || col.sucursal_id === null) && col.pin_hash
@@ -141,7 +146,7 @@ export async function POST(request: Request) {
     const { data: ses, error: e } = await supabase.from('colaborador_sesiones')
       .insert({ colaborador_id: col.id, empresa_id, expira_at: expira }).select('token').single()
     if (e || !ses) return err('No se pudo iniciar sesión', 500)
-    return NextResponse.json({ ok: true, token: ses.token, cadete: { id: col.id, nombre: col.nombre } })
+    return NextResponse.json({ ok: true, token: ses.token, cadete: { id: col.id, nombre: col.nombre, emoji: col.emoji_reparto ?? '🛵' } })
   }
 
   // ── POSICIÓN DEL CADETE → PARA EL CLIENTE (público, sin token) ──
@@ -171,7 +176,7 @@ export async function POST(request: Request) {
   // ── MIS PEDIDOS (B7: el cadete ve SOLO lo suyo) ──
   if (body.accion === 'mis_pedidos') {
     const pedidos = await pedidosActivos(supabase, col.id, col.empresa_id)
-    return NextResponse.json({ ok: true, cadete: { id: col.id, nombre: col.nombre }, pedidos })
+    return NextResponse.json({ ok: true, cadete: { id: col.id, nombre: col.nombre, emoji: col.emoji_reparto ?? '🛵' }, pedidos })
   }
 
   // ── LLEGUÉ AL LOCAL: el cadete corta el modo regreso — la posición se

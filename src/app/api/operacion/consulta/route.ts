@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     if (!body.verTodas) query = query.eq('sucursal_id', disp.sucursal_id)
     const { data: pedidos } = await query
     const { data: colaboradores } = await supabase.from('colaboradores')
-      .select('id, nombre').eq('empresa_id', disp.empresa_id)
+      .select('id, nombre, emoji_reparto').eq('empresa_id', disp.empresa_id)
       .eq('activo', true).eq('rol', 'cadete').order('nombre')
     // Alertas de stock de la sucursal del dispositivo (viaja con el polling de
     // caja, costo ínfimo): agotados y bajos para el aviso del header.
@@ -225,11 +225,13 @@ export async function POST(request: Request) {
       .eq('empresa_id', disp.empresa_id).gte('updated_at', corte)
     const ids = (pos ?? []).map(p => p.colaborador_id)
     const { data: cols } = ids.length
-      ? await supabase.from('colaboradores').select('id, nombre').in('id', ids)
+      ? await supabase.from('colaboradores').select('id, nombre, emoji_reparto').in('id', ids)
       : { data: [] }
-    const nombreDe = Object.fromEntries((cols ?? []).map(c => [c.id, c.nombre]))
+    const colDe = Object.fromEntries((cols ?? []).map(c => [c.id, c]))
     const posiciones = (pos ?? []).map(p => ({
-      nombre: nombreDe[p.colaborador_id] ?? '🛵', lat: p.lat, lng: p.lng, updated_at: p.updated_at,
+      nombre: colDe[p.colaborador_id]?.nombre ?? '🛵',
+      emoji: colDe[p.colaborador_id]?.emoji_reparto ?? '🛵',  // identidad visual (GO CTO 29/09)
+      lat: p.lat, lng: p.lng, updated_at: p.updated_at,
     }))
     return NextResponse.json({ posiciones })
   }
