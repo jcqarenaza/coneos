@@ -38,6 +38,7 @@ export default function RepartoPage() {
   const [entregando, setEntregando] = useState<string | null>(null)
   const [dirCopiada, setDirCopiada] = useState<string | null>(null)
   const [confirmando, setConfirmando] = useState<string | null>(null)  // confirmación amigable, sin confirm() del browser
+  const [modoRegreso, setModoRegreso] = useState(false)  // D4 re-sellada: visible en caja hasta "Llegué" (o 30 min)
   const [gps, setGps] = useState<'ok' | 'off' | 'pedir'>('pedir')
   const tokenRef = useRef<string | null>(null)
   const ultimaPosRef = useRef(0)
@@ -93,9 +94,10 @@ export default function RepartoPage() {
     return () => { vivo = false; clearInterval(i) }
   }, [fase, empresaId, api])
 
-  // ── Tracking: watchPosition mientras haya reparto activo ──
+  // ── Tracking: watchPosition con reparto activo O en modo regreso
+  // (D4 re-sellada JC 29/09: la caja ve al cadete volver al local) ──
   useEffect(() => {
-    if (fase !== 'panel' || pedidos.length === 0) return
+    if (fase !== 'panel' || (pedidos.length === 0 && !modoRegreso)) return
     if (!navigator.geolocation) { setGps('off'); return }
     const watchId = navigator.geolocation.watchPosition(
       pos => {
@@ -113,7 +115,7 @@ export default function RepartoPage() {
     let wakeLock: any = null
     ;(navigator as any).wakeLock?.request?.('screen').then((wl: any) => { wakeLock = wl }).catch(() => {})
     return () => { navigator.geolocation.clearWatch(watchId); wakeLock?.release?.().catch(() => {}) }
-  }, [fase, pedidos.length, api])
+  }, [fase, pedidos.length, modoRegreso, api])
 
   async function ingresar() {
     if (!cadeteSel || pin.length !== 4) { setErrorMsg('Elegí tu nombre y poné el PIN de 4 dígitos'); return }
@@ -136,6 +138,7 @@ export default function RepartoPage() {
     try {
       await api({ accion: 'entregar', pedido_id: p.id })
       setPedidos(prev => prev.filter(x => x.id !== p.id))
+      if (d?.modo_regreso) setModoRegreso(true)
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo marcar') } finally { setEntregando(null); setConfirmando(null) }
   }
 
@@ -220,7 +223,19 @@ export default function RepartoPage() {
       </div>
 
       <div className="px-4 py-4 max-w-sm mx-auto space-y-3">
-        {pedidos.length === 0 && (
+        {pedidos.length === 0 && modoRegreso && (
+          <div className="mt-6 p-5 rounded-2xl bg-white border border-neutral-100 shadow-sm text-center">
+            <span className="text-4xl">🏠</span>
+            <p className="font-bold text-neutral-700 mt-2">Volviendo al local</p>
+            <p className="text-neutral-400 text-sm mt-1 mb-4">Todo entregado. La caja te sigue viendo en el mapa hasta que llegues — por tu seguridad.</p>
+            <button onClick={async () => { try { await api({ accion: 'llegue' }) } catch {} setModoRegreso(false) }}
+              className="w-full py-4 rounded-xl text-white font-black text-lg shadow-sm"
+              style={{ backgroundColor: marca.color }}>
+              🏠 LLEGUÉ AL LOCAL
+            </button>
+          </div>
+        )}
+        {pedidos.length === 0 && !modoRegreso && (
           <div className="text-center py-16">
             <p className="text-4xl mb-2">😴</p>
             <p className="font-bold text-neutral-600">Sin entregas asignadas</p>

@@ -166,14 +166,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, cadete: { id: col.id, nombre: col.nombre }, pedidos })
   }
 
-  // ── POSICIÓN: aceptada SOLO con reparto activo (C1/C7) ──
+  // ── LLEGUÉ AL LOCAL: el cadete corta el modo regreso — la posición se
+  // borra por SU botón (privacidad: él decide el fin del tracking) ──
+  if (body.accion === 'llegue') {
+    await supabase.from('reparto_posiciones').delete().eq('colaborador_id', col.id)
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── POSICIÓN: con reparto activo, o en MODO REGRESO (≤30 min de la
+  // última entrega — D4 re-sellada JC 29/09, seguridad del cadete) ──
   if (body.accion === 'posicion') {
     const lat = Number(body.lat), lng = Number(body.lng)
     if (!isFinite(lat) || !isFinite(lng)) return err('Posición inválida')
     const activos = await pedidosActivos(supabase, col.id, col.empresa_id)
     if (activos.length === 0) {
-      await supabase.from('reparto_posiciones').delete().eq('colaborador_id', col.id)  // limpiar (C7)
-      return err('Sin reparto activo', 403)
+      const corteRegreso = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+      const { count: recientes } = await supabase.from('pedidos')
+        .select('id', { count: 'exact', head: true })
+        .eq('colaborador_id', col.id).eq('estado', 'DELIVERED').gte('entregado_at', corteRegreso)
+      if ((recientes ?? 0) === 0) {
+        await supabase.from('reparto_posiciones').delete().eq('colaborador_id', col.id)  // tope duro (C7)
+        return err('Sin reparto activo', 403)
+      }
     }
     // Throttle server-side ~10s (C2/C3)
     const { data: prev } = await supabase.from('reparto_posiciones')
@@ -218,10 +232,12 @@ export async function POST(request: Request) {
       pedido_id, operador_id: null, estado_anterior: 'READY', estado_nuevo: 'DELIVERED',
     }).then(() => {}, () => {})
     if (cobraEnPuerta) await facturarSiCorresponde(pedido_id).catch(() => {})
-    // Limpieza garantizada server-side (C6/E6): ¿era el último?
+    // D4 re-sellada (JC 29/09, seguridad del cadete): entregado el ÚLTIMO
+    // pedido ya NO se borra la posición — arranca el MODO REGRESO: la caja
+    // lo sigue viendo volver en el 🗺️. El corte lo da el cadete con
+    // "Llegué al local" (accion llegue) o el tope de 30 min del server.
     const restantes = await pedidosActivos(supabase, col.id, col.empresa_id)
-    if (restantes.length === 0) await supabase.from('reparto_posiciones').delete().eq('colaborador_id', col.id)
-    return NextResponse.json({ ok: true, quedan: restantes.length })
+    return NextResponse.json({ ok: true, quedan: restantes.length, modo_regreso: restantes.length === 0 })
   }
 
   return err('Acción desconocida')

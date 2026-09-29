@@ -102,7 +102,23 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       const slugAca = window.location.pathname.split('/').filter(Boolean)[0]
       if (u.slug !== slugAca || u.tipo !== 'delivery') return
       if (Date.now() - u.ts > 3 * 60 * 60 * 1000) { localStorage.removeItem('coneos_ultimo_pedido'); return }
-      setSeguimiento({ slug: u.slug, numero: u.numero })
+      // JC 29/09: el banner consulta el estado REAL — entregado o cancelado,
+      // no hay nada "en marcha": se limpia solo y no aparece.
+      ;(async () => {
+        try {
+          const r = await fetch('/api/reparto', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accion: 'pedido_publico', empresa_slug: u.slug, numero: u.numero }),
+          })
+          const d = await r.json().catch(() => null)
+          const estado = d?.encontrado ? d.pedido?.estado : null
+          if (!estado || estado === 'DELIVERED' || estado === 'CANCELLED') {
+            localStorage.removeItem('coneos_ultimo_pedido')
+            return
+          }
+          setSeguimiento({ slug: u.slug, numero: u.numero })
+        } catch { setSeguimiento({ slug: u.slug, numero: u.numero }) }
+      })()
     } catch {}
   }, [])
   // Cartel de cierre: los horarios se muestran SOLOS desde la config —

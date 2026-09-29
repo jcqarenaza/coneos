@@ -57,6 +57,7 @@ function rutaDesdeURL() {
 export default function PedidoPage() {
   const params = rutaDesdeURL()
   const [pedido, setPedido] = useState<Pedido | null>(null)
+  const [volverUrl, setVolverUrl] = useState<string | null>(null)  // JC 29/09: la pantalla era un callejón sin salida en PWA
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -73,6 +74,7 @@ export default function PedidoPage() {
       if (!d?.encontrado) { setNotFound(true); setLoading(false); return }
       setConfig(d.marca as EmpresaConfig)
       setPedido(d.pedido as Pedido)
+      setVolverUrl(d.volver_url ?? null)
       setLoading(false)
     } catch { setNotFound(true); setLoading(false) }
   }
@@ -225,6 +227,15 @@ export default function PedidoPage() {
           </div>
         </div>
 
+        {volverUrl && (
+          <a href={volverUrl}
+            className={pedido?.estado === 'DELIVERED'
+              ? 'block w-full text-center py-4 rounded-2xl text-white font-black text-lg shadow-sm'
+              : 'block w-full text-center py-3 rounded-2xl border-2 border-neutral-200 bg-white text-neutral-600 font-semibold text-sm'}
+            style={pedido?.estado === 'DELIVERED' ? { backgroundColor: config?.primary_color ?? '#1E3A5F' } : undefined}>
+            🛒 {pedido?.estado === 'DELIVERED' ? 'Hacer otro pedido' : 'Volver a la tienda'}
+          </a>
+        )}
         <p className="text-center text-xs text-neutral-300">Esta página se actualiza automáticamente · ConeOS</p>
       </div>
     </div>
