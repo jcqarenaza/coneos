@@ -118,9 +118,9 @@ export default function EntradaPedidosPage() {
 
   const color = ctx.config.primary_color
   const visita = ctx.empresa_id ? <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id ?? null} canal="APP" /> : null
-  const tarjetas: { emoji: string; titulo: string; sub: string; canal: Canal }[] = [
+  const tarjetas: { emoji: string; titulo: string; sub: string; dir?: string | null; canal: Canal }[] = [
     { emoji: '🛵', titulo: 'Delivery', sub: 'Te lo llevamos', canal: ctx.servicios.delivery },
-    { emoji: '🥡', titulo: 'Take Away', sub: ctx.negocio?.direccion ? `Pedí y retiralo en 📍 ${ctx.negocio.direccion}` : 'Pedí y pasá a retirarlo', canal: ctx.servicios.takeaway },
+    { emoji: '🥡', titulo: 'Take Away', sub: 'Pedí y pasá a retirarlo', dir: ctx.negocio?.direccion ?? null, canal: ctx.servicios.takeaway },
   ].filter(x => x.canal.configurado && x.canal.visible !== false) // En App OFF = ni tarjeta ni cerrado: NADA
   // Cerrado global: "volvemos a atender a las X" = la próxima apertura más
   // temprana entre los servicios configurados (dato del agregador, no cálculo)
@@ -145,7 +145,7 @@ export default function EntradaPedidosPage() {
         {(estado === 'selector' || !volvemosA) && <div className="mb-3" />}
 
         <div className="space-y-3">
-          {tarjetas.map(({ emoji, titulo, sub, canal }) => (
+          {tarjetas.map(({ emoji, titulo, sub, dir, canal }) => (
             <div key={titulo}
               className={`w-full bg-white rounded-2xl border-2 p-5 text-left shadow-sm transition-all ${canal.disponible ? '' : 'opacity-70'}`}
               style={{ borderColor: canal.disponible ? `${color}40` : '#e5e5e5' }}>
@@ -153,6 +153,7 @@ export default function EntradaPedidosPage() {
                 <div>
                   <p className="text-lg font-black text-neutral-800">{emoji} {titulo}</p>
                   <p className="text-xs text-neutral-400">{sub}</p>
+                  {dir && <p className="text-sm font-bold text-neutral-700 mt-0.5">📍 {dir}</p>}
                   {canal.disponible
                     ? (canal.anticipado
                         ? <p className="text-sm font-semibold text-amber-600 mt-1">🟠 Abre a las {canal.proximo} — pedí ahora</p>
