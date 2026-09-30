@@ -20,6 +20,10 @@ interface Proveedor { id: string; nombre: string; razon_social: string | null; c
 interface Articulo { id: string; nombre: string; tipo: string; unidad_stock: string; producto_id: string | null; controla_stock: boolean; activo: boolean }
 interface Presentacion { id: string; articulo_id: string; nombre: string; factor: number; activo: boolean }
 interface ProductoVenta { id: string; nombre: string }
+interface Sucursal { id: string; nombre: string }
+interface OC { id: string; numero: number; proveedor_id: string; sucursal_id: string | null; estado: string; fecha: string; observaciones: string | null }
+interface OCItem { id: string; orden_compra_id: string; articulo_id: string; presentacion_id: string | null; cantidad: number; costo_previsto: number | null }
+interface RenglonForm { articulo_id: string; presentacion_id: string; cantidad: string; costo_previsto: string }
 
 const TIPOS = [
   { value: 'mercaderia', label: 'Mercadería' },
@@ -31,12 +35,15 @@ const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro']
 export default function ComprasPage() {
   const { ctx, loading: ctxLoading } = useEmpresa()
   const [moduloOn, setModuloOn] = useState<boolean | null>(null)
-  const [tab, setTab] = useState<'proveedores' | 'articulos'>('proveedores')
+  const [tab, setTab] = useState<'proveedores' | 'articulos' | 'ordenes'>('proveedores')
   const [loading, setLoading] = useState(true)
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [articulos, setArticulos] = useState<Articulo[]>([])
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
   const [productos, setProductos] = useState<ProductoVenta[]>([])
+  const [sucursales, setSucursales] = useState<Sucursal[]>([])
+  const [ocs, setOcs] = useState<OC[]>([])
+  const [ocItems, setOcItems] = useState<OCItem[]>([])
   const [saving, setSaving] = useState(false)
 
   // Modales
@@ -46,6 +53,9 @@ export default function ComprasPage() {
   const [modalArt, setModalArt] = useState(false)
   const [artEdit, setArtEdit] = useState<string | null>(null)
   const [fArt, setFArt] = useState({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' })
+  const [modalOC, setModalOC] = useState(false)
+  const [ocDetalle, setOcDetalle] = useState<OC | null>(null)
+  const [fOC, setFOC] = useState<{ proveedor_id: string; sucursal_id: string; observaciones: string; renglones: RenglonForm[] }>({ proveedor_id: '', sucursal_id: '', observaciones: '', renglones: [] })
   const [modalImport, setModalImport] = useState(false)
   const [importSel, setImportSel] = useState<string[]>([])
   const [modalPres, setModalPres] = useState<{ articuloId: string; articuloNombre: string } | null>(null)
@@ -79,6 +89,7 @@ export default function ComprasPage() {
           const d = await api({ accion: 'listar' })
           setProveedores(d.proveedores ?? []); setArticulos(d.articulos ?? [])
           setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
+          setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
         } catch { /* la página muestra vacío; las acciones reintentarán */ }
         setLoading(false)
       })
@@ -89,6 +100,7 @@ export default function ComprasPage() {
       const d = await api({ accion: 'listar' })
       setProveedores(d.proveedores ?? []); setArticulos(d.articulos ?? [])
       setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
+      setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
     } catch { /* siguiente acción reintenta */ }
   }
 
@@ -117,6 +129,23 @@ export default function ComprasPage() {
     try { await api({ accion: 'articulo_toggle', id: a.id, activo: !a.activo }); await recargar() }
     catch (e) { alert(e instanceof Error ? e.message : 'No se pudo actualizar') }
   }
+  async function crearOC() {
+    setSaving(true)
+    try {
+      const d = await api({ accion: 'oc_crear', proveedor_id: fOC.proveedor_id, sucursal_id: fOC.sucursal_id || null,
+        observaciones: fOC.observaciones, items: fOC.renglones.map(r => ({
+          articulo_id: r.articulo_id, presentacion_id: r.presentacion_id || null,
+          cantidad: r.cantidad, costo_previsto: r.costo_previsto,
+        })) })
+      setModalOC(false); await recargar()
+      alert(`Orden de compra OC-${String(d.numero).padStart(4, '0')} creada`)
+    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo crear') } finally { setSaving(false) }
+  }
+  async function anularOC(id: string) {
+    if (!confirm('¿Anular esta orden de compra? No se puede volver a abrir.')) return
+    try { await api({ accion: 'oc_anular', id }); setOcDetalle(null); await recargar() }
+    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo anular') }
+  }
   async function importarCatalogo() {
     if (!importSel.length) return
     setSaving(true)
@@ -144,6 +173,19 @@ export default function ComprasPage() {
   }
 
   const nombreProducto = (id: string | null) => id ? (productos.find(p => p.id === id)?.nombre ?? '—') : null
+  const nombreArticulo = (id: string) => articulos.find(a => a.id === id)?.nombre ?? '—'
+  const nombrePresentacion = (id: string | null) => id ? (presentaciones.find(p => p.id === id)?.nombre ?? '—') : null
+  const factorPresentacion = (id: string | null) => id ? (presentaciones.find(p => p.id === id)?.factor ?? 1) : 1
+  const nombreProveedor = (id: string) => proveedores.find(p => p.id === id)?.nombre ?? '—'
+  const nombreSucursal = (id: string | null) => id ? (sucursales.find(s => s.id === id)?.nombre ?? '—') : '🏢 Central'
+  const ESTADOS_OC: Record<string, { label: string; cls: string }> = {
+    abierta: { label: 'Abierta', cls: 'bg-blue-50 text-blue-600' },
+    parcial: { label: 'Parcial', cls: 'bg-amber-50 text-amber-600' },
+    recibida: { label: 'Recibida', cls: 'bg-green-50 text-green-600' },
+    anulada: { label: 'Anulada', cls: 'bg-neutral-100 text-neutral-400' },
+  }
+  const totalPrevisto = (ocId: string) => ocItems.filter(i => i.orden_compra_id === ocId)
+    .reduce((a, i) => a + (i.costo_previsto ?? 0) * Number(i.cantidad), 0)
   // Importador: SOLO productos sin artículo vinculado (regla 1 del CTO)
   const productosLibres = productos.filter(p => !articulos.some(a => a.producto_id === p.id))
   // El selector excluye productos ya vinculados a OTRO artículo (sello 1↔1)
@@ -170,18 +212,25 @@ export default function ComprasPage() {
           <p className="text-sm text-neutral-400">Proveedores y artículos de compra</p>
         </div>
         <div className="flex items-center gap-2">
+          {tab === 'ordenes' && (
+            <ConeButton onClick={() => { setFOC({ proveedor_id: '', sucursal_id: '', observaciones: '', renglones: [{ articulo_id: '', presentacion_id: '', cantidad: '', costo_previsto: '' }] }); setModalOC(true) }} icon={<Plus className="h-4 w-4" />}>
+              Nueva orden
+            </ConeButton>
+          )}
           {tab === 'articulos' && (
             <button onClick={() => { setImportSel([]); setModalImport(true) }}
               className="px-4 py-2.5 rounded-xl border border-neutral-200 bg-white text-neutral-600 text-sm font-bold hover:border-neutral-400 transition-colors flex items-center gap-2">
               <Download className="h-4 w-4" /> Importar del catálogo
             </button>
           )}
-          <ConeButton onClick={() => {
-            if (tab === 'proveedores') { setFProv({ nombre: '', razon_social: '', cuit: '', telefono: '', email: '', direccion: '', observaciones: '' }); setProvEdit(null); setModalProv(true) }
-            else { setFArt({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' }); setArtEdit(null); setModalArt(true) }
-          }} icon={<Plus className="h-4 w-4" />}>
-            {tab === 'proveedores' ? 'Nuevo proveedor' : 'Nuevo artículo'}
-          </ConeButton>
+          {tab !== 'ordenes' && (
+            <ConeButton onClick={() => {
+              if (tab === 'proveedores') { setFProv({ nombre: '', razon_social: '', cuit: '', telefono: '', email: '', direccion: '', observaciones: '' }); setProvEdit(null); setModalProv(true) }
+              else { setFArt({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' }); setArtEdit(null); setModalArt(true) }
+            }} icon={<Plus className="h-4 w-4" />}>
+              {tab === 'proveedores' ? 'Nuevo proveedor' : 'Nuevo artículo'}
+            </ConeButton>
+          )}
         </div>
       </div>
 
@@ -193,6 +242,10 @@ export default function ComprasPage() {
         <button onClick={() => setTab('articulos')}
           className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${tab === 'articulos' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}>
           <Boxes className="h-4 w-4" /> Artículos
+        </button>
+        <button onClick={() => setTab('ordenes')}
+          className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${tab === 'ordenes' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}>
+          <Package className="h-4 w-4" /> Órdenes
         </button>
       </div>
 
@@ -274,6 +327,144 @@ export default function ComprasPage() {
           })}
         </div>
       )}
+
+      {/* ── ÓRDENES DE COMPRA (T3): la OC NO mueve stock — expresa
+          "quiero comprar esto"; el movimiento nace en T4 con el remito ── */}
+      {tab === 'ordenes' && (
+        <div className="space-y-2">
+          {ocs.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin órdenes de compra. Creá la primera con el botón de arriba.</div>}
+          {ocs.map(oc => {
+            const est = ESTADOS_OC[oc.estado] ?? { label: oc.estado, cls: 'bg-neutral-100 text-neutral-500' }
+            const tot = totalPrevisto(oc.id)
+            return (
+              <button key={oc.id} onClick={() => setOcDetalle(oc)}
+                className={`w-full text-left bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm hover:border-neutral-300 transition-colors ${oc.estado === 'anulada' ? 'opacity-55' : ''}`}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-neutral-900">OC-{String(oc.numero).padStart(4, '0')}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${est.cls}`}>{est.label}</span>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5 truncate">
+                    {nombreProveedor(oc.proveedor_id)} · {nombreSucursal(oc.sucursal_id)} · {oc.fecha}
+                  </p>
+                </div>
+                <span className="font-bold text-neutral-700 text-sm flex-shrink-0">{tot > 0 ? `$${tot.toLocaleString('es-AR')}` : '—'}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Modal nueva OC ── */}
+      <ConeModal open={modalOC} onClose={() => setModalOC(false)} title="Nueva orden de compra"
+        footer={<><ConeButton variant="outline" onClick={() => setModalOC(false)}>Cancelar</ConeButton>
+          <ConeButton onClick={crearOC} loading={saving}
+            disabled={!fOC.proveedor_id || !fOC.renglones.some(r => r.articulo_id && Number(r.cantidad) > 0)}>Crear orden</ConeButton></>}>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Proveedor *</Label>
+              <select value={fOC.proveedor_id} onChange={e => setFOC({ ...fOC, proveedor_id: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm bg-white">
+                <option value="">Elegí...</option>
+                {proveedores.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Destino *</Label>
+              <select value={fOC.sucursal_id} onChange={e => setFOC({ ...fOC, sucursal_id: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm bg-white">
+                <option value="">🏢 Central (todas)</option>
+                {sucursales.map(su => <option key={su.id} value={su.id}>{su.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Renglones — en presentaciones de COMPRA</Label>
+            {fOC.renglones.map((r, i) => {
+              const presDeArt = presentaciones.filter(pr => pr.articulo_id === r.articulo_id && pr.activo)
+              const f = factorPresentacion(r.presentacion_id || null)
+              const q = Number(r.cantidad)
+              return (
+                <div key={i} className="bg-neutral-50 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <select value={r.articulo_id}
+                      onChange={e => setFOC({ ...fOC, renglones: fOC.renglones.map((x, j) => j === i ? { ...x, articulo_id: e.target.value, presentacion_id: '' } : x) })}
+                      className="flex-1 px-3 py-2 rounded-lg border border-neutral-200 text-sm bg-white min-w-0">
+                      <option value="">Artículo...</option>
+                      {articulos.filter(a => a.activo).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                    </select>
+                    <button onClick={() => setFOC({ ...fOC, renglones: fOC.renglones.filter((_, j) => j !== i) })}
+                      className="text-neutral-300 hover:text-red-500 font-bold px-2">✕</button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select value={r.presentacion_id}
+                      onChange={e => setFOC({ ...fOC, renglones: fOC.renglones.map((x, j) => j === i ? { ...x, presentacion_id: e.target.value } : x) })}
+                      className="px-3 py-2 rounded-lg border border-neutral-200 text-sm bg-white min-w-0">
+                      <option value="">Unidad suelta</option>
+                      {presDeArt.map(pr => <option key={pr.id} value={pr.id}>{pr.nombre} ×{pr.factor}</option>)}
+                    </select>
+                    <Input value={r.cantidad} placeholder="Cant."
+                      onChange={e => setFOC({ ...fOC, renglones: fOC.renglones.map((x, j) => j === i ? { ...x, cantidad: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') } : x) })} inputMode="decimal" />
+                    <Input value={r.costo_previsto} placeholder="$ c/u previsto"
+                      onChange={e => setFOC({ ...fOC, renglones: fOC.renglones.map((x, j) => j === i ? { ...x, costo_previsto: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') } : x) })} inputMode="decimal" />
+                  </div>
+                  {r.articulo_id && q > 0 && (
+                    <p className="text-[11px] text-neutral-400">
+                      = {q * f} {r.presentacion_id ? 'unidades operativas' : 'unidades'}{r.costo_previsto ? ` · previsto $${(q * Number(r.costo_previsto)).toLocaleString('es-AR')}` : ''}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+            <button onClick={() => setFOC({ ...fOC, renglones: [...fOC.renglones, { articulo_id: '', presentacion_id: '', cantidad: '', costo_previsto: '' }] })}
+              className="text-xs px-3 py-1.5 rounded-full font-semibold border border-dashed border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600 transition-colors">
+              + Agregar renglón
+            </button>
+          </div>
+          <div className="space-y-1.5"><Label>Observaciones</Label><Input value={fOC.observaciones} onChange={e => setFOC({ ...fOC, observaciones: e.target.value })} placeholder="Entregar por la mañana..." /></div>
+        </div>
+      </ConeModal>
+
+      {/* ── Modal detalle OC ── */}
+      <ConeModal open={!!ocDetalle} onClose={() => setOcDetalle(null)}
+        title={ocDetalle ? `OC-${String(ocDetalle.numero).padStart(4, '0')} · ${ESTADOS_OC[ocDetalle.estado]?.label ?? ocDetalle.estado}` : ''}
+        footer={<>
+          {ocDetalle?.estado === 'abierta' && (
+            <button onClick={() => anularOC(ocDetalle.id)}
+              className="px-4 py-2 rounded-xl border border-red-200 text-red-500 text-sm font-bold hover:bg-red-50 transition-colors">Anular</button>
+          )}
+          <ConeButton variant="outline" onClick={() => setOcDetalle(null)}>Cerrar</ConeButton>
+        </>}>
+        {ocDetalle && (
+          <div className="space-y-3">
+            <p className="text-sm text-neutral-500">
+              <span className="font-bold text-neutral-800">{nombreProveedor(ocDetalle.proveedor_id)}</span> · {nombreSucursal(ocDetalle.sucursal_id)} · {ocDetalle.fecha}
+            </p>
+            <div className="space-y-1.5">
+              {ocItems.filter(i => i.orden_compra_id === ocDetalle.id).map(i => (
+                <div key={i.id} className="flex items-center justify-between bg-neutral-50 rounded-xl px-4 py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-neutral-800 truncate">{nombreArticulo(i.articulo_id)}</p>
+                    <p className="text-xs text-neutral-400">
+                      {Number(i.cantidad)} × {nombrePresentacion(i.presentacion_id) ?? 'unidad suelta'}
+                      {i.presentacion_id ? ` = ${Number(i.cantidad) * factorPresentacion(i.presentacion_id)} u.` : ''}
+                    </p>
+                  </div>
+                  <span className="font-bold text-neutral-700 flex-shrink-0">{i.costo_previsto != null ? `$${(Number(i.cantidad) * Number(i.costo_previsto)).toLocaleString('es-AR')}` : '—'}</span>
+                </div>
+              ))}
+            </div>
+            {totalPrevisto(ocDetalle.id) > 0 && (
+              <div className="flex justify-between font-black text-neutral-900 px-1">
+                <span>Total previsto</span><span>${totalPrevisto(ocDetalle.id).toLocaleString('es-AR')}</span>
+              </div>
+            )}
+            {ocDetalle.observaciones && <p className="text-xs text-neutral-400">📝 {ocDetalle.observaciones}</p>}
+            <p className="text-[11px] text-neutral-400">La orden no mueve stock — el ingreso real nace con el remito (próximamente).</p>
+          </div>
+        )}
+      </ConeModal>
 
       {/* ── Modal proveedor ── */}
       <ConeModal open={modalProv} onClose={() => setModalProv(false)} title={provEdit ? 'Editar proveedor' : 'Nuevo proveedor'}

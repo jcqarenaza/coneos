@@ -77,7 +77,16 @@ export async function POST(request: Request) {
       supabase.from('productos')
         .select('id, nombre').eq('empresa_id', empresaId).order('nombre'),
     ])
-    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos })
+    const [{ data: sucursales }, { data: ocs }, { data: ocItems }] = await Promise.all([
+      supabase.from('sucursales').select('id, nombre').eq('empresa_id', empresaId).order('nombre'),
+      supabase.from('ordenes_compra')
+        .select('id, numero, proveedor_id, sucursal_id, estado, fecha, observaciones, created_at')
+        .eq('empresa_id', empresaId).order('numero', { ascending: false }).limit(100),
+      supabase.from('ordenes_compra_items')
+        .select('id, orden_compra_id, articulo_id, presentacion_id, cantidad, costo_previsto')
+        .eq('empresa_id', empresaId),
+    ])
+    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems })
   }
 
   // ── PROVEEDORES ──
@@ -234,6 +243,61 @@ export async function POST(request: Request) {
     const { data: upd } = await supabase.from('articulo_presentaciones_compra')
       .update({ activo }).eq('id', id).eq('empresa_id', empresaId).select('id')
     if (!upd?.length) return err('Presentación no encontrada', 404)
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── ÓRDENES DE COMPRA (T3, GO CTO 29/09) — la OC NO mueve stock:
+  // solo expresa "quiero comprar esto". Numeración por RPC de la familia
+  // (advisory lock en la MISMA transacción del insert). ──
+  if (accion === 'oc_crear') {
+    const { proveedor_id, sucursal_id, observaciones, items } = body
+    if (!proveedor_id) return err('Elegí el proveedor')
+    if (!Array.isArray(items) || !items.length) return err('Agregá al menos un renglón')
+    for (const it of items) {
+      if (!it?.articulo_id) return err('Cada renglón necesita un artículo')
+      const c = Number(it.cantidad)
+      if (!isFinite(c) || c <= 0) return err('La cantidad debe ser mayor a 0')
+      if (it.costo_previsto !== null && it.costo_previsto !== undefined && it.costo_previsto !== '') {
+        const cp = Number(it.costo_previsto)
+        if (!isFinite(cp) || cp < 0) return err('El costo previsto no es válido')
+      }
+    }
+    const { data, error: e } = await supabase.rpc('crear_orden_compra', {
+      p_empresa_id: empresaId,
+      p_proveedor_id: proveedor_id,
+      p_sucursal_id: sucursal_id || null,   // null = compra CENTRAL
+      p_observaciones: observaciones ?? null,
+      p_items: items.map((it: Record<string, unknown>) => ({
+        articulo_id: it.articulo_id,
+        presentacion_id: it.presentacion_id || null,
+        cantidad: Number(it.cantidad),
+        costo_previsto: it.costo_previsto === '' || it.costo_previsto == null ? null : Number(it.costo_previsto),
+      })),
+    })
+    if (e) {
+      const m = e.message ?? ''
+      if (m.includes('PROVEEDOR_INVALIDO')) return err('Ese proveedor no está activo en tu empresa', 409)
+      if (m.includes('ARTICULO_INVALIDO')) return err('Un artículo del pedido no está activo en tu empresa', 409)
+      if (m.includes('PRESENTACION_INVALIDA')) return err('Una presentación no corresponde a su artículo o está inactiva', 409)
+      if (m.includes('SUCURSAL_INVALIDA')) return err('Esa sucursal no es de tu empresa', 409)
+      if (m.includes('CANTIDAD_INVALIDA')) return err('La cantidad debe ser mayor a 0', 400)
+      if (m.includes('COSTO_INVALIDO')) return err('El costo previsto no es válido', 400)
+      if (m.includes('SIN_ITEMS')) return err('Agregá al menos un renglón', 400)
+      return err('No se pudo crear la orden', 500)
+    }
+    return NextResponse.json({ ok: true, ...((data ?? {}) as Record<string, unknown>) })
+  }
+
+  if (accion === 'oc_anular') {
+    // Solo ABIERTA → ANULADA. Anulada no recibe (T4 lo re-verifica) y
+    // no vuelve a abrirse desde la UI — no existe la acción inversa.
+    const { id } = body
+    if (!id) return err('Datos requeridos')
+    const { data: upd } = await supabase.from('ordenes_compra')
+      .update({ estado: 'anulada' })
+      .eq('id', id).eq('empresa_id', empresaId).eq('estado', 'abierta')
+      .select('id')
+    if (!upd?.length) return err('Solo se puede anular una orden ABIERTA', 409)
     return NextResponse.json({ ok: true })
   }
 
