@@ -14,7 +14,7 @@ import { useEmpresa } from '@/lib/useEmpresa'
 import { ConeButton, ConeModal } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Loader2, Pencil, Package, Truck, Boxes } from 'lucide-react'
+import { Plus, Loader2, Pencil, Package, Truck, Boxes, Download } from 'lucide-react'
 
 interface Proveedor { id: string; nombre: string; razon_social: string | null; cuit: string | null; telefono: string | null; email: string | null; direccion: string | null; observaciones: string | null; activo: boolean }
 interface Articulo { id: string; nombre: string; tipo: string; unidad_stock: string; producto_id: string | null; controla_stock: boolean; activo: boolean }
@@ -46,6 +46,8 @@ export default function ComprasPage() {
   const [modalArt, setModalArt] = useState(false)
   const [artEdit, setArtEdit] = useState<string | null>(null)
   const [fArt, setFArt] = useState({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' })
+  const [modalImport, setModalImport] = useState(false)
+  const [importSel, setImportSel] = useState<string[]>([])
   const [modalPres, setModalPres] = useState<{ articuloId: string; articuloNombre: string } | null>(null)
   const [presEdit, setPresEdit] = useState<string | null>(null)
   const [fPres, setFPres] = useState({ nombre: '', factor: '' })
@@ -115,6 +117,15 @@ export default function ComprasPage() {
     try { await api({ accion: 'articulo_toggle', id: a.id, activo: !a.activo }); await recargar() }
     catch (e) { alert(e instanceof Error ? e.message : 'No se pudo actualizar') }
   }
+  async function importarCatalogo() {
+    if (!importSel.length) return
+    setSaving(true)
+    try {
+      const d = await api({ accion: 'importar_catalogo', producto_ids: importSel })
+      setModalImport(false); setImportSel([]); await recargar()
+      if (d.rechazados?.length) alert(`Importados: ${d.creados}. Ya tenían artículo (los importó otro usuario): ${d.rechazados.join(', ')}`)
+    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo importar') } finally { setSaving(false) }
+  }
   async function guardarPresentacion() {
     if (!modalPres || !fPres.nombre.trim()) return
     setSaving(true)
@@ -133,6 +144,8 @@ export default function ComprasPage() {
   }
 
   const nombreProducto = (id: string | null) => id ? (productos.find(p => p.id === id)?.nombre ?? '—') : null
+  // Importador: SOLO productos sin artículo vinculado (regla 1 del CTO)
+  const productosLibres = productos.filter(p => !articulos.some(a => a.producto_id === p.id))
   // El selector excluye productos ya vinculados a OTRO artículo (sello 1↔1)
   const productosDisponibles = productos.filter(p =>
     !articulos.some(a => a.producto_id === p.id && a.id !== artEdit))
@@ -156,12 +169,20 @@ export default function ComprasPage() {
           <h1 className="text-xl font-black text-neutral-900">Compras</h1>
           <p className="text-sm text-neutral-400">Proveedores y artículos de compra</p>
         </div>
-        <ConeButton onClick={() => {
-          if (tab === 'proveedores') { setFProv({ nombre: '', razon_social: '', cuit: '', telefono: '', email: '', direccion: '', observaciones: '' }); setProvEdit(null); setModalProv(true) }
-          else { setFArt({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' }); setArtEdit(null); setModalArt(true) }
-        }} icon={<Plus className="h-4 w-4" />}>
-          {tab === 'proveedores' ? 'Nuevo proveedor' : 'Nuevo artículo'}
-        </ConeButton>
+        <div className="flex items-center gap-2">
+          {tab === 'articulos' && (
+            <button onClick={() => { setImportSel([]); setModalImport(true) }}
+              className="px-4 py-2.5 rounded-xl border border-neutral-200 bg-white text-neutral-600 text-sm font-bold hover:border-neutral-400 transition-colors flex items-center gap-2">
+              <Download className="h-4 w-4" /> Importar del catálogo
+            </button>
+          )}
+          <ConeButton onClick={() => {
+            if (tab === 'proveedores') { setFProv({ nombre: '', razon_social: '', cuit: '', telefono: '', email: '', direccion: '', observaciones: '' }); setProvEdit(null); setModalProv(true) }
+            else { setFArt({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' }); setArtEdit(null); setModalArt(true) }
+          }} icon={<Plus className="h-4 w-4" />}>
+            {tab === 'proveedores' ? 'Nuevo proveedor' : 'Nuevo artículo'}
+          </ConeButton>
+        </div>
       </div>
 
       <div className="flex gap-1 mb-5 bg-neutral-100 rounded-xl p-1 w-fit">
@@ -315,6 +336,24 @@ export default function ComprasPage() {
             <p className="text-[11px] text-neutral-400">Solo si comprás EXACTAMENTE lo que vendés (la recepción suma en su stock de venta; un producto = un solo artículo). Los ingredientes de un producto elaborado van SIN vínculo — recetas: próximamente.</p>
           </div>
         </div>
+      </ConeModal>
+
+      {/* ── Modal importador de catálogo (herramienta de CARGA, GO CTO) ── */}
+      <ConeModal open={modalImport} onClose={() => setModalImport(false)} title="Importar del catálogo"
+        footer={<><ConeButton variant="outline" onClick={() => setModalImport(false)}>Cancelar</ConeButton>
+          <ConeButton onClick={importarCatalogo} loading={saving} disabled={!importSel.length}>Importar {importSel.length > 0 ? `(${importSel.length})` : ''}</ConeButton></>}>
+        <p className="text-xs text-neutral-400 mb-3">Crea artículos de REVENTA vinculados 1 a 1 (Mercadería · unidad · controla stock). Solo se ofrecen productos que aún no tienen artículo. No toca precios ni stock de venta; las presentaciones de compra se cargan después donde hagan falta.</p>
+        {productosLibres.length === 0
+          ? <div className="text-center py-8 text-neutral-400 text-sm">Todos los productos del catálogo ya tienen su artículo.</div>
+          : <div className="space-y-1 max-h-80 overflow-y-auto">
+              {productosLibres.map(p => (
+                <label key={p.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-neutral-50 cursor-pointer border border-transparent has-[:checked]:border-neutral-300 has-[:checked]:bg-neutral-50">
+                  <input type="checkbox" className="h-4 w-4 rounded" checked={importSel.includes(p.id)}
+                    onChange={e => setImportSel(sel => e.target.checked ? [...sel, p.id] : sel.filter(x => x !== p.id))} />
+                  <span className="text-sm font-semibold text-neutral-700">{p.nombre}</span>
+                </label>
+              ))}
+            </div>}
       </ConeModal>
 
       {/* ── Modal presentación de compra ── */}

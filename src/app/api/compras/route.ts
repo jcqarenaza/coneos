@@ -152,6 +152,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, id: nuevo.id })
   }
 
+  // ── IMPORTADOR DE CATÁLOGO (GO CTO 29/09) — herramienta de CARGA, no
+  // una segunda casa de productos: crea artículos de reventa vinculados
+  // 1↔1. Sin sincronización posterior, sin presentaciones automáticas,
+  // sin tocar precio/nombre/stock del producto de venta. Concurrencia:
+  // la unique parcial de la base ES el juez — el segundo pierde. ──
+  if (accion === 'importar_catalogo') {
+    const ids: string[] = Array.isArray(body.producto_ids) ? body.producto_ids : []
+    if (!ids.length) return err('Elegí al menos un producto')
+    let creados = 0
+    const rechazados: string[] = []
+    for (const pid of ids) {
+      const { data: prod } = await supabase.from('productos')
+        .select('id, nombre').eq('id', pid).eq('empresa_id', empresaId).maybeSingle()
+      if (!prod) { rechazados.push('(producto inexistente)'); continue }
+      const { error: e } = await supabase.from('articulos').insert({
+        empresa_id: empresaId, nombre: prod.nombre, tipo: 'mercaderia',
+        unidad_stock: 'unidad', controla_stock: true, producto_id: prod.id,
+      })
+      if (e) rechazados.push(prod.nombre)  // unique 1↔1: ya vinculado (ganó otro)
+      else creados++
+    }
+    return NextResponse.json({ ok: true, creados, rechazados })
+  }
+
   if (accion === 'articulo_toggle') {
     const { id, activo } = body
     if (!id || typeof activo !== 'boolean') return err('Datos requeridos')
