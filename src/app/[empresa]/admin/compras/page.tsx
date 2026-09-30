@@ -133,7 +133,7 @@ export default function ComprasPage() {
     setSaving(true)
     try {
       const d = await api({ accion: 'oc_crear', proveedor_id: fOC.proveedor_id, sucursal_id: fOC.sucursal_id || null,
-        observaciones: fOC.observaciones, items: fOC.renglones.map(r => ({
+        observaciones: fOC.observaciones, items: fOC.renglones.filter(rCompleto).map(r => ({
           articulo_id: r.articulo_id, presentacion_id: r.presentacion_id || null,
           cantidad: r.cantidad, costo_previsto: r.costo_previsto,
         })) })
@@ -184,6 +184,12 @@ export default function ComprasPage() {
     recibida: { label: 'Recibida', cls: 'bg-green-50 text-green-600' },
     anulada: { label: 'Anulada', cls: 'bg-neutral-100 text-neutral-400' },
   }
+  // Validación VIVA del modal OC (JC 30/09): el cartel no espera al Guardar.
+  // Vacío total = se ignora; a medias = incompleto (marca roja al instante).
+  const rVacio = (r: RenglonForm) => !r.articulo_id && !r.presentacion_id && !r.cantidad && !r.costo_previsto
+  const rCompleto = (r: RenglonForm) => !!r.articulo_id && isFinite(Number(r.cantidad)) && Number(r.cantidad) > 0
+  const rIncompleto = (r: RenglonForm) => !rVacio(r) && !rCompleto(r)
+  const ocLista = fOC.renglones.some(rCompleto) && !fOC.renglones.some(rIncompleto) && !!fOC.proveedor_id
   const totalPrevisto = (ocId: string) => ocItems.filter(i => i.orden_compra_id === ocId)
     .reduce((a, i) => a + (i.costo_previsto ?? 0) * Number(i.cantidad), 0)
   // Importador: SOLO productos sin artículo vinculado (regla 1 del CTO)
@@ -358,8 +364,7 @@ export default function ComprasPage() {
       {/* ── Modal nueva OC ── */}
       <ConeModal open={modalOC} onClose={() => setModalOC(false)} title="Nueva orden de compra"
         footer={<><ConeButton variant="outline" onClick={() => setModalOC(false)}>Cancelar</ConeButton>
-          <ConeButton onClick={crearOC} loading={saving}
-            disabled={!fOC.proveedor_id || !fOC.renglones.some(r => r.articulo_id && Number(r.cantidad) > 0)}>Crear orden</ConeButton></>}>
+          <ConeButton onClick={crearOC} loading={saving} disabled={!ocLista}>Crear orden</ConeButton></>}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -412,6 +417,11 @@ export default function ComprasPage() {
                   {r.articulo_id && q > 0 && (
                     <p className="text-[11px] text-neutral-400">
                       = {q * f} {r.presentacion_id ? 'unidades operativas' : 'unidades'}{r.costo_previsto ? ` · previsto $${(q * Number(r.costo_previsto)).toLocaleString('es-AR')}` : ''}
+                    </p>
+                  )}
+                  {rIncompleto(r) && (
+                    <p className="text-[11px] font-semibold text-red-500">
+                      {!r.articulo_id ? 'Elegí el artículo' : 'Poné la cantidad (mayor a 0)'} — o dejá el renglón vacío y se ignora
                     </p>
                   )}
                 </div>
