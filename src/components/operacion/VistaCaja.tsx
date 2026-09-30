@@ -1330,9 +1330,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         la entrega del cadete lo marca). Aceptar solo habilita
                         la preparación. */}
                     <button onClick={async () => {
+                        const cobraCadete = seleccionado.tipo_pedido === 'delivery' && seleccionado.metodo_pago === 'efectivo'
                         await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
                         if (comandaAutoRef.current) comandaAutomatica(seleccionado.id)
-                        if (ticketAutoRef.current) { /* 9g: el watcher imprime (espera-CAE) */ } else imprimirTicket(seleccionado.id)
+                        // JC 29/09: con cobro del cadete NO sale ticket al aceptar —
+                        // acá no se cobró nada. Si la sucursal usa ticket automático,
+                        // el watcher lo imprime cuando el pedido se PAGA (la entrega).
+                        if (!cobraCadete) {
+                          if (ticketAutoRef.current) { /* 9g: el watcher imprime (espera-CAE) */ } else imprimirTicket(seleccionado.id)
+                        }
                       }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : (seleccionado.tipo_pedido === 'delivery' && seleccionado.metodo_pago === 'efectivo' ? '✓ Aceptar pedido — 💵 cobra el cadete' : '✓ Cobrar efectivo')}
