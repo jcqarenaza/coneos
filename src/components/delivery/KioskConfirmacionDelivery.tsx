@@ -201,7 +201,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     // celu para ofrecer el seguimiento al volver a entrar a la app
     try {
       const slugEmp = window.location.pathname.split('/').filter(Boolean)[0]
-      localStorage.setItem('coneos_ultimo_pedido', JSON.stringify({ slug: slugEmp, numero: data.pedido.numero_pedido, tipo: canal, ts: Date.now() }))
+      localStorage.setItem('coneos_ultimo_pedido', JSON.stringify({ slug: slugEmp, numero: data.pedido.numero_pedido, id: data.pedido.id, tipo: canal, ts: Date.now() }))
     } catch {}
     return data.pedido
   }
@@ -209,8 +209,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   function confirmarDatos() {
     const errs: Partial<DatosDelivery> = {}
     if (!datos.nombre.trim()) errs.nombre = 'Ingresá tu nombre'
+    if (!datos.telefono.trim()) errs.telefono = 'Ingresá tu teléfono'
     if (!esTakeaway) {
-      if (!datos.telefono.trim()) errs.telefono = 'Ingresá tu teléfono'
       if (!datos.direccion.trim()) errs.direccion = 'Ingresá tu dirección'
       if (!datos.entre_calles.trim()) errs.entre_calles = 'Ingresá las calles de referencia'
     }
@@ -290,8 +290,9 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-4 space-y-4">
           {[
             { key: 'nombre', label: esTakeaway ? 'Tu nombre' : 'Nombre y apellido', placeholder: 'Juan García', type: 'text', required: true },
+            // JC 30/09: TA también pide teléfono — si no retira a horario, el local llama
+            { key: 'telefono', label: 'Teléfono', placeholder: '3491 123456', type: 'tel', required: true },
             ...(esTakeaway ? [] : [
-              { key: 'telefono', label: 'Teléfono', placeholder: '3491 123456', type: 'tel', required: true },
               { key: 'direccion', label: 'Dirección', placeholder: 'San Martín 456', type: 'text', required: true },
               { key: 'entre_calles', label: 'Entre calles', placeholder: '268 y 270', type: 'text', required: true },
             ] as const),
@@ -597,7 +598,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
         </div>
         <h1 className="text-2xl font-black text-center mb-1" style={{ color: config.primary_color }}>¡Pedido confirmado!</h1>
         {!esTakeaway && (
-          <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedido/${pedidoCreado?.numero ?? pedidoNum}`}
+          <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedido/${(pedidoCreado as { id?: string } | null)?.id ?? pedidoId ?? ''}`}
             className="block w-full text-center py-4 rounded-2xl text-white font-black text-lg shadow-sm mb-4 mt-3"
             style={{ backgroundColor: config.primary_color }}>
             🛵 Seguir mi pedido

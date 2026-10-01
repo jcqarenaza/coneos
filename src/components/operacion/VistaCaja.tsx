@@ -983,10 +983,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       const d = historialSeleccionado.datos_delivery as DatosDelivery
                       return (
                         <div className="bg-purple-50 rounded-2xl border border-purple-100 p-4 text-sm">
-                          <p className="font-bold text-purple-700 mb-1">🛵 Datos delivery</p>
+                          <p className="font-bold text-purple-700 mb-1">{historialSeleccionado.tipo_pedido === 'takeaway' ? '🥡 Datos del cliente' : '🛵 Datos delivery'}</p>
                           <p className="text-purple-700">{d.nombre}</p>
-                          <p className="text-purple-600">{d.direccion}{d.entre_calles ? ` (entre ${d.entre_calles})` : ''}</p>
-                          <p className="text-purple-600">{d.telefono}</p>
+                          {d.direccion && <p className="text-purple-600">{d.direccion}{d.entre_calles ? ` (entre ${d.entre_calles})` : ''}</p>}
+                          {d.telefono && <p className="text-purple-600">{d.telefono}</p>}
                         </div>
                       )
                     })()}
@@ -1283,12 +1283,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <Trash2 className="h-4 w-4" /> Eliminar pedido
                   </button>
                 )}
-                {seleccionado.tipo_pedido === 'delivery' && seleccionado.datos_delivery && (
+                {(seleccionado.tipo_pedido === 'delivery' || seleccionado.tipo_pedido === 'takeaway') && seleccionado.datos_delivery && (
                   <div className="mb-4 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 space-y-1">
-                    <p className="text-purple-700 text-sm font-bold mb-1">🛵 Datos de entrega</p>
+                    <p className="text-purple-700 text-sm font-bold mb-1">{seleccionado.tipo_pedido === 'takeaway' ? '🥡 Datos del cliente' : '🛵 Datos de entrega'}</p>
                     <p className="text-purple-600 text-sm"><span className="font-semibold">Nombre:</span> {seleccionado.datos_delivery.nombre}</p>
-                    <p className="text-purple-600 text-sm"><span className="font-semibold">Tel:</span> {seleccionado.datos_delivery.telefono}</p>
-                    <p className="text-purple-600 text-sm"><span className="font-semibold">Dirección:</span> {seleccionado.datos_delivery.direccion}</p>
+                    {seleccionado.datos_delivery.telefono && <p className="text-purple-600 text-sm"><span className="font-semibold">Tel:</span> {seleccionado.datos_delivery.telefono}</p>}
+                    {seleccionado.tipo_pedido === 'delivery' && <p className="text-purple-600 text-sm"><span className="font-semibold">Dirección:</span> {seleccionado.datos_delivery.direccion}</p>}
                     {seleccionado.datos_delivery.entre_calles && <p className="text-purple-600 text-sm"><span className="font-semibold">Entre:</span> {seleccionado.datos_delivery.entre_calles}</p>}
                     {seleccionado.costo_envio ? <p className="text-purple-600 text-sm"><span className="font-semibold">Envío:</span> ${Number(seleccionado.costo_envio).toLocaleString('es-AR')}</p> : null}
                   </div>
