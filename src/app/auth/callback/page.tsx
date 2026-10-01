@@ -1,8 +1,8 @@
 'use client'
 
-// /auth/callback — SOLO para impersonación desde QP C&IA (Paso 3).
-// Consume el token_hash generado por coneos-admin (generate_link magiclink)
-// via verifyOtp({ token_hash, type: 'email' }). No toca el login normal.
+// /auth/callback — Impersonación (magiclink) e Invitaciones (invite) desde QP C&IA.
+// Consume token_hash via verifyOtp. El parámetro `tipo` SOLO selecciona el tipo de
+// verificación (invite | email); NO es fuente de autorización: la credencial es el token.
 
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -20,9 +20,10 @@ function CallbackInner() {
     corrido.current = true
 
     const tokenHash = searchParams.get('token_hash')
+    const tipoParam = searchParams.get('tipo')
+    const tipoVerificacion: 'invite' | 'email' = tipoParam === 'invite' ? 'invite' : 'email'
 
-    // Limpiar la URL de inmediato: el token es una credencial temporal
-    // y no debe quedar visible en la barra ni en el historial.
+    // Limpiar la URL de inmediato: el token es una credencial temporal.
     if (typeof window !== 'undefined') {
       window.history.replaceState({}, '', '/auth/callback')
     }
@@ -41,30 +42,31 @@ function CallbackInner() {
 
     ;(async () => {
       try {
-        // Sesión existente: comportamiento determinista — la impersonación
-        // reemplaza cualquier sesión previa de este navegador.
-        // scope 'local': cierra SOLO este navegador, sin revocar las
-        // sesiones del usuario anterior en sus propios dispositivos.
+        // Sesión existente: reemplazo determinista, scope local.
         const { data: sesionPrevia } = await supabase.auth.getSession()
         if (sesionPrevia?.session) {
           await supabase.auth.signOut({ scope: 'local' })
         }
 
-        // Verificación del token single-use. Sin action_link, sin PKCE.
         const { data, error } = await supabase.auth.verifyOtp({
           token_hash: tokenHash,
-          type: 'email',
+          type: tipoVerificacion,
         })
 
         if (error || !data?.session || !data?.user) {
-          fallar('El acceso expiró, ya fue utilizado o no es válido. Generá uno nuevo desde el panel.')
+          fallar('El acceso expiró, ya fue utilizado o no es válido. Pedí un link nuevo.')
+          return
+        }
+
+        // GATE (issue Supabase #45210): invitado sin contraseña NO entra al admin.
+        const debeEstablecer = data.user.user_metadata?.debe_establecer_password === true
+        if (debeEstablecer) {
+          router.replace('/auth/establecer-contrasena')
           return
         }
 
         const uid = data.user.id
 
-        // Resolver TODO server-side a partir de la sesión: nunca de la URL.
-        // auth.uid() → usuarios_admin → empresa_id → empresas.slug
         const { data: adminRow } = await supabase
           .from('usuarios_admin')
           .select('empresa_id, activo')
@@ -89,11 +91,7 @@ function CallbackInner() {
           return
         }
 
-        // NOTA auditoría (futuro, fuera de este ciclo): si se quiere marcar
-        // las acciones hechas bajo impersonación, acá es el punto donde un
-        // impersonation_id (recibido junto al token y validado server-side)
-        // podría guardarse en el contexto de sesión / tabla de auditoría
-        // de ConeOS antes de redirigir.
+        // NOTA auditoría (futuro): punto de inserción de impersonation_id.
 
         router.replace('/' + empresaRow.slug + '/admin')
       } catch {
