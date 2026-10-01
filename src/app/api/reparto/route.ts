@@ -63,8 +63,15 @@ export async function POST(request: Request) {
   // real RLS la bloqueaba → "Pedido no encontrado"). SIN gate de módulo:
   // el estado del pedido es de todos los canales; reparto solo gobierna el mapa.
   if (body.accion === 'pedido_publico') {
-    const { empresa_slug, numero } = body
-    if (!empresa_slug || !numero) return err('Datos requeridos')
+    // 🔒 INCIDENTE 30/09 (un cliente vio el pedido de otro): el número de
+    // pedido NO es único (colisiona entre sucursales/canales) y además es
+    // ENUMERABLE. La llave pública pasa a ser el UUID — inadivinable y
+    // único. Referencias numéricas: rechazadas, no existe el fallback.
+    const { empresa_slug } = body
+    const ref = String(body.pedido_ref ?? body.numero ?? '')
+    if (!empresa_slug || !ref) return err('Datos requeridos')
+    const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref)
+    if (!esUuid) return NextResponse.json({ ok: true, encontrado: false })
     const { data: emp } = await supabase.from('empresas')
       .select('id, nombre').eq('slug', empresa_slug).maybeSingle()
     if (!emp) return NextResponse.json({ ok: true, encontrado: false })
@@ -74,8 +81,7 @@ export async function POST(request: Request) {
       .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, created_at, tipo_pedido, costo_envio, datos_delivery, colaborador_id, colaborador_nombre, sucursal_id,
         pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
-      .eq('empresa_id', emp.id).eq('numero_pedido', Number(numero))
-      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .eq('empresa_id', emp.id).eq('id', ref).maybeSingle()
     if (!p) return NextResponse.json({ ok: true, encontrado: false })
     // Vuelta a la tienda (JC 29/09): la pantalla del pedido era un callejón
     // sin salida en PWA — el server arma el link al canal de SU sucursal.
@@ -153,13 +159,17 @@ export async function POST(request: Request) {
   // Solo devuelve la moto del pedido consultado, y solo si está EN
   // REPARTO (READY + cadete) con el módulo prendido. D5: jamás otros.
   if (body.accion === 'cliente_posicion') {
-    const { empresa_id, numero_pedido } = body
-    if (!empresa_id || !numero_pedido) return err('Datos requeridos')
+    const { empresa_id } = body
+    const refPos = String(body.pedido_id ?? body.numero_pedido ?? '')
+    if (!empresa_id || !refPos) return err('Datos requeridos')
+    // 🔒 Misma llave que pedido_publico: UUID o nada (el número colisiona)
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(refPos)) {
+      return NextResponse.json({ ok: true, activo: false })
+    }
     if (!(await moduloReparto(supabase, empresa_id))) return NextResponse.json({ ok: true, activo: false })
     const { data: ped } = await supabase.from('pedidos')
       .select('colaborador_id, colaborador_nombre, estado, tipo_pedido')
-      .eq('empresa_id', empresa_id).eq('numero_pedido', Number(numero_pedido))
-      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .eq('empresa_id', empresa_id).eq('id', refPos).maybeSingle()
     if (!ped || ped.tipo_pedido !== 'delivery' || ped.estado !== 'READY' || !ped.colaborador_id) {
       return NextResponse.json({ ok: true, activo: false })
     }

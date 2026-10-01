@@ -306,7 +306,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     if (typeof dp?.comanda_auto === 'boolean') { setComandaAuto(dp.comanda_auto); comandaAutoRef.current = dp.comanda_auto }
     if (comandaAutoRef.current) {
       for (const p of (dp.pedidos ?? []) as Pedido[]) {
-        if (p.estado === 'PREPARING' && !p.comanda_impresa_at) comandaAutomatica(p.id)
+        if ((p.estado === 'PREPARING' || p.estado === 'READY') && !p.comanda_impresa_at) comandaAutomatica(p.id)
       }
     }
     // 9g: ticket automático — cobrado (mesa EXCLUIDA de V1) + sin claim +
@@ -983,10 +983,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       const d = historialSeleccionado.datos_delivery as DatosDelivery
                       return (
                         <div className="bg-purple-50 rounded-2xl border border-purple-100 p-4 text-sm">
-                          <p className="font-bold text-purple-700 mb-1">🛵 Datos delivery</p>
+                          <p className="font-bold text-purple-700 mb-1">{historialSeleccionado.tipo_pedido === 'takeaway' ? '🥡 Datos del cliente' : '🛵 Datos delivery'}</p>
                           <p className="text-purple-700">{d.nombre}</p>
-                          <p className="text-purple-600">{d.direccion}{d.entre_calles ? ` (entre ${d.entre_calles})` : ''}</p>
-                          <p className="text-purple-600">{d.telefono}</p>
+                          {d.direccion && <p className="text-purple-600">{d.direccion}{d.entre_calles ? ` (entre ${d.entre_calles})` : ''}</p>}
+                          {d.telefono && <p className="text-purple-600">{d.telefono}</p>}
                         </div>
                       )
                     })()}
@@ -1139,9 +1139,11 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                 </div>
               ) : pedidosFiltrados.map(pedido => (
                 <div key={pedido.id} className={`w-full text-left border-b border-neutral-50 border-l-4 transition-colors ${seleccionado?.id === pedido.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[pedido.estado]}`}>
-                  {/* JC 29/09: asignable SOLO en curso — un pedido ENTREGADO
-                      (o cancelado) no ofrece el tildado de asignación */}
-                  {pedido.tipo_pedido === 'delivery' && (pedido.estado === 'PREPARING' || pedido.estado === 'READY') && (
+                  {/* JC 29/09: asignable en curso — y en delivery-EFECTIVO
+                      también recién llegado: asignar de una lo ACEPTA
+                      (cobra el cadete, el Aceptar era trámite) */}
+                  {pedido.tipo_pedido === 'delivery' && (pedido.estado === 'PREPARING' || pedido.estado === 'READY'
+                    || (pedido.estado === 'PENDING_PAYMENT' && pedido.metodo_pago === 'efectivo')) && (
                     <div className="flex items-center gap-2 px-4 pt-2">
                       <input type="checkbox" checked={pedidosSeleccionados.includes(pedido.id)}
                         onChange={e => { e.stopPropagation(); setPedidosSeleccionados(prev => e.target.checked ? [...prev, pedido.id] : prev.filter(id => id !== pedido.id)) }}
@@ -1281,12 +1283,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <Trash2 className="h-4 w-4" /> Eliminar pedido
                   </button>
                 )}
-                {seleccionado.tipo_pedido === 'delivery' && seleccionado.datos_delivery && (
+                {(seleccionado.tipo_pedido === 'delivery' || seleccionado.tipo_pedido === 'takeaway') && seleccionado.datos_delivery && (
                   <div className="mb-4 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 space-y-1">
-                    <p className="text-purple-700 text-sm font-bold mb-1">🛵 Datos de entrega</p>
+                    <p className="text-purple-700 text-sm font-bold mb-1">{seleccionado.tipo_pedido === 'takeaway' ? '🥡 Datos del cliente' : '🛵 Datos de entrega'}</p>
                     <p className="text-purple-600 text-sm"><span className="font-semibold">Nombre:</span> {seleccionado.datos_delivery.nombre}</p>
-                    <p className="text-purple-600 text-sm"><span className="font-semibold">Tel:</span> {seleccionado.datos_delivery.telefono}</p>
-                    <p className="text-purple-600 text-sm"><span className="font-semibold">Dirección:</span> {seleccionado.datos_delivery.direccion}</p>
+                    {seleccionado.datos_delivery.telefono && <p className="text-purple-600 text-sm"><span className="font-semibold">Tel:</span> {seleccionado.datos_delivery.telefono}</p>}
+                    {seleccionado.tipo_pedido === 'delivery' && <p className="text-purple-600 text-sm"><span className="font-semibold">Dirección:</span> {seleccionado.datos_delivery.direccion}</p>}
                     {seleccionado.datos_delivery.entre_calles && <p className="text-purple-600 text-sm"><span className="font-semibold">Entre:</span> {seleccionado.datos_delivery.entre_calles}</p>}
                     {seleccionado.costo_envio ? <p className="text-purple-600 text-sm"><span className="font-semibold">Envío:</span> ${Number(seleccionado.costo_envio).toLocaleString('es-AR')}</p> : null}
                   </div>
@@ -1330,9 +1332,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         la entrega del cadete lo marca). Aceptar solo habilita
                         la preparación. */}
                     <button onClick={async () => {
+                        const cobraCadete = seleccionado.tipo_pedido === 'delivery' && seleccionado.metodo_pago === 'efectivo'
                         await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
                         if (comandaAutoRef.current) comandaAutomatica(seleccionado.id)
-                        if (ticketAutoRef.current) { /* 9g: el watcher imprime (espera-CAE) */ } else imprimirTicket(seleccionado.id)
+                        // JC 29/09: con cobro del cadete NO sale ticket al aceptar —
+                        // acá no se cobró nada. Si la sucursal usa ticket automático,
+                        // el watcher lo imprime cuando el pedido se PAGA (la entrega).
+                        if (!cobraCadete) {
+                          if (ticketAutoRef.current) { /* 9g: el watcher imprime (espera-CAE) */ } else imprimirTicket(seleccionado.id)
+                        }
                       }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : (seleccionado.tipo_pedido === 'delivery' && seleccionado.metodo_pago === 'efectivo' ? '✓ Aceptar pedido — 💵 cobra el cadete' : '✓ Cobrar efectivo')}

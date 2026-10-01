@@ -70,7 +70,7 @@ export default function PedidoPage() {
     try {
       const res = await fetch('/api/reparto', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accion: 'pedido_publico', empresa_slug: params.empresa, numero: params.numero }),
+        body: JSON.stringify({ accion: 'pedido_publico', empresa_slug: params.empresa, pedido_ref: params.numero }),
       })
       const d = await res.json().catch(() => null)
       if (!d?.encontrado) { setNotFound(true); setLoading(false); return }
@@ -141,7 +141,7 @@ export default function PedidoPage() {
 
         {/* ═══ REPARTO V1 — mapa en vivo: SOLO delivery + READY + cadete + módulo ON ═══ */}
         {esDelivery && pedido.estado === 'READY' && pedido.colaborador_id && config.reparto && (
-          <MapaCliente empresaId={config.empresa_id} numeroPedido={pedido.numero_pedido}
+          <MapaCliente empresaId={config.empresa_id} pedidoId={pedido.id}
             nombreCadete={pedido.colaborador_emoji ? `${pedido.colaborador_emoji} ${pedido.colaborador_nombre ?? ''}`.trim() : pedido.colaborador_nombre} color={config.primary_color} />
         )}
 

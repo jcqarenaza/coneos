@@ -242,8 +242,23 @@ export async function POST(request: Request) {
     const { data: col } = await supabase.from('colaboradores')
       .select('id, nombre').eq('id', colaborador_id).eq('empresa_id', disp.empresa_id).maybeSingle()
     if (!col) return NextResponse.json({ error: 'Colaborador no válido' }, { status: 404 })
-    // JC 29/09: el server tampoco re-asigna pedidos terminados — asignar
-    // solo toca pedidos EN CURSO (la UI ya no lo ofrece; esto es el cinturón)
+    // JC 29/09 (regla re-sellada): ASIGNAR SIEMPRE = LISTO. En delivery-
+    // EFECTIVO recién llegado, asignar de una = aceptado + LISTO en un
+    // acto (quien asigna ya lo tiene hecho; el cadete cobra en la puerta,
+    // pagado queda false hasta la entrega). Transferencia NO entra acá:
+    // certifica el pago primero y recién ahí puede asignar.
+    const { data: aceptados } = await supabase.from('pedidos')
+      .update({ estado: 'READY', updated_at: new Date().toISOString() })
+      .in('id', pedido_ids).eq('empresa_id', disp.empresa_id)
+      .eq('estado', 'PENDING_PAYMENT').eq('tipo_pedido', 'delivery').eq('metodo_pago', 'efectivo')
+      .select('id')
+    for (const pa of aceptados ?? []) {
+      await supabase.from('pedido_estados_log').insert({
+        pedido_id: pa.id, operador_id: null, estado_anterior: 'PENDING_PAYMENT', estado_nuevo: 'READY',
+      })
+    }
+    // El cinturón de siempre: asignar solo pedidos EN CURSO (los recién
+    // aceptados arriba ya son PREPARING y entran acá)
     await supabase.from('pedidos')
       .update({ colaborador_id: col.id, colaborador_nombre: col.nombre })
       .in('id', pedido_ids).eq('empresa_id', disp.empresa_id)

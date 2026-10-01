@@ -30,6 +30,14 @@ export default function AdminSidebarWrapper() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace(`/${slug}/login`); return }
 
+      // GATE invitaciones (brief QP 30/09, issue Supabase #45210): un
+      // invitado con sesión pero SIN contraseña elegida no pisa el admin —
+      // vuelve a elegirla. Ningún usuario existente tiene esta marca.
+      if (session.user.user_metadata?.debe_establecer_password === true) {
+        router.replace('/auth/establecer-contrasena')
+        return
+      }
+
       const { data: ua } = await supabase
         .from('usuarios_admin')
         .select('nombre, empresa_id, empresas(nombre, slug)')
