@@ -8,9 +8,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { cargarLeaflet, iconoEmoji, OSM_TILES, OSM_ATTR } from '@/components/reparto/leaflet'
 
-interface Props { empresaId: string; numeroPedido: number; nombreCadete: string | null; color: string }
+interface Props { empresaId: string; pedidoId: string; nombreCadete: string | null; color: string }
 
-export default function MapaCliente({ empresaId, numeroPedido, nombreCadete, color }: Props) {
+export default function MapaCliente({ empresaId, pedidoId, nombreCadete, color }: Props) {
   const divRef = useRef<HTMLDivElement>(null)
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const mapRef = useRef<any>(null)
@@ -40,7 +40,7 @@ export default function MapaCliente({ empresaId, numeroPedido, nombreCadete, col
         try {
           const res = await fetch('/api/reparto', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accion: 'cliente_posicion', empresa_id: empresaId, numero_pedido: numeroPedido }),
+            body: JSON.stringify({ accion: 'cliente_posicion', empresa_id: empresaId, pedido_id: pedidoId }),
           })
           const d = await res.json()
           if (!vivo) return
@@ -75,7 +75,7 @@ export default function MapaCliente({ empresaId, numeroPedido, nombreCadete, col
       if (watchId !== null) navigator.geolocation?.clearWatch(watchId)
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; motoRef.current = null; yoRef.current = null }
     }
-  }, [empresaId, numeroPedido])
+  }, [empresaId, pedidoId])
 
   return (
     <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden mb-4">

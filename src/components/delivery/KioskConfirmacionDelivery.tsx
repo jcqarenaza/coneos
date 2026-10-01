@@ -201,7 +201,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     // celu para ofrecer el seguimiento al volver a entrar a la app
     try {
       const slugEmp = window.location.pathname.split('/').filter(Boolean)[0]
-      localStorage.setItem('coneos_ultimo_pedido', JSON.stringify({ slug: slugEmp, numero: data.pedido.numero_pedido, tipo: canal, ts: Date.now() }))
+      localStorage.setItem('coneos_ultimo_pedido', JSON.stringify({ slug: slugEmp, numero: data.pedido.numero_pedido, id: data.pedido.id, tipo: canal, ts: Date.now() }))
     } catch {}
     return data.pedido
   }
@@ -597,7 +597,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
         </div>
         <h1 className="text-2xl font-black text-center mb-1" style={{ color: config.primary_color }}>¡Pedido confirmado!</h1>
         {!esTakeaway && (
-          <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedido/${pedidoCreado?.numero ?? pedidoNum}`}
+          <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedido/${(pedidoCreado as { id?: string } | null)?.id ?? pedidoId ?? ''}`}
             className="block w-full text-center py-4 rounded-2xl text-white font-black text-lg shadow-sm mb-4 mt-3"
             style={{ backgroundColor: config.primary_color }}>
             🛵 Seguir mi pedido

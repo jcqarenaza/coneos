@@ -93,12 +93,15 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   // REPARTO V1: si este celu hizo un pedido hace < 3 h, ofrecer el seguimiento
   // al volver a entrar (localStorage, patrón coneos_mp_pedido). Solo banner,
   // nunca redirect: el cliente puede estar queriendo pedir OTRA cosa.
-  const [seguimiento, setSeguimiento] = useState<{ slug: string; numero: number } | null>(null)
+  const [seguimiento, setSeguimiento] = useState<{ slug: string; numero: number; id: string } | null>(null)
   useEffect(() => {
     try {
       const raw = localStorage.getItem('coneos_ultimo_pedido')
       if (!raw) return
-      const u = JSON.parse(raw) as { slug: string; numero: number; tipo: string; ts: number }
+      const u = JSON.parse(raw) as { slug: string; numero: number; id?: string; tipo: string; ts: number }
+      // 🔒 30/09: el link público es por UUID. Entradas viejas sin id
+      // (pre-fix) no pueden linkear seguro — se descartan y expiran solas.
+      if (!u.id) { localStorage.removeItem('coneos_ultimo_pedido'); return }
       const slugAca = window.location.pathname.split('/').filter(Boolean)[0]
       if (u.slug !== slugAca || u.tipo !== 'delivery') return
       if (Date.now() - u.ts > 3 * 60 * 60 * 1000) { localStorage.removeItem('coneos_ultimo_pedido'); return }
@@ -108,7 +111,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         try {
           const r = await fetch('/api/reparto', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accion: 'pedido_publico', empresa_slug: u.slug, numero: u.numero }),
+            body: JSON.stringify({ accion: 'pedido_publico', empresa_slug: u.slug, pedido_ref: u.id }),
           })
           const d = await r.json().catch(() => null)
           const estado = d?.encontrado ? d.pedido?.estado : null
@@ -116,8 +119,8 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
             localStorage.removeItem('coneos_ultimo_pedido')
             return
           }
-          setSeguimiento({ slug: u.slug, numero: u.numero })
-        } catch { setSeguimiento({ slug: u.slug, numero: u.numero }) }
+          setSeguimiento({ slug: u.slug, numero: u.numero, id: u.id })
+        } catch { setSeguimiento({ slug: u.slug, numero: u.numero, id: u.id }) }
       })()
     } catch {}
   }, [])
@@ -406,7 +409,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
           <span className="text-2xl">🛵</span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-neutral-800 leading-tight">Tu pedido #{seguimiento.numero} está en marcha</p>
-            <a href={`/${seguimiento.slug}/pedido/${seguimiento.numero}`} className="text-xs font-black underline" style={{ color: config.primary_color }}>Ver seguimiento →</a>
+            <a href={`/${seguimiento.slug}/pedido/${seguimiento.id}`} className="text-xs font-black underline" style={{ color: config.primary_color }}>Ver seguimiento →</a>
           </div>
           <button onClick={() => { setSeguimiento(null); try { localStorage.removeItem('coneos_ultimo_pedido') } catch {} }}
             className="text-neutral-300 font-black text-lg px-1">✕</button>
