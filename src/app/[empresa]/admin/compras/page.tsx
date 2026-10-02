@@ -180,6 +180,17 @@ export default function ComprasPage() {
     try { await api({ accion: 'remito_item_borrar', remito_id: remitoAbierto, item_id: itemId }); await recargar() }
     catch (e) { alert(e instanceof Error ? e.message : 'No se pudo borrar') }
   }
+  async function confirmarRemito(id: string) {
+    const lineas = itemsDe(id)
+    const unidades = lineas.reduce((a, i) => a + Number(i.cantidad_operativa), 0)
+    if (!confirm(`¿Confirmar la recepción? Se suman ${unidades} unidades al stock. Este paso no se deshace.`)) return
+    setSaving(true)
+    try {
+      const d = await api({ accion: 'remito_confirmar', id })
+      await recargar()
+      alert(`✅ Recepción confirmada: ${d.lineas} líneas, ${d.unidades} unidades al stock${d.oc_estado ? ` · OC → ${d.oc_estado}` : ''}`)
+    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo confirmar') } finally { setSaving(false) }
+  }
   async function descartarRemito(id: string) {
     if (!confirm('¿Descartar este borrador? Se pierde lo cargado.')) return
     try { await api({ accion: 'remito_borrar', id }); setRemitoAbierto(null); await recargar() }
@@ -438,8 +449,13 @@ export default function ComprasPage() {
                 </p>
               </div>
               {esBorrador && (
-                <button onClick={() => descartarRemito(r.id)}
-                  className="px-3 py-1.5 rounded-xl border border-red-200 text-red-500 text-xs font-bold hover:bg-red-50 transition-colors">Descartar borrador</button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => descartarRemito(r.id)}
+                    className="px-3 py-1.5 rounded-xl border border-red-200 text-red-500 text-xs font-bold hover:bg-red-50 transition-colors">Descartar</button>
+                  <ConeButton onClick={() => confirmarRemito(r.id)} loading={saving} disabled={lineas.length === 0 || !!lineaForm}>
+                    ✅ Confirmar recepción
+                  </ConeButton>
+                </div>
               )}
             </div>
 
@@ -522,7 +538,12 @@ export default function ComprasPage() {
             )}
             {esBorrador && (
               <p className="text-[11px] text-neutral-400 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
-                📋 Borrador: todavía no movió stock. La confirmación de la recepción llega en la próxima tanda (T4-B) — un solo acto, todo o nada.
+                📋 Borrador: todavía no movió stock. Al confirmar, la recepción impacta el stock en un solo acto — todo o nada, y el factor queda congelado para siempre.
+              </p>
+            )}
+            {r.estado === 'confirmado' && (
+              <p className="text-[11px] text-green-600 bg-green-50 border border-green-100 rounded-xl px-3 py-2">
+                ✅ Recepción confirmada{r.confirmado_at ? ` el ${new Date(r.confirmado_at).toLocaleString('es-AR')}` : ''} — stock impactado, snapshots congelados. Este documento ya no se edita.
               </p>
             )}
           </div>

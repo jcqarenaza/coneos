@@ -428,6 +428,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true })
   }
 
+  if (accion === 'remito_confirmar') {
+    // T4-B: ingresar_remito_stock — EL ÚNICO escritor del circuito.
+    // Claim atómico + todo-o-nada viven en la RPC; acá solo traducimos.
+    const { id } = body
+    if (!id) return err('Datos requeridos')
+    const { data, error: e } = await supabase.rpc('ingresar_remito_stock', {
+      p_empresa_id: empresaId, p_remito_id: id,
+    })
+    if (e) {
+      const m = e.message ?? ''
+      if (m.includes('REMITO_NO_CONFIRMABLE')) return err('Este remito ya fue confirmado o no se puede confirmar', 409)
+      if (m.includes('SIN_LINEAS')) return err('El remito no tiene líneas — agregá lo que llegó', 400)
+      if (m.includes('ARTICULO_INVALIDO')) return err('Una línea tiene un artículo inactivo — revisala', 409)
+      if (m.includes('PRESENTACION_INVALIDA')) return err('Una línea tiene una presentación que no corresponde', 409)
+      if (m.includes('CANTIDAD_INVALIDA')) return err('Una línea tiene cantidad inválida', 400)
+      if (m.includes('LINEA_NO_ENTERA')) return err('Una línea de REVENTA da unidades fraccionadas — lo que se vende se cuenta entero (los insumos sí aceptan 5.2 kg)', 400)
+      return err('No se pudo confirmar la recepción', 500)
+    }
+    return NextResponse.json({ ok: true, ...((data ?? {}) as Record<string, unknown>) })
+  }
+
   if (accion === 'remito_editar_cab') {
     const { id, numero_proveedor, observaciones, fecha } = body
     if (!id) return err('Datos requeridos')
