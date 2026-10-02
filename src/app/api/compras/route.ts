@@ -315,12 +315,14 @@ export async function POST(request: Request) {
   // al confirmar (ahí "congelado" empieza a significar algo).
   if (accion === 'remito_crear') {
     const { proveedor_id, sucursal_id, orden_compra_id, numero_proveedor, observaciones } = body
+    const tipo = body.tipo === 'devolucion' ? 'devolucion' : 'recepcion'
     if (!proveedor_id) return err('Elegí el proveedor')
-    if (!sucursal_id) return err('Elegí la sucursal que recibe')
+    if (!sucursal_id) return err(tipo === 'devolucion' ? 'Elegí la sucursal que devuelve' : 'Elegí la sucursal que recibe')
     const { data, error: e } = await supabase.rpc('crear_remito_borrador', {
       p_empresa_id: empresaId, p_proveedor_id: proveedor_id, p_sucursal_id: sucursal_id,
-      p_orden_compra_id: orden_compra_id || null,
+      p_orden_compra_id: tipo === 'devolucion' ? null : (orden_compra_id || null),
       p_numero_proveedor: numero_proveedor ?? null, p_observaciones: observaciones ?? null,
+      p_tipo: tipo,
     })
     if (e) {
       const m = e.message ?? ''
@@ -444,7 +446,8 @@ export async function POST(request: Request) {
       if (m.includes('PRESENTACION_INVALIDA')) return err('Una línea tiene una presentación que no corresponde', 409)
       if (m.includes('CANTIDAD_INVALIDA')) return err('Una línea tiene cantidad inválida', 400)
       if (m.includes('LINEA_NO_ENTERA')) return err('Una línea de REVENTA da unidades fraccionadas — lo que se vende se cuenta entero (los insumos sí aceptan 5.2 kg)', 400)
-      return err('No se pudo confirmar la recepción', 500)
+      if (m.includes('DEVOLUCION_SIN_STOCK')) return err('No hay stock suficiente para devolver esa cantidad — nada se movió', 409)
+      return err('No se pudo confirmar', 500)
     }
     return NextResponse.json({ ok: true, ...((data ?? {}) as Record<string, unknown>) })
   }

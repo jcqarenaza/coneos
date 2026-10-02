@@ -59,7 +59,7 @@ export default function ComprasPage() {
   const [fArt, setFArt] = useState({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' })
   const [modalRemito, setModalRemito] = useState(false)
   const [remitoAbierto, setRemitoAbierto] = useState<string | null>(null)   // id del remito en pantalla
-  const [fRem, setFRem] = useState({ proveedor_id: '', sucursal_id: '', orden_compra_id: '', numero_proveedor: '', observaciones: '' })
+  const [fRem, setFRem] = useState({ tipo: 'recepcion', proveedor_id: '', sucursal_id: '', orden_compra_id: '', numero_proveedor: '', observaciones: '' })
   const [lineaForm, setLineaForm] = useState<{ item_id: string | null; articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string } | null>(null)
   const [modalOC, setModalOC] = useState(false)
   const [ocDetalle, setOcDetalle] = useState<OC | null>(null)
@@ -159,8 +159,8 @@ export default function ComprasPage() {
   async function crearRemito() {
     setSaving(true)
     try {
-      const d = await api({ accion: 'remito_crear', proveedor_id: fRem.proveedor_id, sucursal_id: fRem.sucursal_id,
-        orden_compra_id: fRem.orden_compra_id || null, numero_proveedor: fRem.numero_proveedor, observaciones: fRem.observaciones })
+      const d = await api({ accion: 'remito_crear', tipo: fRem.tipo, proveedor_id: fRem.proveedor_id, sucursal_id: fRem.sucursal_id,
+        orden_compra_id: fRem.tipo === 'devolucion' ? null : (fRem.orden_compra_id || null), numero_proveedor: fRem.numero_proveedor, observaciones: fRem.observaciones })
       setModalRemito(false); await recargar()
       if (d.id) setRemitoAbierto(String(d.id))
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo crear') } finally { setSaving(false) }
@@ -183,7 +183,10 @@ export default function ComprasPage() {
   async function confirmarRemito(id: string) {
     const lineas = itemsDe(id)
     const unidades = lineas.reduce((a, i) => a + Number(i.cantidad_operativa), 0)
-    if (!confirm(`¿Confirmar la recepción? Se suman ${fmtU(unidades)} unidades al stock. Este paso no se deshace.`)) return
+    const esDev = remitos.find(x => x.id === id)?.tipo === 'devolucion'
+    if (!confirm(esDev
+      ? `¿Confirmar la DEVOLUCIÓN? Se restan ${fmtU(unidades)} unidades del stock. Este paso no se deshace.`
+      : `¿Confirmar la recepción? Se suman ${fmtU(unidades)} unidades al stock. Este paso no se deshace.`)) return
     setSaving(true)
     try {
       const d = await api({ accion: 'remito_confirmar', id })
@@ -277,7 +280,7 @@ export default function ComprasPage() {
         </div>
         <div className="flex items-center gap-2">
           {tab === 'remitos' && (
-            <ConeButton onClick={() => { setFRem({ proveedor_id: '', sucursal_id: '', orden_compra_id: '', numero_proveedor: '', observaciones: '' }); setModalRemito(true) }} icon={<Plus className="h-4 w-4" />}>
+            <ConeButton onClick={() => { setFRem({ tipo: 'recepcion', proveedor_id: '', sucursal_id: '', orden_compra_id: '', numero_proveedor: '', observaciones: '' }); setModalRemito(true) }} icon={<Plus className="h-4 w-4" />}>
               Nuevo remito
             </ConeButton>
           )}
@@ -417,6 +420,7 @@ export default function ComprasPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-black text-neutral-900">REM-{String(r.numero).padStart(4, '0')}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${est.cls}`}>{est.label}</span>
+                    {r.tipo === 'devolucion' && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-50 text-red-500">↩ Devolución</span>}
                     {oc && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-500">OC-{String(oc.numero).padStart(4, '0')}</span>}
                   </div>
                   <p className="text-xs text-neutral-400 mt-0.5 truncate">
@@ -444,6 +448,7 @@ export default function ComprasPage() {
                   <button onClick={() => setRemitoAbierto(null)} className="text-neutral-300 hover:text-neutral-600 font-bold">←</button>
                   <h2 className="font-black text-lg text-neutral-900">REM-{String(r.numero).padStart(4, '0')}</h2>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${est.cls}`}>{est.label}</span>
+                  {r.tipo === 'devolucion' && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-50 text-red-500">↩ Devolución</span>}
                 </div>
                 <p className="text-xs text-neutral-400 mt-0.5">
                   {nombreProveedor(r.proveedor_id)} · 📍 {nombreSucursal(r.sucursal_id)} · {r.fecha}{r.numero_proveedor ? ` · Nº prov. ${r.numero_proveedor}` : ''}
@@ -552,10 +557,18 @@ export default function ComprasPage() {
       })()}
 
       {/* ── Modal nuevo remito ── */}
-      <ConeModal open={modalRemito} onClose={() => setModalRemito(false)} title="Nuevo remito de recepción"
+      <ConeModal open={modalRemito} onClose={() => setModalRemito(false)} title={fRem.tipo === 'devolucion' ? 'Nueva devolución al proveedor' : 'Nuevo remito de recepción'}
         footer={<><ConeButton variant="outline" onClick={() => setModalRemito(false)}>Cancelar</ConeButton>
           <ConeButton onClick={crearRemito} loading={saving} disabled={!fRem.proveedor_id || !fRem.sucursal_id}>Crear borrador</ConeButton></>}>
         <div className="space-y-4">
+          <div className="flex gap-2">
+            {(['recepcion', 'devolucion'] as const).map(t => (
+              <button key={t} onClick={() => setFRem({ ...fRem, tipo: t, orden_compra_id: '' })}
+                className={`flex-1 px-3 py-2 rounded-xl text-sm font-bold border transition-colors ${fRem.tipo === t ? (t === 'devolucion' ? 'bg-red-50 border-red-200 text-red-600' : 'bg-neutral-900 border-neutral-900 text-white') : 'bg-white border-neutral-200 text-neutral-400'}`}>
+                {t === 'devolucion' ? '↩ Devolución' : '📦 Recepción'}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Proveedor *</Label>
@@ -574,7 +587,7 @@ export default function ComprasPage() {
               </select>
             </div>
           </div>
-          <div className="space-y-1.5">
+          {fRem.tipo === 'recepcion' && (<div className="space-y-1.5">
             <Label>Contra orden de compra (opcional)</Label>
             <select value={fRem.orden_compra_id} onChange={e => setFRem({ ...fRem, orden_compra_id: e.target.value })}
               className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm bg-white">
@@ -583,7 +596,7 @@ export default function ComprasPage() {
                 <option key={o.id} value={o.id}>OC-{String(o.numero).padStart(4, '0')} · {o.fecha}</option>)}
             </select>
             <p className="text-[11px] text-neutral-400">Con OC: se precargan las líneas pendientes (editables — cargá lo que REALMENTE llegó).</p>
-          </div>
+          </div>)}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label>Nº remito del proveedor</Label><Input value={fRem.numero_proveedor} onChange={e => setFRem({ ...fRem, numero_proveedor: e.target.value })} placeholder="0001-00012345" /></div>
             <div className="space-y-1.5"><Label>Observaciones</Label><Input value={fRem.observaciones} onChange={e => setFRem({ ...fRem, observaciones: e.target.value })} placeholder="Llegó sin frío..." /></div>
