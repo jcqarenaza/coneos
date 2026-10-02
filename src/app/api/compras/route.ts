@@ -332,6 +332,48 @@ export async function POST(request: Request) {
       return err('No se pudo crear el remito', 500)
     }
     const nuevoId = (data as { id?: string } | null)?.id
+    // JC 02/10: UN PASO — las líneas vienen en el mismo acto (sin OC).
+    // Se validan TODAS antes de crear nada; si una inserción fallara,
+    // se limpia el borrador entero (no nace manco).
+    const itemsDirectos: Array<Record<string, unknown>> = (!orden_compra_id && Array.isArray(body.items)) ? body.items : []
+    if (itemsDirectos.length && nuevoId) {
+      for (const it of itemsDirectos) {
+        const cant = Number(it.cantidad)
+        const cb = Number(it.costo_bulto ?? 0)
+        if (!it.articulo_id || !isFinite(cant) || cant <= 0 || !isFinite(cb) || cb < 0) {
+          await supabase.from('remitos_compra').delete().eq('id', nuevoId).eq('empresa_id', empresaId)
+          return err('Hay una línea incompleta — revisala', 400)
+        }
+        const { data: art } = await supabase.from('articulos')
+          .select('id').eq('id', String(it.articulo_id)).eq('empresa_id', empresaId).eq('activo', true).is('deleted_at', null).maybeSingle()
+        if (!art) {
+          await supabase.from('remitos_compra').delete().eq('id', nuevoId).eq('empresa_id', empresaId)
+          return err('Una línea tiene un artículo inactivo', 409)
+        }
+        let factor = 1
+        if (it.presentacion_id) {
+          const { data: pres } = await supabase.from('articulo_presentaciones_compra')
+            .select('factor').eq('id', String(it.presentacion_id)).eq('empresa_id', empresaId)
+            .eq('articulo_id', String(it.articulo_id)).eq('activo', true).maybeSingle()
+          if (!pres) {
+            await supabase.from('remitos_compra').delete().eq('id', nuevoId).eq('empresa_id', empresaId)
+            return err('Una presentación no corresponde a su artículo', 409)
+          }
+          factor = Number(pres.factor)
+        }
+        const { error: ei } = await supabase.from('remitos_compra_items').insert({
+          empresa_id: empresaId, remito_id: nuevoId,
+          articulo_id: it.articulo_id, presentacion_id: it.presentacion_id || null,
+          cantidad: cant, factor_snap: factor, cantidad_operativa: cant * factor,
+          costo_unitario: cb / factor,
+        })
+        if (ei) {
+          await supabase.from('remitos_compra_items').delete().eq('remito_id', nuevoId).eq('empresa_id', empresaId)
+          await supabase.from('remitos_compra').delete().eq('id', nuevoId).eq('empresa_id', empresaId)
+          return err('No se pudo cargar una línea — el remito no se creó', 500)
+        }
+      }
+    }
     // Con OC: precargar las líneas PENDIENTES (pedido - ya confirmado contra esa OC)
     if (orden_compra_id && nuevoId) {
       const [{ data: itemsOC }, { data: remitosOC }] = await Promise.all([

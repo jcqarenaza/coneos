@@ -60,6 +60,7 @@ export default function ComprasPage() {
   const [modalRemito, setModalRemito] = useState(false)
   const [remitoAbierto, setRemitoAbierto] = useState<string | null>(null)   // id del remito en pantalla
   const [fRem, setFRem] = useState({ tipo: 'recepcion', proveedor_id: '', sucursal_id: '', orden_compra_id: '', numero_proveedor: '', observaciones: '' })
+  const [remRenglones, setRemRenglones] = useState<{ articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }[]>([])
   const [lineaForm, setLineaForm] = useState<{ item_id: string | null; articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string } | null>(null)
   const [modalOC, setModalOC] = useState(false)
   const [ocDetalle, setOcDetalle] = useState<OC | null>(null)
@@ -159,8 +160,13 @@ export default function ComprasPage() {
   async function crearRemito() {
     setSaving(true)
     try {
+      const conOC = fRem.tipo === 'recepcion' && !!fRem.orden_compra_id
       const d = await api({ accion: 'remito_crear', tipo: fRem.tipo, proveedor_id: fRem.proveedor_id, sucursal_id: fRem.sucursal_id,
-        orden_compra_id: fRem.tipo === 'devolucion' ? null : (fRem.orden_compra_id || null), numero_proveedor: fRem.numero_proveedor, observaciones: fRem.observaciones })
+        orden_compra_id: conOC ? fRem.orden_compra_id : null, numero_proveedor: fRem.numero_proveedor, observaciones: fRem.observaciones,
+        items: conOC ? [] : remRenglones.filter(remRenglonCompleto).map(r => ({
+          articulo_id: r.articulo_id, presentacion_id: r.presentacion_id || null,
+          cantidad: r.cantidad, costo_bulto: r.costo_bulto || '0',
+        })) })
       setModalRemito(false); await recargar()
       if (d.id) setRemitoAbierto(String(d.id))
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo crear') } finally { setSaving(false) }
@@ -243,6 +249,9 @@ export default function ComprasPage() {
     anulado: { label: 'Anulado', cls: 'bg-neutral-100 text-neutral-400' },
   }
   const fmtU = (n: number) => Number(n).toLocaleString('es-AR', { maximumFractionDigits: 2 })
+  const remRenglonVacio = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !r.articulo_id && !r.presentacion_id && !r.cantidad && !r.costo_bulto
+  const remRenglonCompleto = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !!r.articulo_id && isFinite(Number(r.cantidad)) && Number(r.cantidad) > 0
+  const remRenglonIncompleto = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !remRenglonVacio(r) && !remRenglonCompleto(r)
   const itemsDe = (remitoId: string) => remitoItems.filter(i => i.remito_id === remitoId)
   const totalRemito = (remitoId: string) => itemsDe(remitoId).reduce((a, i) => a + Number(i.cantidad_operativa) * Number(i.costo_unitario), 0)
   // Validación VIVA del modal OC (JC 30/09): el cartel no espera al Guardar.
@@ -280,7 +289,7 @@ export default function ComprasPage() {
         </div>
         <div className="flex items-center gap-2">
           {tab === 'remitos' && (
-            <ConeButton onClick={() => { setFRem({ tipo: 'recepcion', proveedor_id: '', sucursal_id: '', orden_compra_id: '', numero_proveedor: '', observaciones: '' }); setModalRemito(true) }} icon={<Plus className="h-4 w-4" />}>
+            <ConeButton onClick={() => { setFRem({ tipo: 'recepcion', proveedor_id: '', sucursal_id: '', orden_compra_id: '', numero_proveedor: '', observaciones: '' }); setRemRenglones([{ articulo_id: '', presentacion_id: '', cantidad: '', costo_bulto: '' }]); setModalRemito(true) }} icon={<Plus className="h-4 w-4" />}>
               Nuevo remito
             </ConeButton>
           )}
@@ -559,7 +568,9 @@ export default function ComprasPage() {
       {/* ── Modal nuevo remito ── */}
       <ConeModal open={modalRemito} onClose={() => setModalRemito(false)} title={fRem.tipo === 'devolucion' ? 'Nueva devolución al proveedor' : 'Nuevo remito de recepción'}
         footer={<><ConeButton variant="outline" onClick={() => setModalRemito(false)}>Cancelar</ConeButton>
-          <ConeButton onClick={crearRemito} loading={saving} disabled={!fRem.proveedor_id || !fRem.sucursal_id}>Crear borrador</ConeButton></>}>
+          <ConeButton onClick={crearRemito} loading={saving}
+            disabled={!fRem.proveedor_id || !fRem.sucursal_id || (!(fRem.tipo === 'recepcion' && fRem.orden_compra_id) && (!remRenglones.some(remRenglonCompleto) || remRenglones.some(remRenglonIncompleto)))}>
+            Crear borrador</ConeButton></>}>
         <div className="space-y-4">
           <div className="flex gap-2">
             {(['recepcion', 'devolucion'] as const).map(t => (
@@ -597,6 +608,53 @@ export default function ComprasPage() {
             </select>
             <p className="text-[11px] text-neutral-400">Con OC: se precargan las líneas pendientes (editables — cargá lo que REALMENTE llegó).</p>
           </div>)}
+          {!(fRem.tipo === 'recepcion' && fRem.orden_compra_id) && (
+            <div className="space-y-2">
+              <Label>{fRem.tipo === 'devolucion' ? 'Qué se devuelve' : 'Qué llegó'} — en presentaciones de COMPRA</Label>
+              {remRenglones.map((r, i) => {
+                const presDeArt = presentaciones.filter(pr => pr.articulo_id === r.articulo_id && pr.activo)
+                const f = r.presentacion_id ? Number(presentaciones.find(x => x.id === r.presentacion_id)?.factor ?? 1) : 1
+                const q = Number(r.cantidad)
+                const cb = Number(r.costo_bulto)
+                return (
+                  <div key={i} className="bg-neutral-50 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select value={r.articulo_id}
+                        onChange={e => setRemRenglones(rr => rr.map((x, j) => j === i ? { ...x, articulo_id: e.target.value, presentacion_id: '' } : x))}
+                        className="flex-1 px-3 py-2 rounded-lg border border-neutral-200 text-sm bg-white min-w-0">
+                        <option value="">Artículo...</option>
+                        {articulos.filter(a => a.activo).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                      </select>
+                      <button onClick={() => setRemRenglones(rr => rr.filter((_, j) => j !== i))}
+                        className="text-neutral-300 hover:text-red-500 font-bold px-2">✕</button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <select value={r.presentacion_id}
+                        onChange={e => setRemRenglones(rr => rr.map((x, j) => j === i ? { ...x, presentacion_id: e.target.value } : x))}
+                        className="px-3 py-2 rounded-lg border border-neutral-200 text-sm bg-white min-w-0">
+                        <option value="">Unidad suelta</option>
+                        {presDeArt.map(pr => <option key={pr.id} value={pr.id}>{pr.nombre} ×{pr.factor}</option>)}
+                      </select>
+                      <Input value={r.cantidad} placeholder="Bultos"
+                        onChange={e => setRemRenglones(rr => rr.map((x, j) => j === i ? { ...x, cantidad: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') } : x))} inputMode="decimal" />
+                      <Input value={r.costo_bulto} placeholder="$ por bulto"
+                        onChange={e => setRemRenglones(rr => rr.map((x, j) => j === i ? { ...x, costo_bulto: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') } : x))} inputMode="decimal" />
+                    </div>
+                    {r.articulo_id && q > 0 && (
+                      <p className="text-[11px] text-neutral-400">= <span className="font-bold">{fmtU(q * f)} unidades</span>{isFinite(cb) && cb > 0 ? ` · $${fmtU(cb / f)} por unidad` : ''}</p>
+                    )}
+                    {remRenglonIncompleto(r) && (
+                      <p className="text-[11px] font-semibold text-red-500">{!r.articulo_id ? 'Elegí el artículo' : 'Poné la cantidad (mayor a 0)'} — o dejá el renglón vacío y se ignora</p>
+                    )}
+                  </div>
+                )
+              })}
+              <button onClick={() => setRemRenglones(rr => [...rr, { articulo_id: '', presentacion_id: '', cantidad: '', costo_bulto: '' }])}
+                className="text-xs px-3 py-1.5 rounded-full font-semibold border border-dashed border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600 transition-colors">
+                + Agregar renglón
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label>Nº remito del proveedor</Label><Input value={fRem.numero_proveedor} onChange={e => setFRem({ ...fRem, numero_proveedor: e.target.value })} placeholder="0001-00012345" /></div>
             <div className="space-y-1.5"><Label>Observaciones</Label><Input value={fRem.observaciones} onChange={e => setFRem({ ...fRem, observaciones: e.target.value })} placeholder="Llegó sin frío..." /></div>
