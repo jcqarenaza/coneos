@@ -77,6 +77,14 @@ export async function POST(request: Request) {
       supabase.from('productos')
         .select('id, nombre').eq('empresa_id', empresaId).order('nombre'),
     ])
+    const [{ data: remitos }, { data: remitoItems }] = await Promise.all([
+      supabase.from('remitos_compra')
+        .select('id, numero, numero_proveedor, proveedor_id, sucursal_id, orden_compra_id, tipo, fecha, estado, confirmado_at, observaciones')
+        .eq('empresa_id', empresaId).order('numero', { ascending: false }).limit(100),
+      supabase.from('remitos_compra_items')
+        .select('id, remito_id, articulo_id, presentacion_id, cantidad, factor_snap, cantidad_operativa, costo_unitario, cantidad_pedida')
+        .eq('empresa_id', empresaId),
+    ])
     const [{ data: sucursales }, { data: ocs }, { data: ocItems }] = await Promise.all([
       supabase.from('sucursales').select('id, nombre').eq('empresa_id', empresaId).order('nombre'),
       supabase.from('ordenes_compra')
@@ -86,7 +94,7 @@ export async function POST(request: Request) {
         .select('id, orden_compra_id, articulo_id, presentacion_id, cantidad, costo_previsto')
         .eq('empresa_id', empresaId),
     ])
-    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems })
+    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems, remitos, remito_items: remitoItems })
   }
 
   // ── PROVEEDORES ──
@@ -298,6 +306,139 @@ export async function POST(request: Request) {
       .eq('id', id).eq('empresa_id', empresaId).eq('estado', 'abierta')
       .select('id')
     if (!upd?.length) return err('Solo se puede anular una orden ABIERTA', 409)
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── REMITOS (T4-A, GO CTO 30/09): el BORRADOR es documento editable —
+  // CERO stock acá. ingresar_remito_stock (T4-B) es el ÚNICO escritor.
+  // Los snapshots del borrador son VISTA PREVIA: la RPC los re-congela
+  // al confirmar (ahí "congelado" empieza a significar algo).
+  if (accion === 'remito_crear') {
+    const { proveedor_id, sucursal_id, orden_compra_id, numero_proveedor, observaciones } = body
+    if (!proveedor_id) return err('Elegí el proveedor')
+    if (!sucursal_id) return err('Elegí la sucursal que recibe')
+    const { data, error: e } = await supabase.rpc('crear_remito_borrador', {
+      p_empresa_id: empresaId, p_proveedor_id: proveedor_id, p_sucursal_id: sucursal_id,
+      p_orden_compra_id: orden_compra_id || null,
+      p_numero_proveedor: numero_proveedor ?? null, p_observaciones: observaciones ?? null,
+    })
+    if (e) {
+      const m = e.message ?? ''
+      if (m.includes('PROVEEDOR_INVALIDO')) return err('Ese proveedor no está activo en tu empresa', 409)
+      if (m.includes('SUCURSAL_INVALIDA')) return err('Esa sucursal no es de tu empresa', 409)
+      if (m.includes('OC_INVALIDA')) return err('Esa orden no es de este proveedor o ya no puede recibir', 409)
+      return err('No se pudo crear el remito', 500)
+    }
+    const nuevoId = (data as { id?: string } | null)?.id
+    // Con OC: precargar las líneas PENDIENTES (pedido - ya confirmado contra esa OC)
+    if (orden_compra_id && nuevoId) {
+      const [{ data: itemsOC }, { data: remitosOC }] = await Promise.all([
+        supabase.from('ordenes_compra_items')
+          .select('articulo_id, presentacion_id, cantidad, costo_previsto')
+          .eq('orden_compra_id', orden_compra_id).eq('empresa_id', empresaId),
+        supabase.from('remitos_compra')
+          .select('id').eq('orden_compra_id', orden_compra_id).eq('empresa_id', empresaId).eq('estado', 'confirmado'),
+      ])
+      const idsConf = (remitosOC ?? []).map(r => r.id)
+      const { data: yaRecibido } = idsConf.length
+        ? await supabase.from('remitos_compra_items')
+            .select('articulo_id, presentacion_id, cantidad').in('remito_id', idsConf).eq('empresa_id', empresaId)
+        : { data: [] }
+      const { data: presTodas } = await supabase.from('articulo_presentaciones_compra')
+        .select('id, factor').eq('empresa_id', empresaId)
+      const factorDe = (pid: string | null) => pid ? Number(presTodas?.find(x => x.id === pid)?.factor ?? 1) : 1
+      for (const it of itemsOC ?? []) {
+        const recibido = (yaRecibido ?? [])
+          .filter(y => y.articulo_id === it.articulo_id && (y.presentacion_id ?? null) === (it.presentacion_id ?? null))
+          .reduce((a, y) => a + Number(y.cantidad), 0)
+        const pendiente = Number(it.cantidad) - recibido
+        if (pendiente <= 0) continue
+        const f = factorDe(it.presentacion_id ?? null)
+        await supabase.from('remitos_compra_items').insert({
+          empresa_id: empresaId, remito_id: nuevoId,
+          articulo_id: it.articulo_id, presentacion_id: it.presentacion_id ?? null,
+          cantidad: pendiente, factor_snap: f, cantidad_operativa: pendiente * f,
+          costo_unitario: it.costo_previsto != null ? Number(it.costo_previsto) / f : 0,
+          cantidad_pedida: Number(it.cantidad),
+        })
+      }
+    }
+    return NextResponse.json({ ok: true, ...((data ?? {}) as Record<string, unknown>) })
+  }
+
+  if (accion === 'remito_item_guardar') {
+    const { remito_id, item_id, articulo_id, presentacion_id, cantidad, costo_bulto } = body
+    if (!remito_id || !articulo_id) return err('Datos requeridos')
+    const cant = Number(cantidad)
+    if (!isFinite(cant) || cant <= 0) return err('La cantidad debe ser mayor a 0')
+    const cb = Number(costo_bulto)
+    if (!isFinite(cb) || cb < 0) return err('El costo no es válido')
+    // Solo borradores se editan — y de la empresa de la sesión
+    const { data: rem } = await supabase.from('remitos_compra')
+      .select('id').eq('id', remito_id).eq('empresa_id', empresaId).eq('estado', 'borrador').maybeSingle()
+    if (!rem) return err('Solo se puede editar un remito en borrador', 409)
+    const { data: art } = await supabase.from('articulos')
+      .select('id').eq('id', articulo_id).eq('empresa_id', empresaId).eq('activo', true).is('deleted_at', null).maybeSingle()
+    if (!art) return err('Ese artículo no está activo en tu empresa', 409)
+    let factor = 1
+    if (presentacion_id) {
+      const { data: pres } = await supabase.from('articulo_presentaciones_compra')
+        .select('factor').eq('id', presentacion_id).eq('empresa_id', empresaId)
+        .eq('articulo_id', articulo_id).eq('activo', true).maybeSingle()
+      if (!pres) return err('Esa presentación no corresponde al artículo', 409)
+      factor = Number(pres.factor)
+    }
+    const fila = {
+      articulo_id, presentacion_id: presentacion_id || null,
+      cantidad: cant, factor_snap: factor, cantidad_operativa: cant * factor,
+      costo_unitario: cb / factor,   // el costo viaja por BULTO; se guarda por unidad operativa
+    }
+    if (item_id) {
+      const { data: upd } = await supabase.from('remitos_compra_items')
+        .update(fila).eq('id', item_id).eq('remito_id', remito_id).eq('empresa_id', empresaId).select('id')
+      if (!upd?.length) return err('Línea no encontrada', 404)
+    } else {
+      const { error: e } = await supabase.from('remitos_compra_items')
+        .insert({ empresa_id: empresaId, remito_id, ...fila })
+      if (e) return err('No se pudo agregar la línea', 500)
+    }
+    return NextResponse.json({ ok: true })
+  }
+
+  if (accion === 'remito_item_borrar') {
+    const { remito_id, item_id } = body
+    if (!remito_id || !item_id) return err('Datos requeridos')
+    const { data: rem } = await supabase.from('remitos_compra')
+      .select('id').eq('id', remito_id).eq('empresa_id', empresaId).eq('estado', 'borrador').maybeSingle()
+    if (!rem) return err('Solo se puede editar un remito en borrador', 409)
+    await supabase.from('remitos_compra_items')
+      .delete().eq('id', item_id).eq('remito_id', remito_id).eq('empresa_id', empresaId)
+    return NextResponse.json({ ok: true })
+  }
+
+  if (accion === 'remito_borrar') {
+    // Un BORRADOR no es historial — borrado físico permitido (confirmados jamás)
+    const { id } = body
+    if (!id) return err('Datos requeridos')
+    const { data: rem } = await supabase.from('remitos_compra')
+      .select('id').eq('id', id).eq('empresa_id', empresaId).eq('estado', 'borrador').maybeSingle()
+    if (!rem) return err('Solo se puede descartar un remito en borrador', 409)
+    await supabase.from('remitos_compra_items').delete().eq('remito_id', id).eq('empresa_id', empresaId)
+    await supabase.from('remitos_compra').delete().eq('id', id).eq('empresa_id', empresaId).eq('estado', 'borrador')
+    return NextResponse.json({ ok: true })
+  }
+
+  if (accion === 'remito_editar_cab') {
+    const { id, numero_proveedor, observaciones, fecha } = body
+    if (!id) return err('Datos requeridos')
+    const { data: upd } = await supabase.from('remitos_compra')
+      .update({
+        numero_proveedor: numero_proveedor?.trim() || null,
+        observaciones: observaciones?.trim() || null,
+        ...(fecha ? { fecha } : {}),
+      })
+      .eq('id', id).eq('empresa_id', empresaId).eq('estado', 'borrador').select('id')
+    if (!upd?.length) return err('Solo se puede editar un remito en borrador', 409)
     return NextResponse.json({ ok: true })
   }
 
