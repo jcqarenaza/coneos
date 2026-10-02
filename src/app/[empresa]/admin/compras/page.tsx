@@ -183,7 +183,7 @@ export default function ComprasPage() {
   async function confirmarRemito(id: string) {
     const lineas = itemsDe(id)
     const unidades = lineas.reduce((a, i) => a + Number(i.cantidad_operativa), 0)
-    if (!confirm(`¿Confirmar la recepción? Se suman ${unidades} unidades al stock. Este paso no se deshace.`)) return
+    if (!confirm(`¿Confirmar la recepción? Se suman ${fmtU(unidades)} unidades al stock. Este paso no se deshace.`)) return
     setSaving(true)
     try {
       const d = await api({ accion: 'remito_confirmar', id })
@@ -239,6 +239,7 @@ export default function ComprasPage() {
     confirmado: { label: 'Confirmado', cls: 'bg-green-50 text-green-600' },
     anulado: { label: 'Anulado', cls: 'bg-neutral-100 text-neutral-400' },
   }
+  const fmtU = (n: number) => Number(n).toLocaleString('es-AR', { maximumFractionDigits: 2 })
   const itemsDe = (remitoId: string) => remitoItems.filter(i => i.remito_id === remitoId)
   const totalRemito = (remitoId: string) => itemsDe(remitoId).reduce((a, i) => a + Number(i.cantidad_operativa) * Number(i.costo_unitario), 0)
   // Validación VIVA del modal OC (JC 30/09): el cartel no espera al Guardar.
@@ -466,7 +467,7 @@ export default function ComprasPage() {
                   <div className="min-w-0">
                     <p className="font-semibold text-neutral-800 truncate">{nombreArticulo(li.articulo_id)}</p>
                     <p className="text-xs text-neutral-400">
-                      {Number(li.cantidad)} × {nombrePresentacion(li.presentacion_id) ?? 'unidad suelta'} = <span className="font-bold text-neutral-600">{Number(li.cantidad_operativa)} u.</span>
+                      {fmtU(Number(li.cantidad))} × {nombrePresentacion(li.presentacion_id) ?? 'unidad suelta'} = <span className="font-bold text-neutral-600">{fmtU(Number(li.cantidad_operativa))} u.</span>
                       {Number(li.costo_unitario) > 0 ? ` · $${Number(li.costo_unitario).toLocaleString('es-AR', { maximumFractionDigits: 2 })}/u.` : ''}
                       {li.cantidad_pedida != null ? ` · pedido: ${Number(li.cantidad_pedida)}` : ''}
                     </p>
@@ -519,7 +520,7 @@ export default function ComprasPage() {
                   </div>
                   {lineaForm.articulo_id && q > 0 && (
                     <p className="text-[11px] text-neutral-400">
-                      = <span className="font-bold">{q * f} unidades</span>{isFinite(cb) && cb > 0 ? ` · $${(cb / f).toLocaleString('es-AR', { maximumFractionDigits: 2 })} por unidad` : ''} — el factor se congela recién al confirmar
+                      = <span className="font-bold">{fmtU(q * f)} unidades</span>{isFinite(cb) && cb > 0 ? ` · $${(cb / f).toLocaleString('es-AR', { maximumFractionDigits: 2 })} por unidad` : ''} — el factor se congela recién al confirmar
                     </p>
                   )}
                   <div className="flex justify-end">
@@ -672,7 +673,7 @@ export default function ComprasPage() {
                   </div>
                   {r.articulo_id && q > 0 && (
                     <p className="text-[11px] text-neutral-400">
-                      = {q * f} {r.presentacion_id ? 'unidades operativas' : 'unidades'}{r.costo_previsto ? ` · previsto $${(q * Number(r.costo_previsto)).toLocaleString('es-AR')}` : ''}
+                      = {fmtU(q * f)} {r.presentacion_id ? 'unidades operativas' : 'unidades'}{r.costo_previsto ? ` · previsto $${(q * Number(r.costo_previsto)).toLocaleString('es-AR')}` : ''}
                     </p>
                   )}
                   {rIncompleto(r) && (
@@ -714,7 +715,7 @@ export default function ComprasPage() {
                     <p className="font-semibold text-neutral-800 truncate">{nombreArticulo(i.articulo_id)}</p>
                     <p className="text-xs text-neutral-400">
                       {Number(i.cantidad)} × {nombrePresentacion(i.presentacion_id) ?? 'unidad suelta'}
-                      {i.presentacion_id ? ` = ${Number(i.cantidad) * factorPresentacion(i.presentacion_id)} u.` : ''}
+                      {i.presentacion_id ? ` = ${fmtU(Number(i.cantidad) * factorPresentacion(i.presentacion_id))} u.` : ''}
                     </p>
                   </div>
                   <span className="font-bold text-neutral-700 flex-shrink-0">{i.costo_previsto != null ? `$${(Number(i.cantidad) * Number(i.costo_previsto)).toLocaleString('es-AR')}` : '—'}</span>
