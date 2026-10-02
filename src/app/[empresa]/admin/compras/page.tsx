@@ -180,7 +180,7 @@ export default function ComprasPage() {
           articulo_id: r.articulo_id, presentacion_id: r.presentacion_id || null,
           cantidad: r.cantidad, costo_bulto: r.costo_bulto || '0',
         })) })
-      setModalRemito(false); await recargar()
+      setModalRemito(false); setRemitoAbierto(null); await recargar()
       alert(`✅ REM-${String(d.numero).padStart(4, '0')} confirmado: ${d.lineas} líneas, ${fmtU(Number(d.unidades ?? 0))} unidades${d.oc_estado ? ` · OC → ${d.oc_estado}` : ''}`)
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo confirmar — nada quedó cargado') } finally { setSaving(false) }
   }
@@ -326,7 +326,7 @@ export default function ComprasPage() {
         </div>
         <div className="flex items-center gap-2">
           {tab === 'remitos' && (
-            <ConeButton onClick={() => { setFRem({ tipo: 'recepcion', proveedor_id: '', sucursal_id: '', orden_compra_id: '', numero_proveedor: '', observaciones: '' }); setRemRenglones([{ articulo_id: '', presentacion_id: '', cantidad: '', costo_bulto: '' }]); setModalRemito(true) }} icon={<Plus className="h-4 w-4" />}>
+            <ConeButton onClick={() => { setFRem({ tipo: 'recepcion', proveedor_id: '', sucursal_id: '', orden_compra_id: '', numero_proveedor: '', observaciones: '' }); setRemRenglones([{ articulo_id: '', presentacion_id: '', cantidad: '', costo_bulto: '' }]); setRemitoAbierto(null); setModalRemito(true) }} icon={<Plus className="h-4 w-4" />}>
               Nuevo remito
             </ConeButton>
           )}
