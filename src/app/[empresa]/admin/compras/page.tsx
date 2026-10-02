@@ -158,18 +158,31 @@ export default function ComprasPage() {
     catch (e) { alert(e instanceof Error ? e.message : 'No se pudo anular') }
   }
   async function crearRemito() {
+    // JC 02/10: UN ACTO. El confirm cuenta solo lo que mueve stock.
+    const esDev = fRem.tipo === 'devolucion'
+    const completos = remRenglones.filter(remRenglonCompleto)
+    const unidades = completos.filter(r => controla(r.articulo_id)).reduce((a, r) => {
+      const f = r.presentacion_id ? Number(presentaciones.find(x => x.id === r.presentacion_id)?.factor ?? 1) : 1
+      return a + Number(r.cantidad) * f
+    }, 0)
+    const sinControl = completos.length - completos.filter(r => controla(r.articulo_id)).length
+    const msj = unidades === 0
+      ? '¿Confirmar? Este remito solo DOCUMENTA (sus artículos no controlan stock) — no mueve ninguna unidad. No se deshace.'
+      : (esDev ? `¿Confirmar la DEVOLUCIÓN? Se restan ${fmtU(unidades)} unidades del stock.` : `¿Confirmar la recepción? Se suman ${fmtU(unidades)} unidades al stock.`)
+        + (sinControl > 0 ? ` (${sinControl} línea${sinControl > 1 ? 's' : ''} sin control solo documenta)` : '') + ' Este paso no se deshace.'
+    if (!confirm(msj)) return
     setSaving(true)
     try {
-      const conOC = fRem.tipo === 'recepcion' && !!fRem.orden_compra_id
-      const d = await api({ accion: 'remito_crear', tipo: fRem.tipo, proveedor_id: fRem.proveedor_id, sucursal_id: fRem.sucursal_id,
-        orden_compra_id: conOC ? fRem.orden_compra_id : null, numero_proveedor: fRem.numero_proveedor, observaciones: fRem.observaciones,
-        items: conOC ? [] : remRenglones.filter(remRenglonCompleto).map(r => ({
+      const d = await api({ accion: 'remito_crear', confirmar: true, tipo: fRem.tipo, proveedor_id: fRem.proveedor_id, sucursal_id: fRem.sucursal_id,
+        orden_compra_id: fRem.tipo === 'recepcion' ? (fRem.orden_compra_id || null) : null,
+        numero_proveedor: fRem.numero_proveedor, observaciones: fRem.observaciones,
+        items: completos.map(r => ({
           articulo_id: r.articulo_id, presentacion_id: r.presentacion_id || null,
           cantidad: r.cantidad, costo_bulto: r.costo_bulto || '0',
         })) })
       setModalRemito(false); await recargar()
-      if (d.id) setRemitoAbierto(String(d.id))
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo crear') } finally { setSaving(false) }
+      alert(`✅ REM-${String(d.numero).padStart(4, '0')} confirmado: ${d.lineas} líneas, ${fmtU(Number(d.unidades ?? 0))} unidades${d.oc_estado ? ` · OC → ${d.oc_estado}` : ''}`)
+    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo confirmar — nada quedó cargado') } finally { setSaving(false) }
   }
   async function guardarLinea() {
     if (!lineaForm || !remitoAbierto) return
@@ -186,17 +199,24 @@ export default function ComprasPage() {
     try { await api({ accion: 'remito_item_borrar', remito_id: remitoAbierto, item_id: itemId }); await recargar() }
     catch (e) { alert(e instanceof Error ? e.message : 'No se pudo borrar') }
   }
-  async function confirmarRemito(id: string) {
+  function msjConfirmar(id: string) {
     const lineas = itemsDe(id)
-    const unidades = lineas.reduce((a, i) => a + Number(i.cantidad_operativa), 0)
+    const unidades = unidadesQueMueven(lineas)
+    const sinControl = lineas.length - lineas.filter(l => controla(l.articulo_id)).length
     const esDev = remitos.find(x => x.id === id)?.tipo === 'devolucion'
-    if (!confirm(esDev
-      ? `¿Confirmar la DEVOLUCIÓN? Se restan ${fmtU(unidades)} unidades del stock. Este paso no se deshace.`
-      : `¿Confirmar la recepción? Se suman ${fmtU(unidades)} unidades al stock. Este paso no se deshace.`)) return
+    if (unidades === 0) return '¿Confirmar? Este remito solo DOCUMENTA (sus artículos no controlan stock) — no mueve ninguna unidad. No se deshace.'
+    const base = esDev
+      ? `¿Confirmar la DEVOLUCIÓN? Se restan ${fmtU(unidades)} unidades del stock.`
+      : `¿Confirmar la recepción? Se suman ${fmtU(unidades)} unidades al stock.`
+    return base + (sinControl > 0 ? ` (${sinControl} línea${sinControl > 1 ? 's' : ''} sin control de stock solo documenta)` : '') + ' Este paso no se deshace.'
+  }
+  async function confirmarRemito(id: string, silencioso = false) {
+    if (!silencioso && !confirm(msjConfirmar(id))) return
     setSaving(true)
     try {
       const d = await api({ accion: 'remito_confirmar', id })
       await recargar()
+      setRemitoAbierto(null)  // JC 02/10: confirmado -> de vuelta a la lista, se ven todos
       alert(`✅ Recepción confirmada: ${d.lineas} líneas, ${d.unidades} unidades al stock${d.oc_estado ? ` · OC → ${d.oc_estado}` : ''}`)
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo confirmar') } finally { setSaving(false) }
   }
@@ -249,10 +269,27 @@ export default function ComprasPage() {
     anulado: { label: 'Anulado', cls: 'bg-neutral-100 text-neutral-400' },
   }
   const fmtU = (n: number) => Number(n).toLocaleString('es-AR', { maximumFractionDigits: 2 })
+  function pendientesDeOC(ocId: string) {
+    const idsConf = remitos.filter(r => r.orden_compra_id === ocId && r.estado === 'confirmado' && r.tipo === 'recepcion').map(r => r.id)
+    const recibidos = remitoItems.filter(i => idsConf.includes(i.remito_id))
+    return ocItems.filter(i => i.orden_compra_id === ocId).map(oi => {
+      const rec = recibidos.filter(ri => ri.articulo_id === oi.articulo_id && (ri.presentacion_id ?? null) === (oi.presentacion_id ?? null))
+        .reduce((a, ri) => a + Number(ri.cantidad), 0)
+      const pend = Number(oi.cantidad) - rec
+      const f = oi.presentacion_id ? Number(presentaciones.find(x => x.id === oi.presentacion_id)?.factor ?? 1) : 1
+      return pend > 0 ? {
+        articulo_id: oi.articulo_id, presentacion_id: oi.presentacion_id ?? '',
+        cantidad: String(pend), costo_bulto: oi.costo_previsto != null ? String(Number(oi.costo_previsto)) : '',
+      } : null
+    }).filter((x): x is { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string } => x !== null)
+  }
   const remRenglonVacio = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !r.articulo_id && !r.presentacion_id && !r.cantidad && !r.costo_bulto
   const remRenglonCompleto = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !!r.articulo_id && isFinite(Number(r.cantidad)) && Number(r.cantidad) > 0
   const remRenglonIncompleto = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !remRenglonVacio(r) && !remRenglonCompleto(r)
   const itemsDe = (remitoId: string) => remitoItems.filter(i => i.remito_id === remitoId)
+  const controla = (articuloId: string) => articulos.find(a => a.id === articuloId)?.controla_stock !== false
+  const unidadesQueMueven = (lineas: { articulo_id: string; cantidad_operativa: number }[]) =>
+    lineas.filter(l => controla(l.articulo_id)).reduce((a, l) => a + Number(l.cantidad_operativa), 0)
   const totalRemito = (remitoId: string) => itemsDe(remitoId).reduce((a, i) => a + Number(i.cantidad_operativa) * Number(i.costo_unitario), 0)
   // Validación VIVA del modal OC (JC 30/09): el cartel no espera al Guardar.
   // Vacío total = se ignora; a medias = incompleto (marca roja al instante).
@@ -463,15 +500,7 @@ export default function ComprasPage() {
                   {nombreProveedor(r.proveedor_id)} · 📍 {nombreSucursal(r.sucursal_id)} · {r.fecha}{r.numero_proveedor ? ` · Nº prov. ${r.numero_proveedor}` : ''}
                 </p>
               </div>
-              {esBorrador && (
-                <div className="flex items-center gap-2">
-                  <button onClick={() => descartarRemito(r.id)}
-                    className="px-3 py-1.5 rounded-xl border border-red-200 text-red-500 text-xs font-bold hover:bg-red-50 transition-colors">Descartar</button>
-                  <ConeButton onClick={() => confirmarRemito(r.id)} loading={saving} disabled={lineas.length === 0 || !!lineaForm}>
-                    ✅ Confirmar recepción
-                  </ConeButton>
-                </div>
-              )}
+              {/* JC 02/10: el borrador voló de la UI — la ficha es de lectura */}
             </div>
 
             <div className="space-y-1.5">
@@ -486,25 +515,14 @@ export default function ComprasPage() {
                       {li.cantidad_pedida != null ? ` · pedido: ${Number(li.cantidad_pedida)}` : ''}
                     </p>
                   </div>
-                  {esBorrador && (
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button onClick={() => setLineaForm({ item_id: li.id, articulo_id: li.articulo_id, presentacion_id: li.presentacion_id ?? '', cantidad: String(li.cantidad), costo_bulto: String(Number(li.costo_unitario) * Number(li.factor_snap)) })}
-                        className="text-neutral-300 hover:text-neutral-600 p-1"><Pencil className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => borrarLinea(li.id)} className="text-neutral-300 hover:text-red-500 font-bold px-1.5">✕</button>
-                    </div>
-                  )}
+
                 </div>
               ))}
             </div>
 
-            {esBorrador && !lineaForm && (
-              <button onClick={() => setLineaForm({ item_id: null, articulo_id: '', presentacion_id: '', cantidad: '', costo_bulto: '' })}
-                className="text-xs px-3 py-1.5 rounded-full font-semibold border border-dashed border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600 transition-colors">
-                + Agregar línea
-              </button>
-            )}
 
-            {esBorrador && lineaForm && (() => {
+
+            {false && lineaForm && (() => {
               const presDeArt = presentaciones.filter(pr => pr.articulo_id === lineaForm.articulo_id && pr.activo)
               const f = lineaForm.presentacion_id ? Number(presentaciones.find(x => x.id === lineaForm.presentacion_id)?.factor ?? 1) : 1
               const q = Number(lineaForm.cantidad)
@@ -551,11 +569,7 @@ export default function ComprasPage() {
                 <span>Total</span><span>${totalRemito(r.id).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
             )}
-            {esBorrador && (
-              <p className="text-[11px] text-neutral-400 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
-                📋 Borrador: todavía no movió stock. Al confirmar, la recepción impacta el stock en un solo acto — todo o nada, y el factor queda congelado para siempre.
-              </p>
-            )}
+            {r.tipo === 'confirmado_nunca' && null}
             {r.estado === 'confirmado' && (
               <p className="text-[11px] text-green-600 bg-green-50 border border-green-100 rounded-xl px-3 py-2">
                 ✅ Recepción confirmada{r.confirmado_at ? ` el ${new Date(r.confirmado_at).toLocaleString('es-AR')}` : ''} — stock impactado, snapshots congelados. Este documento ya no se edita.
@@ -569,8 +583,8 @@ export default function ComprasPage() {
       <ConeModal open={modalRemito} onClose={() => setModalRemito(false)} title={fRem.tipo === 'devolucion' ? 'Nueva devolución al proveedor' : 'Nuevo remito de recepción'}
         footer={<><ConeButton variant="outline" onClick={() => setModalRemito(false)}>Cancelar</ConeButton>
           <ConeButton onClick={crearRemito} loading={saving}
-            disabled={!fRem.proveedor_id || !fRem.sucursal_id || (!(fRem.tipo === 'recepcion' && fRem.orden_compra_id) && (!remRenglones.some(remRenglonCompleto) || remRenglones.some(remRenglonIncompleto)))}>
-            Crear borrador</ConeButton></>}>
+            disabled={!fRem.proveedor_id || !fRem.sucursal_id || !remRenglones.some(remRenglonCompleto) || remRenglones.some(remRenglonIncompleto)}>
+            {fRem.tipo === 'devolucion' ? '↩ Confirmar devolución' : '✅ Confirmar recepción'}</ConeButton></>}>
         <div className="space-y-4">
           <div className="flex gap-2">
             {(['recepcion', 'devolucion'] as const).map(t => (
@@ -600,15 +614,19 @@ export default function ComprasPage() {
           </div>
           {fRem.tipo === 'recepcion' && (<div className="space-y-1.5">
             <Label>Contra orden de compra (opcional)</Label>
-            <select value={fRem.orden_compra_id} onChange={e => setFRem({ ...fRem, orden_compra_id: e.target.value })}
+            <select value={fRem.orden_compra_id} onChange={e => {
+              const ocId = e.target.value
+              setFRem({ ...fRem, orden_compra_id: ocId })
+              setRemRenglones(ocId ? pendientesDeOC(ocId) : [{ articulo_id: '', presentacion_id: '', cantidad: '', costo_bulto: '' }])
+            }}
               className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm bg-white">
               <option value="">Sin OC — recepción directa</option>
               {ocs.filter(o => o.proveedor_id === fRem.proveedor_id && (o.estado === 'abierta' || o.estado === 'parcial')).map(o =>
                 <option key={o.id} value={o.id}>OC-{String(o.numero).padStart(4, '0')} · {o.fecha}</option>)}
             </select>
-            <p className="text-[11px] text-neutral-400">Con OC: se precargan las líneas pendientes (editables — cargá lo que REALMENTE llegó).</p>
+            <p className="text-[11px] text-neutral-400">Con OC: los pendientes se cargan abajo, EDITABLES — ajustá a lo que REALMENTE llegó; el faltante queda pendiente en la OC.</p>
           </div>)}
-          {!(fRem.tipo === 'recepcion' && fRem.orden_compra_id) && (
+          {(
             <div className="space-y-2">
               <Label>{fRem.tipo === 'devolucion' ? 'Qué se devuelve' : 'Qué llegó'} — en presentaciones de COMPRA</Label>
               {remRenglones.map((r, i) => {

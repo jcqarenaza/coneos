@@ -335,8 +335,13 @@ export async function POST(request: Request) {
     // JC 02/10: UN PASO — las líneas vienen en el mismo acto (sin OC).
     // Se validan TODAS antes de crear nada; si una inserción fallara,
     // se limpia el borrador entero (no nace manco).
-    const itemsDirectos: Array<Record<string, unknown>> = (!orden_compra_id && Array.isArray(body.items)) ? body.items : []
+    const confirmarYa = body.confirmar === true
+    // JC 02/10: con OC los items también vienen del cliente (los pendientes
+    // editados en el modal — lo que REALMENTE llegó)
+    const itemsDirectos: Array<Record<string, unknown>> = Array.isArray(body.items) ? body.items : []
     if (itemsDirectos.length && nuevoId) {
+      // Pre-validación del entero de reventa (mejor rebotar ANTES de crear
+      // nada que limpiar después — la RPC lo re-verifica igual)
       for (const it of itemsDirectos) {
         const cant = Number(it.cantidad)
         const cb = Number(it.costo_bulto ?? 0)
@@ -345,7 +350,7 @@ export async function POST(request: Request) {
           return err('Hay una línea incompleta — revisala', 400)
         }
         const { data: art } = await supabase.from('articulos')
-          .select('id').eq('id', String(it.articulo_id)).eq('empresa_id', empresaId).eq('activo', true).is('deleted_at', null).maybeSingle()
+          .select('id, producto_id, controla_stock').eq('id', String(it.articulo_id)).eq('empresa_id', empresaId).eq('activo', true).is('deleted_at', null).maybeSingle()
         if (!art) {
           await supabase.from('remitos_compra').delete().eq('id', nuevoId).eq('empresa_id', empresaId)
           return err('Una línea tiene un artículo inactivo', 409)
@@ -361,6 +366,10 @@ export async function POST(request: Request) {
           }
           factor = Number(pres.factor)
         }
+        if (art.controla_stock && art.producto_id && !Number.isInteger(cant * factor)) {
+          await supabase.from('remitos_compra').delete().eq('id', nuevoId).eq('empresa_id', empresaId)
+          return err('Una línea de REVENTA da unidades fraccionadas — lo que se vende se cuenta entero (los insumos sí aceptan 5.2 kg)', 400)
+        }
         const { error: ei } = await supabase.from('remitos_compra_items').insert({
           empresa_id: empresaId, remito_id: nuevoId,
           articulo_id: it.articulo_id, presentacion_id: it.presentacion_id || null,
@@ -374,8 +383,28 @@ export async function POST(request: Request) {
         }
       }
     }
-    // Con OC: precargar las líneas PENDIENTES (pedido - ya confirmado contra esa OC)
-    if (orden_compra_id && nuevoId) {
+    if (confirmarYa && nuevoId) {
+      // ═══ EL ACTO ÚNICO (JC 02/10: el borrador voló de la UI — vive
+      // microsegundos como mecanismo del claim). Si la RPC rebota, se
+      // limpia TODO: no queda documento manco, el modal sigue abierto.
+      const { data: conf, error: ec } = await supabase.rpc('ingresar_remito_stock', {
+        p_empresa_id: empresaId, p_remito_id: nuevoId,
+      })
+      if (ec) {
+        await supabase.from('remitos_compra_items').delete().eq('remito_id', nuevoId).eq('empresa_id', empresaId)
+        await supabase.from('remitos_compra').delete().eq('id', nuevoId).eq('empresa_id', empresaId).eq('estado', 'borrador')
+        const m = ec.message ?? ''
+        if (m.includes('SIN_LINEAS')) return err('Cargá al menos una línea', 400)
+        if (m.includes('LINEA_NO_ENTERA')) return err('Una línea de REVENTA da unidades fraccionadas — lo que se vende se cuenta entero', 400)
+        if (m.includes('DEVOLUCION_SIN_STOCK')) return err('No hay stock suficiente para devolver esa cantidad — nada se movió', 409)
+        if (m.includes('ARTICULO_INVALIDO')) return err('Una línea tiene un artículo inactivo', 409)
+        if (m.includes('PRESENTACION_INVALIDA')) return err('Una presentación no corresponde a su artículo', 409)
+        return err('No se pudo confirmar — nada quedó cargado', 500)
+      }
+      return NextResponse.json({ ok: true, ...((data ?? {}) as Record<string, unknown>), ...((conf ?? {}) as Record<string, unknown>) })
+    }
+    // Con OC sin items del cliente: precarga legado (la UI nueva ya no lo usa)
+    if (orden_compra_id && nuevoId && !itemsDirectos.length) {
       const [{ data: itemsOC }, { data: remitosOC }] = await Promise.all([
         supabase.from('ordenes_compra_items')
           .select('articulo_id, presentacion_id, cantidad, costo_previsto')
