@@ -399,7 +399,10 @@ export async function POST(request: Request) {
         if (m.includes('DEVOLUCION_SIN_STOCK')) return err('No hay stock suficiente para devolver esa cantidad — nada se movió', 409)
         if (m.includes('ARTICULO_INVALIDO')) return err('Una línea tiene un artículo inactivo', 409)
         if (m.includes('PRESENTACION_INVALIDA')) return err('Una presentación no corresponde a su artículo', 409)
-        return err('No se pudo confirmar — nada quedó cargado', 500)
+        if (m.includes('REMITO_NO_CONFIRMABLE')) return err('El remito ya fue confirmado o no se puede confirmar', 409)
+        if (m.includes('CANTIDAD_INVALIDA')) return err('Una línea tiene cantidad inválida', 400)
+        // Diagnóstico: el error desconocido muestra su causa cruda
+        return err(`No se pudo confirmar — nada quedó cargado (${m.slice(0, 160)})`, 500)
       }
       return NextResponse.json({ ok: true, ...((data ?? {}) as Record<string, unknown>), ...((conf ?? {}) as Record<string, unknown>) })
     }
