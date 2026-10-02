@@ -280,7 +280,7 @@ export default function ComprasPage() {
               <Download className="h-4 w-4" /> Importar del catálogo
             </button>
           )}
-          {tab !== 'ordenes' && (
+          {(tab === 'proveedores' || tab === 'articulos') && (
             <ConeButton onClick={() => {
               if (tab === 'proveedores') { setFProv({ nombre: '', razon_social: '', cuit: '', telefono: '', email: '', direccion: '', observaciones: '' }); setProvEdit(null); setModalProv(true) }
               else { setFArt({ nombre: '', tipo: 'insumo', unidad_stock: 'unidad', controla_stock: true, producto_id: '' }); setArtEdit(null); setModalArt(true) }
