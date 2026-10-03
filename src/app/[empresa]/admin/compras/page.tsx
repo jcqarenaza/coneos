@@ -879,8 +879,8 @@ export default function ComprasPage() {
           </div>
           <p className="text-[11px] text-neutral-400 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
             {fFact.tipo === 'nota_credito'
-              ? 'Al registrar nace el CRÉDITO en la cuenta corriente. La NC es documento financiero: la devolución física va por Remitos → Devolución.'
-              : 'Al registrar nace el CARGO en la cuenta corriente. Los renglones son el papel; el stock entró por los remitos. No se edita después (diferencias = NC).'}
+              ? 'Al registrar nace el CRÉDITO en la cuenta corriente — por devolución, descuento o acuerdo comercial. Si hubo devolución física, tildá su remito arriba.'
+              : 'Al registrar nace el CARGO en la cuenta corriente. El comprobante no se edita después — las diferencias se documentan con una NC.'}
           </p>
         </div>
       </ConeModal>
