@@ -15,7 +15,7 @@ interface Categoria { id: string; nombre: string; orden: number; activo: boolean
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean; visible_delivery: boolean; visible_mesa: boolean; visible_takeaway: boolean; controla_stock?: boolean }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null; visible_kiosk: boolean; es_novedad: boolean }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
-interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean; visible_kiosk: boolean; precio_adicional?: number | null }
+interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean; visible_kiosk: boolean; es_novedad?: boolean; precio_adicional?: number | null }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 
 function ImageUpload({ value, onChange, folder = 'productos' }: {
@@ -182,7 +182,7 @@ export default function CatalogoPage() {
   // Regla de oro F1.5: crear una dependencia faltante sin abandonar el flujo.
   const [volverA, setVolverA] = useState<'prod' | 'pres' | null>(null)
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
-  const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true, visible_kiosk: true, precio_adicional: 0 })
+  const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true, visible_kiosk: true, es_novedad: false, precio_adicional: 0 })
 
   // Una casa por dato (regla 3): los accesorios se gestionan en SU página;
   // acá se ocultan para que no existan dos editores del mismo dato.
@@ -476,14 +476,14 @@ export default function CatalogoPage() {
   }
 
   // Sabores
-  function openNewOp(grupoId?: string) { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupoId ?? grupos.find(g => !grupoAccesorioIds.has(g.id))?.id ?? '', orden: 1, activo: true, visible_kiosk: true }); setEditId(null); setModalOp(true) }
-  function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo, visible_kiosk: o.visible_kiosk, precio_adicional: Number(o.precio_adicional ?? 0) }); setEditId(o.id); setModalOp(true) }
+  function openNewOp(grupoId?: string) { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupoId ?? grupos.find(g => !grupoAccesorioIds.has(g.id))?.id ?? '', orden: 1, activo: true, visible_kiosk: true, es_novedad: false, precio_adicional: 0 }); setEditId(null); setModalOp(true) }
+  function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo, visible_kiosk: o.visible_kiosk, es_novedad: o.es_novedad === true, precio_adicional: Number(o.precio_adicional ?? 0) }); setEditId(o.id); setModalOp(true) }
   async function saveOp() {
     if (!ctx || !formOp.nombre || !formOp.grupo_id) return
     if (!editId && grupoAccesorioIds.has(formOp.grupo_id)) { alert('Los accesorios se crean desde su propia sección.'); return }
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo, visible_kiosk: formOp.visible_kiosk, precio_adicional: Number(formOp.precio_adicional) > 0 ? Number(formOp.precio_adicional) : null }
+    const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo, visible_kiosk: formOp.visible_kiosk, es_novedad: formOp.es_novedad, precio_adicional: Number(formOp.precio_adicional) > 0 ? Number(formOp.precio_adicional) : null }
     if (editId) await supabase.from('opciones').update(payload).eq('id', editId)
     else {
       await supabase.from('opciones').insert({ ...payload, empresa_id: ctx.empresaId })
@@ -1097,6 +1097,7 @@ export default function CatalogoPage() {
           <div className="space-y-1.5"><Label>Emoji</Label><Input value={formOp.emoji} onChange={e => setFormOp({ ...formOp, emoji: e.target.value })} placeholder="🍫" className="text-xl w-24" /></div>
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formOp.imagen_url} onChange={url => setFormOp({ ...formOp, imagen_url: url })} folder="sabores" /></div>
           <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formOp.visible_kiosk} onChange={e => setFormOp({ ...formOp, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Visible en catálogo</span></label>
+          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formOp.es_novedad} onChange={e => setFormOp({ ...formOp, es_novedad: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">⭐ Novedad — se anuncia en la card del producto que lo permite</span></label>
           <div className="space-y-1.5"><Label>Descripción</Label><Input value={formOp.descripcion} onChange={e => setFormOp({ ...formOp, descripcion: e.target.value })} placeholder="Descripción corta" /></div>
         </div>
       </ConeModal>
