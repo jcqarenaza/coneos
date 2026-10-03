@@ -310,6 +310,11 @@ export default function ComprasPage() {
     }
   })
   const netoDe = (rg: RenglonFact[]) => rg.reduce((a, r) => a + (Number(r.cantidad) || 0) * (Number(r.precio) || 0), 0)
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  // IVA: calculado al 21% — editable; total: neto+IVA — editable. '' = automático.
+  const ivaCalc = () => r2(netoDe(fFact.renglones) * 0.21)
+  const ivaEf = () => fFact.iva === '' ? ivaCalc() : (Number(fFact.iva) || 0)
+  const totalEf = () => fFact.total === '' ? r2(netoDe(fFact.renglones) + ivaEf()) : (Number(fFact.total) || 0)
   const renglonFactCompleto = (r: RenglonFact) => r.descripcion.trim() !== '' && Number(r.cantidad) > 0 && Number(r.precio) >= 0
   const fmtMon = (n: number) => '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
   const ESTADOS_FACT: Record<string, { label: string; cls: string }> = {
@@ -322,13 +327,13 @@ export default function ComprasPage() {
     const esNC = fFact.tipo === 'nota_credito'
     const neto = netoDe(fFact.renglones)
     if (!confirm(esNC
-      ? `¿Registrar la NOTA DE CRÉDITO por ${fmtMon(Number(fFact.total))}? Nace el CRÉDITO en la cuenta corriente del proveedor.`
-      : `¿Registrar la factura por ${fmtMon(Number(fFact.total))}${fFact.remito_ids.length ? ` respaldada en ${fFact.remito_ids.length} remito(s)` : ''}? Nace el CARGO en la cuenta corriente.`)) return
+      ? `¿Registrar la NOTA DE CRÉDITO por ${fmtMon(totalEf())}? Nace el CRÉDITO en la cuenta corriente del proveedor.`
+      : `¿Registrar la factura por ${fmtMon(totalEf())}${fFact.remito_ids.length ? ` respaldada en ${fFact.remito_ids.length} remito(s)` : ''}? Nace el CARGO en la cuenta corriente.`)) return
     setSaving(true)
     try {
       await api({ accion: esNC ? 'nc_crear' : 'factura_crear', proveedor_id: fFact.proveedor_id, letra: fFact.letra || null,
         numero_proveedor: fFact.numero_proveedor, fecha: fFact.fecha || null,
-        neto, iva: Number(fFact.iva) || 0, total: fFact.total,
+        neto, iva: ivaEf(), total: totalEf(),
         items: fFact.renglones.filter(renglonFactCompleto).map(r => ({
           descripcion: r.descripcion, cantidad: r.cantidad, precio_unitario: r.precio,
           articulo_id: r.articulo_id || null })),
@@ -723,7 +728,7 @@ export default function ComprasPage() {
         footer={<>
           <button onClick={() => setModalFact(false)} className="px-4 py-2.5 rounded-xl text-sm font-bold text-neutral-400 hover:text-neutral-600">Cancelar</button>
           <ConeButton onClick={crearFactura} loading={saving}
-            disabled={!fFact.proveedor_id || !fFact.numero_proveedor.trim() || !(Number(fFact.total) > 0)
+            disabled={!fFact.proveedor_id || !fFact.numero_proveedor.trim() || !(totalEf() > 0)
               || !fFact.renglones.some(renglonFactCompleto) || fFact.renglones.some(r => !renglonFactCompleto(r) && (r.descripcion || r.cantidad || r.precio))}>
             {fFact.tipo === 'nota_credito' ? '✅ Registrar NC' : '✅ Registrar factura'}</ConeButton>
         </>}>
@@ -776,17 +781,18 @@ export default function ComprasPage() {
                 className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white" />
             </div>
           </div>
-          <div className="grid grid-cols-[1fr_150px] gap-3">
+          <div className="grid grid-cols-[220px_150px_1fr] gap-3">
             <div className="space-y-1.5">
               <Label>CAE</Label>
-              <input value={fFact.cae} onChange={e => setFFact({ ...fFact, cae: e.target.value })}
-                placeholder="Opcional — del pie de la factura" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
+              <input value={fFact.cae} onChange={e => setFFact({ ...fFact, cae: e.target.value })} maxLength={14}
+                placeholder="Opcional" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
             </div>
             <div className="space-y-1.5">
               <Label>Vencimiento</Label>
               <input type="date" value={fFact.fecha_vencimiento} onChange={e => setFFact({ ...fFact, fecha_vencimiento: e.target.value })}
                 className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white" />
             </div>
+            <div />
           </div>
           {/* ── 3 · Remitos de respaldo (precargan renglones) ── */}
           {fFact.proveedor_id && (() => {
@@ -839,27 +845,32 @@ export default function ComprasPage() {
               + Agregar renglón
             </button>
           </div>
-          {/* ── 5 · La plata: neto DERIVADO de los renglones (el bloqueo es imposible de pisar) ── */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label>Neto (Σ renglones)</Label>
-              <div className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm text-right font-bold text-neutral-700">{fmtMon(netoDe(fFact.renglones))}</div>
+          {/* ── 5 · La plata: resumen de comprobante (IVA calculado, pisable) ── */}
+          <div className="ml-auto w-72 space-y-1 text-sm">
+            <div className="flex items-center justify-between text-neutral-500">
+              <span>Neto</span><span className="font-bold text-neutral-700">{fmtMon(netoDe(fFact.renglones))}</span>
             </div>
-            <div className="space-y-1.5">
-              <Label>IVA ($ del papel)</Label>
+            <div className="flex items-center justify-between gap-3 text-neutral-500">
+              <span>IVA 21%</span>
               <input type="number" min="0" step="0.01" value={fFact.iva}
-                onChange={e => setFFact({ ...fFact, iva: e.target.value, total: String(Math.round((netoDe(fFact.renglones) + (Number(e.target.value) || 0)) * 100) / 100) })}
-                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right" />
+                onChange={e => setFFact({ ...fFact, iva: e.target.value })}
+                placeholder={String(ivaCalc())}
+                className="w-32 rounded-lg border border-neutral-200 px-2 py-1 text-sm text-right" />
             </div>
-            <div className="space-y-1.5">
-              <Label>Total (con impuestos) *</Label>
-              <input type="number" min="0" step="0.01" value={fFact.total} onChange={e => setFFact({ ...fFact, total: e.target.value })}
-                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right font-bold" />
+            {fFact.iva !== '' && Math.abs((Number(fFact.iva) || 0) - ivaCalc()) > 0.01 && (
+              <p className="text-[11px] text-amber-600 font-semibold text-right">⚠️ difiere del 21% calculado ({fmtMon(ivaCalc())})</p>
+            )}
+            <div className="flex items-center justify-between gap-3 border-t border-neutral-200 pt-1.5">
+              <span className="font-black text-neutral-900">TOTAL</span>
+              <input type="number" min="0" step="0.01" value={fFact.total}
+                onChange={e => setFFact({ ...fFact, total: e.target.value })}
+                placeholder={String(r2(netoDe(fFact.renglones) + ivaEf()))}
+                className="w-32 rounded-lg border border-neutral-200 px-2 py-1 text-sm text-right font-black" />
             </div>
+            {fFact.total !== '' && Math.abs((netoDe(fFact.renglones) + ivaEf()) - (Number(fFact.total) || 0)) > 0.01 && (
+              <p className="text-[11px] font-bold text-red-500 text-right">⛔ neto + IVA no da este total — el server lo rechaza</p>
+            )}
           </div>
-          {Math.abs((netoDe(fFact.renglones) + (Number(fFact.iva) || 0)) - (Number(fFact.total) || 0)) > 0.01 && fFact.total !== '' && (
-            <p className="text-xs font-bold text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2">⛔ Neto + IVA no da el total — el papel tiene que cerrar (el server lo rechaza igual).</p>
-          )}
           {/* ── 6 · Pie ── */}
           <div className="space-y-1.5">
             <Label>Observaciones</Label>
