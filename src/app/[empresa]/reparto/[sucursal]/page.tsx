@@ -48,9 +48,12 @@ export default function RepartoPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...payload, token: tokenRef.current }),
     })
-    const d = await res.json().catch(() => null)
+    const crudo = await res.text().catch(() => '')
+    let d: Record<string, unknown> | null = null
+    try { d = JSON.parse(crudo) } catch { d = null }
     if (res.status === 401) { tokenRef.current = null; localStorage.removeItem(`reparto_token_${empresaId}`); setFase('login') }
-    if (!res.ok) throw new Error(d?.error ?? 'Error')
+    // Diagnóstico (02/10): el error sin cuerpo JSON muestra status + crudo
+    if (!res.ok) throw new Error((d as { error?: string })?.error ?? `Error ${res.status}${crudo ? ' · ' + crudo.slice(0, 120) : ' (respuesta vacía)'}`)
     return d
   }, [empresaId])
 
