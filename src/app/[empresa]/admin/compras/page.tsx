@@ -27,6 +27,8 @@ interface RenglonForm { articulo_id: string; presentacion_id: string; cantidad: 
 interface Remito { id: string; numero: number; numero_proveedor: string | null; proveedor_id: string; sucursal_id: string; orden_compra_id: string | null; tipo: string; fecha: string; estado: string; confirmado_at: string | null; observaciones: string | null }
 interface Comprobante { id: string; proveedor_id: string; tipo: string; letra: string | null; numero_proveedor: string; fecha: string; total: number; estado: string; observaciones: string | null; created_at: string }
 interface CompRemito { comprobante_id: string; remito_id: string }
+interface CompItem { id: string; comprobante_id: string; articulo_id: string | null; descripcion: string; cantidad: number; precio_unitario: number }
+type RenglonFact = { descripcion: string; articulo_id: string; cantidad: string; precio: string; origen_remito: string | null }
 interface RemitoItem { id: string; remito_id: string; articulo_id: string; presentacion_id: string | null; cantidad: number; factor_snap: number; cantidad_operativa: number; costo_unitario: number; cantidad_pedida: number | null }
 
 const TIPOS = [
@@ -52,9 +54,10 @@ export default function ComprasPage() {
   const [remitoItems, setRemitoItems] = useState<RemitoItem[]>([])
   const [comprobantes, setComprobantes] = useState<Comprobante[]>([])
   const [compRemitos, setCompRemitos] = useState<CompRemito[]>([])
+  const [compItems, setCompItems] = useState<CompItem[]>([])
   const [modalFact, setModalFact] = useState(false)
   const [factAbierta, setFactAbierta] = useState<string | null>(null)
-  const [fFact, setFFact] = useState({ proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', neto: '', iva: '', total: '', observaciones: '', remito_ids: [] as string[] })
+  const [fFact, setFFact] = useState({ tipo: 'factura' as 'factura' | 'nota_credito', proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', iva: '', total: '', observaciones: '', remito_ids: [] as string[], renglones: [] as RenglonFact[] })
   const [saving, setSaving] = useState(false)
 
   // Modales
@@ -106,7 +109,7 @@ export default function ComprasPage() {
           setProveedores(d.proveedores ?? []); setArticulos(d.articulos ?? [])
           setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
           setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
-          setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? [])
+          setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? []); setCompItems(d.comp_items ?? []); setCompItems(d.comp_items ?? [])
         } catch { /* la página muestra vacío; las acciones reintentarán */ }
         setLoading(false)
       })
@@ -294,9 +297,20 @@ export default function ComprasPage() {
   const remRenglonCompleto = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !!r.articulo_id && isFinite(Number(r.cantidad)) && Number(r.cantidad) > 0
   const remRenglonIncompleto = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !remRenglonVacio(r) && !remRenglonCompleto(r)
   const itemsDe = (remitoId: string) => remitoItems.filter(i => i.remito_id === remitoId)
-  const remitosFacturables = (provId: string) => remitos.filter(r =>
-    r.proveedor_id === provId && r.estado === 'confirmado' && r.tipo === 'recepcion'
+  const remitosFacturables = (provId: string, tipoRem: string) => remitos.filter(r =>
+    r.proveedor_id === provId && r.estado === 'confirmado' && r.tipo === tipoRem
     && !compRemitos.some(cr => cr.remito_id === r.id))
+  const renglonesDeRemito = (remitoId: string): RenglonFact[] => itemsDe(remitoId).map(i => {
+    const art = articulos.find(a => a.id === i.articulo_id)
+    const pres = i.presentacion_id ? presentaciones.find(x => x.id === i.presentacion_id) : null
+    return {
+      descripcion: `${art?.nombre ?? 'Artículo'}${pres ? ` (${pres.nombre} x${Number(pres.factor)})` : ''}`,
+      articulo_id: i.articulo_id, cantidad: String(Number(i.cantidad_operativa)),
+      precio: String(Number(i.costo_unitario)), origen_remito: remitoId,
+    }
+  })
+  const netoDe = (rg: RenglonFact[]) => rg.reduce((a, r) => a + (Number(r.cantidad) || 0) * (Number(r.precio) || 0), 0)
+  const renglonFactCompleto = (r: RenglonFact) => r.descripcion.trim() !== '' && Number(r.cantidad) > 0 && Number(r.precio) >= 0
   const fmtMon = (n: number) => '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
   const ESTADOS_FACT: Record<string, { label: string; cls: string }> = {
     pendiente: { label: 'Pendiente', cls: 'bg-amber-50 text-amber-600 border-amber-200' },
@@ -305,17 +319,22 @@ export default function ComprasPage() {
     anulada: { label: 'Anulada', cls: 'bg-neutral-100 text-neutral-400 border-neutral-200' },
   }
   async function crearFactura() {
-    const n = fFact.remito_ids.length
-    if (!confirm(`¿Registrar la factura por ${fmtMon(Number(fFact.total))}${n ? ` vinculada a ${n} remito${n > 1 ? 's' : ''}` : ' (sin remitos)'}? Nace el cargo en la cuenta corriente del proveedor.`)) return
+    const esNC = fFact.tipo === 'nota_credito'
+    const neto = netoDe(fFact.renglones)
+    if (!confirm(esNC
+      ? `¿Registrar la NOTA DE CRÉDITO por ${fmtMon(Number(fFact.total))}? Nace el CRÉDITO en la cuenta corriente del proveedor.`
+      : `¿Registrar la factura por ${fmtMon(Number(fFact.total))}${fFact.remito_ids.length ? ` respaldada en ${fFact.remito_ids.length} remito(s)` : ''}? Nace el CARGO en la cuenta corriente.`)) return
     setSaving(true)
     try {
-      const desglose = (Number(fFact.neto) > 0 || Number(fFact.iva) > 0)
-        ? `Neto ${fmtMon(Number(fFact.neto) || 0)} + IVA ${fmtMon(Number(fFact.iva) || 0)}` : ''
-      await api({ accion: 'factura_crear', proveedor_id: fFact.proveedor_id, letra: fFact.letra || null,
-        numero_proveedor: fFact.numero_proveedor, fecha: fFact.fecha || null, total: fFact.total,
-        observaciones: [desglose, fFact.observaciones].filter(Boolean).join(' · '), remito_ids: fFact.remito_ids })
-      setModalFact(false); await recargar()
-      alert('✅ Factura registrada — el cargo ya vive en la cuenta corriente')
+      await api({ accion: esNC ? 'nc_crear' : 'factura_crear', proveedor_id: fFact.proveedor_id, letra: fFact.letra || null,
+        numero_proveedor: fFact.numero_proveedor, fecha: fFact.fecha || null,
+        neto, iva: Number(fFact.iva) || 0, total: fFact.total,
+        items: fFact.renglones.filter(renglonFactCompleto).map(r => ({
+          descripcion: r.descripcion, cantidad: r.cantidad, precio_unitario: r.precio,
+          articulo_id: r.articulo_id || null })),
+        observaciones: fFact.observaciones, remito_ids: fFact.remito_ids })
+      setModalFact(false); setFactAbierta(null); await recargar()
+      alert(esNC ? '✅ NC registrada — el crédito ya vive en la cuenta corriente' : '✅ Factura registrada — el cargo ya vive en la cuenta corriente')
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo registrar') } finally { setSaving(false) }
   }
   const controla = (articuloId: string) => articulos.find(a => a.id === articuloId)?.controla_stock !== false
@@ -362,7 +381,7 @@ export default function ComprasPage() {
             </ConeButton>
           )}
           {tab === 'facturas' && (
-            <ConeButton onClick={() => { setFFact({ proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', neto: '', iva: '', total: '', observaciones: '', remito_ids: [] }); setFactAbierta(null); setModalFact(true) }} icon={<Plus className="h-4 w-4" />}>
+            <ConeButton onClick={() => { setFFact({ tipo: 'factura', proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', iva: '', total: '', observaciones: '', remito_ids: [], renglones: [] }); setFactAbierta(null); setModalFact(true) }} icon={<Plus className="h-4 w-4" />}>
               Nueva factura
             </ConeButton>
           )}
@@ -506,7 +525,7 @@ export default function ComprasPage() {
                 className="w-full text-left bg-white rounded-2xl border border-neutral-100 px-4 py-3 hover:border-neutral-300 transition-colors">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-black text-neutral-900">{c.tipo === 'nota_credito' ? 'NC' : 'FC'} {c.letra ?? ''} {c.numero_proveedor}</span>
+                    <span className="font-black text-neutral-900">{c.tipo === 'nota_credito' ? <span className="text-violet-600">NC</span> : 'FC'} {c.letra ?? ''} {c.numero_proveedor}</span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ef.cls}`}>{ef.label}</span>
                   </div>
                   <span className="font-black text-neutral-900 whitespace-nowrap">{fmtMon(Number(c.total))}</span>
@@ -538,6 +557,20 @@ export default function ComprasPage() {
               <span className="font-black text-lg text-neutral-900">{fmtMon(Number(c.total))}</span>
             </div>
             <p className="text-xs text-neutral-400">{proveedores.find(p => p.id === c.proveedor_id)?.nombre ?? '—'} · {c.fecha}{c.observaciones ? ` · ${c.observaciones}` : ''}</p>
+            {compItems.filter(i => i.comprobante_id === c.id).length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-bold text-neutral-400 uppercase">Renglones del papel</p>
+                {compItems.filter(i => i.comprobante_id === c.id).map(i => (
+                  <div key={i.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center justify-between gap-3">
+                    <span className="text-neutral-700 min-w-0 truncate">{i.descripcion}</span>
+                    <span className="text-xs text-neutral-400 whitespace-nowrap">{Number(i.cantidad).toLocaleString('es-AR')} × {fmtMon(Number(i.precio_unitario))} = <b className="text-neutral-600">{fmtMon(Number(i.cantidad) * Number(i.precio_unitario))}</b></span>
+                  </div>
+                ))}
+                {(c as Comprobante & { neto?: number | null; iva?: number | null }).neto != null && (
+                  <p className="text-xs text-neutral-500 text-right px-1">Neto {fmtMon(Number((c as Comprobante & { neto?: number | null }).neto))} + IVA {fmtMon(Number((c as Comprobante & { iva?: number | null }).iva ?? 0))} = <b>{fmtMon(Number(c.total))}</b></p>
+                )}
+              </div>
+            )}
             {rems.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-bold text-neutral-400 uppercase">Remitos que respaldan este comprobante</p>
@@ -684,29 +717,115 @@ export default function ComprasPage() {
       })()}
 
       {/* ── Modal nuevo remito ── */}
-      <ConeModal open={modalFact} onClose={() => setModalFact(false)} title="Nueva factura de compra"
+      <ConeModal open={modalFact} onClose={() => setModalFact(false)} title={fFact.tipo === 'nota_credito' ? 'Nueva nota de crédito' : 'Nueva factura de compra'}
         footer={<>
           <button onClick={() => setModalFact(false)} className="px-4 py-2.5 rounded-xl text-sm font-bold text-neutral-400 hover:text-neutral-600">Cancelar</button>
           <ConeButton onClick={crearFactura} loading={saving}
-            disabled={!fFact.proveedor_id || !fFact.numero_proveedor.trim() || !(Number(fFact.total) > 0)}>
-            ✅ Registrar factura</ConeButton>
+            disabled={!fFact.proveedor_id || !fFact.numero_proveedor.trim() || !(Number(fFact.total) > 0)
+              || !fFact.renglones.some(renglonFactCompleto) || fFact.renglones.some(r => !renglonFactCompleto(r) && (r.descripcion || r.cantidad || r.precio))}>
+            {fFact.tipo === 'nota_credito' ? '✅ Registrar NC' : '✅ Registrar factura'}</ConeButton>
         </>}>
         <div className="space-y-4">
+          {/* ── 1 · Tipo (mismo gesto que el modal de remitos) ── */}
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setFFact({ ...fFact, tipo: 'factura', remito_ids: [], renglones: [] })}
+              className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition-colors ${fFact.tipo === 'factura' ? 'border-neutral-900 bg-neutral-50 text-neutral-900' : 'border-neutral-200 text-neutral-400'}`}>
+              🧾 Factura</button>
+            <button onClick={() => setFFact({ ...fFact, tipo: 'nota_credito', remito_ids: [], renglones: [] })}
+              className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition-colors ${fFact.tipo === 'nota_credito' ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-neutral-200 text-neutral-400'}`}>
+              ↩ Nota de crédito</button>
+          </div>
+          {/* ── 2 · Cabecera ── */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Proveedor *</Label>
-              <select value={fFact.proveedor_id} onChange={e => setFFact({ ...fFact, proveedor_id: e.target.value, remito_ids: [] })}
+              <select value={fFact.proveedor_id} onChange={e => setFFact({ ...fFact, proveedor_id: e.target.value, remito_ids: [], renglones: [] })}
                 className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white">
                 <option value="">Elegir…</option>
                 {proveedores.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>Fecha de la factura</Label>
+              <Label>Fecha del comprobante</Label>
               <input type="date" value={fFact.fecha} onChange={e => setFFact({ ...fFact, fecha: e.target.value })}
                 className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white" />
             </div>
           </div>
+          {/* ── 3 · Remitos de respaldo (precargan renglones) ── */}
+          {fFact.proveedor_id && (() => {
+            const cands = remitosFacturables(fFact.proveedor_id, fFact.tipo === 'nota_credito' ? 'devolucion' : 'recepcion')
+            return (
+              <div className="space-y-1.5">
+                <Label>{fFact.tipo === 'nota_credito' ? 'Devoluciones confirmadas sin NC' : 'Remitos confirmados sin facturar'}</Label>
+                {cands.length === 0 && <p className="text-xs text-neutral-400 bg-neutral-50 rounded-xl px-3 py-2">
+                  {fFact.tipo === 'nota_credito' ? 'Sin devoluciones pendientes — la NC puede cargarse solo con renglones.' : 'Sin remitos pendientes — la factura puede cargarse solo con renglones (flete, servicios…).'}</p>}
+                {cands.map(r => (
+                  <label key={r.id} className="flex items-center gap-2.5 bg-neutral-50 rounded-xl px-3 py-2 text-sm cursor-pointer hover:bg-neutral-100">
+                    <input type="checkbox" checked={fFact.remito_ids.includes(r.id)}
+                      onChange={e => {
+                        // Tildar = los renglones del remito entran EDITABLES; destildar = salen
+                        if (e.target.checked) setFFact({ ...fFact, remito_ids: [...fFact.remito_ids, r.id], renglones: [...fFact.renglones, ...renglonesDeRemito(r.id)] })
+                        else setFFact({ ...fFact, remito_ids: fFact.remito_ids.filter(x => x !== r.id), renglones: fFact.renglones.filter(x => x.origen_remito !== r.id) })
+                      }} />
+                    <span className="font-bold text-neutral-700 flex-1">REM-{String(r.numero).padStart(4, '0')}</span>
+                    <span className="text-xs text-neutral-400">{r.fecha} · {fmtMon(totalRemito(r.id))}</span>
+                  </label>
+                ))}
+              </div>
+            )
+          })()}
+          {/* ── 4 · RENGLONES (el papel, línea por línea) ── */}
+          <div className="space-y-2">
+            <Label>{fFact.tipo === 'nota_credito' ? 'Qué se acredita — renglones del papel' : 'Qué se factura — renglones del papel'}</Label>
+            {fFact.renglones.map((r, idx) => (
+              <div key={idx} className="bg-neutral-50 rounded-xl p-2.5 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input value={r.descripcion} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, descripcion: e.target.value } : x) })}
+                    placeholder="Descripción (del papel)" className="flex-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm" />
+                  <button onClick={() => setFFact({ ...fFact, renglones: fFact.renglones.filter((_, i2) => i2 !== idx) })}
+                    className="text-neutral-300 hover:text-red-500 font-bold px-1.5">✕</button>
+                </div>
+                <div className="grid grid-cols-[1fr_110px_130px_110px] gap-2 items-center">
+                  <select value={r.articulo_id} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, articulo_id: e.target.value } : x) })}
+                    className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white text-neutral-500">
+                    <option value="">Sin artículo (libre)</option>
+                    {articulos.filter(a => a.activo).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                  </select>
+                  <input type="number" min="0" step="0.01" value={r.cantidad} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, cantidad: e.target.value } : x) })}
+                    placeholder="Cant." className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm text-right" />
+                  <input type="number" min="0" step="0.01" value={r.precio} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, precio: e.target.value } : x) })}
+                    placeholder="$ unit. (sin IVA)" className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm text-right" />
+                  <span className="text-xs font-bold text-neutral-500 text-right">{fmtMon((Number(r.cantidad) || 0) * (Number(r.precio) || 0))}</span>
+                </div>
+              </div>
+            ))}
+            <button onClick={() => setFFact({ ...fFact, renglones: [...fFact.renglones, { descripcion: '', articulo_id: '', cantidad: '', precio: '', origen_remito: null }] })}
+              className="text-xs px-3 py-1.5 rounded-full font-semibold border border-dashed border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600 transition-colors">
+              + Agregar renglón
+            </button>
+          </div>
+          {/* ── 5 · La plata: neto DERIVADO de los renglones (el bloqueo es imposible de pisar) ── */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label>Neto (Σ renglones)</Label>
+              <div className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm text-right font-bold text-neutral-700">{fmtMon(netoDe(fFact.renglones))}</div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>IVA ($ del papel)</Label>
+              <input type="number" min="0" step="0.01" value={fFact.iva}
+                onChange={e => setFFact({ ...fFact, iva: e.target.value, total: String(Math.round((netoDe(fFact.renglones) + (Number(e.target.value) || 0)) * 100) / 100) })}
+                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Total (con impuestos) *</Label>
+              <input type="number" min="0" step="0.01" value={fFact.total} onChange={e => setFFact({ ...fFact, total: e.target.value })}
+                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right font-bold" />
+            </div>
+          </div>
+          {Math.abs((netoDe(fFact.renglones) + (Number(fFact.iva) || 0)) - (Number(fFact.total) || 0)) > 0.01 && fFact.total !== '' && (
+            <p className="text-xs font-bold text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2">⛔ Neto + IVA no da el total — el papel tiene que cerrar (el server lo rechaza igual).</p>
+          )}
+          {/* ── 6 · Pie ── */}
           <div className="grid grid-cols-[80px_1fr] gap-3">
             <div className="space-y-1.5">
               <Label>Letra</Label>
@@ -716,66 +835,20 @@ export default function ComprasPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>N° de factura del proveedor *</Label>
+              <Label>N° del comprobante del proveedor *</Label>
               <input value={fFact.numero_proveedor} onChange={e => setFFact({ ...fFact, numero_proveedor: e.target.value })}
                 placeholder="0001-00012345" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label>Neto (sin IVA)</Label>
-              <input type="number" min="0" step="0.01" value={fFact.neto}
-                onChange={e => setFFact({ ...fFact, neto: e.target.value, total: String((Number(e.target.value) || 0) + (Number(fFact.iva) || 0)) })}
-                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>IVA ($ del papel)</Label>
-              <input type="number" min="0" step="0.01" value={fFact.iva}
-                onChange={e => setFFact({ ...fFact, iva: e.target.value, total: String((Number(fFact.neto) || 0) + (Number(e.target.value) || 0)) })}
-                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Total (con impuestos) *</Label>
-              <input type="number" min="0" step="0.01" value={fFact.total} onChange={e => setFFact({ ...fFact, total: e.target.value })}
-                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right font-bold" />
-            </div>
-          </div>
-          {fFact.proveedor_id && (() => {
-            const cands = remitosFacturables(fFact.proveedor_id)
-            const sumSel = fFact.remito_ids.reduce((a, id) => a + totalRemito(id), 0)
-            return (
-              <div className="space-y-1.5">
-                <Label>Remitos confirmados sin facturar de este proveedor</Label>
-                {cands.length === 0 && <p className="text-xs text-neutral-400 bg-neutral-50 rounded-xl px-3 py-2">No hay remitos pendientes de facturar — la factura puede registrarse sin respaldo de remito.</p>}
-                {cands.map(r => (
-                  <label key={r.id} className="flex items-center gap-2.5 bg-neutral-50 rounded-xl px-3 py-2 text-sm cursor-pointer hover:bg-neutral-100">
-                    <input type="checkbox" checked={fFact.remito_ids.includes(r.id)}
-                      onChange={e => {
-                        const ids = e.target.checked ? [...fFact.remito_ids, r.id] : fFact.remito_ids.filter(x => x !== r.id)
-                        // JC 03/10: el remito viene SIN IVA → los remitos completan
-                        // el NETO; el IVA se tipea del papel y el total cierra solo
-                        const suma = ids.reduce((a, id) => a + totalRemito(id), 0)
-                        const neto = ids.length ? String(suma) : ''
-                        const tot = ids.length ? String(suma + (Number(fFact.iva) || 0)) : ''
-                        setFFact({ ...fFact, remito_ids: ids, neto, total: tot })
-                      }} />
-                    <span className="font-bold text-neutral-700 flex-1">REM-{String(r.numero).padStart(4, '0')}</span>
-                    <span className="text-xs text-neutral-400">{r.fecha} · {fmtMon(totalRemito(r.id))}</span>
-                  </label>
-                ))}
-                {fFact.remito_ids.length > 0 && (
-                  <p className="text-xs text-neutral-400 px-1">Suma de remitos (sin IVA): <b>{fmtMon(sumSel)}</b>{Number(fFact.neto) !== sumSel ? <span className="text-amber-600 font-bold"> · ⚠️ el neto cargado difiere de los remitos</span> : <span className="text-green-600 font-bold"> · coincide con el neto ✓</span>}</p>
-                )}
-              </div>
-            )
-          })()}
           <div className="space-y-1.5">
             <Label>Observaciones</Label>
             <input value={fFact.observaciones} onChange={e => setFFact({ ...fFact, observaciones: e.target.value })}
               placeholder="Opcional" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
           </div>
           <p className="text-[11px] text-neutral-400 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
-            💰 Al registrar nace el CARGO en la cuenta corriente del proveedor — la factura no se edita después (diferencias = NC).
+            {fFact.tipo === 'nota_credito'
+              ? '💜 Al registrar nace el CRÉDITO en la cuenta corriente. La NC es documento financiero: la devolución física va por Remitos → Devolución.'
+              : '💰 Al registrar nace el CARGO en la cuenta corriente. Los renglones son el papel; el stock entró por los remitos. No se edita después (diferencias = NC).'}
           </p>
         </div>
       </ConeModal>

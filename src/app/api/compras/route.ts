@@ -63,29 +63,48 @@ export async function POST(request: Request) {
   const accion = body?.accion as string
 
   // ── LISTAR: todo lo que la página necesita, en un viaje ──
-  if (accion === 'factura_crear') {
-    // ═══ T5-B: FACTURA DE COMPRA — un acto: documento + remitos + cargo CC ═══
+  if (accion === 'factura_crear' || accion === 'nc_crear') {
+    // ═══ T5-B2: FACTURA / NC con RENGLONES (snapshot documental) ═══
+    const esNC = accion === 'nc_crear'
     const remitoIds: string[] = Array.isArray(body.remito_ids) ? body.remito_ids.map(String) : []
-    const { data, error: e } = await supabase.rpc('registrar_factura_compra', {
+    const items = Array.isArray(body.items) ? body.items.map((it: Record<string, unknown>) => ({
+      descripcion: String(it.descripcion ?? ''),
+      cantidad: Number(it.cantidad ?? 0),
+      precio_unitario: Number(it.precio_unitario ?? 0),
+      articulo_id: it.articulo_id ? String(it.articulo_id) : null,
+    })) : []
+    const { data, error: e } = await supabase.rpc(esNC ? 'registrar_nc_compra' : 'registrar_factura_compra', {
       p_empresa_id: empresaId,
       p_proveedor_id: String(body.proveedor_id ?? ''),
       p_letra: body.letra ? String(body.letra) : null,
       p_numero_proveedor: String(body.numero_proveedor ?? ''),
       p_fecha: body.fecha ? String(body.fecha) : null,
+      p_neto: Number(body.neto ?? 0),
+      p_iva: Number(body.iva ?? 0),
       p_total: Number(body.total ?? 0),
+      p_items: items,
       p_remito_ids: remitoIds.length ? remitoIds : null,
       p_observaciones: body.observaciones ? String(body.observaciones) : null,
     })
     if (e) {
       const m = e.message ?? ''
       if (m.includes('PROVEEDOR_INVALIDO')) return err('Proveedor inválido o inactivo', 409)
+      if (m.includes('NUMERO_REQUERIDO')) return err('Cargá el número del comprobante del proveedor', 400)
       if (m.includes('TOTAL_INVALIDO')) return err('El total tiene que ser mayor a cero', 400)
-      if (m.includes('NUMERO_REQUERIDO')) return err('Cargá el número de factura del proveedor', 400)
-      if (m.includes('REMITO_YA_FACTURADO')) return err('Uno de los remitos ya está facturado en otro comprobante', 409)
+      if (m.includes('NETO_INVALIDO')) return err('El neto tiene que ser mayor a cero', 400)
+      if (m.includes('IVA_INVALIDO')) return err('El IVA no puede ser negativo', 400)
+      if (m.includes('SIN_RENGLONES')) return err('Cargá al menos un renglón', 400)
+      if (m.includes('RENGLON_SIN_DESCRIPCION')) return err('Todos los renglones necesitan descripción', 400)
+      if (m.includes('CANTIDAD_INVALIDA')) return err('Un renglón tiene cantidad inválida', 400)
+      if (m.includes('PRECIO_INVALIDO')) return err('Un renglón tiene precio inválido', 400)
+      if (m.includes('ARTICULO_INVALIDO')) return err('Un renglón referencia un artículo inválido', 409)
+      if (m.includes('RENGLONES_NO_CIERRAN')) return err('La suma de los renglones no coincide con el NETO — el papel tiene que cerrar', 400)
+      if (m.includes('TOTALES_NO_CIERRAN')) return err('Neto + IVA no da el TOTAL — el papel tiene que cerrar', 400)
+      if (m.includes('REMITO_YA_FACTURADO')) return err(esNC ? 'Un remito de devolución ya está vinculado a otra NC' : 'Uno de los remitos ya está facturado en otro comprobante', 409)
       if (m.includes('REMITO_DE_OTRO_PROVEEDOR')) return err('Un remito elegido es de OTRO proveedor', 409)
-      if (m.includes('REMITO_NO_CONFIRMADO')) return err('Solo se facturan remitos de recepción CONFIRMADOS', 409)
+      if (m.includes('REMITO_NO_CONFIRMADO')) return err(esNC ? 'La NC solo se respalda en DEVOLUCIONES confirmadas' : 'Solo se facturan remitos de recepción CONFIRMADOS', 409)
       if (m.includes('REMITO_INVALIDO')) return err('Un remito elegido no existe en esta empresa', 409)
-      return err(`No se pudo registrar la factura (${m.slice(0, 120)})`, 500)
+      return err(`No se pudo registrar (${m.slice(0, 120)})`, 500)
     }
     return NextResponse.json({ ok: true, ...((data ?? {}) as Record<string, unknown>) })
   }
@@ -121,11 +140,12 @@ export async function POST(request: Request) {
         .select('id, orden_compra_id, articulo_id, presentacion_id, cantidad, costo_previsto')
         .eq('empresa_id', empresaId),
     ])
-    const [{ data: comprobantes }, { data: compRemitos }] = await Promise.all([
+    const [{ data: comprobantes }, { data: compRemitos }, { data: compItems }] = await Promise.all([
       supabase.from('comprobantes_compra').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
       supabase.from('comprobantes_compra_remitos').select('comprobante_id, remito_id').eq('empresa_id', empresaId),
+      supabase.from('comprobantes_compra_items').select('*').eq('empresa_id', empresaId),
     ])
-    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems, remitos, remito_items: remitoItems, comprobantes, comp_remitos: compRemitos })
+    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems, remitos, remito_items: remitoItems, comprobantes, comp_remitos: compRemitos, comp_items: compItems })
   }
 
   // ── PROVEEDORES ──
