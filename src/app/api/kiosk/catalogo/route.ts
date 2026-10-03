@@ -5,9 +5,23 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const empresa_id = searchParams.get('empresa_id')
   const sucursal_id = searchParams.get('sucursal_id')
+  // CANAL (GO CTO 03/10): el servidor decide qué devolver; el cliente solo
+  // dice quién es. Default 'kiosk' = comportamiento histórico intacto.
+  const CANALES = ['kiosk', 'delivery', 'mesa', 'takeaway', 'operacion'] as const
+  const canal = (searchParams.get('canal') ?? 'kiosk') as (typeof CANALES)[number]
 
   if (!empresa_id || !sucursal_id) {
     return NextResponse.json({ error: 'Parámetros requeridos' }, { status: 400 })
+  }
+  if (!CANALES.includes(canal)) {
+    return NextResponse.json({ error: `Canal inválido: ${canal}` }, { status: 400 })
+  }
+  // PRODUCTO · ¿en qué canales existe? 'operacion' = caja: SIN filtro de canal
+  // (caja no es una vidriera). Presentación/opción: visible_kiosk sigue siendo
+  // EL ojito único del catálogo para todos, caja incluida (semántica histórica).
+  const colCanal: Record<string, string | null> = {
+    kiosk: 'visible_kiosk', delivery: 'visible_delivery', mesa: 'visible_mesa',
+    takeaway: 'visible_takeaway', operacion: null,
   }
 
   const supabase = createAdminClient()
@@ -15,7 +29,7 @@ export async function GET(request: Request) {
   const [{ data: categorias }, { data: productos }, { data: presentaciones }, { data: grupos }, { data: opciones }, { data: inventario }, { data: presGrupos }, { data: catalogoConfig }, { data: stockRows }] =
     await Promise.all([
       supabase.from('categorias').select('id, nombre, icono_url, orden').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null).order('orden'),
-      supabase.from('productos').select('id, nombre, descripcion, imagen_url, categoria_id, orden, controla_stock').eq('empresa_id', empresa_id).eq('activo', true).eq('visible_kiosk', true).is('deleted_at', null).order('orden'),
+      (() => { let q = supabase.from('productos').select('id, nombre, descripcion, imagen_url, categoria_id, orden, controla_stock').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null); const col = colCanal[canal]; if (col) q = q.eq(col, true); return q.order('orden') })(),
       supabase.from('presentaciones').select('id, nombre, precio, permite_opciones, opciones_min, opciones_max, orden, producto_id, imagen_url, es_novedad').eq('empresa_id', empresa_id).eq('activo', true).eq('visible_kiosk', true).order('orden'),
       supabase.from('grupos_opciones').select('id, nombre, orden').eq('empresa_id', empresa_id).eq('activo', true).order('orden'),
       supabase.from('opciones').select('id, nombre, descripcion, emoji, color, imagen_url, grupo_id, orden, precio_adicional').eq('empresa_id', empresa_id).eq('activo', true).eq('visible_kiosk', true).is('deleted_at', null).order('orden'),
