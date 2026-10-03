@@ -717,7 +717,7 @@ export default function ComprasPage() {
       })()}
 
       {/* ── Modal nuevo remito ── */}
-      <ConeModal open={modalFact} onClose={() => setModalFact(false)} title={fFact.tipo === 'nota_credito' ? 'Nueva nota de crédito' : 'Nueva factura de compra'}
+      <ConeModal size="xl" open={modalFact} onClose={() => setModalFact(false)} title={fFact.tipo === 'nota_credito' ? 'Nueva nota de crédito' : 'Nueva factura de compra'}
         footer={<>
           <button onClick={() => setModalFact(false)} className="px-4 py-2.5 rounded-xl text-sm font-bold text-neutral-400 hover:text-neutral-600">Cancelar</button>
           <ConeButton onClick={crearFactura} loading={saving}
@@ -759,6 +759,7 @@ export default function ComprasPage() {
                 <Label>{fFact.tipo === 'nota_credito' ? 'Devoluciones confirmadas sin NC' : 'Remitos confirmados sin facturar'}</Label>
                 {cands.length === 0 && <p className="text-xs text-neutral-400 bg-neutral-50 rounded-xl px-3 py-2">
                   {fFact.tipo === 'nota_credito' ? 'Sin devoluciones pendientes — la NC puede cargarse solo con renglones.' : 'Sin remitos pendientes — la factura puede cargarse solo con renglones (flete, servicios…).'}</p>}
+                <div className="grid grid-cols-2 gap-1.5">
                 {cands.map(r => (
                   <label key={r.id} className="flex items-center gap-2.5 bg-neutral-50 rounded-xl px-3 py-2 text-sm cursor-pointer hover:bg-neutral-100">
                     <input type="checkbox" checked={fFact.remito_ids.includes(r.id)}
@@ -771,6 +772,7 @@ export default function ComprasPage() {
                     <span className="text-xs text-neutral-400">{r.fecha} · {fmtMon(totalRemito(r.id))}</span>
                   </label>
                 ))}
+                </div>
               </div>
             )
           })()}
@@ -778,25 +780,21 @@ export default function ComprasPage() {
           <div className="space-y-2">
             <Label>{fFact.tipo === 'nota_credito' ? 'Qué se acredita — renglones del papel' : 'Qué se factura — renglones del papel'}</Label>
             {fFact.renglones.map((r, idx) => (
-              <div key={idx} className="bg-neutral-50 rounded-xl p-2.5 space-y-2">
-                <div className="flex items-center gap-2">
-                  <input value={r.descripcion} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, descripcion: e.target.value } : x) })}
-                    placeholder="Descripción (del papel)" className="flex-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm" />
-                  <button onClick={() => setFFact({ ...fFact, renglones: fFact.renglones.filter((_, i2) => i2 !== idx) })}
-                    className="text-neutral-300 hover:text-red-500 font-bold px-1.5">✕</button>
-                </div>
-                <div className="grid grid-cols-[1fr_110px_130px_110px] gap-2 items-center">
-                  <select value={r.articulo_id} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, articulo_id: e.target.value } : x) })}
-                    className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white text-neutral-500">
-                    <option value="">Sin artículo (libre)</option>
-                    {articulos.filter(a => a.activo).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-                  </select>
-                  <input type="number" min="0" step="0.01" value={r.cantidad} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, cantidad: e.target.value } : x) })}
-                    placeholder="Cant." className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm text-right" />
-                  <input type="number" min="0" step="0.01" value={r.precio} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, precio: e.target.value } : x) })}
-                    placeholder="$ unit. (sin IVA)" className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm text-right" />
-                  <span className="text-xs font-bold text-neutral-500 text-right">{fmtMon((Number(r.cantidad) || 0) * (Number(r.precio) || 0))}</span>
-                </div>
+              <div key={idx} className="bg-neutral-50 rounded-xl px-2.5 py-2 grid grid-cols-[1fr_180px_90px_120px_110px_28px] gap-2 items-center">
+                <input value={r.descripcion} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, descripcion: e.target.value } : x) })}
+                  placeholder="Descripción (del papel)" className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm min-w-0" />
+                <select value={r.articulo_id} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, articulo_id: e.target.value } : x) })}
+                  className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white text-neutral-500">
+                  <option value="">Sin artículo</option>
+                  {articulos.filter(a => a.activo).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                </select>
+                <input type="number" min="0" step="0.01" value={r.cantidad} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, cantidad: e.target.value } : x) })}
+                  placeholder="Cant." className="rounded-lg border border-neutral-200 px-2 py-1.5 text-sm text-right" />
+                <input type="number" min="0" step="0.01" value={r.precio} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, precio: e.target.value } : x) })}
+                  placeholder="$ s/IVA" className="rounded-lg border border-neutral-200 px-2 py-1.5 text-sm text-right" />
+                <span className="text-xs font-bold text-neutral-500 text-right">{fmtMon((Number(r.cantidad) || 0) * (Number(r.precio) || 0))}</span>
+                <button onClick={() => setFFact({ ...fFact, renglones: fFact.renglones.filter((_, i2) => i2 !== idx) })}
+                  className="text-neutral-300 hover:text-red-500 font-bold">✕</button>
               </div>
             ))}
             <button onClick={() => setFFact({ ...fFact, renglones: [...fFact.renglones, { descripcion: '', articulo_id: '', cantidad: '', precio: '', origen_remito: null }] })}
@@ -847,13 +845,13 @@ export default function ComprasPage() {
           </div>
           <p className="text-[11px] text-neutral-400 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
             {fFact.tipo === 'nota_credito'
-              ? '💜 Al registrar nace el CRÉDITO en la cuenta corriente. La NC es documento financiero: la devolución física va por Remitos → Devolución.'
-              : '💰 Al registrar nace el CARGO en la cuenta corriente. Los renglones son el papel; el stock entró por los remitos. No se edita después (diferencias = NC).'}
+              ? 'Al registrar nace el CRÉDITO en la cuenta corriente. La NC es documento financiero: la devolución física va por Remitos → Devolución.'
+              : 'Al registrar nace el CARGO en la cuenta corriente. Los renglones son el papel; el stock entró por los remitos. No se edita después (diferencias = NC).'}
           </p>
         </div>
       </ConeModal>
 
-      <ConeModal open={modalRemito} onClose={() => setModalRemito(false)} title={fRem.tipo === 'devolucion' ? 'Nueva devolución al proveedor' : 'Nuevo remito de recepción'}
+      <ConeModal size="lg" open={modalRemito} onClose={() => setModalRemito(false)} title={fRem.tipo === 'devolucion' ? 'Nueva devolución al proveedor' : 'Nuevo remito de recepción'}
         footer={<><ConeButton variant="outline" onClick={() => setModalRemito(false)}>Cancelar</ConeButton>
           <ConeButton onClick={crearRemito} loading={saving}
             disabled={!fRem.proveedor_id || !fRem.sucursal_id || !remRenglones.some(remRenglonCompleto) || remRenglones.some(remRenglonIncompleto)}>
@@ -981,7 +979,7 @@ export default function ComprasPage() {
       )}
 
       {/* ── Modal nueva OC ── */}
-      <ConeModal open={modalOC} onClose={() => setModalOC(false)} title="Nueva orden de compra"
+      <ConeModal size="lg" open={modalOC} onClose={() => setModalOC(false)} title="Nueva orden de compra"
         footer={<><ConeButton variant="outline" onClick={() => setModalOC(false)}>Cancelar</ConeButton>
           <ConeButton onClick={crearOC} loading={saving} disabled={!ocLista}>Crear orden</ConeButton></>}>
         <div className="space-y-4">
