@@ -577,10 +577,10 @@ export default function ComprasPage() {
                     <span className="text-xs text-neutral-400 whitespace-nowrap">{Number(i.cantidad).toLocaleString('es-AR')} × {fmtMon(Number(i.precio_unitario))} = <b className="text-neutral-600">{fmtMon(Number(i.cantidad) * Number(i.precio_unitario))}</b></span>
                   </div>
                 ))}
-                {(c as Comprobante & { neto?: number | null; iva?: number | null }).neto != null && (
-                  <p className="text-xs text-neutral-500 text-right px-1">Neto {fmtMon(Number((c as Comprobante & { neto?: number | null }).neto))} + IVA {fmtMon(Number((c as Comprobante & { iva?: number | null }).iva ?? 0))} = <b>{fmtMon(Number(c.total))}</b></p>
-                )}
               </div>
+            )}
+            {(c as Comprobante & { neto?: number | null; iva?: number | null }).neto != null && (
+              <p className="text-xs text-neutral-500 text-right px-1">Neto {fmtMon(Number((c as Comprobante & { neto?: number | null }).neto))} + IVA {fmtMon(Number((c as Comprobante & { iva?: number | null }).iva ?? 0))} = <b>{fmtMon(Number(c.total))}</b></p>
             )}
             {rems.length > 0 && (
               <div className="space-y-1.5">
@@ -888,7 +888,7 @@ export default function ComprasPage() {
               <span>IVA 21%</span>
               <input type="number" min="0" step="0.01" value={fFact.iva}
                 onChange={e => setFFact({ ...fFact, iva: e.target.value })}
-                placeholder={String(ivaCalc())}
+                placeholder={ivaCalc().toFixed(2)}
                 className="w-32 rounded-lg border border-neutral-200 px-2 py-1 text-sm text-right" />
             </div>
             {fFact.iva !== '' && Math.abs((Number(fFact.iva) || 0) - ivaCalc()) > 0.01 && (
@@ -898,7 +898,7 @@ export default function ComprasPage() {
               <span className="font-black text-neutral-900">TOTAL</span>
               <input type="number" min="0" step="0.01" value={fFact.total}
                 onChange={e => setFFact({ ...fFact, total: e.target.value })}
-                placeholder={String(r2(netoDe(fFact.renglones) + ivaEf()))}
+                placeholder={(r2(netoDe(fFact.renglones) + ivaEf())).toFixed(2)}
                 className="w-32 rounded-lg border border-neutral-200 px-2 py-1 text-sm text-right font-black" />
             </div>
             {fFact.total !== '' && Math.abs((netoDe(fFact.renglones) + ivaEf()) - (Number(fFact.total) || 0)) > 0.01 && (
