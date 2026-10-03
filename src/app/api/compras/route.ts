@@ -85,10 +85,15 @@ export async function POST(request: Request) {
       p_items: items,
       p_remito_ids: remitoIds.length ? remitoIds : null,
       p_observaciones: body.observaciones ? String(body.observaciones) : null,
+      p_sucursal_id: body.sucursal_id ? String(body.sucursal_id) : null,
+      p_cae: body.cae ? String(body.cae) : null,
+      p_vencimiento: body.fecha_vencimiento ? String(body.fecha_vencimiento) : null,
     })
     if (e) {
       const m = e.message ?? ''
       if (m.includes('PROVEEDOR_INVALIDO')) return err('Proveedor inválido o inactivo', 409)
+      if (m.includes('SUCURSAL_INVALIDA')) return err('Esa sucursal no es de esta empresa', 409)
+      if (m.includes('VENCIMIENTO_INVALIDO')) return err('El vencimiento no puede ser anterior a la fecha del comprobante', 400)
       if (m.includes('NUMERO_REQUERIDO')) return err('Cargá el número del comprobante del proveedor', 400)
       if (m.includes('TOTAL_INVALIDO')) return err('El total tiene que ser mayor a cero', 400)
       if (m.includes('NETO_INVALIDO')) return err('El neto tiene que ser mayor a cero', 400)

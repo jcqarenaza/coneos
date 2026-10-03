@@ -57,7 +57,7 @@ export default function ComprasPage() {
   const [compItems, setCompItems] = useState<CompItem[]>([])
   const [modalFact, setModalFact] = useState(false)
   const [factAbierta, setFactAbierta] = useState<string | null>(null)
-  const [fFact, setFFact] = useState({ tipo: 'factura' as 'factura' | 'nota_credito', proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', iva: '', total: '', observaciones: '', remito_ids: [] as string[], renglones: [] as RenglonFact[] })
+  const [fFact, setFFact] = useState({ tipo: 'factura' as 'factura' | 'nota_credito', proveedor_id: '', sucursal_id: '', letra: 'A', numero_proveedor: '', fecha: '', cae: '', fecha_vencimiento: '', iva: '', total: '', observaciones: '', remito_ids: [] as string[], renglones: [] as RenglonFact[] })
   const [saving, setSaving] = useState(false)
 
   // Modales
@@ -332,7 +332,9 @@ export default function ComprasPage() {
         items: fFact.renglones.filter(renglonFactCompleto).map(r => ({
           descripcion: r.descripcion, cantidad: r.cantidad, precio_unitario: r.precio,
           articulo_id: r.articulo_id || null })),
-        observaciones: fFact.observaciones, remito_ids: fFact.remito_ids })
+        observaciones: fFact.observaciones, remito_ids: fFact.remito_ids,
+        sucursal_id: fFact.sucursal_id || null, cae: fFact.cae || null,
+        fecha_vencimiento: fFact.fecha_vencimiento || null })
       setModalFact(false); setFactAbierta(null); await recargar()
       alert(esNC ? '✅ NC registrada — el crédito ya vive en la cuenta corriente' : '✅ Factura registrada — el cargo ya vive en la cuenta corriente')
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo registrar') } finally { setSaving(false) }
@@ -381,7 +383,7 @@ export default function ComprasPage() {
             </ConeButton>
           )}
           {tab === 'facturas' && (
-            <ConeButton onClick={() => { setFFact({ tipo: 'factura', proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', iva: '', total: '', observaciones: '', remito_ids: [], renglones: [] }); setFactAbierta(null); setModalFact(true) }} icon={<Plus className="h-4 w-4" />}>
+            <ConeButton onClick={() => { setFFact({ tipo: 'factura', proveedor_id: '', sucursal_id: '', letra: 'A', numero_proveedor: '', fecha: '', cae: '', fecha_vencimiento: '', iva: '', total: '', observaciones: '', remito_ids: [], renglones: [] }); setFactAbierta(null); setModalFact(true) }} icon={<Plus className="h-4 w-4" />}>
               Nueva factura
             </ConeButton>
           )}
@@ -735,7 +737,7 @@ export default function ComprasPage() {
               className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition-colors ${fFact.tipo === 'nota_credito' ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-neutral-200 text-neutral-400'}`}>
               ↩ Nota de crédito</button>
           </div>
-          {/* ── 2 · Cabecera ── */}
+          {/* ── 2 · Quién: proveedor + sucursal que recibe ── */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Proveedor *</Label>
@@ -746,8 +748,43 @@ export default function ComprasPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>Fecha del comprobante</Label>
+              <Label>Sucursal</Label>
+              <select value={fFact.sucursal_id} onChange={e => setFFact({ ...fFact, sucursal_id: e.target.value })}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white">
+                <option value="">—</option>
+                {sucursales.map(su => <option key={su.id} value={su.id}>{su.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+          {/* ── 3 · El papel: datos del comprobante físico ── */}
+          <div className="grid grid-cols-[70px_1fr_150px] gap-3">
+            <div className="space-y-1.5">
+              <Label>Letra</Label>
+              <select value={fFact.letra} onChange={e => setFFact({ ...fFact, letra: e.target.value })}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white">
+                {['A','B','C','X',''].map(l => <option key={l} value={l}>{l || '—'}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>N° del comprobante *</Label>
+              <input value={fFact.numero_proveedor} onChange={e => setFFact({ ...fFact, numero_proveedor: e.target.value })}
+                placeholder="0001-00012345" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Fecha</Label>
               <input type="date" value={fFact.fecha} onChange={e => setFFact({ ...fFact, fecha: e.target.value })}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white" />
+            </div>
+          </div>
+          <div className="grid grid-cols-[1fr_150px] gap-3">
+            <div className="space-y-1.5">
+              <Label>CAE</Label>
+              <input value={fFact.cae} onChange={e => setFFact({ ...fFact, cae: e.target.value })}
+                placeholder="Opcional — del pie de la factura" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Vencimiento</Label>
+              <input type="date" value={fFact.fecha_vencimiento} onChange={e => setFFact({ ...fFact, fecha_vencimiento: e.target.value })}
                 className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white" />
             </div>
           </div>
@@ -777,10 +814,10 @@ export default function ComprasPage() {
             )
           })()}
           {/* ── 4 · RENGLONES (el papel, línea por línea) ── */}
-          <div className="space-y-2">
+          <div className="space-y-1">
             <Label>{fFact.tipo === 'nota_credito' ? 'Qué se acredita — renglones del papel' : 'Qué se factura — renglones del papel'}</Label>
             {fFact.renglones.map((r, idx) => (
-              <div key={idx} className="bg-neutral-50 rounded-xl px-2.5 py-2 grid grid-cols-[1fr_180px_90px_120px_110px_28px] gap-2 items-center">
+              <div key={idx} className="bg-neutral-50 rounded-lg px-2 py-1 grid grid-cols-[1fr_180px_90px_120px_110px_24px] gap-1.5 items-center">
                 <input value={r.descripcion} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, descripcion: e.target.value } : x) })}
                   placeholder="Descripción (del papel)" className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm min-w-0" />
                 <select value={r.articulo_id} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, articulo_id: e.target.value } : x) })}
@@ -824,20 +861,6 @@ export default function ComprasPage() {
             <p className="text-xs font-bold text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2">⛔ Neto + IVA no da el total — el papel tiene que cerrar (el server lo rechaza igual).</p>
           )}
           {/* ── 6 · Pie ── */}
-          <div className="grid grid-cols-[80px_1fr] gap-3">
-            <div className="space-y-1.5">
-              <Label>Letra</Label>
-              <select value={fFact.letra} onChange={e => setFFact({ ...fFact, letra: e.target.value })}
-                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white">
-                {['A','B','C','X',''].map(l => <option key={l} value={l}>{l || '—'}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>N° del comprobante del proveedor *</Label>
-              <input value={fFact.numero_proveedor} onChange={e => setFFact({ ...fFact, numero_proveedor: e.target.value })}
-                placeholder="0001-00012345" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
-            </div>
-          </div>
           <div className="space-y-1.5">
             <Label>Observaciones</Label>
             <input value={fFact.observaciones} onChange={e => setFFact({ ...fFact, observaciones: e.target.value })}
@@ -874,6 +897,7 @@ export default function ComprasPage() {
                 {proveedores.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
+            <div className="space-y-1.5"><Label>Nº remito del proveedor</Label><Input value={fRem.numero_proveedor} onChange={e => setFRem({ ...fRem, numero_proveedor: e.target.value })} placeholder="0001-00012345" /></div>
             <div className="space-y-1.5">
               <Label>Sucursal que recibe *</Label>
               <select value={fRem.sucursal_id} onChange={e => setFRem({ ...fRem, sucursal_id: e.target.value })}
@@ -945,7 +969,7 @@ export default function ComprasPage() {
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label>Nº remito del proveedor</Label><Input value={fRem.numero_proveedor} onChange={e => setFRem({ ...fRem, numero_proveedor: e.target.value })} placeholder="0001-00012345" /></div>
+
             <div className="space-y-1.5"><Label>Observaciones</Label><Input value={fRem.observaciones} onChange={e => setFRem({ ...fRem, observaciones: e.target.value })} placeholder="Llegó sin frío..." /></div>
           </div>
         </div>
