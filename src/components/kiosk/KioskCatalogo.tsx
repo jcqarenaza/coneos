@@ -23,6 +23,7 @@ interface Props {
   onAgregar: (item: Omit<ItemCarrito, 'id'>) => void
   onVerCarrito: () => void
   onVolver: () => void
+  canal?: 'kiosk' | 'delivery' | 'mesa' | 'takeaway' | 'operacion'
 }
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
@@ -52,7 +53,7 @@ function getEmoji(nombre: string): string {
   return '🍽️'
 }
 
-export default function KioskCatalogo({ dispositivo, config, carrito, categoriaIdInicial, onAgregar, onVerCarrito, onVolver }: Props) {
+export default function KioskCatalogo({ dispositivo, config, carrito, categoriaIdInicial, onAgregar, onVerCarrito, onVolver, canal = 'kiosk' }: Props) {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
@@ -73,7 +74,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   // Refetch silencioso: el endpoint es la ÚNICA verdad (condición CTO —
   // ningún evento Realtime modifica la UI directamente; solo invalida).
   const refetchCatalogo = useCallback((inicial = false) => {
-    fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
+    fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}&canal=${canal}`)
       .then(r => r.json())
       .then(data => {
         const cats = data.categorias ?? []
@@ -163,7 +164,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const enReposo = carrito.length === 0 && cola.length === 0 && !hayCantidadesMarcadas
     if (!enReposo) return
     const t = setInterval(() => {
-      fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
+      fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}&canal=${canal}`)
         .then(r => r.json())
         .then(data => {
           setCategorias(data.categorias ?? [])

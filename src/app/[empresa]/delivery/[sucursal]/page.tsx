@@ -247,7 +247,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       }
 
       // Cargar accesorios
-      const catRes = await fetch(`/api/kiosk/catalogo?empresa_id=${disp.empresa_id}&sucursal_id=${disp.sucursal_id}`)
+      const catRes = await fetch(`/api/kiosk/catalogo?empresa_id=${disp.empresa_id}&sucursal_id=${disp.sucursal_id}&canal=delivery`)
       if (catRes.ok) {
         const cat = await catRes.json()
         const grupos = (cat.grupos ?? []) as { id: string; nombre: string }[]
@@ -321,7 +321,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   const [itemsQuitados, setItemsQuitados] = useState(0)
   async function repreciarCarrito() {
     try {
-      const r = await fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo!.empresa_id}&sucursal_id=${dispositivo!.sucursal_id}`)
+      const r = await fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo!.empresa_id}&sucursal_id=${dispositivo!.sucursal_id}&canal=delivery`)
       if (!r.ok) throw new Error('catalogo')
       const cat = await r.json()
       const precioPres = new Map<string, number>(((cat.presentaciones ?? []) as { id: string; precio: number }[]).map(p => [p.id, Number(p.precio)]))
@@ -423,11 +423,11 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       )}
 
       {paso === 'inicio' && (
-        <KioskInicio config={config} dispositivo={dispositivo}
+        <KioskInicio canal="delivery" config={config} dispositivo={dispositivo}
             onComenzar={(catId) => { setCategoriaInicial(catId); setPaso('catalogo') }} />
       )}
       {paso === 'catalogo' && (
-        <KioskCatalogo
+        <KioskCatalogo canal="delivery"
           config={config}
           dispositivo={dispositivo}
           carrito={carrito}

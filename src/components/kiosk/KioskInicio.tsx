@@ -14,6 +14,7 @@ interface Props {
   config: EmpresaConfig
   dispositivo: DispositivoKiosk
   onComenzar: (categoriaId?: string) => void
+  canal?: 'kiosk' | 'delivery' | 'mesa' | 'takeaway' | 'operacion'
 }
 
 const CATEGORIA_EMOJI: Record<string, string> = {
@@ -61,7 +62,7 @@ function CategoriaFotos({ fotos, emoji }: { fotos: string[]; emoji: string }) {
   )
 }
 
-export default function KioskInicio({ config, dispositivo, onComenzar }: Props) {
+export default function KioskInicio({ config, dispositivo, onComenzar, canal = 'kiosk' }: Props) {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
@@ -70,7 +71,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   const [hora, setHora] = useState('')
 
   useEffect(() => {
-    fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
+    fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}&canal=${canal}`)
       .then(r => r.json())
       .then(data => {
         setCategorias(data.categorias ?? [])

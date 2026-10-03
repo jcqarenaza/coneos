@@ -62,7 +62,7 @@ export default function TakeawayPage() {
       setCtx(data)
 
       // Accesorios: mismo criterio que delivery (grupos "accesorio" con precio)
-      const catRes = await fetch(`/api/kiosk/catalogo?empresa_id=${data.empresa_id}&sucursal_id=${data.sucursal_id}`)
+      const catRes = await fetch(`/api/kiosk/catalogo?empresa_id=${data.empresa_id}&sucursal_id=${data.sucursal_id}&canal=takeaway`)
       if (catRes.ok) {
         const cat = await catRes.json()
         const grupos = (cat.grupos ?? []) as { id: string; nombre: string }[]
@@ -133,7 +133,7 @@ export default function TakeawayPage() {
   const [itemsQuitados, setItemsQuitados] = useState(0)
   async function repreciarCarrito() {
     try {
-      const r = await fetch(`/api/kiosk/catalogo?empresa_id=${ctx!.empresa_id}&sucursal_id=${ctx!.sucursal_id}`)
+      const r = await fetch(`/api/kiosk/catalogo?empresa_id=${ctx!.empresa_id}&sucursal_id=${ctx!.sucursal_id}&canal=takeaway`)
       if (!r.ok) throw new Error('catalogo')
       const cat = await r.json()
       const precioPres = new Map<string, number>(((cat.presentaciones ?? []) as { id: string; precio: number }[]).map(p => [p.id, Number(p.precio)]))
@@ -235,7 +235,7 @@ export default function TakeawayPage() {
         </div>
       )}
       {paso === 'catalogo' && (
-        <KioskCatalogo
+        <KioskCatalogo canal="takeaway"
           config={ctx.config}
           dispositivo={pseudoDispositivo}
           carrito={carrito}
