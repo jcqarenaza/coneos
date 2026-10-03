@@ -27,6 +27,11 @@ interface RenglonForm { articulo_id: string; presentacion_id: string; cantidad: 
 interface Remito { id: string; numero: number; numero_proveedor: string | null; proveedor_id: string; sucursal_id: string; orden_compra_id: string | null; tipo: string; fecha: string; estado: string; confirmado_at: string | null; observaciones: string | null }
 interface Comprobante { id: string; proveedor_id: string; tipo: string; letra: string | null; numero_proveedor: string; fecha: string; total: number; estado: string; observaciones: string | null; created_at: string }
 interface CompRemito { comprobante_id: string; remito_id: string }
+interface CcMov { id: string; proveedor_id: string; tipo: 'debe' | 'haber'; monto: number; comprobante_id: string | null; orden_pago_id: string | null; detalle: string | null; created_at: string }
+interface Op { id: string; proveedor_id: string; numero: number; fecha: string; total: number; anulada: boolean; observaciones: string | null }
+interface OpValor { id: string; orden_pago_id: string; tipo: 'efectivo' | 'transferencia' | 'cheque'; cuenta_banco_id: string | null; cheque_id: string | null; monto: number }
+interface OpImp { id: string; orden_pago_id: string; comprobante_id: string; monto: number }
+interface ChequeRow { id: string; numero: number | null; tipo: string | null; formato: string | null; estado: string | null }
 interface CompItem { id: string; comprobante_id: string; articulo_id: string | null; descripcion: string; cantidad: number; precio_unitario: number }
 type RenglonFact = { descripcion: string; articulo_id: string; presentacion_id: string; cantidad: string; precio: string; origen_remito: string | null; ingresa: boolean }
 interface RemitoItem { id: string; remito_id: string; articulo_id: string; presentacion_id: string | null; cantidad: number; factor_snap: number; cantidad_operativa: number; costo_unitario: number; cantidad_pedida: number | null }
@@ -53,6 +58,15 @@ export default function ComprasPage() {
   const [remitos, setRemitos] = useState<Remito[]>([])
   const [remitoItems, setRemitoItems] = useState<RemitoItem[]>([])
   const [comprobantes, setComprobantes] = useState<Comprobante[]>([])
+  const [cc, setCc] = useState<CcMov[]>([])
+  const [saldos, setSaldos] = useState<{ proveedor_id: string; saldo: number }[]>([])
+  const [ops, setOps] = useState<Op[]>([])
+  const [opValores, setOpValores] = useState<OpValor[]>([])
+  const [opImputaciones, setOpImputaciones] = useState<OpImp[]>([])
+  const [chequesAll, setChequesAll] = useState<ChequeRow[]>([])
+  const [cuentasBanco, setCuentasBanco] = useState<{ id: string; nombre: string }[]>([])
+  const [provAbierto, setProvAbierto] = useState<string | null>(null)
+  const [opAbierta, setOpAbierta] = useState<string | null>(null)
   const [compRemitos, setCompRemitos] = useState<CompRemito[]>([])
   const [compItems, setCompItems] = useState<CompItem[]>([])
   const [modalFact, setModalFact] = useState(false)
@@ -111,7 +125,9 @@ export default function ComprasPage() {
           setProveedores(d.proveedores ?? []); setArticulos(d.articulos ?? [])
           setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
           setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
-          setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? []); setCompItems(d.comp_items ?? []); setCompItems(d.comp_items ?? [])
+          setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? [])
+      setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setCompItems(d.comp_items ?? [])
+          setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? [])
         } catch { /* la página muestra vacío; las acciones reintentarán */ }
         setLoading(false)
       })
@@ -348,6 +364,7 @@ export default function ComprasPage() {
         : fFact.recepcionar ? 'Factura registrada — cargo en cuenta corriente y mercadería al stock' : 'Factura registrada — el cargo ya vive en la cuenta corriente')
     } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo registrar') } finally { setSaving(false) }
   }
+  const saldoDe = (proveedorId: string) => Number(saldos.find(sa => sa.proveedor_id === proveedorId)?.saldo ?? 0)
   const controla = (articuloId: string) => articulos.find(a => a.id === articuloId)?.controla_stock !== false
   const unidadesQueMueven = (lineas: { articulo_id: string; cantidad_operativa: number }[]) =>
     lineas.filter(l => controla(l.articulo_id)).reduce((a, l) => a + Number(l.cantidad_operativa), 0)
@@ -442,15 +459,20 @@ export default function ComprasPage() {
       </div>
 
       {/* ── PROVEEDORES ── */}
-      {tab === 'proveedores' && (
+      {tab === 'proveedores' && !provAbierto && (
         <div className="space-y-2">
           {proveedores.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin proveedores. Cargá el primero con el botón de arriba.</div>}
           {proveedores.map(p => (
             <div key={p.id} className={`bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm ${!p.activo ? 'opacity-55 grayscale' : ''}`}>
-              <div className="min-w-0">
+              <div className="min-w-0 cursor-pointer flex-1" onClick={() => setProvAbierto(p.id)}>
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-neutral-900 truncate">{p.nombre}</span>
                   {p.cuit && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-neutral-100 text-neutral-600">CUIT {p.cuit}</span>}
+                  {saldoDe(p.id) !== 0 && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${saldoDe(p.id) > 0 ? 'bg-amber-50 text-amber-600 border border-amber-200' : 'bg-violet-50 text-violet-600 border border-violet-200'}`}>
+                      {saldoDe(p.id) > 0 ? `Debemos ${fmtMon(saldoDe(p.id))}` : `A favor ${fmtMon(-saldoDe(p.id))}`}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-neutral-400 mt-0.5 truncate">
                   {[p.razon_social, p.telefono, p.email, p.direccion].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
@@ -728,6 +750,102 @@ export default function ComprasPage() {
       })()}
 
       {/* ── Modal nuevo remito ── */}
+      {tab === 'proveedores' && provAbierto && (() => {
+        const p = proveedores.find(x => x.id === provAbierto)
+        if (!p) return null
+        const movs = cc.filter(m => m.proveedor_id === p.id)
+        const saldo = saldoDe(p.id)
+        return (
+          <div className="bg-white rounded-2xl border border-neutral-100 p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button onClick={() => setProvAbierto(null)} className="text-neutral-300 hover:text-neutral-600 font-black">←</button>
+                <h2 className="font-black text-neutral-900">{p.nombre}</h2>
+                {p.cuit && <span className="text-xs text-neutral-400">CUIT {p.cuit}</span>}
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-bold uppercase text-neutral-400">Saldo</p>
+                <p className={`font-black text-xl ${saldo > 0 ? 'text-amber-600' : saldo < 0 ? 'text-violet-600' : 'text-green-600'}`}>
+                  {saldo === 0 ? 'Al día' : saldo > 0 ? `Le debemos ${fmtMon(saldo)}` : `A nuestro favor ${fmtMon(-saldo)}`}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-bold text-neutral-400 uppercase">Cuenta corriente — cada línea lleva a su documento</p>
+              {movs.length === 0 && <p className="text-sm text-neutral-400 py-6 text-center">Sin movimientos todavía.</p>}
+              {movs.map(m => {
+                const esCargo = m.tipo === 'debe'
+                const doc = m.comprobante_id ? comprobantes.find(c => c.id === m.comprobante_id) : null
+                const op = m.orden_pago_id ? ops.find(o => o.id === m.orden_pago_id) : null
+                return (
+                  <button key={m.id} className="w-full bg-neutral-50 hover:bg-neutral-100 transition-colors rounded-xl px-3 py-2 text-sm flex items-center justify-between gap-3 text-left"
+                    onClick={() => { if (doc) { setTab('facturas'); setFactAbierta(doc.id) } else if (op) setOpAbierta(op.id) }}>
+                    <span className="min-w-0 truncate text-neutral-700">
+                      <span className="text-xs text-neutral-400 mr-2">{new Date(m.created_at).toLocaleDateString('es-AR')}</span>
+                      {m.detalle ?? (doc ? `${doc.tipo === 'nota_credito' ? 'NC' : 'Factura'} ${doc.numero_proveedor}` : op ? `OP-${String(op.numero).padStart(4, '0')}` : '—')}
+                      {op?.anulada && <span className="ml-2 text-[10px] font-bold text-red-400">ANULADA</span>}
+                    </span>
+                    <span className={`font-bold whitespace-nowrap ${esCargo ? 'text-neutral-900' : 'text-green-600'}`}>
+                      {esCargo ? '+' : '−'}{fmtMon(Number(m.monto))}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-[11px] text-neutral-400 bg-neutral-50 border border-neutral-100 rounded-xl px-3 py-2">
+              🔒 El saldo nace del motor (cargos − pagos − créditos). Acá no se calcula nada: se mira.
+            </p>
+          </div>
+        )
+      })()}
+
+      {opAbierta && (() => {
+        const op = ops.find(o => o.id === opAbierta)
+        if (!op) return null
+        const vals = opValores.filter(v => v.orden_pago_id === op.id)
+        const imps = opImputaciones.filter(i => i.orden_pago_id === op.id)
+        const etiquetaValor = (v: OpValor) => {
+          if (v.tipo === 'efectivo') return 'Efectivo'
+          if (v.tipo === 'transferencia') return `Transferencia · ${cuentasBanco.find(cb => cb.id === v.cuenta_banco_id)?.nombre ?? 'cuenta'}`
+          const ch = chequesAll.find(c => c.id === v.cheque_id)
+          return `Cheque ${ch?.numero != null ? `N° ${ch.numero}` : ''}${ch?.formato ? ` · ${ch.formato}` : ''}${ch?.estado ? ` · ${ch.estado}` : ''}`
+        }
+        return (
+          <ConeModal open onClose={() => setOpAbierta(null)} title={`Orden de pago OP-${String(op.numero).padStart(4, '0')}`}>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-neutral-400">{op.fecha}{op.observaciones ? ` · ${op.observaciones}` : ''}
+                  {op.anulada && <span className="ml-2 text-[10px] font-bold text-red-500 border border-red-200 bg-red-50 rounded-full px-2 py-0.5">ANULADA</span>}</p>
+                <span className="font-black text-lg text-neutral-900">{fmtMon(Number(op.total))}</span>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-bold text-neutral-400 uppercase">Con qué se pagó</p>
+                {vals.map(v => (
+                  <div key={v.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center justify-between">
+                    <span className="text-neutral-700">{etiquetaValor(v)}</span>
+                    <span className="font-bold text-neutral-900">{fmtMon(Number(v.monto))}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-bold text-neutral-400 uppercase">Qué paga</p>
+                {imps.length === 0 && <p className="text-sm text-neutral-500 bg-neutral-50 rounded-xl px-3 py-2">Pago a cuenta — sin imputar a facturas (queda como crédito).</p>}
+                {imps.map(i => {
+                  const c = comprobantes.find(x => x.id === i.comprobante_id)
+                  return (
+                    <button key={i.id} onClick={() => { setOpAbierta(null); setTab('facturas'); if (c) setFactAbierta(c.id) }}
+                      className="w-full bg-neutral-50 hover:bg-neutral-100 rounded-xl px-3 py-2 text-sm flex items-center justify-between text-left transition-colors">
+                      <span className="text-neutral-700">{c ? `${c.tipo === 'nota_credito' ? 'NC' : 'Factura'} ${c.letra ?? ''} ${c.numero_proveedor}` : 'Comprobante'}</span>
+                      <span className="font-bold text-neutral-900">{fmtMon(Number(i.monto))}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </ConeModal>
+        )
+      })()}
+
       {toast && (
         <div className={`fixed bottom-5 left-1/2 -translate-x-1/2 z-[80] rounded-2xl px-5 py-3 text-sm font-bold shadow-xl border ${toast.tipo === 'ok' ? 'bg-neutral-900 text-white border-neutral-900' : 'bg-red-50 text-red-600 border-red-200'}`}>
           {toast.tipo === 'ok' ? '✅ ' : '⛔ '}{toast.texto}

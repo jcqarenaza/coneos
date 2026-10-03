@@ -154,12 +154,22 @@ export async function POST(request: Request) {
         .select('id, orden_compra_id, articulo_id, presentacion_id, cantidad, costo_previsto')
         .eq('empresa_id', empresaId),
     ])
+    const [{ data: cc }, { data: saldos }, { data: ops }, { data: opValores }, { data: opImputaciones }, { data: cheques }, { data: cuentasBanco }] = await Promise.all([
+      supabase.from('cuenta_corriente_proveedor').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+      supabase.from('v_saldo_proveedor').select('*').eq('empresa_id', empresaId),
+      supabase.from('ordenes_pago_proveedor').select('*').eq('empresa_id', empresaId),
+      supabase.from('ordenes_pago_valores').select('*').eq('empresa_id', empresaId),
+      supabase.from('ordenes_pago_imputaciones').select('*').eq('empresa_id', empresaId),
+      supabase.from('cheques').select('*').eq('empresa_id', empresaId),
+      supabase.from('cuentas_banco').select('*').eq('empresa_id', empresaId),
+    ])
     const [{ data: comprobantes }, { data: compRemitos }, { data: compItems }] = await Promise.all([
       supabase.from('comprobantes_compra').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
       supabase.from('comprobantes_compra_remitos').select('comprobante_id, remito_id').eq('empresa_id', empresaId),
       supabase.from('comprobantes_compra_items').select('*').eq('empresa_id', empresaId),
     ])
-    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems, remitos, remito_items: remitoItems, comprobantes, comp_remitos: compRemitos, comp_items: compItems })
+    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems, remitos, remito_items: remitoItems, comprobantes, comp_remitos: compRemitos, comp_items: compItems,
+      cc, saldos, ops, op_valores: opValores, op_imputaciones: opImputaciones, cheques, cuentas_banco: cuentasBanco })
   }
 
   // ── PROVEEDORES ──
