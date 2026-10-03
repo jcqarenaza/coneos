@@ -423,11 +423,11 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
       )}
 
       {paso === 'inicio' && (
-        <KioskInicio config={config} dispositivo={dispositivo}
+        <KioskInicio canal="delivery" config={config} dispositivo={dispositivo}
             onComenzar={(catId) => { setCategoriaInicial(catId); setPaso('catalogo') }} />
       )}
       {paso === 'catalogo' && (
-        <KioskCatalogo
+        <KioskCatalogo canal="delivery"
           config={config}
           dispositivo={dispositivo}
           carrito={carrito}

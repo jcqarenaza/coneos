@@ -65,7 +65,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   // el evento Realtime solo invalida, jamás toca la UI directamente).
   const refetchCatalogo = useCallback(async (inicial = false) => {
     try {
-      const catRes = await fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
+      const catRes = await fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}&canal=operacion`)
       if (catRes.ok) {
         const cat = await catRes.json()
         setCategorias(cat.categorias ?? [])

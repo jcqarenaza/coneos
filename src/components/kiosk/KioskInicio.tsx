@@ -8,12 +8,13 @@ interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string }
 interface Presentacion { id: string; producto_id: string; imagen_url: string | null; es_novedad?: boolean; nombre?: string; precio?: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
-interface Opcion { id: string; grupo_id: string; imagen_url: string | null; emoji: string | null }
+interface Opcion { id: string; grupo_id: string; imagen_url: string | null; emoji: string | null ; es_novedad?: boolean }
 
 interface Props {
   config: EmpresaConfig
   dispositivo: DispositivoKiosk
   onComenzar: (categoriaId?: string) => void
+  canal?: 'kiosk' | 'delivery' | 'mesa' | 'takeaway' | 'operacion'
 }
 
 const CATEGORIA_EMOJI: Record<string, string> = {
@@ -61,7 +62,7 @@ function CategoriaFotos({ fotos, emoji }: { fotos: string[]; emoji: string }) {
   )
 }
 
-export default function KioskInicio({ config, dispositivo, onComenzar }: Props) {
+export default function KioskInicio({ config, dispositivo, onComenzar, canal = 'kiosk' }: Props) {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
@@ -70,7 +71,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   const [hora, setHora] = useState('')
 
   useEffect(() => {
-    fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}`)
+    fetch(`/api/kiosk/catalogo?empresa_id=${dispositivo.empresa_id}&sucursal_id=${dispositivo.sucursal_id}&canal=${canal}`)
       .then(r => r.json())
       .then(data => {
         setCategorias(data.categorias ?? [])
@@ -120,10 +121,17 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
   // ✨ Novedades en el inicio (JC 24/09): delivery tiene inicio propio y
   // salteaba el paso del catálogo donde vivía la tira — acá se ve SIEMPRE.
   // El endpoint ya filtró agotados/no disponibles; tocar lleva a su categoría.
-  const novedades = presentaciones
+  const novedadesPres = presentaciones
     .filter(p => p.es_novedad === true)
-    .map(pres => ({ pres, prod: productos.find(pr => pr.id === pres.producto_id) }))
-    .filter((n): n is { pres: Presentacion; prod: Producto } => !!n.prod)
+    .map(pres => ({ pres, prod: productos.find(pr => pr.id === pres.producto_id), sabor: null as string | null }))
+    .filter((n): n is { pres: Presentacion; prod: Producto; sabor: null } => !!n.prod)
+  const novedadesSabor = opciones.filter(o => o.es_novedad === true).flatMap(op => {
+    const presIds = new Set(presGrupos.filter(pg => pg.grupo_id === op.grupo_id).map(pg => pg.presentacion_id))
+    const pres = presentaciones.find(pr => presIds.has(pr.id) && !!productos.find(x => x.id === pr.producto_id))
+    const prod = pres ? productos.find(x => x.id === pres.producto_id) : undefined
+    return pres && prod ? [{ pres, prod, sabor: op.nombre }] : []
+  })
+  const novedades = [...novedadesPres, ...novedadesSabor]
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
@@ -161,8 +169,8 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
           <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-neutral-100 shadow-sm p-3">
             <p className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: config.primary_color }}>✨ Novedades</p>
             <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-              {novedades.map(({ pres, prod }) => (
-                <button key={pres.id} onClick={() => onComenzar(prod.categoria_id)}
+              {novedades.map(({ pres, prod, sabor }) => (
+                <button key={pres.id + (sabor ?? '')} onClick={() => onComenzar(prod.categoria_id)}
                   className="flex items-center gap-2.5 border border-neutral-100 rounded-xl px-2.5 py-2 flex-shrink-0 active:scale-95 transition-transform bg-white text-left">
                   {(pres.imagen_url || prod.imagen_url) && (
                     <div className="w-11 h-11 rounded-lg overflow-hidden bg-neutral-50 flex-shrink-0">
@@ -171,7 +179,8 @@ export default function KioskInicio({ config, dispositivo, onComenzar }: Props) 
                   )}
                   <div>
                     <p className="text-sm font-bold text-neutral-800 leading-tight">{prod.nombre}</p>
-                    {pres.nombre && <p className="text-[11px] text-neutral-400 leading-tight">{pres.nombre}{pres.precio != null && <> · <span className="font-bold" style={{ color: config.primary_color }}>${Number(pres.precio).toLocaleString('es-AR')}</span></>}</p>}
+                    {sabor && <p className="text-[11px] leading-tight font-bold" style={{ color: config.primary_color }}>¡Nuevo sabor: {sabor}!</p>}
+                    {!sabor && pres.nombre && <p className="text-[11px] text-neutral-400 leading-tight">{pres.nombre}{pres.precio != null && <> · <span className="font-bold" style={{ color: config.primary_color }}>${Number(pres.precio).toLocaleString('es-AR')}</span></>}</p>}
                   </div>
                 </button>
               ))}

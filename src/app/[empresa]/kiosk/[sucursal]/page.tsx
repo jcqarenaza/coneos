@@ -76,7 +76,7 @@ export default function KioskPage() {
         setDispositivo(data.dispositivo)
         const [cfgRes, catRes] = await Promise.all([
           fetch(`/api/kiosk/config?empresa_id=${data.dispositivo.empresa_id}`),
-          fetch(`/api/kiosk/catalogo?empresa_id=${data.dispositivo.empresa_id}&sucursal_id=${data.dispositivo.sucursal_id}`)
+          fetch(`/api/kiosk/catalogo?empresa_id=${data.dispositivo.empresa_id}&sucursal_id=${data.dispositivo.sucursal_id}&canal=kiosk`)
         ])
         const cfg = await cfgRes.json()
         const cat = await catRes.json()
@@ -193,10 +193,10 @@ export default function KioskPage() {
     <div className="min-h-screen select-none" style={{ backgroundColor: '#faf8f5' }}>
       <LatidoDispositivo empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} dispositivoId={dispositivo.id} tipo="KIOSK" />
       {paso === 'inicio' && (
-        <KioskInicio config={config} dispositivo={dispositivo} onComenzar={handleComenzar} />
+        <KioskInicio canal="kiosk" config={config} dispositivo={dispositivo} onComenzar={handleComenzar} />
       )}
       {paso === 'catalogo' && (
-        <KioskCatalogo
+        <KioskCatalogo canal="kiosk"
           key={`${categoriaInicial ?? 'all'}-${catalogoKey}`}
           dispositivo={dispositivo}
           config={config}
