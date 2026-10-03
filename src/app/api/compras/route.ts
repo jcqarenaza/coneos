@@ -63,6 +63,33 @@ export async function POST(request: Request) {
   const accion = body?.accion as string
 
   // ── LISTAR: todo lo que la página necesita, en un viaje ──
+  if (accion === 'factura_crear') {
+    // ═══ T5-B: FACTURA DE COMPRA — un acto: documento + remitos + cargo CC ═══
+    const remitoIds: string[] = Array.isArray(body.remito_ids) ? body.remito_ids.map(String) : []
+    const { data, error: e } = await supabase.rpc('registrar_factura_compra', {
+      p_empresa_id: empresaId,
+      p_proveedor_id: String(body.proveedor_id ?? ''),
+      p_letra: body.letra ? String(body.letra) : null,
+      p_numero_proveedor: String(body.numero_proveedor ?? ''),
+      p_fecha: body.fecha ? String(body.fecha) : null,
+      p_total: Number(body.total ?? 0),
+      p_remito_ids: remitoIds.length ? remitoIds : null,
+      p_observaciones: body.observaciones ? String(body.observaciones) : null,
+    })
+    if (e) {
+      const m = e.message ?? ''
+      if (m.includes('PROVEEDOR_INVALIDO')) return err('Proveedor inválido o inactivo', 409)
+      if (m.includes('TOTAL_INVALIDO')) return err('El total tiene que ser mayor a cero', 400)
+      if (m.includes('NUMERO_REQUERIDO')) return err('Cargá el número de factura del proveedor', 400)
+      if (m.includes('REMITO_YA_FACTURADO')) return err('Uno de los remitos ya está facturado en otro comprobante', 409)
+      if (m.includes('REMITO_DE_OTRO_PROVEEDOR')) return err('Un remito elegido es de OTRO proveedor', 409)
+      if (m.includes('REMITO_NO_CONFIRMADO')) return err('Solo se facturan remitos de recepción CONFIRMADOS', 409)
+      if (m.includes('REMITO_INVALIDO')) return err('Un remito elegido no existe en esta empresa', 409)
+      return err(`No se pudo registrar la factura (${m.slice(0, 120)})`, 500)
+    }
+    return NextResponse.json({ ok: true, ...((data ?? {}) as Record<string, unknown>) })
+  }
+
   if (accion === 'listar') {
     const [{ data: proveedores }, { data: articulos }, { data: presentaciones }, { data: productos }] = await Promise.all([
       supabase.from('proveedores')
@@ -94,7 +121,11 @@ export async function POST(request: Request) {
         .select('id, orden_compra_id, articulo_id, presentacion_id, cantidad, costo_previsto')
         .eq('empresa_id', empresaId),
     ])
-    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems, remitos, remito_items: remitoItems })
+    const [{ data: comprobantes }, { data: compRemitos }] = await Promise.all([
+      supabase.from('comprobantes_compra').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+      supabase.from('comprobantes_compra_remitos').select('comprobante_id, remito_id').eq('empresa_id', empresaId),
+    ])
+    return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems, remitos, remito_items: remitoItems, comprobantes, comp_remitos: compRemitos })
   }
 
   // ── PROVEEDORES ──

@@ -14,7 +14,7 @@ import { useEmpresa } from '@/lib/useEmpresa'
 import { ConeButton, ConeModal } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Loader2, Pencil, Package, Truck, Boxes, Download } from 'lucide-react'
+import { Plus, Loader2, Pencil, Package, Truck, Boxes, Download, FileText } from 'lucide-react'
 
 interface Proveedor { id: string; nombre: string; razon_social: string | null; cuit: string | null; telefono: string | null; email: string | null; direccion: string | null; observaciones: string | null; activo: boolean }
 interface Articulo { id: string; nombre: string; tipo: string; unidad_stock: string; producto_id: string | null; controla_stock: boolean; activo: boolean }
@@ -25,6 +25,8 @@ interface OC { id: string; numero: number; proveedor_id: string; sucursal_id: st
 interface OCItem { id: string; orden_compra_id: string; articulo_id: string; presentacion_id: string | null; cantidad: number; costo_previsto: number | null }
 interface RenglonForm { articulo_id: string; presentacion_id: string; cantidad: string; costo_previsto: string }
 interface Remito { id: string; numero: number; numero_proveedor: string | null; proveedor_id: string; sucursal_id: string; orden_compra_id: string | null; tipo: string; fecha: string; estado: string; confirmado_at: string | null; observaciones: string | null }
+interface Comprobante { id: string; proveedor_id: string; tipo: string; letra: string | null; numero_proveedor: string; fecha: string; total: number; estado: string; observaciones: string | null; created_at: string }
+interface CompRemito { comprobante_id: string; remito_id: string }
 interface RemitoItem { id: string; remito_id: string; articulo_id: string; presentacion_id: string | null; cantidad: number; factor_snap: number; cantidad_operativa: number; costo_unitario: number; cantidad_pedida: number | null }
 
 const TIPOS = [
@@ -37,7 +39,7 @@ const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro']
 export default function ComprasPage() {
   const { ctx, loading: ctxLoading } = useEmpresa()
   const [moduloOn, setModuloOn] = useState<boolean | null>(null)
-  const [tab, setTab] = useState<'proveedores' | 'articulos' | 'ordenes' | 'remitos'>('proveedores')
+  const [tab, setTab] = useState<'proveedores' | 'articulos' | 'ordenes' | 'remitos' | 'facturas'>('proveedores')
   const [loading, setLoading] = useState(true)
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [articulos, setArticulos] = useState<Articulo[]>([])
@@ -48,6 +50,11 @@ export default function ComprasPage() {
   const [ocItems, setOcItems] = useState<OCItem[]>([])
   const [remitos, setRemitos] = useState<Remito[]>([])
   const [remitoItems, setRemitoItems] = useState<RemitoItem[]>([])
+  const [comprobantes, setComprobantes] = useState<Comprobante[]>([])
+  const [compRemitos, setCompRemitos] = useState<CompRemito[]>([])
+  const [modalFact, setModalFact] = useState(false)
+  const [factAbierta, setFactAbierta] = useState<string | null>(null)
+  const [fFact, setFFact] = useState({ proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', total: '', observaciones: '', remito_ids: [] as string[] })
   const [saving, setSaving] = useState(false)
 
   // Modales
@@ -99,7 +106,7 @@ export default function ComprasPage() {
           setProveedores(d.proveedores ?? []); setArticulos(d.articulos ?? [])
           setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
           setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
-          setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? [])
+          setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? [])
         } catch { /* la página muestra vacío; las acciones reintentarán */ }
         setLoading(false)
       })
@@ -111,7 +118,7 @@ export default function ComprasPage() {
       setProveedores(d.proveedores ?? []); setArticulos(d.articulos ?? [])
       setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
       setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
-      setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? [])
+      setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? [])
     } catch { /* siguiente acción reintenta */ }
   }
 
@@ -287,6 +294,28 @@ export default function ComprasPage() {
   const remRenglonCompleto = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !!r.articulo_id && isFinite(Number(r.cantidad)) && Number(r.cantidad) > 0
   const remRenglonIncompleto = (r: { articulo_id: string; presentacion_id: string; cantidad: string; costo_bulto: string }) => !remRenglonVacio(r) && !remRenglonCompleto(r)
   const itemsDe = (remitoId: string) => remitoItems.filter(i => i.remito_id === remitoId)
+  const remitosFacturables = (provId: string) => remitos.filter(r =>
+    r.proveedor_id === provId && r.estado === 'confirmado' && r.tipo === 'recepcion'
+    && !compRemitos.some(cr => cr.remito_id === r.id))
+  const fmtMon = (n: number) => '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
+  const ESTADOS_FACT: Record<string, { label: string; cls: string }> = {
+    pendiente: { label: 'Pendiente', cls: 'bg-amber-50 text-amber-600 border-amber-200' },
+    parcial: { label: 'Pago parcial', cls: 'bg-blue-50 text-blue-600 border-blue-200' },
+    pagada: { label: 'Pagada', cls: 'bg-green-50 text-green-600 border-green-200' },
+    anulada: { label: 'Anulada', cls: 'bg-neutral-100 text-neutral-400 border-neutral-200' },
+  }
+  async function crearFactura() {
+    const n = fFact.remito_ids.length
+    if (!confirm(`¿Registrar la factura por ${fmtMon(Number(fFact.total))}${n ? ` vinculada a ${n} remito${n > 1 ? 's' : ''}` : ' (sin remitos)'}? Nace el cargo en la cuenta corriente del proveedor.`)) return
+    setSaving(true)
+    try {
+      await api({ accion: 'factura_crear', proveedor_id: fFact.proveedor_id, letra: fFact.letra || null,
+        numero_proveedor: fFact.numero_proveedor, fecha: fFact.fecha || null, total: fFact.total,
+        observaciones: fFact.observaciones, remito_ids: fFact.remito_ids })
+      setModalFact(false); await recargar()
+      alert('✅ Factura registrada — el cargo ya vive en la cuenta corriente')
+    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo registrar') } finally { setSaving(false) }
+  }
   const controla = (articuloId: string) => articulos.find(a => a.id === articuloId)?.controla_stock !== false
   const unidadesQueMueven = (lineas: { articulo_id: string; cantidad_operativa: number }[]) =>
     lineas.filter(l => controla(l.articulo_id)).reduce((a, l) => a + Number(l.cantidad_operativa), 0)
@@ -330,6 +359,11 @@ export default function ComprasPage() {
               Nuevo remito
             </ConeButton>
           )}
+          {tab === 'facturas' && (
+            <ConeButton onClick={() => { setFFact({ proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', total: '', observaciones: '', remito_ids: [] }); setFactAbierta(null); setModalFact(true) }} icon={<Plus className="h-4 w-4" />}>
+              Nueva factura
+            </ConeButton>
+          )}
           {tab === 'ordenes' && (
             <ConeButton onClick={() => { setFOC({ proveedor_id: '', sucursal_id: '', observaciones: '', renglones: [{ articulo_id: '', presentacion_id: '', cantidad: '', costo_previsto: '' }] }); setModalOC(true) }} icon={<Plus className="h-4 w-4" />}>
               Nueva orden
@@ -368,6 +402,10 @@ export default function ComprasPage() {
         <button onClick={() => setTab('remitos')}
           className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${tab === 'remitos' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}>
           <Truck className="h-4 w-4" /> Remitos
+        </button>
+        <button onClick={() => setTab('facturas')}
+          className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${tab === 'facturas' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}>
+          <FileText className="h-4 w-4" /> Facturas
         </button>
       </div>
 
@@ -452,6 +490,70 @@ export default function ComprasPage() {
 
       {/* ── REMITOS (T4-A): el BORRADOR es documento editable — CERO
           stock. ingresar_remito_stock (T4-B) será el único escritor. ── */}
+      {tab === 'facturas' && !factAbierta && (
+        <div className="space-y-2">
+          {comprobantes.length === 0 && (
+            <div className="bg-white rounded-2xl border border-neutral-100 p-8 text-center text-sm text-neutral-400">
+              Todavía no hay facturas de compra. El papel del proveedor entra por acá y nace el cargo en su cuenta corriente.
+            </div>
+          )}
+          {comprobantes.map(c => {
+            const ef = ESTADOS_FACT[c.estado] ?? ESTADOS_FACT.pendiente
+            return (
+              <button key={c.id} onClick={() => setFactAbierta(c.id)}
+                className="w-full text-left bg-white rounded-2xl border border-neutral-100 px-4 py-3 hover:border-neutral-300 transition-colors">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-black text-neutral-900">{c.tipo === 'nota_credito' ? 'NC' : 'FC'} {c.letra ?? ''} {c.numero_proveedor}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ef.cls}`}>{ef.label}</span>
+                  </div>
+                  <span className="font-black text-neutral-900 whitespace-nowrap">{fmtMon(Number(c.total))}</span>
+                </div>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  {proveedores.find(p => p.id === c.proveedor_id)?.nombre ?? '—'} · {c.fecha}
+                  {compRemitos.filter(cr => cr.comprobante_id === c.id).length > 0 && ` · 🚚 ${compRemitos.filter(cr => cr.comprobante_id === c.id).length} remito(s)`}
+                </p>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {tab === 'facturas' && factAbierta && (() => {
+        const c = comprobantes.find(x => x.id === factAbierta)
+        if (!c) return null
+        const ef = ESTADOS_FACT[c.estado] ?? ESTADOS_FACT.pendiente
+        const rems = compRemitos.filter(cr => cr.comprobante_id === c.id)
+          .map(cr => remitos.find(r => r.id === cr.remito_id)).filter((r): r is Remito => !!r)
+        return (
+          <div className="bg-white rounded-2xl border border-neutral-100 p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button onClick={() => setFactAbierta(null)} className="text-neutral-300 hover:text-neutral-600 font-black">←</button>
+                <h2 className="font-black text-neutral-900">{c.tipo === 'nota_credito' ? 'NC' : 'Factura'} {c.letra ?? ''} {c.numero_proveedor}</h2>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ef.cls}`}>{ef.label}</span>
+              </div>
+              <span className="font-black text-lg text-neutral-900">{fmtMon(Number(c.total))}</span>
+            </div>
+            <p className="text-xs text-neutral-400">{proveedores.find(p => p.id === c.proveedor_id)?.nombre ?? '—'} · {c.fecha}{c.observaciones ? ` · ${c.observaciones}` : ''}</p>
+            {rems.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-bold text-neutral-400 uppercase">Remitos que respaldan este comprobante</p>
+                {rems.map(r => (
+                  <div key={r.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center justify-between">
+                    <span className="font-bold text-neutral-700">REM-{String(r.numero).padStart(4, '0')}</span>
+                    <span className="text-xs text-neutral-400">{r.fecha} · {fmtMon(totalRemito(r.id))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-[11px] text-neutral-400 bg-neutral-50 border border-neutral-100 rounded-xl px-3 py-2">
+              🔒 El comprobante no se edita: su cargo vive en la cuenta corriente. Diferencias = Nota de Crédito (próxima tanda).
+            </p>
+          </div>
+        )
+      })()}
+
       {tab === 'remitos' && !remitoAbierto && (
         <div className="space-y-2">
           {remitos.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin remitos. Registrá la primera recepción con el botón de arriba.</div>}
@@ -580,6 +682,84 @@ export default function ComprasPage() {
       })()}
 
       {/* ── Modal nuevo remito ── */}
+      <ConeModal open={modalFact} onClose={() => setModalFact(false)} title="Nueva factura de compra"
+        footer={<>
+          <button onClick={() => setModalFact(false)} className="px-4 py-2.5 rounded-xl text-sm font-bold text-neutral-400 hover:text-neutral-600">Cancelar</button>
+          <ConeButton onClick={crearFactura} loading={saving}
+            disabled={!fFact.proveedor_id || !fFact.numero_proveedor.trim() || !(Number(fFact.total) > 0)}>
+            ✅ Registrar factura</ConeButton>
+        </>}>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Proveedor *</Label>
+              <select value={fFact.proveedor_id} onChange={e => setFFact({ ...fFact, proveedor_id: e.target.value, remito_ids: [] })}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white">
+                <option value="">Elegir…</option>
+                {proveedores.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Fecha de la factura</Label>
+              <input type="date" value={fFact.fecha} onChange={e => setFFact({ ...fFact, fecha: e.target.value })}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white" />
+            </div>
+          </div>
+          <div className="grid grid-cols-[80px_1fr_140px] gap-3">
+            <div className="space-y-1.5">
+              <Label>Letra</Label>
+              <select value={fFact.letra} onChange={e => setFFact({ ...fFact, letra: e.target.value })}
+                className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white">
+                {['A','B','C','X',''].map(l => <option key={l} value={l}>{l || '—'}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>N° de factura del proveedor *</Label>
+              <input value={fFact.numero_proveedor} onChange={e => setFFact({ ...fFact, numero_proveedor: e.target.value })}
+                placeholder="0001-00012345" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Total *</Label>
+              <input type="number" min="0" step="0.01" value={fFact.total} onChange={e => setFFact({ ...fFact, total: e.target.value })}
+                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right" />
+            </div>
+          </div>
+          {fFact.proveedor_id && (() => {
+            const cands = remitosFacturables(fFact.proveedor_id)
+            const sumSel = fFact.remito_ids.reduce((a, id) => a + totalRemito(id), 0)
+            return (
+              <div className="space-y-1.5">
+                <Label>Remitos confirmados sin facturar de este proveedor</Label>
+                {cands.length === 0 && <p className="text-xs text-neutral-400 bg-neutral-50 rounded-xl px-3 py-2">No hay remitos pendientes de facturar — la factura puede registrarse sin respaldo de remito.</p>}
+                {cands.map(r => (
+                  <label key={r.id} className="flex items-center gap-2.5 bg-neutral-50 rounded-xl px-3 py-2 text-sm cursor-pointer hover:bg-neutral-100">
+                    <input type="checkbox" checked={fFact.remito_ids.includes(r.id)}
+                      onChange={e => setFFact({ ...fFact, remito_ids: e.target.checked ? [...fFact.remito_ids, r.id] : fFact.remito_ids.filter(x => x !== r.id) })} />
+                    <span className="font-bold text-neutral-700 flex-1">REM-{String(r.numero).padStart(4, '0')}</span>
+                    <span className="text-xs text-neutral-400">{r.fecha} · {fmtMon(totalRemito(r.id))}</span>
+                  </label>
+                ))}
+                {fFact.remito_ids.length > 0 && (
+                  <div className="flex items-center justify-between text-xs px-1">
+                    <span className="text-neutral-400">Suma de remitos elegidos: <b>{fmtMon(sumSel)}</b></span>
+                    <button onClick={() => setFFact({ ...fFact, total: String(sumSel) })}
+                      className="font-bold text-neutral-500 underline decoration-dotted hover:text-neutral-800">usar como total</button>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+          <div className="space-y-1.5">
+            <Label>Observaciones</Label>
+            <input value={fFact.observaciones} onChange={e => setFFact({ ...fFact, observaciones: e.target.value })}
+              placeholder="Opcional" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
+          </div>
+          <p className="text-[11px] text-neutral-400 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+            💰 Al registrar nace el CARGO en la cuenta corriente del proveedor — la factura no se edita después (diferencias = NC).
+          </p>
+        </div>
+      </ConeModal>
+
       <ConeModal open={modalRemito} onClose={() => setModalRemito(false)} title={fRem.tipo === 'devolucion' ? 'Nueva devolución al proveedor' : 'Nuevo remito de recepción'}
         footer={<><ConeButton variant="outline" onClick={() => setModalRemito(false)}>Cancelar</ConeButton>
           <ConeButton onClick={crearRemito} loading={saving}
