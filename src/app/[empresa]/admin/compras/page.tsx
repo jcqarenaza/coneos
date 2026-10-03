@@ -54,7 +54,7 @@ export default function ComprasPage() {
   const [compRemitos, setCompRemitos] = useState<CompRemito[]>([])
   const [modalFact, setModalFact] = useState(false)
   const [factAbierta, setFactAbierta] = useState<string | null>(null)
-  const [fFact, setFFact] = useState({ proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', total: '', observaciones: '', remito_ids: [] as string[] })
+  const [fFact, setFFact] = useState({ proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', neto: '', iva: '', total: '', observaciones: '', remito_ids: [] as string[] })
   const [saving, setSaving] = useState(false)
 
   // Modales
@@ -309,9 +309,11 @@ export default function ComprasPage() {
     if (!confirm(`¿Registrar la factura por ${fmtMon(Number(fFact.total))}${n ? ` vinculada a ${n} remito${n > 1 ? 's' : ''}` : ' (sin remitos)'}? Nace el cargo en la cuenta corriente del proveedor.`)) return
     setSaving(true)
     try {
+      const desglose = (Number(fFact.neto) > 0 || Number(fFact.iva) > 0)
+        ? `Neto ${fmtMon(Number(fFact.neto) || 0)} + IVA ${fmtMon(Number(fFact.iva) || 0)}` : ''
       await api({ accion: 'factura_crear', proveedor_id: fFact.proveedor_id, letra: fFact.letra || null,
         numero_proveedor: fFact.numero_proveedor, fecha: fFact.fecha || null, total: fFact.total,
-        observaciones: fFact.observaciones, remito_ids: fFact.remito_ids })
+        observaciones: [desglose, fFact.observaciones].filter(Boolean).join(' · '), remito_ids: fFact.remito_ids })
       setModalFact(false); await recargar()
       alert('✅ Factura registrada — el cargo ya vive en la cuenta corriente')
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo registrar') } finally { setSaving(false) }
@@ -360,7 +362,7 @@ export default function ComprasPage() {
             </ConeButton>
           )}
           {tab === 'facturas' && (
-            <ConeButton onClick={() => { setFFact({ proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', total: '', observaciones: '', remito_ids: [] }); setFactAbierta(null); setModalFact(true) }} icon={<Plus className="h-4 w-4" />}>
+            <ConeButton onClick={() => { setFFact({ proveedor_id: '', letra: 'A', numero_proveedor: '', fecha: '', neto: '', iva: '', total: '', observaciones: '', remito_ids: [] }); setFactAbierta(null); setModalFact(true) }} icon={<Plus className="h-4 w-4" />}>
               Nueva factura
             </ConeButton>
           )}
@@ -705,7 +707,7 @@ export default function ComprasPage() {
                 className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm bg-white" />
             </div>
           </div>
-          <div className="grid grid-cols-[80px_1fr_140px] gap-3">
+          <div className="grid grid-cols-[80px_1fr] gap-3">
             <div className="space-y-1.5">
               <Label>Letra</Label>
               <select value={fFact.letra} onChange={e => setFFact({ ...fFact, letra: e.target.value })}
@@ -718,10 +720,24 @@ export default function ComprasPage() {
               <input value={fFact.numero_proveedor} onChange={e => setFFact({ ...fFact, numero_proveedor: e.target.value })}
                 placeholder="0001-00012345" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
             </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <Label>Total *</Label>
-              <input type="number" min="0" step="0.01" value={fFact.total} onChange={e => setFFact({ ...fFact, total: e.target.value })}
+              <Label>Neto (sin IVA)</Label>
+              <input type="number" min="0" step="0.01" value={fFact.neto}
+                onChange={e => setFFact({ ...fFact, neto: e.target.value, total: String((Number(e.target.value) || 0) + (Number(fFact.iva) || 0)) })}
                 placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>IVA ($ del papel)</Label>
+              <input type="number" min="0" step="0.01" value={fFact.iva}
+                onChange={e => setFFact({ ...fFact, iva: e.target.value, total: String((Number(fFact.neto) || 0) + (Number(e.target.value) || 0)) })}
+                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Total (con impuestos) *</Label>
+              <input type="number" min="0" step="0.01" value={fFact.total} onChange={e => setFFact({ ...fFact, total: e.target.value })}
+                placeholder="0.00" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-right font-bold" />
             </div>
           </div>
           {fFact.proveedor_id && (() => {
@@ -734,17 +750,21 @@ export default function ComprasPage() {
                 {cands.map(r => (
                   <label key={r.id} className="flex items-center gap-2.5 bg-neutral-50 rounded-xl px-3 py-2 text-sm cursor-pointer hover:bg-neutral-100">
                     <input type="checkbox" checked={fFact.remito_ids.includes(r.id)}
-                      onChange={e => setFFact({ ...fFact, remito_ids: e.target.checked ? [...fFact.remito_ids, r.id] : fFact.remito_ids.filter(x => x !== r.id) })} />
+                      onChange={e => {
+                        const ids = e.target.checked ? [...fFact.remito_ids, r.id] : fFact.remito_ids.filter(x => x !== r.id)
+                        // JC 03/10: el remito viene SIN IVA → los remitos completan
+                        // el NETO; el IVA se tipea del papel y el total cierra solo
+                        const suma = ids.reduce((a, id) => a + totalRemito(id), 0)
+                        const neto = ids.length ? String(suma) : ''
+                        const tot = ids.length ? String(suma + (Number(fFact.iva) || 0)) : ''
+                        setFFact({ ...fFact, remito_ids: ids, neto, total: tot })
+                      }} />
                     <span className="font-bold text-neutral-700 flex-1">REM-{String(r.numero).padStart(4, '0')}</span>
                     <span className="text-xs text-neutral-400">{r.fecha} · {fmtMon(totalRemito(r.id))}</span>
                   </label>
                 ))}
                 {fFact.remito_ids.length > 0 && (
-                  <div className="flex items-center justify-between text-xs px-1">
-                    <span className="text-neutral-400">Suma de remitos elegidos: <b>{fmtMon(sumSel)}</b></span>
-                    <button onClick={() => setFFact({ ...fFact, total: String(sumSel) })}
-                      className="font-bold text-neutral-500 underline decoration-dotted hover:text-neutral-800">usar como total</button>
-                  </div>
+                  <p className="text-xs text-neutral-400 px-1">Suma de remitos (sin IVA): <b>{fmtMon(sumSel)}</b>{Number(fFact.neto) !== sumSel ? <span className="text-amber-600 font-bold"> · ⚠️ el neto cargado difiere de los remitos</span> : <span className="text-green-600 font-bold"> · coincide con el neto ✓</span>}</p>
                 )}
               </div>
             )
