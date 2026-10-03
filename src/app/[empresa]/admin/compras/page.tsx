@@ -59,6 +59,8 @@ export default function ComprasPage() {
   const [factAbierta, setFactAbierta] = useState<string | null>(null)
   const [fFact, setFFact] = useState({ tipo: 'factura' as 'factura' | 'nota_credito', recepcionar: false, proveedor_id: '', sucursal_id: '', letra: 'A', numero_proveedor: '', fecha: '', cae: '', fecha_vencimiento: '', iva: '', total: '', observaciones: '', remito_ids: [] as string[], renglones: [] as RenglonFact[] })
   const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
+  const avisar = (tipo: 'ok' | 'error', texto: string) => { setToast({ tipo, texto }); setTimeout(() => setToast(null), 5500) }
 
   // Modales
   const [modalProv, setModalProv] = useState(false)
@@ -318,7 +320,7 @@ export default function ComprasPage() {
   const ivaEf = () => fFact.iva === '' ? ivaCalc() : (Number(fFact.iva) || 0)
   const totalEf = () => fFact.total === '' ? r2(netoDe(fFact.renglones) + ivaEf()) : (Number(fFact.total) || 0)
   const renglonFactCompleto = (r: RenglonFact) => r.descripcion.trim() !== '' && Number(r.cantidad) > 0 && Number(r.precio) >= 0
-  const fmtMon = (n: number) => '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
+  const fmtMon = (n: number) => '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const ESTADOS_FACT: Record<string, { label: string; cls: string }> = {
     pendiente: { label: 'Pendiente', cls: 'bg-amber-50 text-amber-600 border-amber-200' },
     parcial: { label: 'Pago parcial', cls: 'bg-blue-50 text-blue-600 border-blue-200' },
@@ -328,9 +330,6 @@ export default function ComprasPage() {
   async function crearFactura() {
     const esNC = fFact.tipo === 'nota_credito'
     const neto = netoDe(fFact.renglones)
-    if (!confirm(esNC
-      ? `¿Registrar la NOTA DE CRÉDITO por ${fmtMon(totalEf())}? Nace el CRÉDITO en la cuenta corriente del proveedor.`
-      : `¿Registrar la factura por ${fmtMon(totalEf())}${fFact.recepcionar ? ' E INGRESAR su mercadería al stock' : (fFact.remito_ids.length ? ` respaldada en ${fFact.remito_ids.length} remito(s)` : '')}? Nace el CARGO en la cuenta corriente${fFact.recepcionar ? ' y el stock entra en el mismo acto — no se deshace' : ''}.`)) return
     setSaving(true)
     try {
       await api({ accion: esNC ? 'nc_crear' : 'factura_crear', proveedor_id: fFact.proveedor_id, letra: fFact.letra || null,
@@ -345,8 +344,9 @@ export default function ComprasPage() {
         sucursal_id: fFact.sucursal_id || null, cae: fFact.cae || null,
         fecha_vencimiento: fFact.fecha_vencimiento || null })
       setModalFact(false); setFactAbierta(null); await recargar()
-      alert(esNC ? '✅ NC registrada — el crédito ya vive en la cuenta corriente' : '✅ Factura registrada — el cargo ya vive en la cuenta corriente')
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo registrar') } finally { setSaving(false) }
+      avisar('ok', esNC ? 'NC registrada — el crédito ya vive en la cuenta corriente'
+        : fFact.recepcionar ? 'Factura registrada — cargo en cuenta corriente y mercadería al stock' : 'Factura registrada — el cargo ya vive en la cuenta corriente')
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo registrar') } finally { setSaving(false) }
   }
   const controla = (articuloId: string) => articulos.find(a => a.id === articuloId)?.controla_stock !== false
   const unidadesQueMueven = (lineas: { articulo_id: string; cantidad_operativa: number }[]) =>
@@ -728,6 +728,11 @@ export default function ComprasPage() {
       })()}
 
       {/* ── Modal nuevo remito ── */}
+      {toast && (
+        <div className={`fixed bottom-5 left-1/2 -translate-x-1/2 z-[80] rounded-2xl px-5 py-3 text-sm font-bold shadow-xl border ${toast.tipo === 'ok' ? 'bg-neutral-900 text-white border-neutral-900' : 'bg-red-50 text-red-600 border-red-200'}`}>
+          {toast.tipo === 'ok' ? '✅ ' : '⛔ '}{toast.texto}
+        </div>
+      )}
       <ConeModal size="xl" open={modalFact} onClose={() => setModalFact(false)} title={fFact.tipo === 'nota_credito' ? 'Nueva nota de crédito' : 'Nueva factura de compra'}
         footer={<>
           <button onClick={() => setModalFact(false)} className="px-4 py-2.5 rounded-xl text-sm font-bold text-neutral-400 hover:text-neutral-600">Cancelar</button>
@@ -841,13 +846,13 @@ export default function ComprasPage() {
               <div key={idx} className="bg-neutral-50 rounded-lg px-2 py-1 grid grid-cols-[1fr_150px_130px_75px_110px_105px_24px] gap-1.5 items-center">
                 <input value={r.descripcion} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, descripcion: e.target.value } : x) })}
                   placeholder="Descripción (del papel)" className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm min-w-0" />
-                <select value={r.articulo_id} onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, articulo_id: e.target.value, presentacion_id: '', ingresa: fFact.recepcionar && !!e.target.value } : x) })}
+                <select value={r.articulo_id} onChange={e => { const art = articulos.find(a => a.id === e.target.value); setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, articulo_id: e.target.value, presentacion_id: '', ingresa: fFact.recepcionar && !!e.target.value, descripcion: art ? art.nombre : x.descripcion } : x) }) }}
                   className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white text-neutral-500">
                   <option value="">Sin artículo</option>
                   {articulos.filter(a => a.activo).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                 </select>
                 <select value={r.presentacion_id} disabled={!r.articulo_id}
-                  onChange={e => setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, presentacion_id: e.target.value } : x) })}
+                  onChange={e => { const art = articulos.find(a => a.id === r.articulo_id); const pr = presentaciones.find(pp => pp.id === e.target.value); setFFact({ ...fFact, renglones: fFact.renglones.map((x, i2) => i2 === idx ? { ...x, presentacion_id: e.target.value, descripcion: (art && (x.descripcion === art.nombre || x.descripcion.startsWith(art.nombre + ' ') || !x.descripcion.trim())) ? (pr ? `${art.nombre} ${pr.nombre} x${Number(pr.factor)}` : art.nombre) : x.descripcion } : x) }) }}
                   className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white text-neutral-500 disabled:opacity-40">
                   <option value="">Unidad suelta</option>
                   {presDe(r.articulo_id).map(pr => <option key={pr.id} value={pr.id}>{pr.nombre} ×{Number(pr.factor)}</option>)}
