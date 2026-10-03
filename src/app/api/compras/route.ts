@@ -72,6 +72,8 @@ export async function POST(request: Request) {
       cantidad: Number(it.cantidad ?? 0),
       precio_unitario: Number(it.precio_unitario ?? 0),
       articulo_id: it.articulo_id ? String(it.articulo_id) : null,
+      presentacion_id: it.presentacion_id ? String(it.presentacion_id) : null,
+      ingresa: it.ingresa === false ? false : true,
     })) : []
     const { data, error: e } = await supabase.rpc(esNC ? 'registrar_nc_compra' : 'registrar_factura_compra', {
       p_empresa_id: empresaId,
@@ -88,6 +90,7 @@ export async function POST(request: Request) {
       p_sucursal_id: body.sucursal_id ? String(body.sucursal_id) : null,
       p_cae: body.cae ? String(body.cae) : null,
       p_vencimiento: body.fecha_vencimiento ? String(body.fecha_vencimiento) : null,
+      ...(esNC ? {} : { p_recepcionar: body.recepcionar === true }),
     })
     if (e) {
       const m = e.message ?? ''
@@ -109,6 +112,12 @@ export async function POST(request: Request) {
       if (m.includes('REMITO_DE_OTRO_PROVEEDOR')) return err('Un remito elegido es de OTRO proveedor', 409)
       if (m.includes('REMITO_NO_CONFIRMADO')) return err(esNC ? 'La NC solo se respalda en DEVOLUCIONES confirmadas' : 'Solo se facturan remitos de recepción CONFIRMADOS', 409)
       if (m.includes('REMITO_INVALIDO')) return err('Un remito elegido no existe en esta empresa', 409)
+      if (m.includes('RECEPCION_DOBLE')) return err('O entra por remitos o entra directo con la factura — nunca ambos', 400)
+      if (m.includes('SUCURSAL_REQUERIDA')) return err('Para recepcionar con la factura, elegí la sucursal que recibe', 400)
+      if (m.includes('RECEPCION_SIN_ARTICULOS')) return err('Para recepcionar, al menos un renglón tiene que tener artículo', 400)
+      if (m.includes('NUMERO_DUPLICADO')) return err('Ese número de comprobante YA está registrado para este proveedor', 409)
+      if (m.includes('LINEA_NO_ENTERA')) return err('Un renglón de REVENTA da unidades fraccionadas — lo que se vende se cuenta entero', 400)
+      if (m.includes('PRESENTACION_INVALIDA')) return err('Una presentación no corresponde a su artículo', 409)
       return err(`No se pudo registrar (${m.slice(0, 120)})`, 500)
     }
     return NextResponse.json({ ok: true, ...((data ?? {}) as Record<string, unknown>) })
