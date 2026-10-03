@@ -12,10 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Loader2, Pencil, Trash2, Upload, X, ImageIcon, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface Categoria { id: string; nombre: string; orden: number; activo: boolean; icono_url: string | null }
-interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean; controla_stock?: boolean }
+interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean; visible_delivery: boolean; visible_mesa: boolean; visible_takeaway: boolean; controla_stock?: boolean }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null; visible_kiosk: boolean; es_novedad: boolean }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
-interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean; visible_kiosk: boolean; precio_adicional?: number | null }
+interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean; visible_kiosk: boolean; es_novedad?: boolean; precio_adicional?: number | null }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 
 function ImageUpload({ value, onChange, folder = 'productos' }: {
@@ -116,6 +116,29 @@ export default function CatalogoPage() {
     await createClient().from('presentaciones').update({ activo: false }).eq('id', pres.id)
     load(true)
   }
+  // Visibilidad por canal (GO CTO 03/10): la escritura va por el SERVER
+  // (/api/catalogo/canal), que valida módulo habilitado — la UI solo muestra
+  // los iconitos de los módulos ON, pero la autoridad es el backend.
+  const [modulosEmp, setModulosEmp] = useState<Record<string, boolean>>({})
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await createClient().auth.getSession()
+      if (!session) return
+      const r = await fetch('/api/catalogo/canal', { headers: { Authorization: `Bearer ${session.access_token}` } })
+      const d = await r.json().catch(() => null)
+      if (r.ok && d?.modulos) setModulosEmp(d.modulos)
+    })()
+  }, [])
+  const CANAL_MODULO: Record<string, string> = { visible_kiosk: 'kiosk', visible_delivery: 'delivery', visible_mesa: 'mesas', visible_takeaway: 'takeaway' }
+  async function toggleCanalProd(prodId: string, col: 'visible_kiosk' | 'visible_delivery' | 'visible_mesa' | 'visible_takeaway', actual: boolean) {
+    setSavingInline(prodId)
+    const canal = col === 'visible_kiosk' ? 'kiosk' : col === 'visible_delivery' ? 'delivery' : col === 'visible_mesa' ? 'mesa' : 'takeaway'
+    const { data: { session } } = await createClient().auth.getSession()
+    const r = await fetch('/api/catalogo/canal', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+      body: JSON.stringify({ producto_id: prodId, canal, visible: !actual }) })
+    if (r.ok) setProductos(prev => prev.map(p => p.id === prodId ? { ...p, [col]: !actual } : p))
+    setSavingInline(null)
+  }
   async function toggleVisibleInline(presId: string, actual: boolean) {
     setSavingInline(presId)
     const { error } = await createClient().from('presentaciones').update({ visible_kiosk: !actual }).eq('id', presId)
@@ -153,13 +176,13 @@ export default function CatalogoPage() {
   const [contextProdId, setContextProdId] = useState<string | null>(null)
 
   const [formCat, setFormCat] = useState({ nombre: '', orden: 1, activo: true, icono_url: null as string | null })
-  const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true })
+  const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true, visible_delivery: true, visible_mesa: true, visible_takeaway: true })
   const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null, visible_kiosk: true, es_novedad: false })
   const [gruposSeleccionados, setGruposSeleccionados] = useState<string[]>([])
   // Regla de oro F1.5: crear una dependencia faltante sin abandonar el flujo.
   const [volverA, setVolverA] = useState<'prod' | 'pres' | null>(null)
   const [formGrupo, setFormGrupo] = useState({ nombre: '', orden: 1, activo: true })
-  const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true, visible_kiosk: true, precio_adicional: 0 })
+  const [formOp, setFormOp] = useState({ nombre: '', descripcion: '', emoji: '', imagen_url: null as string | null, grupo_id: '', orden: 1, activo: true, visible_kiosk: true, es_novedad: false, precio_adicional: 0 })
 
   // Una casa por dato (regla 3): los accesorios se gestionan en SU página;
   // acá se ocultan para que no existan dos editores del mismo dato.
@@ -171,7 +194,7 @@ export default function CatalogoPage() {
     const supabase = createClient()
     const [{ data: cats }, { data: prods }, { data: pres }, { data: grps }, { data: ops }, { data: pg }] = await Promise.all([
       supabase.from('categorias').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
-      supabase.from('productos').select('*').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('orden'),
+      supabase.from('productos').select('*, visible_delivery, visible_mesa, visible_takeaway').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('orden'),
       supabase.from('presentaciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
       supabase.from('grupos_opciones').select('*').eq('empresa_id', ctx.empresaId).order('orden'),
       supabase.from('opciones').select('*').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('orden'),
@@ -382,14 +405,14 @@ export default function CatalogoPage() {
   }
 
   // Productos
-  function openNewProd(catId: string) { setFormProd({ nombre: '', descripcion: '', imagen_url: null, categoria_id: catId, codigo: '', orden: productos.filter(p => p.categoria_id === catId).length + 1, activo: true, visible_kiosk: true }); setEditId(null); setModalProd(true) }
-  function openEditProd(p: Producto) { setFormProd({ nombre: p.nombre, descripcion: p.descripcion ?? '', imagen_url: p.imagen_url, categoria_id: p.categoria_id, codigo: p.codigo ?? '', orden: p.orden, activo: p.activo, visible_kiosk: p.visible_kiosk }); setEditId(p.id); setModalProd(true) }
+  function openNewProd(catId: string) { setFormProd({ nombre: '', descripcion: '', imagen_url: null, categoria_id: catId, codigo: '', orden: productos.filter(p => p.categoria_id === catId).length + 1, activo: true, visible_kiosk: true, visible_delivery: true, visible_mesa: true, visible_takeaway: true }); setEditId(null); setModalProd(true) }
+  function openEditProd(p: Producto) { setFormProd({ nombre: p.nombre, descripcion: p.descripcion ?? '', imagen_url: p.imagen_url, categoria_id: p.categoria_id, codigo: p.codigo ?? '', orden: p.orden, activo: p.activo, visible_kiosk: p.visible_kiosk, visible_delivery: p.visible_delivery !== false, visible_mesa: p.visible_mesa !== false, visible_takeaway: p.visible_takeaway !== false }); setEditId(p.id); setModalProd(true) }
   async function saveProd() {
     if (!ctx || !formProd.nombre) return
     if (!formProd.categoria_id) { alert('Elegí la categoría (o creala con "+ nueva")'); return }
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formProd.nombre, descripcion: formProd.descripcion || null, imagen_url: formProd.imagen_url, categoria_id: formProd.categoria_id, codigo: formProd.codigo || null, orden: formProd.orden, activo: formProd.activo, visible_kiosk: formProd.visible_kiosk }
+    const payload = { nombre: formProd.nombre, descripcion: formProd.descripcion || null, imagen_url: formProd.imagen_url, categoria_id: formProd.categoria_id, codigo: formProd.codigo || null, orden: formProd.orden, activo: formProd.activo, visible_kiosk: formProd.visible_kiosk, visible_delivery: formProd.visible_delivery, visible_mesa: formProd.visible_mesa, visible_takeaway: formProd.visible_takeaway }
     if (editId) await supabase.from('productos').update(payload).eq('id', editId)
     else {
       // Regla de oro: un producto SIN presentación no existe comercialmente
@@ -453,14 +476,14 @@ export default function CatalogoPage() {
   }
 
   // Sabores
-  function openNewOp(grupoId?: string) { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupoId ?? grupos.find(g => !grupoAccesorioIds.has(g.id))?.id ?? '', orden: 1, activo: true, visible_kiosk: true }); setEditId(null); setModalOp(true) }
-  function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo, visible_kiosk: o.visible_kiosk, precio_adicional: Number(o.precio_adicional ?? 0) }); setEditId(o.id); setModalOp(true) }
+  function openNewOp(grupoId?: string) { setFormOp({ nombre: '', descripcion: '', emoji: '', imagen_url: null, grupo_id: grupoId ?? grupos.find(g => !grupoAccesorioIds.has(g.id))?.id ?? '', orden: 1, activo: true, visible_kiosk: true, es_novedad: false, precio_adicional: 0 }); setEditId(null); setModalOp(true) }
+  function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo, visible_kiosk: o.visible_kiosk, es_novedad: o.es_novedad === true, precio_adicional: Number(o.precio_adicional ?? 0) }); setEditId(o.id); setModalOp(true) }
   async function saveOp() {
     if (!ctx || !formOp.nombre || !formOp.grupo_id) return
     if (!editId && grupoAccesorioIds.has(formOp.grupo_id)) { alert('Los accesorios se crean desde su propia sección.'); return }
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo, visible_kiosk: formOp.visible_kiosk, precio_adicional: Number(formOp.precio_adicional) > 0 ? Number(formOp.precio_adicional) : null }
+    const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo, visible_kiosk: formOp.visible_kiosk, es_novedad: formOp.es_novedad, precio_adicional: Number(formOp.precio_adicional) > 0 ? Number(formOp.precio_adicional) : null }
     if (editId) await supabase.from('opciones').update(payload).eq('id', editId)
     else {
       await supabase.from('opciones').insert({ ...payload, empresa_id: ctx.empresaId })
@@ -769,6 +792,20 @@ export default function CatalogoPage() {
                                 className="text-neutral-300 hover:text-neutral-600 text-sm px-1 transition-colors">✎</button>
                               <button onClick={() => softDeleteProd(prod)} title="Eliminar (suave: stock e historial quedan guardados)"
                                 className="text-neutral-300 hover:text-red-500 text-sm px-1 transition-colors">🗑</button>
+                              <div className="flex items-center gap-0.5 mr-1" title="¿En qué canales existe este producto?">
+                                {([['visible_kiosk','🖥️','Kiosk'],['visible_delivery','🛵','Delivery'],['visible_mesa','🍽️','Mesa'],['visible_takeaway','🥡','Take Away']] as const)
+                                  .filter(([col]) => col === 'visible_kiosk' || modulosEmp[CANAL_MODULO[col]] === true)
+                                  .map(([col, icono, nombre]) => {
+                                  const on = prod[col] !== false
+                                  return (
+                                    <button key={col} onClick={() => toggleCanalProd(prod.id, col, on)}
+                                      title={`${nombre}: ${on ? 'SE MUESTRA (click para sacarlo de este canal)' : 'OCULTO en este canal'}`}
+                                      className={`text-sm px-1 py-0.5 rounded-lg transition-all ${on ? 'opacity-100 hover:bg-neutral-100' : 'opacity-25 grayscale bg-neutral-50'}`}>
+                                      {icono}
+                                    </button>
+                                  )
+                                })}
+                              </div>
                               {prod.controla_stock === true ? (() => {
                                 const st = stockSuc[prod.id]
                                 const cant = st?.cantidad ?? 0
@@ -819,7 +856,7 @@ export default function CatalogoPage() {
                               </div>
                               <div className="flex items-center gap-2">
                               <button onClick={() => toggleVisibleInline(pres.id, pres.visible_kiosk)}
-                                title={pres.visible_kiosk ? 'Visible en la vidriera (click para ocultar)' : 'OCULTO de la vidriera (sigue vendible en flujos iniciados)'}
+                                title={pres.visible_kiosk ? 'Visible en el catálogo (click para ocultar)' : 'OCULTO del catálogo (sigue vendible en flujos iniciados)'}
                                 className={`text-sm px-1.5 py-0.5 rounded-lg transition-colors ${pres.visible_kiosk ? 'text-neutral-400 hover:text-neutral-600' : 'text-amber-500 bg-amber-50'}`}>
                                 {pres.visible_kiosk ? '👁' : '🙈'}<span className="text-[8px] align-super">🌍</span>
                               </button>
@@ -960,7 +997,19 @@ export default function CatalogoPage() {
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formProd.imagen_url} onChange={url => setFormProd({ ...formProd, imagen_url: url })} /></div>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formProd.activo} onChange={e => setFormProd({ ...formProd, activo: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Activo</span></label>
-            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formProd.visible_kiosk} onChange={e => setFormProd({ ...formProd, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Visible en kiosk</span></label>
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-neutral-400 uppercase">Canales donde se muestra</span>
+              <div className="flex items-center gap-3 flex-wrap">
+                {([['visible_kiosk','🖥️ Kiosk'],['visible_delivery','🛵 Delivery'],['visible_mesa','🍽️ Mesa'],['visible_takeaway','🥡 Take Away']] as const)
+                  .filter(([col]) => col === 'visible_kiosk' || modulosEmp[CANAL_MODULO[col]] === true)
+                  .map(([col, nombre]) => (
+                    <label key={col} className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" checked={formProd[col]} onChange={e => setFormProd({ ...formProd, [col]: e.target.checked })} className="w-4 h-4 rounded" />
+                      <span className="text-sm text-neutral-700">{nombre}</span>
+                    </label>
+                  ))}
+              </div>
+            </div>
           </div>
         </div>
       </ConeModal>
@@ -977,7 +1026,7 @@ export default function CatalogoPage() {
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formPres.imagen_url} onChange={url => setFormPres({ ...formPres, imagen_url: url })} folder="presentaciones" /></div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.visible_kiosk} onChange={e => setFormPres({ ...formPres, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" />
-            <span className="text-sm text-neutral-700">Visible en kiosk</span>
+            <span className="text-sm text-neutral-700">Visible en catálogo</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.es_novedad} onChange={e => setFormPres({ ...formPres, es_novedad: e.target.checked })} className="w-4 h-4 rounded" />
@@ -1047,7 +1096,8 @@ export default function CatalogoPage() {
           </div>
           <div className="space-y-1.5"><Label>Emoji</Label><Input value={formOp.emoji} onChange={e => setFormOp({ ...formOp, emoji: e.target.value })} placeholder="🍫" className="text-xl w-24" /></div>
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formOp.imagen_url} onChange={url => setFormOp({ ...formOp, imagen_url: url })} folder="sabores" /></div>
-          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formOp.visible_kiosk} onChange={e => setFormOp({ ...formOp, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Visible en kiosk</span></label>
+          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formOp.visible_kiosk} onChange={e => setFormOp({ ...formOp, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Visible en catálogo</span></label>
+          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formOp.es_novedad} onChange={e => setFormOp({ ...formOp, es_novedad: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">⭐ Novedad — se anuncia en la card del producto que lo permite</span></label>
           <div className="space-y-1.5"><Label>Descripción</Label><Input value={formOp.descripcion} onChange={e => setFormOp({ ...formOp, descripcion: e.target.value })} placeholder="Descripción corta" /></div>
         </div>
       </ConeModal>

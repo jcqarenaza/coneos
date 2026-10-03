@@ -354,7 +354,7 @@ export default function MesaPage() {
   // El contexto Mesa N — Nombre se ve en el carrito y en el éxito.
   return (
     <div className="relative">
-      <KioskCatalogo
+      <KioskCatalogo canal="mesa"
         dispositivo={{ id: 'mesa', empresa_id: ctx.empresa_id, sucursal_id: ctx.sucursal_id, empresas: { nombre: ctx.nombre } }}
         config={config}
         carrito={carrito}
