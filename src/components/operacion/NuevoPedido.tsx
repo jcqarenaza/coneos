@@ -10,7 +10,7 @@ interface Categoria { id: string; nombre: string }
 interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null }
 interface Grupo { id: string; nombre: string }
-interface Opcion { id: string; nombre: string; emoji: string | null; color: string | null; imagen_url: string | null; grupo_id: string; precio_adicional: number }
+interface Opcion { id: string; nombre: string; emoji: string | null; color: string | null; imagen_url: string | null; grupo_id: string; precio_adicional: number; es_novedad?: boolean }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 interface ItemCarrito {
   uid: string
@@ -332,7 +332,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                   className="text-neutral-400 text-sm hover:text-neutral-600 transition-colors">← Volver</button>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 mb-4">
-                {opcionesVisibles.map(op => {
+                {[...opcionesVisibles].sort((a, b) => (b.es_novedad === true ? 1 : 0) - (a.es_novedad === true ? 1 : 0)).map(op => {
                   const sel = opcionesSeleccionadas.find(o => o.id === op.id)
                   const maxAlcanzado = opcionesSeleccionadas.length >= presentacionActiva.opciones_max
                   return (
@@ -342,7 +342,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                         ? <img src={op.imagen_url} alt={op.nombre} className="w-8 h-8 object-cover rounded-lg flex-shrink-0" />
                         : <span className="text-xl">{op.emoji || '🍦'}</span>
                       }
-                      <span className="text-neutral-700 text-sm font-semibold">{op.nombre}</span>
+                      <span className="text-neutral-700 text-sm font-semibold">{op.nombre}{op.es_novedad === true && <span className="ml-1.5 text-[9px] font-black text-white bg-neutral-800 px-1.5 py-0.5 rounded-full align-middle">NUEVO</span>}</span>
                     </button>
                   )
                 })}

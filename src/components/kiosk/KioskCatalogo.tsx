@@ -571,7 +571,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
             {/* Grid sabores — con imagen si existe */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {[...opcionesFiltradas].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(op => {
+              {[...opcionesFiltradas].sort((a, b) => (b.es_novedad === true ? 1 : 0) - (a.es_novedad === true ? 1 : 0) || a.nombre.localeCompare(b.nombre, 'es')).map(op => {
                 const sel = opcionesSeleccionadas.find(o => o.id === op.id)
                 const saboresSeleccionados = opcionesSeleccionadas.filter(o => { const g = grupos.find(gr => gr.id === o.grupo_id); return !g?.nombre.toLowerCase().includes('accesorio') })
                 const maxAlcanzado = !esAccesorio(op) && saboresSeleccionados.length >= actualCola.presentacion.opciones_max
@@ -595,6 +595,10 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                       </div>
                     ) : null}
 
+                    {/* ✨ Badge de sabor nuevo (JC 03/10): también acá, al elegir */}
+                    {op.es_novedad === true && (
+                      <span className="absolute top-2 left-2 text-[10px] font-black text-white px-2 py-0.5 rounded-full shadow-md" style={{ backgroundColor: config.primary_color }}>NUEVO</span>
+                    )}
                     {/* Check overlay */}
                     {sel && (
                       <div className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center shadow-md" style={{ backgroundColor: config.primary_color }}>
