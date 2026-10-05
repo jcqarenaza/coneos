@@ -374,6 +374,13 @@ export default function ComprasPage() {
   const pendienteDe = (c: Comprobante) => Math.round((Number(c.total) - imputadoDe(c.id)) * 100) / 100
   const sumaImput = () => Object.values(fPago.imput).reduce((a, v) => a + (Number(v) || 0), 0)
   const sumaValores = () => fPago.valores.reduce((a, v) => a + (Number(v.monto) || 0), 0)
+  const aplicarImput = (n: Record<string, string>) => {
+    const total = Object.values(n).reduce((a, v) => a + (Number(v) || 0), 0)
+    const vs = fPago.valores.length === 1
+      ? [{ ...fPago.valores[0], monto: total > 0 ? String(Math.round(total * 100) / 100) : '' }]
+      : fPago.valores
+    setFPago({ ...fPago, imput: n, valores: vs })
+  }
   async function crearPago() {
     if (!provAbierto) return
     setSaving(true)
@@ -840,11 +847,11 @@ export default function ComprasPage() {
                     <div key={c.id} className="bg-neutral-50 rounded-xl px-3 py-2 flex items-center gap-3 cursor-pointer" title="Doble click: ver el comprobante"
                       onDoubleClick={() => setFichaPago(c.id)}>
                       <input type="checkbox" checked={marcada}
-                        onChange={e => { const n = { ...fPago.imput }; if (e.target.checked) n[c.id] = ''; else delete n[c.id]; setFPago({ ...fPago, imput: n }) }} />
+                        onChange={e => { const n = { ...fPago.imput }; if (e.target.checked) n[c.id] = String(pendienteDe(c)); else delete n[c.id]; aplicarImput(n) }} />
                       <span className="flex-1 text-sm text-neutral-700">Factura {c.letra ?? ''} {c.numero_proveedor} <span className="text-xs text-neutral-400">· debe {fmtMon(pendienteDe(c))}</span></span>
                       {marcada && (
                         <input type="number" min="0" step="0.01" value={fPago.imput[c.id]} placeholder={pendienteDe(c).toFixed(2)}
-                          onChange={e => setFPago({ ...fPago, imput: { ...fPago.imput, [c.id]: e.target.value } })}
+                          onChange={e => aplicarImput({ ...fPago.imput, [c.id]: e.target.value })}
                           className="w-32 rounded-lg border border-neutral-200 px-2 py-1 text-sm text-right" />
                       )}
                       {marcada && Number(fPago.imput[c.id]) > pendienteDe(c) && <span className="text-[10px] font-bold text-red-500">⛔ supera lo que debe</span>}
