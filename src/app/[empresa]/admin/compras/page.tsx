@@ -385,6 +385,34 @@ export default function ComprasPage() {
       : fPago.valores
     setFPago({ ...fPago, imput: n, valores: vs })
   }
+  async function aplicarCreditos() {
+    if (!provAbierto) return
+    const credOps = ops.filter(o => o.proveedor_id === provAbierto && !o.anulada)
+      .map(o => ({ id: o.id, numero: o.numero, cred: Math.round((Number(o.total) - opImputaciones.filter(i => i.orden_pago_id === o.id).reduce((x, i) => x + Number(i.monto), 0)) * 100) / 100 }))
+      .filter(o => o.cred > 0.009).sort((a, b) => a.numero - b.numero)
+    const pend = comprobantes.filter(c => c.proveedor_id === provAbierto && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0)
+      .sort((a, b) => a.created_at < b.created_at ? -1 : 1)
+    if (credOps.length === 0 || pend.length === 0) { avisar('error', 'No hay crédito de OPs y factura con deuda para cruzar'); return }
+    setSaving(true)
+    try {
+      let aplicado = 0
+      for (const o of credOps) {
+        let resto = o.cred
+        for (const c of pend) {
+          if (resto <= 0.009) break
+          const debe = pendienteDe(c) - (c.id in aplicadoPor ? aplicadoPor[c.id] : 0)
+          if (debe <= 0.009) continue
+          const monto = Math.round(Math.min(resto, debe) * 100) / 100
+          await api({ accion: 'op_aplicar_credito', orden_pago_id: o.id, comprobante_id: c.id, monto })
+          aplicadoPor[c.id] = (aplicadoPor[c.id] ?? 0) + monto
+          resto = Math.round((resto - monto) * 100) / 100; aplicado += monto
+        }
+      }
+      await recargar()
+      avisar('ok', aplicado > 0 ? `Crédito aplicado: ${fmtMon(Math.round(aplicado * 100) / 100)} — el motor imputó y la CC lo refleja` : 'No había crédito aplicable')
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo aplicar el crédito'); await recargar() } finally { setSaving(false) }
+  }
+  const aplicadoPor: Record<string, number> = {}
   async function crearPago() {
     if (!provAbierto) return
     setSaving(true)
@@ -853,7 +881,10 @@ export default function ComprasPage() {
                     <p className="font-bold uppercase text-[10px] mb-0.5">Créditos sin aplicar a facturas</p>
                     {ncs.map(c => <p key={c.id}>NC {c.letra ?? ''} {c.numero_proveedor} · {fmtMon(Number(c.total))}</p>)}
                     {cred > 0.009 && <p>Pagos a cuenta · {fmtMon(Math.round(cred * 100) / 100)}</p>}
-                    <p className="text-[10px] text-amber-500 mt-0.5">Se imputan a facturas en la próxima tanda (aplicar crédito) — hoy netean el saldo global.</p>
+                    <p className="text-[10px] text-amber-500 mt-0.5">El crédito de OPs se imputa con el botón (el motor manda); las NC netean el saldo global — su aplicación llega en otra tanda.</p>
+                    {cred > 0.009 && pend.length > 0 && (
+                      <div className="pt-1"><ConeButton onClick={aplicarCreditos} loading={saving}>Aplicar créditos a facturas</ConeButton></div>
+                    )}
                   </div>
                 ) : null })()}
               </>)}

@@ -617,6 +617,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true })
   }
 
+  if (accion === 'op_aplicar_credito') {
+    const { data: d, error: e } = await supabase.rpc('aplicar_credito_op', {
+      p_empresa_id: empresaId, p_orden_pago_id: String(body.orden_pago_id ?? ''),
+      p_comprobante_id: String(body.comprobante_id ?? ''), p_monto: Number(body.monto ?? 0) })
+    if (e) {
+      const m = e.message ?? ''
+      if (m.includes('CREDITO')) return err('La orden de pago no tiene ese crédito disponible', 409)
+      if (m.includes('PENDIENTE')) return err('Estás aplicando más de lo que la factura debe', 400)
+      if (m.includes('COMPROBANTE')) return err('Factura inválida para aplicar el crédito', 409)
+      if (m.includes('OP_')) return err('La orden de pago no admite aplicar crédito', 409)
+      return err(`No se pudo aplicar el crédito (${m.slice(0, 120)})`, 500)
+    }
+    return NextResponse.json({ ok: true, ...(typeof d === 'object' ? d : {}) })
+  }
+
   if (accion === 'op_crear') {
     const imputaciones = Array.isArray(body.imputaciones) ? body.imputaciones.map((i: Record<string, unknown>) => ({
       comprobante_id: String(i.comprobante_id), monto: Number(i.monto ?? 0) })) : []
