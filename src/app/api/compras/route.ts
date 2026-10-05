@@ -627,7 +627,7 @@ export async function POST(request: Request) {
       formato: v.formato ? String(v.formato) : null,
       fecha_cobro: v.fecha_cobro ? String(v.fecha_cobro) : null,
       fecha_emision: v.fecha_emision ? String(v.fecha_emision) : null })) : []
-    const { data: d, error: e } = await admin.rpc('registrar_orden_pago', {
+    const { data: d, error: e } = await supabase.rpc('registrar_orden_pago', {
       p_empresa_id: empresaId, p_proveedor_id: String(body.proveedor_id ?? ''),
       p_fecha: body.fecha ? String(body.fecha) : null,
       p_observaciones: body.observaciones ? String(body.observaciones) : null,
