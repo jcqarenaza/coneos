@@ -68,7 +68,7 @@ export default function ComprasPage() {
   const [chequeras, setChequeras] = useState<{ id: string; descripcion: string | null; proximo: number; hasta: number; estado: string }[]>([])
   const [modalPago, setModalPago] = useState(false)
   const [fichaPago, setFichaPago] = useState<string | null>(null)
-  const [fPago, setFPago] = useState({ imput: {} as Record<string, string>, valores: [] as { tipo: 'efectivo' | 'transferencia' | 'cheque'; monto: string; cuenta_banco_id: string; chequera_id: string; modalidad: string; formato: string; fecha_cobro: string }[], observaciones: '' })
+  const [fPago, setFPago] = useState({ imput: {} as Record<string, string>, valores: [] as { tipo: 'efectivo' | 'transferencia' | 'cheque'; monto: string; cuenta_banco_id: string; chequera_id: string; modalidad: string; formato: string; fecha_cobro: string; fecha_emision: string }[], observaciones: '' })
   const [provAbierto, setProvAbierto] = useState<string | null>(null)
   const [opAbierta, setOpAbierta] = useState<string | null>(null)
   const [compRemitos, setCompRemitos] = useState<CompRemito[]>([])
@@ -392,7 +392,8 @@ export default function ComprasPage() {
           chequera_id: v.tipo === 'cheque' ? v.chequera_id || null : null,
           modalidad: v.tipo === 'cheque' ? v.modalidad || null : null,
           formato: v.tipo === 'cheque' ? v.formato || null : null,
-          fecha_cobro: v.tipo === 'cheque' && v.fecha_cobro ? v.fecha_cobro : null })) })
+          fecha_cobro: v.tipo === 'cheque' && v.fecha_cobro ? v.fecha_cobro : null,
+          fecha_emision: v.tipo === 'cheque' && v.fecha_emision ? v.fecha_emision : null })) })
       setModalPago(false); await recargar()
       avisar('ok', 'Orden de pago registrada — la cuenta corriente ya la refleja')
     } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo registrar el pago') } finally { setSaving(false) }
@@ -797,7 +798,7 @@ export default function ComprasPage() {
                 {p.cuit && <span className="text-xs text-neutral-400">CUIT {p.cuit}</span>}
               </div>
               <div className="flex items-center gap-3">
-              <ConeButton onClick={() => { setFPago({ imput: {}, valores: [{ tipo: 'efectivo', monto: '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '' }], observaciones: '' }); setModalPago(true) }}>💸 Pagar</ConeButton>
+              <ConeButton onClick={() => { setFPago({ imput: {}, valores: [{ tipo: 'efectivo', monto: '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '', fecha_emision: '' }], observaciones: '' }); setModalPago(true) }}>💸 Pagar</ConeButton>
               <div className="text-right">
                 <p className="text-[10px] font-bold uppercase text-neutral-400">Saldo</p>
                 <p className={`font-black text-xl ${saldo > 0 ? 'text-amber-600' : saldo < 0 ? 'text-violet-600' : 'text-green-600'}`}>
@@ -903,13 +904,17 @@ export default function ComprasPage() {
                           <option value="fisico">Físico</option>
                           <option value="echeq">ECHEQ</option>
                         </select>
+                        <div className="flex items-center gap-1"><span className="text-[10px] font-bold text-neutral-400 uppercase">Cobro</span>
                         <input type="date" value={v.fecha_cobro} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, fecha_cobro: e.target.value } : x) })}
-                          className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white" />
+                          className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white" /></div>
+                        <div className="flex items-center gap-1"><span className="text-[10px] font-bold text-neutral-400 uppercase">Emisión</span>
+                        <input type="date" value={v.fecha_emision} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, fecha_emision: e.target.value } : x) })}
+                          className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white" title="Vacío = hoy" /></div>
                       </div>
                     )}
                   </div>
                 ))}
-                <button onClick={() => setFPago({ ...fPago, valores: [...fPago.valores, { tipo: 'efectivo', monto: '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '' }] })}
+                <button onClick={() => { const resto = Math.max(0, Math.round((sumaImput() - sumaValores()) * 100) / 100); setFPago({ ...fPago, valores: [...fPago.valores, { tipo: 'efectivo', monto: resto > 0 ? String(resto) : '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '', fecha_emision: '' }] }) }}
                   className="text-xs font-bold text-neutral-400 border border-neutral-200 rounded-xl px-3 py-1.5 hover:bg-neutral-50">+ Agregar valor</button>
               </div>
               <div className="ml-auto w-80 space-y-1 text-sm">
