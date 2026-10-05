@@ -68,6 +68,7 @@ export default function ComprasPage() {
   const [chequeras, setChequeras] = useState<{ id: string; descripcion: string | null; proximo: number; hasta: number; estado: string }[]>([])
   const [modalPago, setModalPago] = useState(false)
   const [fichaPago, setFichaPago] = useState<string | null>(null)
+  const [fichaSub, setFichaSub] = useState<'saldos' | 'movs'>('saldos')
   const [kardexArt, setKardexArt] = useState<string | null>(null)
   const [stockMovs, setStockMovs] = useState<{ id: string; articulo_id: string; sucursal_id: string | null; delta: number; costo_unitario: number | null; detalle: string | null; comprobante_compra_id: string | null; remito_id: string | null; created_at: string }[]>([])
   const [fPago, setFPago] = useState({ imput: {} as Record<string, string>, valores: [] as { tipo: 'efectivo' | 'transferencia' | 'cheque'; monto: string; cuenta_banco_id: string; chequera_id: string; modalidad: string; formato: string; fecha_cobro: string; fecha_emision: string }[], observaciones: '' })
@@ -819,29 +820,55 @@ export default function ComprasPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <p className="text-[11px] font-bold text-neutral-400 uppercase">Cuenta corriente — cada línea lleva a su documento</p>
-            {(() => { const pend = comprobantes.filter(c => c.proveedor_id === provAbierto && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0); const cred = ops.filter(o => o.proveedor_id === provAbierto && !o.anulada).reduce((acc, o) => acc + Math.max(0, Number(o.total) - opImputaciones.filter(i => i.orden_pago_id === o.id).reduce((x, i) => x + Number(i.monto), 0)), 0); return (pend.length > 0 || cred > 0.009) ? (
-              <p className="text-[11px] font-bold text-neutral-500 px-1">SALDOS: {pend.length > 0 ? `${pend.length} factura${pend.length > 1 ? 's' : ''} con deuda · ${fmtMon(Math.round(pend.reduce((a, c) => a + pendienteDe(c), 0) * 100) / 100)}` : 'sin facturas con deuda'}{cred > 0.009 ? ` · crédito a cuenta ${fmtMon(Math.round(cred * 100) / 100)}` : ''}</p>
-            ) : null })()}
-              {movs.length === 0 && <p className="text-sm text-neutral-400 py-6 text-center">Sin movimientos todavía.</p>}
-              {movs.map(m => {
-                const esCargo = m.tipo === 'debe'
-                const doc = m.comprobante_id ? comprobantes.find(c => c.id === m.comprobante_id) : null
-                const op = m.orden_pago_id ? ops.find(o => o.id === m.orden_pago_id) : null
-                return (
-                  <button key={m.id} className="w-full bg-neutral-50 hover:bg-neutral-100 transition-colors rounded-xl px-3 py-2 text-sm flex items-center justify-between gap-3 text-left"
-                    onClick={() => { if (doc) { setTab('facturas'); setFactAbierta(doc.id) } else if (op) setOpAbierta(op.id) }}>
-                    <span className="min-w-0 truncate text-neutral-700">
-                      <span className="text-xs text-neutral-400 mr-2">{new Date(m.created_at).toLocaleDateString('es-AR')}</span>
-                      {m.detalle ?? (doc ? `${doc.tipo === 'nota_credito' ? 'NC' : 'Factura'} ${doc.numero_proveedor}` : op ? `OP-${String(op.numero).padStart(4, '0')}` : '—')}
-                      {op?.anulada && <span className="ml-2 text-[10px] font-bold text-red-400">ANULADA</span>}
-                    </span>
-                    <span className={`font-bold whitespace-nowrap ${esCargo ? 'text-neutral-900' : 'text-green-600'}`}>
-                      {esCargo ? '+' : '−'}{fmtMon(Number(m.monto))}
-                    </span>
+              {(() => {
+                const pend = comprobantes.filter(c => c.proveedor_id === provAbierto && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0).sort((a, b) => a.created_at < b.created_at ? -1 : 1)
+                const cred = ops.filter(o => o.proveedor_id === provAbierto && !o.anulada).reduce((acc, o) => acc + Math.max(0, Number(o.total) - opImputaciones.filter(i => i.orden_pago_id === o.id).reduce((x, i) => x + Number(i.monto), 0)), 0)
+                const cargado = movs.filter(m => m.tipo === 'debe').reduce((a, m) => a + Number(m.monto), 0)
+                const pagado = movs.filter(m => m.tipo !== 'debe').reduce((a, m) => a + Number(m.monto), 0)
+                let acum = 0
+                const pendAcum = pend.map(c => { acum = Math.round((acum + pendienteDe(c)) * 100) / 100; return { c, acum } }).reverse()
+                const movsAsc = [...movs].reverse(); let run = 0
+                const movsAcum = movsAsc.map(m => { run = Math.round((run + (m.tipo === 'debe' ? Number(m.monto) : -Number(m.monto))) * 100) / 100; return { m, run } }).reverse()
+                return (<>
+              <p className="text-[11px] text-neutral-400 px-1">Cargado {fmtMon(Math.round(cargado * 100) / 100)} · Pagado {fmtMon(Math.round(pagado * 100) / 100)}{cred > 0.009 ? ` · crédito a cuenta ${fmtMon(Math.round(cred * 100) / 100)}` : ''}</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setFichaSub('saldos')} className={`text-xs font-bold rounded-full px-3 py-1 ${fichaSub === 'saldos' ? 'bg-green-500 text-white' : 'bg-neutral-100 text-neutral-500'}`}>Saldos</button>
+                <button onClick={() => setFichaSub('movs')} className={`text-xs font-bold rounded-full px-3 py-1 ${fichaSub === 'movs' ? 'bg-green-500 text-white' : 'bg-neutral-100 text-neutral-500'}`}>Movimientos</button>
+                <span className="ml-auto text-[11px] text-neutral-400">{fichaSub === 'saldos' ? `${pend.length} pendientes` : `${movs.length} registros`}</span>
+              </div>
+              {fichaSub === 'saldos' && (<>
+                <div className="grid grid-cols-[90px_1fr_120px_130px] gap-2 px-3 text-[10px] font-bold uppercase text-neutral-400"><span>Fecha</span><span>Comprobante</span><span className="text-right">Total</span><span className="text-right">Saldo</span></div>
+                {pendAcum.length === 0 && <p className="text-sm text-neutral-400 py-6 text-center">Sin comprobantes con deuda.{cred > 0.009 ? ' El crédito a cuenta manda.' : ''}</p>}
+                {pendAcum.map(({ c, acum: ac }) => (
+                  <button key={c.id} onClick={() => setFichaPago(c.id)} className="w-full grid grid-cols-[90px_1fr_120px_130px] gap-2 bg-neutral-50 hover:bg-neutral-100 rounded-xl px-3 py-2 text-sm text-left items-center">
+                    <span className="text-xs text-neutral-400">{new Date(c.created_at).toLocaleDateString('es-AR')}</span>
+                    <span className="min-w-0 truncate text-neutral-700 font-semibold">FC {c.letra ?? ''} {c.numero_proveedor}{pendienteDe(c) < Number(c.total) - 0.009 ? <span className="ml-2 text-[10px] font-bold text-sky-500">PARCIAL</span> : null}</span>
+                    <span className="text-right font-bold text-red-500">{fmtMon(pendienteDe(c))}</span>
+                    <span className="text-right font-bold text-red-600">{fmtMon(ac)}</span>
                   </button>
-                )
-              })}
+                ))}
+              </>)}
+              {fichaSub === 'movs' && (<>
+                <div className="grid grid-cols-[90px_1fr_110px_110px_130px] gap-2 px-3 text-[10px] font-bold uppercase text-neutral-400"><span>Fecha</span><span>Descripción</span><span className="text-right">Debe</span><span className="text-right">Haber</span><span className="text-right">Saldo</span></div>
+                {movsAcum.length === 0 && <p className="text-sm text-neutral-400 py-6 text-center">Sin movimientos todavía.</p>}
+                {movsAcum.map(({ m, run: rn }) => {
+                  const esCargo = m.tipo === 'debe'
+                  const doc = m.comprobante_id ? comprobantes.find(c => c.id === m.comprobante_id) : null
+                  const op = m.orden_pago_id ? ops.find(o => o.id === m.orden_pago_id) : null
+                  return (
+                    <button key={m.id} onClick={() => { if (doc) setFichaPago(doc.id); else if (op) setOpAbierta(op.id) }}
+                      className="w-full grid grid-cols-[90px_1fr_110px_110px_130px] gap-2 bg-neutral-50 hover:bg-neutral-100 rounded-xl px-3 py-2 text-sm text-left items-center">
+                      <span className="text-xs text-neutral-400">{new Date(m.created_at).toLocaleDateString('es-AR')}</span>
+                      <span className="min-w-0 truncate text-neutral-700">{m.detalle ?? (doc ? `${doc.tipo === 'nota_credito' ? 'NC' : 'Factura'} ${doc.numero_proveedor}` : op ? `OP-${String(op.numero).padStart(4, '0')}` : '—')}{op?.anulada && <span className="ml-2 text-[10px] font-bold text-red-400">ANULADA</span>}{!esCargo && !op?.anulada && <span className="ml-2 text-[9px] font-bold bg-green-50 text-green-600 rounded px-1">PAGO/NC</span>}</span>
+                      <span className="text-right font-bold text-red-500">{esCargo ? fmtMon(Number(m.monto)) : '—'}</span>
+                      <span className="text-right font-bold text-green-600">{esCargo ? '—' : fmtMon(Number(m.monto))}</span>
+                      <span className={`text-right font-bold ${rn > 0 ? 'text-red-600' : rn < 0 ? 'text-violet-600' : 'text-neutral-400'}`}>{fmtMon(rn)}</span>
+                    </button>
+                  )
+                })}
+              </>)}
+                </>)
+                            })}
             </div>
           </div>
         )
