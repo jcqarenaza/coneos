@@ -64,7 +64,7 @@ export default function ComprasPage() {
   const [opValores, setOpValores] = useState<OpValor[]>([])
   const [opImputaciones, setOpImputaciones] = useState<OpImp[]>([])
   const [chequesAll, setChequesAll] = useState<ChequeRow[]>([])
-  const [cuentasBanco, setCuentasBanco] = useState<{ id: string; nombre: string }[]>([])
+  const [cuentasBanco, setCuentasBanco] = useState<{ id: string; banco: string; alias: string | null }[]>([])
   const [chequeras, setChequeras] = useState<{ id: string; descripcion: string | null; proximo: number; hasta: number; estado: string }[]>([])
   const [modalPago, setModalPago] = useState(false)
   const [fichaPago, setFichaPago] = useState<string | null>(null)
@@ -874,7 +874,7 @@ export default function ComprasPage() {
                         <select value={v.cuenta_banco_id} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, cuenta_banco_id: e.target.value } : x) })}
                           className="flex-1 rounded-lg border border-neutral-200 px-2 py-1.5 text-sm bg-white">
                           <option value="">Cuenta…</option>
-                          {cuentasBanco.map(cb => <option key={cb.id} value={cb.id}>{cb.nombre}</option>)}
+                          {cuentasBanco.map(cb => <option key={cb.id} value={cb.id}>{cb.banco}{cb.alias ? ` · ${cb.alias}` : ""}</option>)}
                         </select>
                       )}
                       {v.tipo === 'cheque' && (
@@ -964,7 +964,7 @@ export default function ComprasPage() {
         const imps = opImputaciones.filter(i => i.orden_pago_id === op.id)
         const etiquetaValor = (v: OpValor) => {
           if (v.tipo === 'efectivo') return 'Efectivo'
-          if (v.tipo === 'transferencia') return `Transferencia · ${cuentasBanco.find(cb => cb.id === v.cuenta_banco_id)?.nombre ?? 'cuenta'}`
+          if (v.tipo === 'transferencia') return `Transferencia · ${(() => { const cb = cuentasBanco.find(x => x.id === v.cuenta_banco_id); return cb ? cb.banco + (cb.alias ? ' · ' + cb.alias : '') : 'cuenta' })()}`
           const ch = chequesAll.find(c => c.id === v.cheque_id)
           return `Cheque ${ch?.numero != null ? `N° ${ch.numero}` : ''}${ch?.formato ? ` · ${ch.formato}` : ''}${ch?.estado ? ` · ${ch.estado}` : ''}`
         }
