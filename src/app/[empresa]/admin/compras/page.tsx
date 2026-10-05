@@ -921,7 +921,7 @@ export default function ComprasPage() {
           <ConeModal open onClose={() => setModalPago(false)} title="Pagar a proveedor" size="lg">
             <div className="space-y-4">
               {(() => { const cred = ops.filter(o => o.proveedor_id === provAbierto && !o.anulada).reduce((acc, o) => acc + Math.max(0, Number(o.total) - opImputaciones.filter(i => i.orden_pago_id === o.id).reduce((x, i) => x + Number(i.monto), 0)), 0); return cred > 0.009 ? (
-                <p className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">💳 Este proveedor tiene {fmtMon(Math.round(cred * 100) / 100)} a cuenta sin imputar — se aplica desde su OP (próxima tanda)</p>
+                <p className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">💳 Este proveedor tiene {fmtMon(Math.round(cred * 100) / 100)} a cuenta sin imputar — abrí esa OP desde la cuenta corriente y aplicalo a la factura que elijas</p>
               ) : null })()}
               <div className="space-y-1.5">
                 <Label>Qué paga — facturas con deuda (vacío = pago a cuenta)</Label>
@@ -1145,11 +1145,13 @@ export default function ComprasPage() {
                     <div className="bg-violet-50 border border-violet-100 rounded-xl px-3 py-2 space-y-1.5">
                       <p className="text-[10px] font-bold uppercase text-violet-600">Crédito disponible de esta OP: {fmtMon(credDisp)} — elegí a qué factura aplicarlo</p>
                       {pendF.length === 0 && <p className="text-xs text-violet-400">No hay facturas con deuda de este proveedor.</p>}
-                      {pendF.map(c => { const monto = Math.round(Math.min(credDisp, pendienteDe(c)) * 100) / 100; return (
+                      {pendF.map(c => { const tope = Math.round(Math.min(credDisp, pendienteDe(c)) * 100) / 100; return (
                         <div key={c.id} className="flex items-center justify-between gap-2 text-sm">
                           <span className="min-w-0 truncate text-neutral-700">FC {c.letra ?? ''} {c.numero_proveedor} <span className="text-xs text-neutral-400">· debe {fmtMon(pendienteDe(c))}</span></span>
-                          <ConeButton loading={saving} onClick={async () => { setSaving(true); try { await api({ accion: 'op_aplicar_credito', orden_pago_id: op.id, comprobante_id: c.id, monto }); await recargar(); avisar('ok', `Crédito aplicado: ${fmtMon(monto)} a la ${c.numero_proveedor}`) } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo aplicar') } finally { setSaving(false) } }}>
-                            Aplicar {fmtMon(monto)}
+                          <input type="number" min="0" step="0.01" defaultValue={tope.toFixed(2)} id={`apl-${c.id}`}
+                            className="w-28 rounded-lg border border-violet-200 px-2 py-1 text-sm text-right bg-white" />
+                          <ConeButton loading={saving} onClick={async () => { const el = document.getElementById(`apl-${c.id}`) as HTMLInputElement | null; const monto = Math.round(Math.min(Number(el?.value || 0), tope) * 100) / 100; if (monto <= 0) { avisar('error', 'Monto inválido'); return } setSaving(true); try { await api({ accion: 'op_aplicar_credito', orden_pago_id: op.id, comprobante_id: c.id, monto }); await recargar(); avisar('ok', `Crédito aplicado: ${fmtMon(monto)} — lo no aplicado sigue a favor`) } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo aplicar') } finally { setSaving(false) } }}>
+                            Aplicar
                           </ConeButton>
                         </div>
                       ) })}
