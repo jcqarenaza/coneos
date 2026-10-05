@@ -68,6 +68,8 @@ export default function ComprasPage() {
   const [chequeras, setChequeras] = useState<{ id: string; descripcion: string | null; proximo: number; hasta: number; estado: string }[]>([])
   const [modalPago, setModalPago] = useState(false)
   const [fichaPago, setFichaPago] = useState<string | null>(null)
+  const [kardexArt, setKardexArt] = useState<string | null>(null)
+  const [stockMovs, setStockMovs] = useState<{ id: string; articulo_id: string; sucursal_id: string | null; delta: number; costo_unitario: number | null; detalle: string | null; comprobante_compra_id: string | null; remito_id: string | null; created_at: string }[]>([])
   const [fPago, setFPago] = useState({ imput: {} as Record<string, string>, valores: [] as { tipo: 'efectivo' | 'transferencia' | 'cheque'; monto: string; cuenta_banco_id: string; chequera_id: string; modalidad: string; formato: string; fecha_cobro: string; fecha_emision: string }[], observaciones: '' })
   const [provAbierto, setProvAbierto] = useState<string | null>(null)
   const [opAbierta, setOpAbierta] = useState<string | null>(null)
@@ -130,7 +132,7 @@ export default function ComprasPage() {
           setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
           setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
           setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? [])
-      setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setChequeras(d.chequeras ?? []); setCompItems(d.comp_items ?? [])
+      setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setChequeras(d.chequeras ?? []); setStockMovs(d.stock_movs ?? []); setCompItems(d.comp_items ?? [])
         } catch { /* la página muestra vacío; las acciones reintentarán */ }
         setLoading(false)
       })
@@ -143,7 +145,7 @@ export default function ComprasPage() {
       setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
       setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
       setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? []); setCompItems(d.comp_items ?? [])
-      setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setChequeras(d.chequeras ?? [])
+      setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setChequeras(d.chequeras ?? []); setStockMovs(d.stock_movs ?? [])
     } catch { /* siguiente acción reintenta */ }
   }
 
@@ -496,6 +498,13 @@ export default function ComprasPage() {
       {tab === 'proveedores' && !provAbierto && (
         <div className="space-y-2">
           {proveedores.length === 0 && <div className="text-center py-12 text-neutral-400 bg-white rounded-2xl border border-neutral-100">Sin proveedores. Cargá el primero con el botón de arriba.</div>}
+          {(() => { const conS = proveedores.map(p => saldoDe(p.id)).filter(x => x !== 0); const enCalle = conS.filter(x => x > 0).reduce((a, b) => a + b, 0); const aFavor = -conS.filter(x => x < 0).reduce((a, b) => a + b, 0); return (
+            <div className="flex items-center gap-3 text-xs font-bold px-1 pb-1">
+              <span className="text-amber-600">EN CALLE {fmtMon(Math.round(enCalle * 100) / 100)}</span>
+              {aFavor > 0.009 && <span className="text-violet-600">A FAVOR {fmtMon(Math.round(aFavor * 100) / 100)}</span>}
+              <span className="text-neutral-400">{conS.length} con saldo · {proveedores.length} proveedores</span>
+            </div>
+          ) })()}
           {proveedores.map(p => (
             <div key={p.id} className={`bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm ${!p.activo ? 'opacity-55 grayscale' : ''}`}>
               <div className="min-w-0 cursor-pointer flex-1" onClick={() => setProvAbierto(p.id)}>
@@ -551,6 +560,8 @@ export default function ComprasPage() {
                       className={`relative w-11 h-6 rounded-full transition-colors ${a.activo ? 'bg-green-500' : 'bg-neutral-200'}`}>
                       <span className={`absolute top-0.5 h-5 w-5 bg-white rounded-full shadow transition-all ${a.activo ? 'left-[22px]' : 'left-0.5'}`} />
                     </button>
+                    <button onClick={() => setKardexArt(a.id)} title="Kardex: movimientos y stock por sucursal"
+                      className="text-xs font-bold text-neutral-400 border border-neutral-200 rounded-lg px-2 py-1 hover:bg-neutral-50">📒 Kardex</button>
                     <button onClick={() => { setFArt({ nombre: a.nombre, tipo: a.tipo, unidad_stock: a.unidad_stock, controla_stock: a.controla_stock, producto_id: a.producto_id ?? '' }); setArtEdit(a.id); setModalArt(true) }}
                       className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
                   </div>
@@ -809,6 +820,9 @@ export default function ComprasPage() {
             </div>
             <div className="space-y-1.5">
               <p className="text-[11px] font-bold text-neutral-400 uppercase">Cuenta corriente — cada línea lleva a su documento</p>
+            {(() => { const pend = comprobantes.filter(c => c.proveedor_id === provAbierto && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0); const cred = ops.filter(o => o.proveedor_id === provAbierto && !o.anulada).reduce((acc, o) => acc + Math.max(0, Number(o.total) - opImputaciones.filter(i => i.orden_pago_id === o.id).reduce((x, i) => x + Number(i.monto), 0)), 0); return (pend.length > 0 || cred > 0.009) ? (
+              <p className="text-[11px] font-bold text-neutral-500 px-1">SALDOS: {pend.length > 0 ? `${pend.length} factura${pend.length > 1 ? 's' : ''} con deuda · ${fmtMon(Math.round(pend.reduce((a, c) => a + pendienteDe(c), 0) * 100) / 100)}` : 'sin facturas con deuda'}{cred > 0.009 ? ` · crédito a cuenta ${fmtMon(Math.round(cred * 100) / 100)}` : ''}</p>
+            ) : null })()}
               {movs.length === 0 && <p className="text-sm text-neutral-400 py-6 text-center">Sin movimientos todavía.</p>}
               {movs.map(m => {
                 const esCargo = m.tipo === 'debe'
@@ -938,6 +952,43 @@ export default function ComprasPage() {
                 disabled={!(sumaValores() > 0) || sumaImput() - sumaValores() > 0.009 || Object.entries(fPago.imput).some(([cid, m]) => Number(m) > pendienteDe(comprobantes.find(c => c.id === cid)!))}>
                 💸 Registrar pago
               </ConeButton>
+            </div>
+          </ConeModal>
+        )
+      })()}
+      {kardexArt && (() => {
+        const a = articulos.find(x => x.id === kardexArt)
+        if (!a) return null
+        const movs = stockMovs.filter(m => m.articulo_id === kardexArt)
+        const porSuc = new Map<string, number>()
+        for (const m of movs) { const k = m.sucursal_id ?? ''; porSuc.set(k, (porSuc.get(k) ?? 0) + Number(m.delta)) }
+        return (
+          <ConeModal open onClose={() => setKardexArt(null)} title={`📒 Kardex — ${a.nombre}`} size="lg">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {[...porSuc.entries()].map(([sid, tot]) => (
+                  <span key={sid || 'x'} className="text-xs font-bold bg-neutral-100 text-neutral-700 rounded-full px-3 py-1">
+                    {sucursales.find(su => su.id === sid)?.nombre ?? 'Sucursal'}: {Math.round(tot * 100) / 100} {a.unidad_stock}
+                  </span>
+                ))}
+                {porSuc.size === 0 && <span className="text-sm text-neutral-400">Sin movimientos todavía.</span>}
+              </div>
+              <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-1">
+                {movs.slice(0, 200).map(m => {
+                  const doc = m.comprobante_compra_id || m.remito_id
+                  return (
+                    <div key={m.id} onClick={() => { if (m.comprobante_compra_id) { setKardexArt(null); setTab('facturas'); setFactAbierta(m.comprobante_compra_id) } else if (m.remito_id) { setKardexArt(null); setTab('remitos') } }}
+                      className={`bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center gap-3 ${doc ? 'cursor-pointer hover:bg-neutral-100' : ''}`}>
+                      <span className="text-xs text-neutral-400 whitespace-nowrap">{m.created_at.slice(0, 10)}</span>
+                      <span className={`font-black whitespace-nowrap ${Number(m.delta) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{Number(m.delta) >= 0 ? '+' : ''}{Math.round(Number(m.delta) * 100) / 100}</span>
+                      <span className="flex-1 text-neutral-600 min-w-0 truncate">{m.detalle ?? '—'}</span>
+                      {m.costo_unitario != null && <span className="text-xs text-neutral-400 whitespace-nowrap">costo {fmtMon(Number(m.costo_unitario))}</span>}
+                      {doc && <span className="text-neutral-300">→</span>}
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-[10px] text-neutral-300">Lectura pura de stock_movimientos — el stock es la suma del libro.</p>
             </div>
           </ConeModal>
         )
