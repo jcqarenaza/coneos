@@ -642,7 +642,8 @@ export async function POST(request: Request) {
       modalidad: v.modalidad ? String(v.modalidad) : null,
       formato: v.formato ? String(v.formato) : null,
       fecha_cobro: v.fecha_cobro ? String(v.fecha_cobro) : null,
-      fecha_emision: v.fecha_emision ? String(v.fecha_emision) : null })) : []
+      fecha_emision: v.fecha_emision ? String(v.fecha_emision) : null,
+      orden_pago_origen_id: v.orden_pago_origen_id ? String(v.orden_pago_origen_id) : null })) : []
     const { data: d, error: e } = await supabase.rpc('registrar_orden_pago', {
       p_empresa_id: empresaId, p_proveedor_id: String(body.proveedor_id ?? ''),
       p_fecha: body.fecha ? String(body.fecha) : null,
@@ -663,6 +664,11 @@ export async function POST(request: Request) {
       if (m.includes('EMISION_FUTURA')) return err('La emisión del cheque no puede ser futura', 400)
       if (m.includes('EMISION_POSTERIOR_AL_COBRO')) return err('La emisión no puede ser posterior al cobro', 400)
       if (m.includes('FECHA_COBRO_INVALIDA')) return err('La fecha de cobro del diferido no puede ser pasada', 400)
+      if (m.includes('CREDITO_ORIGEN_ANULADA')) return err('La OP de origen del crédito está anulada', 409)
+      if (m.includes('CREDITO_ORIGEN_INVALIDO')) return err('OP de origen del crédito inválida', 409)
+      if (m.includes('CREDITO_OTRO_PROVEEDOR')) return err('El crédito es de otro proveedor', 409)
+      if (m.includes('CREDITO_EN_CADENA')) return err('Esa OP ya se pagó con crédito: no puede ser origen de otro', 409)
+      if (m.includes('CREDITO_INSUFICIENTE')) return err('La OP de origen no tiene ese crédito disponible', 409)
       if (m.includes('CHEQUERA_AGOTADA')) return err('La chequera no tiene cheques disponibles', 409)
       if (m.includes('CHEQUERA_INVALIDA')) return err('Chequera inválida o inactiva', 409)
       if (m.includes('CUENTA_INVALIDA')) return err('Cuenta de banco inválida', 409)

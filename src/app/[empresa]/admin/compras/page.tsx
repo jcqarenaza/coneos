@@ -391,41 +391,19 @@ export default function ComprasPage() {
     setSaving(true)
     try {
       const vals = fPago.valores.filter(v => Number(v.monto) > 0)
-      const totalVal = vals.reduce((a, v) => a + Number(v.monto), 0)
-      const credSel = Object.entries(fPago.creditos).filter(([, m]) => Number(m) > 0).map(([oid, m]) => ({ oid, monto: Number(m) }))
-      const impu = Object.entries(fPago.imput).filter(([, m]) => Number(m) > 0).map(([cid, m]) => ({ comprobante_id: cid, monto: Number(m) }))
-      let capacidad = Math.round(totalVal * 100) / 100
-      const impOp: { comprobante_id: string; monto: number }[] = []
-      const faltantes: { cid: string; monto: number }[] = []
-      for (const i2 of impu) {
-        const toma = Math.round(Math.min(capacidad, i2.monto) * 100) / 100
-        if (toma > 0) { impOp.push({ comprobante_id: i2.comprobante_id, monto: toma }); capacidad = Math.round((capacidad - toma) * 100) / 100 }
-        const resto = Math.round((i2.monto - toma) * 100) / 100
-        if (resto > 0) faltantes.push({ cid: i2.comprobante_id, monto: resto })
-      }
-      if (totalVal > 0) {
-        await api({ accion: 'op_crear', proveedor_id: provAbierto, observaciones: fPago.observaciones || null,
-          imputaciones: impOp,
-          valores: vals.map(v => ({ tipo: v.tipo, monto: Number(v.monto),
-            cuenta_banco_id: v.tipo === 'transferencia' ? v.cuenta_banco_id || null : null,
-            chequera_id: v.tipo === 'cheque' ? v.chequera_id || null : null,
-            modalidad: v.tipo === 'cheque' ? v.modalidad || null : null,
-            formato: v.tipo === 'cheque' ? v.formato || null : null,
-            fecha_cobro: v.tipo === 'cheque' && v.fecha_cobro ? v.fecha_cobro : null,
-            fecha_emision: v.tipo === 'cheque' && v.fecha_emision ? v.fecha_emision : null })) })
-      }
-      let aplicado = 0
-      for (const cr of credSel) {
-        let resto = cr.monto
-        for (const f of faltantes) {
-          if (resto <= 0.009 || f.monto <= 0.009) continue
-          const toma = Math.round(Math.min(resto, f.monto) * 100) / 100
-          await api({ accion: 'op_aplicar_credito', orden_pago_id: cr.oid, comprobante_id: f.cid, monto: toma })
-          f.monto = Math.round((f.monto - toma) * 100) / 100; resto = Math.round((resto - toma) * 100) / 100; aplicado += toma
-        }
-      }
+      const credVals = Object.entries(fPago.creditos).filter(([, m]) => Number(m) > 0)
+        .map(([oid, m]) => ({ tipo: 'credito_op', orden_pago_origen_id: oid, monto: Number(m) }))
+      await api({ accion: 'op_crear', proveedor_id: provAbierto, observaciones: fPago.observaciones || null,
+        imputaciones: Object.entries(fPago.imput).filter(([, m]) => Number(m) > 0).map(([cid, m]) => ({ comprobante_id: cid, monto: Number(m) })),
+        valores: [...vals.map(v => ({ tipo: v.tipo, monto: Number(v.monto),
+          cuenta_banco_id: v.tipo === 'transferencia' ? v.cuenta_banco_id || null : null,
+          chequera_id: v.tipo === 'cheque' ? v.chequera_id || null : null,
+          modalidad: v.tipo === 'cheque' ? v.modalidad || null : null,
+          formato: v.tipo === 'cheque' ? v.formato || null : null,
+          fecha_cobro: v.tipo === 'cheque' && v.fecha_cobro ? v.fecha_cobro : null,
+          fecha_emision: v.tipo === 'cheque' && v.fecha_emision ? v.fecha_emision : null })), ...credVals] })
       setModalPago(false); await recargar()
-      avisar('ok', `Pago registrado${aplicado > 0 ? ` — crédito aplicado ${fmtMon(Math.round(aplicado * 100) / 100)}; lo no usado sigue en su OP` : ' — la cuenta corriente ya lo refleja'}`)
+      avisar('ok', 'Orden de pago registrada — el crédito usado quedó documentado en ESTA OP; la vieja, intacta')
     } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo registrar el pago') } finally { setSaving(false) }
   }
   const saldoDe = (proveedorId: string) => Number(saldos.find(sa => sa.proveedor_id === proveedorId)?.saldo ?? 0)
@@ -1033,7 +1011,7 @@ export default function ComprasPage() {
             <div className="flex items-center justify-end gap-2 mt-5">
               <ConeButton variante="fantasma" onClick={() => setModalPago(false)}>Cancelar</ConeButton>
               <ConeButton onClick={crearPago} loading={saving}
-                disabled={!(sumaValores() + sumaCreditos() > 0) || (sumaCreditos() > 0.009 && Object.keys(fPago.imput).length === 0) || sumaImput() - sumaValores() - sumaCreditos() > 0.009 || Object.entries(fPago.creditos).some(([oid, m]) => Number(m) > Math.round((Number(ops.find(o => o.id === oid)?.total ?? 0) - opImputaciones.filter(i => i.orden_pago_id === oid).reduce((x, i) => x + Number(i.monto), 0)) * 100) / 100) || Object.entries(fPago.imput).some(([cid, m]) => Number(m) > pendienteDe(comprobantes.find(c => c.id === cid)!))}>
+                disabled={!(sumaValores() + sumaCreditos() > 0) || sumaImput() - sumaValores() - sumaCreditos() > 0.009 || Object.entries(fPago.creditos).some(([oid, m]) => Number(m) > Math.round((Number(ops.find(o => o.id === oid)?.total ?? 0) - opImputaciones.filter(i => i.orden_pago_id === oid).reduce((x, i) => x + Number(i.monto), 0)) * 100) / 100) || Object.entries(fPago.imput).some(([cid, m]) => Number(m) > pendienteDe(comprobantes.find(c => c.id === cid)!))}>
                 💸 Registrar pago
               </ConeButton>
             </div>
