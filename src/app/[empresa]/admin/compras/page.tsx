@@ -868,7 +868,7 @@ export default function ComprasPage() {
                 })}
               </>)}
                 </>)
-                            })}
+              })()}
             </div>
           </div>
         )
