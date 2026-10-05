@@ -67,6 +67,7 @@ export default function ComprasPage() {
   const [cuentasBanco, setCuentasBanco] = useState<{ id: string; nombre: string }[]>([])
   const [chequeras, setChequeras] = useState<{ id: string; descripcion: string | null; proximo: number; hasta: number; estado: string }[]>([])
   const [modalPago, setModalPago] = useState(false)
+  const [fichaPago, setFichaPago] = useState<string | null>(null)
   const [fPago, setFPago] = useState({ imput: {} as Record<string, string>, valores: [] as { tipo: 'efectivo' | 'transferencia' | 'cheque'; monto: string; cuenta_banco_id: string; chequera_id: string; modalidad: string; formato: string; fecha_cobro: string }[], observaciones: '' })
   const [provAbierto, setProvAbierto] = useState<string | null>(null)
   const [opAbierta, setOpAbierta] = useState<string | null>(null)
@@ -836,12 +837,13 @@ export default function ComprasPage() {
                 {pend.map(c => {
                   const marcada = fPago.imput[c.id] !== undefined
                   return (
-                    <div key={c.id} className="bg-neutral-50 rounded-xl px-3 py-2 flex items-center gap-3">
+                    <div key={c.id} className="bg-neutral-50 rounded-xl px-3 py-2 flex items-center gap-3 cursor-pointer" title="Doble click: ver el comprobante"
+                      onDoubleClick={() => setFichaPago(c.id)}>
                       <input type="checkbox" checked={marcada}
-                        onChange={e => { const n = { ...fPago.imput }; if (e.target.checked) n[c.id] = String(pendienteDe(c)); else delete n[c.id]; setFPago({ ...fPago, imput: n }) }} />
+                        onChange={e => { const n = { ...fPago.imput }; if (e.target.checked) n[c.id] = ''; else delete n[c.id]; setFPago({ ...fPago, imput: n }) }} />
                       <span className="flex-1 text-sm text-neutral-700">Factura {c.letra ?? ''} {c.numero_proveedor} <span className="text-xs text-neutral-400">· debe {fmtMon(pendienteDe(c))}</span></span>
                       {marcada && (
-                        <input type="number" min="0" step="0.01" value={fPago.imput[c.id]}
+                        <input type="number" min="0" step="0.01" value={fPago.imput[c.id]} placeholder={pendienteDe(c).toFixed(2)}
                           onChange={e => setFPago({ ...fPago, imput: { ...fPago.imput, [c.id]: e.target.value } })}
                           className="w-32 rounded-lg border border-neutral-200 px-2 py-1 text-sm text-right" />
                       )}
@@ -907,7 +909,7 @@ export default function ComprasPage() {
                 <div className="flex justify-between text-neutral-500"><span>Imputado a facturas</span><span className="font-bold text-neutral-700">{fmtMon(sumaImput())}</span></div>
                 <div className="flex justify-between border-t border-neutral-200 pt-1.5"><span className="font-black text-neutral-900">TOTAL valores</span><span className="font-black">{fmtMon(sumaValores())}</span></div>
                 {aCuenta > 0.009 && <p className="text-[11px] text-amber-600 font-semibold text-right">El excedente de {fmtMon(aCuenta)} queda a cuenta del proveedor</p>}
-                {sumaImput() - sumaValores() > 0.009 && <p className="text-[11px] font-bold text-red-500 text-right">⛔ lo imputado supera la plata de la orden</p>}
+                {sumaImput() - sumaValores() > 0.009 && <p className="text-[11px] font-bold text-amber-600 text-right">Falta cubrir {fmtMon(Math.round((sumaImput() - sumaValores()) * 100) / 100)} con valores</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>Observaciones</Label>
@@ -921,6 +923,29 @@ export default function ComprasPage() {
                 disabled={!(sumaValores() > 0) || sumaImput() - sumaValores() > 0.009 || Object.entries(fPago.imput).some(([cid, m]) => Number(m) > pendienteDe(comprobantes.find(c => c.id === cid)!))}>
                 💸 Registrar pago
               </ConeButton>
+            </div>
+          </ConeModal>
+        )
+      })()}
+      {fichaPago && (() => {
+        const c = comprobantes.find(x => x.id === fichaPago)
+        if (!c) return null
+        const items = compItems.filter(i => i.comprobante_id === c.id)
+        const cN = c as Comprobante & { neto?: number | null; iva?: number | null }
+        return (
+          <ConeModal open onClose={() => setFichaPago(null)} title={`${c.tipo === 'nota_credito' ? 'NC' : 'Factura'} ${c.letra ?? ''} ${c.numero_proveedor}`}>
+            <div className="space-y-2">
+              <p className="text-xs text-neutral-400">{c.fecha} · {fmtMon(Number(c.total))} · {c.estado}</p>
+              {items.map(i => (
+                <div key={i.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center justify-between gap-3">
+                  <span className="text-neutral-700 min-w-0 truncate">{i.descripcion}</span>
+                  <span className="text-xs text-neutral-500 whitespace-nowrap">{Number(i.cantidad)} × {fmtMon(Number(i.precio_unitario))} = <b className="text-neutral-800">{fmtMon(Number(i.cantidad) * Number(i.precio_unitario))}</b></span>
+                </div>
+              ))}
+              {cN.neto != null && (
+                <p className="text-xs text-neutral-500 text-right px-1">Neto {fmtMon(Number(cN.neto))} + IVA {fmtMon(Number(cN.iva ?? 0))} = <b>{fmtMon(Number(c.total))}</b></p>
+              )}
+              <div className="flex justify-end pt-2"><ConeButton variante="fantasma" onClick={() => setFichaPago(null)}>Volver al pago</ConeButton></div>
             </div>
           </ConeModal>
         )
