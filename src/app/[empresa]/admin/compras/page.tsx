@@ -1015,7 +1015,7 @@ export default function ComprasPage() {
                   return (
                     <div key={m.id} onClick={() => { if (m.comprobante_compra_id) setFichaPago(m.comprobante_compra_id); else if (m.remito_id) setFichaRemito(m.remito_id) }}
                       className={`bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center gap-3 ${doc ? 'cursor-pointer hover:bg-neutral-100' : ''}`}>
-                      <span className="text-xs text-neutral-400 whitespace-nowrap">{m.created_at.slice(0, 10)}</span>
+                      <span className="text-xs text-neutral-400 whitespace-nowrap">{String(m.created_at ?? '').slice(0, 10)}</span>
                       <span className={`font-black whitespace-nowrap ${Number(m.delta) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{Number(m.delta) >= 0 ? '+' : ''}{Math.round(Number(m.delta) * 100) / 100}</span>
                       <span className="flex-1 text-neutral-600 min-w-0 truncate">{m.detalle ?? '—'}</span>
                       {m.costo_unitario != null && <span className="text-xs text-neutral-400 whitespace-nowrap">costo {fmtMon(Number(m.costo_unitario))}</span>}
@@ -1030,13 +1030,13 @@ export default function ComprasPage() {
         )
       })()}
       {fichaRemito && (() => {
-        const r = remitos.find(x => x.id === fichaRemito) as (typeof remitos)[number] & { numero?: string | null; tipo?: string | null; estado?: string | null; created_at: string } | undefined
+        const r = remitos.find(x => x.id === fichaRemito) as (Record<string, unknown> & { id: string }) | undefined
         if (!r) return null
         const items = remitoItems.filter(i => i.remito_id === r.id)
         return (
-          <ConeModal open onClose={() => setFichaRemito(null)} title={`Remito ${r.numero ?? ''}`}>
+          <ConeModal open onClose={() => setFichaRemito(null)} title={`Remito ${String(r.numero ?? r.numero_remito ?? '')}`}>
             <div className="space-y-2">
-              <p className="text-xs text-neutral-400">{r.created_at.slice(0, 10)}{r.tipo ? ` · ${r.tipo}` : ''}{r.estado ? ` · ${r.estado}` : ''}</p>
+              <p className="text-xs text-neutral-400">{String(r.created_at ?? r.fecha ?? '').slice(0, 10)}{r.tipo ? ` · ${String(r.tipo)}` : ''}{r.estado ? ` · ${String(r.estado)}` : ''}</p>
               {items.map(i => (
                 <div key={i.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center justify-between gap-3">
                   <span className="text-neutral-700 min-w-0 truncate">{articulos.find(a => a.id === i.articulo_id)?.nombre ?? '—'}</span>
