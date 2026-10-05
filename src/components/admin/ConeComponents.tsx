@@ -56,14 +56,15 @@ export function ConeButton({
 }
 
 // ConeModal
-export function ConeModal({ open, onClose, title, children, footer }: {
+export function ConeModal({ open, onClose, title, children, footer, size = 'md' }: {
+  size?: 'md' | 'lg' | 'xl'
   open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode
 }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div className={`relative bg-white rounded-2xl shadow-xl w-full ${size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : 'max-w-lg'} max-h-[90vh] flex flex-col`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
           <h2 className="font-bold text-neutral-900">{title}</h2>
           <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 transition-colors text-xl leading-none">×</button>
