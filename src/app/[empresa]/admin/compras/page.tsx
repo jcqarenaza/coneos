@@ -72,7 +72,7 @@ export default function ComprasPage() {
   const [fichaSub, setFichaSub] = useState<'saldos' | 'movs'>('saldos')
   const [kardexArt, setKardexArt] = useState<string | null>(null)
   const [stockMovs, setStockMovs] = useState<{ id: string; articulo_id: string; sucursal_id: string | null; delta: number; costo_unitario: number | null; detalle: string | null; comprobante_compra_id: string | null; remito_id: string | null; created_at: string }[]>([])
-  const [fPago, setFPago] = useState({ imput: {} as Record<string, string>, valores: [] as { tipo: 'efectivo' | 'transferencia' | 'cheque'; monto: string; cuenta_banco_id: string; chequera_id: string; modalidad: string; formato: string; fecha_cobro: string; fecha_emision: string }[], observaciones: '' })
+  const [fPago, setFPago] = useState({ imput: {} as Record<string, string>, valores: [] as { tipo: 'efectivo' | 'transferencia' | 'cheque'; monto: string; cuenta_banco_id: string; chequera_id: string; modalidad: string; formato: string; fecha_cobro: string; fecha_emision: string }[], observaciones: '', creditos: {} as Record<string, string> })
   const [provAbierto, setProvAbierto] = useState<string | null>(null)
   const [opAbierta, setOpAbierta] = useState<string | null>(null)
   const [compRemitos, setCompRemitos] = useState<CompRemito[]>([])
@@ -378,6 +378,7 @@ export default function ComprasPage() {
   const pendienteDe = (c: Comprobante) => Math.round((Number(c.total) - imputadoDe(c.id)) * 100) / 100
   const sumaImput = () => Object.values(fPago.imput).reduce((a, v) => a + (Number(v) || 0), 0)
   const sumaValores = () => fPago.valores.reduce((a, v) => a + (Number(v.monto) || 0), 0)
+  const sumaCreditos = () => Object.values(fPago.creditos).reduce((a, v) => a + (Number(v) || 0), 0)
   const aplicarImput = (n: Record<string, string>) => {
     const total = Object.values(n).reduce((a, v) => a + (Number(v) || 0), 0)
     const vs = fPago.valores.length === 1
@@ -385,49 +386,46 @@ export default function ComprasPage() {
       : fPago.valores
     setFPago({ ...fPago, imput: n, valores: vs })
   }
-  async function aplicarCreditos() {
-    if (!provAbierto) return
-    const credOps = ops.filter(o => o.proveedor_id === provAbierto && !o.anulada)
-      .map(o => ({ id: o.id, numero: o.numero, cred: Math.round((Number(o.total) - opImputaciones.filter(i => i.orden_pago_id === o.id).reduce((x, i) => x + Number(i.monto), 0)) * 100) / 100 }))
-      .filter(o => o.cred > 0.009).sort((a, b) => a.numero - b.numero)
-    const pend = comprobantes.filter(c => c.proveedor_id === provAbierto && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0)
-      .sort((a, b) => a.created_at < b.created_at ? -1 : 1)
-    if (credOps.length === 0 || pend.length === 0) { avisar('error', 'No hay crédito de OPs y factura con deuda para cruzar'); return }
-    setSaving(true)
-    try {
-      let aplicado = 0
-      for (const o of credOps) {
-        let resto = o.cred
-        for (const c of pend) {
-          if (resto <= 0.009) break
-          const debe = pendienteDe(c) - (c.id in aplicadoPor ? aplicadoPor[c.id] : 0)
-          if (debe <= 0.009) continue
-          const monto = Math.round(Math.min(resto, debe) * 100) / 100
-          await api({ accion: 'op_aplicar_credito', orden_pago_id: o.id, comprobante_id: c.id, monto })
-          aplicadoPor[c.id] = (aplicadoPor[c.id] ?? 0) + monto
-          resto = Math.round((resto - monto) * 100) / 100; aplicado += monto
-        }
-      }
-      await recargar()
-      avisar('ok', aplicado > 0 ? `Crédito aplicado: ${fmtMon(Math.round(aplicado * 100) / 100)} — el motor imputó y la CC lo refleja` : 'No había crédito aplicable')
-    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo aplicar el crédito'); await recargar() } finally { setSaving(false) }
-  }
-  const aplicadoPor: Record<string, number> = {}
   async function crearPago() {
     if (!provAbierto) return
     setSaving(true)
     try {
-      await api({ accion: 'op_crear', proveedor_id: provAbierto, observaciones: fPago.observaciones || null,
-        imputaciones: Object.entries(fPago.imput).filter(([, m]) => Number(m) > 0).map(([cid, m]) => ({ comprobante_id: cid, monto: Number(m) })),
-        valores: fPago.valores.filter(v => Number(v.monto) > 0).map(v => ({ tipo: v.tipo, monto: Number(v.monto),
-          cuenta_banco_id: v.tipo === 'transferencia' ? v.cuenta_banco_id || null : null,
-          chequera_id: v.tipo === 'cheque' ? v.chequera_id || null : null,
-          modalidad: v.tipo === 'cheque' ? v.modalidad || null : null,
-          formato: v.tipo === 'cheque' ? v.formato || null : null,
-          fecha_cobro: v.tipo === 'cheque' && v.fecha_cobro ? v.fecha_cobro : null,
-          fecha_emision: v.tipo === 'cheque' && v.fecha_emision ? v.fecha_emision : null })) })
+      const vals = fPago.valores.filter(v => Number(v.monto) > 0)
+      const totalVal = vals.reduce((a, v) => a + Number(v.monto), 0)
+      const credSel = Object.entries(fPago.creditos).filter(([, m]) => Number(m) > 0).map(([oid, m]) => ({ oid, monto: Number(m) }))
+      const impu = Object.entries(fPago.imput).filter(([, m]) => Number(m) > 0).map(([cid, m]) => ({ comprobante_id: cid, monto: Number(m) }))
+      let capacidad = Math.round(totalVal * 100) / 100
+      const impOp: { comprobante_id: string; monto: number }[] = []
+      const faltantes: { cid: string; monto: number }[] = []
+      for (const i2 of impu) {
+        const toma = Math.round(Math.min(capacidad, i2.monto) * 100) / 100
+        if (toma > 0) { impOp.push({ comprobante_id: i2.comprobante_id, monto: toma }); capacidad = Math.round((capacidad - toma) * 100) / 100 }
+        const resto = Math.round((i2.monto - toma) * 100) / 100
+        if (resto > 0) faltantes.push({ cid: i2.comprobante_id, monto: resto })
+      }
+      if (totalVal > 0) {
+        await api({ accion: 'op_crear', proveedor_id: provAbierto, observaciones: fPago.observaciones || null,
+          imputaciones: impOp,
+          valores: vals.map(v => ({ tipo: v.tipo, monto: Number(v.monto),
+            cuenta_banco_id: v.tipo === 'transferencia' ? v.cuenta_banco_id || null : null,
+            chequera_id: v.tipo === 'cheque' ? v.chequera_id || null : null,
+            modalidad: v.tipo === 'cheque' ? v.modalidad || null : null,
+            formato: v.tipo === 'cheque' ? v.formato || null : null,
+            fecha_cobro: v.tipo === 'cheque' && v.fecha_cobro ? v.fecha_cobro : null,
+            fecha_emision: v.tipo === 'cheque' && v.fecha_emision ? v.fecha_emision : null })) })
+      }
+      let aplicado = 0
+      for (const cr of credSel) {
+        let resto = cr.monto
+        for (const f of faltantes) {
+          if (resto <= 0.009 || f.monto <= 0.009) continue
+          const toma = Math.round(Math.min(resto, f.monto) * 100) / 100
+          await api({ accion: 'op_aplicar_credito', orden_pago_id: cr.oid, comprobante_id: f.cid, monto: toma })
+          f.monto = Math.round((f.monto - toma) * 100) / 100; resto = Math.round((resto - toma) * 100) / 100; aplicado += toma
+        }
+      }
       setModalPago(false); await recargar()
-      avisar('ok', 'Orden de pago registrada — la cuenta corriente ya la refleja')
+      avisar('ok', `Pago registrado${aplicado > 0 ? ` — crédito aplicado ${fmtMon(Math.round(aplicado * 100) / 100)}; lo no usado sigue en su OP` : ' — la cuenta corriente ya lo refleja'}`)
     } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo registrar el pago') } finally { setSaving(false) }
   }
   const saldoDe = (proveedorId: string) => Number(saldos.find(sa => sa.proveedor_id === proveedorId)?.saldo ?? 0)
@@ -839,7 +837,7 @@ export default function ComprasPage() {
                 {p.cuit && <span className="text-xs text-neutral-400">CUIT {p.cuit}</span>}
               </div>
               <div className="flex items-center gap-3">
-              <ConeButton onClick={() => { setFPago({ imput: {}, valores: [{ tipo: 'efectivo', monto: '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '', fecha_emision: new Date().toISOString().slice(0, 10) }], observaciones: '' }); setModalPago(true) }}>💸 Pagar</ConeButton>
+              <ConeButton onClick={() => { setFPago({ imput: {}, valores: [{ tipo: 'efectivo', monto: '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '', fecha_emision: new Date().toISOString().slice(0, 10) }], observaciones: '', creditos: {} }); setModalPago(true) }}>💸 Pagar</ConeButton>
               <div className="text-right">
                 <p className="text-[10px] font-bold uppercase text-neutral-400">Saldo</p>
                 <p className={`font-black text-xl ${saldo > 0 ? 'text-amber-600' : saldo < 0 ? 'text-violet-600' : 'text-green-600'}`}>
@@ -882,9 +880,7 @@ export default function ComprasPage() {
                     {ncs.map(c => <p key={c.id}>NC {c.letra ?? ''} {c.numero_proveedor} · {fmtMon(Number(c.total))}</p>)}
                     {cred > 0.009 && <p>Pagos a cuenta · {fmtMon(Math.round(cred * 100) / 100)}</p>}
                     <p className="text-[10px] text-amber-500 mt-0.5">El crédito de OPs se imputa con el botón (el motor manda); las NC netean el saldo global — su aplicación llega en otra tanda.</p>
-                    {cred > 0.009 && pend.length > 0 && (
-                      <div className="pt-1"><ConeButton onClick={aplicarCreditos} loading={saving}>Aplicar créditos a facturas</ConeButton></div>
-                    )}
+                    
                   </div>
                 ) : null })()}
               </>)}
@@ -916,7 +912,7 @@ export default function ComprasPage() {
 
       {modalPago && provAbierto && (() => {
         const pend = comprobantes.filter(c => c.proveedor_id === provAbierto && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0)
-        const aCuenta = Math.round((sumaValores() - sumaImput()) * 100) / 100
+        const aCuenta = Math.round((sumaValores() - Math.max(0, sumaImput() - sumaCreditos())) * 100) / 100
         return (
           <ConeModal open onClose={() => setModalPago(false)} title="Pagar a proveedor" size="lg">
             <div className="space-y-4">
@@ -1000,12 +996,33 @@ export default function ComprasPage() {
                 ))}
                 <button onClick={() => { const resto = Math.max(0, Math.round((sumaImput() - sumaValores()) * 100) / 100); setFPago({ ...fPago, valores: [...fPago.valores, { tipo: 'efectivo', monto: resto > 0 ? resto.toFixed(2) : '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '', fecha_emision: new Date().toISOString().slice(0, 10) }] }) }}
                   className="text-xs font-bold text-neutral-400 border border-neutral-200 rounded-xl px-3 py-1.5 hover:bg-neutral-50">+ Agregar valor</button>
+              {(() => { const credOps = ops.filter(o => o.proveedor_id === provAbierto && !o.anulada)
+                .map(o => ({ id: o.id, numero: o.numero, cred: Math.round((Number(o.total) - opImputaciones.filter(i => i.orden_pago_id === o.id).reduce((x, i) => x + Number(i.monto), 0)) * 100) / 100 }))
+                .filter(o => o.cred > 0.009).sort((a, b) => a.numero - b.numero)
+                return credOps.length > 0 ? (
+                <div className="space-y-1.5 pt-2">
+                  <Label>Créditos de OPs anteriores — tildá para usarlos (la OP vieja no se toca: solo se imputa su saldo)</Label>
+                  {credOps.map(o => { const sel = fPago.creditos[o.id] !== undefined; return (
+                    <div key={o.id} className="bg-violet-50 border border-violet-100 rounded-xl px-3 py-2 flex items-center gap-3 text-sm">
+                      <input type="checkbox" checked={sel} onChange={e => { const n = { ...fPago.creditos }; if (e.target.checked) n[o.id] = o.cred.toFixed(2); else delete n[o.id]; setFPago({ ...fPago, creditos: n }) }} />
+                      <span className="flex-1 text-neutral-700">OP-{String(o.numero).padStart(4, '0')} <span className="text-xs text-violet-500">· disponible {fmtMon(o.cred)}</span></span>
+                      {sel && <input type="number" min="0" step="0.01" value={fPago.creditos[o.id]}
+                        onChange={e => setFPago({ ...fPago, creditos: { ...fPago.creditos, [o.id]: e.target.value } })}
+                        className="w-28 rounded-lg border border-violet-200 px-2 py-1 text-sm text-right bg-white" />}
+                      {sel && Number(fPago.creditos[o.id]) > o.cred && <span className="text-[10px] font-bold text-red-500">⛔ supera lo disponible</span>}
+                    </div>
+                  ) })}
+                </div>
+                ) : null })()}
               </div>
               <div className="ml-auto w-80 space-y-1 text-sm">
                 <div className="flex justify-between text-neutral-500"><span>Imputado a facturas</span><span className="font-bold text-neutral-700">{fmtMon(sumaImput())}</span></div>
-                <div className="flex justify-between border-t border-neutral-200 pt-1.5"><span className="font-black text-neutral-900">TOTAL valores</span><span className="font-black">{fmtMon(sumaValores())}</span></div>
+                <div className="flex justify-between border-t border-neutral-200 pt-1.5"><span className="font-black text-neutral-900">Valores nuevos</span><span className="font-bold text-neutral-700">{fmtMon(sumaValores())}</span></div>
+                {sumaCreditos() > 0.009 && <div className="flex justify-between text-violet-600"><span>Créditos de OPs</span><span className="font-bold">{fmtMon(sumaCreditos())}</span></div>}
+                <div className="flex justify-between border-t border-neutral-200 pt-1.5"><span className="font-black text-neutral-900">TOTAL cobertura</span><span className="font-black">{fmtMon(Math.round((sumaValores() + sumaCreditos()) * 100) / 100)}</span></div>
                 {aCuenta > 0.009 && <p className="text-[11px] text-amber-600 font-semibold text-right">El excedente de {fmtMon(aCuenta)} queda a cuenta del proveedor</p>}
-                {sumaImput() - sumaValores() > 0.009 && <p className="text-[11px] font-bold text-amber-600 text-right">Falta cubrir {fmtMon(Math.round((sumaImput() - sumaValores()) * 100) / 100)} con valores</p>}
+                {sumaImput() - sumaValores() - sumaCreditos() > 0.009 && <p className="text-[11px] font-bold text-amber-600 text-right">Falta cubrir {fmtMon(Math.round((sumaImput() - sumaValores() - sumaCreditos()) * 100) / 100)}</p>}
+                {sumaCreditos() - sumaImput() > 0.009 && <p className="text-[11px] text-violet-500 text-right">El crédito no usado sigue en su OP</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>Observaciones</Label>
@@ -1016,7 +1033,7 @@ export default function ComprasPage() {
             <div className="flex items-center justify-end gap-2 mt-5">
               <ConeButton variante="fantasma" onClick={() => setModalPago(false)}>Cancelar</ConeButton>
               <ConeButton onClick={crearPago} loading={saving}
-                disabled={!(sumaValores() > 0) || sumaImput() - sumaValores() > 0.009 || Object.entries(fPago.imput).some(([cid, m]) => Number(m) > pendienteDe(comprobantes.find(c => c.id === cid)!))}>
+                disabled={!(sumaValores() + sumaCreditos() > 0) || (sumaCreditos() > 0.009 && Object.keys(fPago.imput).length === 0) || sumaImput() - sumaValores() - sumaCreditos() > 0.009 || Object.entries(fPago.creditos).some(([oid, m]) => Number(m) > Math.round((Number(ops.find(o => o.id === oid)?.total ?? 0) - opImputaciones.filter(i => i.orden_pago_id === oid).reduce((x, i) => x + Number(i.monto), 0)) * 100) / 100) || Object.entries(fPago.imput).some(([cid, m]) => Number(m) > pendienteDe(comprobantes.find(c => c.id === cid)!))}>
                 💸 Registrar pago
               </ConeButton>
             </div>
@@ -1137,27 +1154,6 @@ export default function ComprasPage() {
               <div className="space-y-1.5">
                 <p className="text-[11px] font-bold text-neutral-400 uppercase">Qué paga</p>
                 {imps.length === 0 && <p className="text-sm text-neutral-500 bg-neutral-50 rounded-xl px-3 py-2">Pago a cuenta — sin imputar a facturas (queda como crédito).</p>}
-                {(() => {
-                  const credDisp = Math.round((Number(op.total) - imps.reduce((x, i) => x + Number(i.monto), 0)) * 100) / 100
-                  if (op.anulada || credDisp <= 0.009) return null
-                  const pendF = comprobantes.filter(c => c.proveedor_id === op.proveedor_id && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0)
-                  return (
-                    <div className="bg-violet-50 border border-violet-100 rounded-xl px-3 py-2 space-y-1.5">
-                      <p className="text-[10px] font-bold uppercase text-violet-600">Crédito disponible de esta OP: {fmtMon(credDisp)} — elegí a qué factura aplicarlo</p>
-                      {pendF.length === 0 && <p className="text-xs text-violet-400">No hay facturas con deuda de este proveedor.</p>}
-                      {pendF.map(c => { const tope = Math.round(Math.min(credDisp, pendienteDe(c)) * 100) / 100; return (
-                        <div key={c.id} className="flex items-center justify-between gap-2 text-sm">
-                          <span className="min-w-0 truncate text-neutral-700">FC {c.letra ?? ''} {c.numero_proveedor} <span className="text-xs text-neutral-400">· debe {fmtMon(pendienteDe(c))}</span></span>
-                          <input type="number" min="0" step="0.01" defaultValue={tope.toFixed(2)} id={`apl-${c.id}`}
-                            className="w-28 rounded-lg border border-violet-200 px-2 py-1 text-sm text-right bg-white" />
-                          <ConeButton loading={saving} onClick={async () => { const el = document.getElementById(`apl-${c.id}`) as HTMLInputElement | null; const monto = Math.round(Math.min(Number(el?.value || 0), tope) * 100) / 100; if (monto <= 0) { avisar('error', 'Monto inválido'); return } setSaving(true); try { await api({ accion: 'op_aplicar_credito', orden_pago_id: op.id, comprobante_id: c.id, monto }); await recargar(); avisar('ok', `Crédito aplicado: ${fmtMon(monto)} — lo no aplicado sigue a favor`) } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo aplicar') } finally { setSaving(false) } }}>
-                            Aplicar
-                          </ConeButton>
-                        </div>
-                      ) })}
-                    </div>
-                  )
-                })()}
                 {imps.map(i => {
                   const c = comprobantes.find(x => x.id === i.comprobante_id)
                   return (
