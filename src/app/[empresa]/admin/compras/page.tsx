@@ -1034,15 +1034,18 @@ export default function ComprasPage() {
         if (!r) return null
         const items = remitoItems.filter(i => i.remito_id === r.id)
         return (
-          <ConeModal open onClose={() => setFichaRemito(null)} title={`Remito ${String(r.numero ?? r.numero_remito ?? '')}`}>
+          <ConeModal open onClose={() => setFichaRemito(null)} title={`Remito REM-${String(r.numero ?? r.numero_remito ?? '').padStart(4, '0')}`}>
             <div className="space-y-2">
-              <p className="text-xs text-neutral-400">{String(r.created_at ?? r.fecha ?? '').slice(0, 10)}{r.tipo ? ` · ${String(r.tipo)}` : ''}{r.estado ? ` · ${String(r.estado)}` : ''}</p>
-              {items.map(i => (
-                <div key={i.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center justify-between gap-3">
-                  <span className="text-neutral-700 min-w-0 truncate">{articulos.find(a => a.id === i.articulo_id)?.nombre ?? '—'}</span>
-                  <span className="text-xs font-bold text-neutral-600 whitespace-nowrap">{Number(i.cantidad)}</span>
+              <p className="text-xs text-neutral-400">
+                {proveedores.find(pv => pv.id === r.proveedor_id)?.nombre ?? ''} · {sucursales.find(su => su.id === r.sucursal_id)?.nombre ?? ''} · {String(r.created_at ?? r.fecha ?? '').slice(0, 10)}{r.numero_proveedor ? ` · Nº prov. ${String(r.numero_proveedor)}` : ''}{r.estado ? ` · ${String(r.estado)}` : ''}
+              </p>
+              {items.map(i => { const it = i as Record<string, unknown> & { id: string; articulo_id: string }; const cant = Number(it.cantidad ?? 0); const factor = Number(it.factor ?? it.factor_stock ?? 0); const unidades = factor > 0 ? cant * factor : cant; const costo = Number(it.costo_unitario ?? it.precio_unitario ?? 0); return (
+                <div key={it.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center justify-between gap-3">
+                  <span className="text-neutral-700 min-w-0 truncate">{articulos.find(a => a.id === it.articulo_id)?.nombre ?? '—'}{it.presentacion ? <span className="text-xs text-neutral-400"> · {String(it.presentacion)}</span> : null}</span>
+                  <span className="text-xs text-neutral-600 whitespace-nowrap">{cant}{factor > 0 ? ` × ${factor} = ` : ' = '}<b>{unidades} u.</b>{costo > 0 ? ` · ${fmtMon(costo)}/u.` : ''}</span>
                 </div>
-              ))}
+              ) })}
+              {(() => { const tot = items.reduce((acc, i) => { const it = i as Record<string, unknown>; const c = Number(it.cantidad ?? 0); const f = Number(it.factor ?? it.factor_stock ?? 0); const u = f > 0 ? c * f : c; const cu = Number(it.costo_unitario ?? it.precio_unitario ?? 0); return acc + u * cu }, 0); return tot > 0 ? <p className="text-right text-sm font-black text-neutral-900 px-1">Total {fmtMon(Math.round(tot * 100) / 100)}</p> : null })()}
               {items.length === 0 && <p className="text-sm text-neutral-400">Sin renglones.</p>}
               <div className="flex justify-end pt-1"><ConeButton variante="fantasma" onClick={() => setFichaRemito(null)}>Volver</ConeButton></div>
             </div>
