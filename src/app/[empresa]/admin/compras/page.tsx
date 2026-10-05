@@ -886,7 +886,7 @@ export default function ComprasPage() {
                         </select>
                       )}
                       <input type="number" min="0" step="0.01" placeholder="0.00" value={v.monto}
-                        onChange={e => { const vs = fPago.valores.map((x, i2) => i2 === idx ? { ...x, monto: e.target.value } : x); const keys = Object.keys(fPago.imput); let imp = fPago.imput; if (vs.length === 1 && keys.length === 1) { const c = comprobantes.find(x => x.id === keys[0]); const tot = Number(e.target.value) || 0; imp = { [keys[0]]: c ? String(Math.min(tot, pendienteDe(c)).toFixed(2)) : fPago.imput[keys[0]] } } setFPago({ ...fPago, valores: vs, imput: imp }) }}
+                        onChange={e => { const vs = fPago.valores.map((x, i2) => i2 === idx ? { ...x, monto: e.target.value } : x); const keys = Object.keys(fPago.imput); let imp = fPago.imput; if (keys.length === 1) { const c = comprobantes.find(x => x.id === keys[0]); const tot = vs.reduce((acc, x) => acc + (Number(x.monto) || 0), 0); imp = { [keys[0]]: c ? String(Math.min(tot, pendienteDe(c)).toFixed(2)) : fPago.imput[keys[0]] } } setFPago({ ...fPago, valores: vs, imput: imp }) }}
                         className="w-32 rounded-lg border border-neutral-200 px-2 py-1.5 text-sm text-right" />
                       <button onClick={() => setFPago({ ...fPago, valores: fPago.valores.filter((_, i2) => i2 !== idx) })} className="text-neutral-300 hover:text-red-500 font-bold">✕</button>
                     </div>
