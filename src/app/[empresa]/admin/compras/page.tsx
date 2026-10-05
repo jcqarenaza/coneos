@@ -378,13 +378,6 @@ export default function ComprasPage() {
   const pendienteDe = (c: Comprobante) => Math.round((Number(c.total) - imputadoDe(c.id)) * 100) / 100
   const sumaImput = () => Object.values(fPago.imput).reduce((a, v) => a + (Number(v) || 0), 0)
   const sumaValores = () => fPago.valores.reduce((a, v) => a + (Number(v.monto) || 0), 0)
-  const syncImput = (imp: Record<string, string>, vs: typeof fPago.valores, crs: Record<string, string>) => {
-    const keys = Object.keys(imp)
-    if (keys.length !== 1) return imp
-    const c = comprobantes.find(x => x.id === keys[0]); if (!c) return imp
-    const tot = vs.reduce((a, v) => a + (Number(v.monto) || 0), 0) + Object.values(crs).reduce((a, v) => a + (Number(v) || 0), 0)
-    return { [keys[0]]: Math.min(Math.round(tot * 100) / 100, pendienteDe(c)).toFixed(2) }
-  }
   const sumaCreditos = () => Object.values(fPago.creditos).reduce((a, v) => a + (Number(v) || 0), 0)
   const aplicarImput = (n: Record<string, string>) => {
     const total = Object.values(n).reduce((a, v) => a + (Number(v) || 0), 0)
@@ -951,7 +944,7 @@ export default function ComprasPage() {
                         </select>
                       )}
                       <input type="number" min="0" step="0.01" placeholder="0.00" value={v.monto}
-                        onChange={e => { const vs = fPago.valores.map((x, i2) => i2 === idx ? { ...x, monto: e.target.value } : x); setFPago({ ...fPago, valores: vs, imput: syncImput(fPago.imput, vs, fPago.creditos) }) }}
+                        onChange={e => { setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, monto: e.target.value } : x) }) }}
                         className="w-32 rounded-lg border border-neutral-200 px-2 py-1.5 text-sm text-right" />
                       <button onClick={() => setFPago({ ...fPago, valores: fPago.valores.filter((_, i2) => i2 !== idx) })} className="text-neutral-300 hover:text-red-500 font-bold">✕</button>
                     </div>
@@ -989,10 +982,10 @@ export default function ComprasPage() {
                   <Label>Créditos de OPs anteriores — tildá para usarlos (la OP vieja no se toca: solo se imputa su saldo)</Label>
                   {credOps.map(o => { const sel = fPago.creditos[o.id] !== undefined; return (
                     <div key={o.id} className="bg-violet-50 border border-violet-100 rounded-xl px-3 py-2 flex items-center gap-3 text-sm">
-                      <input type="checkbox" checked={sel} onChange={e => { const n = { ...fPago.creditos }; if (e.target.checked) n[o.id] = o.cred.toFixed(2); else delete n[o.id]; setFPago({ ...fPago, creditos: n, imput: syncImput(fPago.imput, fPago.valores, n) }) }} />
+                      <input type="checkbox" checked={sel} onChange={e => { const n = { ...fPago.creditos }; if (e.target.checked) n[o.id] = o.cred.toFixed(2); else delete n[o.id]; setFPago({ ...fPago, creditos: n }) }} />
                       <span className="flex-1 text-neutral-700">OP-{String(o.numero).padStart(4, '0')} <span className="text-xs text-violet-500">· disponible {fmtMon(o.cred)}</span></span>
                       {sel && <input type="number" min="0" step="0.01" value={fPago.creditos[o.id]}
-                        onChange={e => { const n = { ...fPago.creditos, [o.id]: e.target.value }; setFPago({ ...fPago, creditos: n, imput: syncImput(fPago.imput, fPago.valores, n) }) }}
+                        onChange={e => setFPago({ ...fPago, creditos: { ...fPago.creditos, [o.id]: e.target.value } })}
                         className="w-28 rounded-lg border border-violet-200 px-2 py-1 text-sm text-right bg-white" />}
                       {sel && Number(fPago.creditos[o.id]) > o.cred && <span className="text-[10px] font-bold text-red-500">⛔ supera lo disponible</span>}
                     </div>
