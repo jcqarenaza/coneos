@@ -1137,6 +1137,25 @@ export default function ComprasPage() {
               <div className="space-y-1.5">
                 <p className="text-[11px] font-bold text-neutral-400 uppercase">Qué paga</p>
                 {imps.length === 0 && <p className="text-sm text-neutral-500 bg-neutral-50 rounded-xl px-3 py-2">Pago a cuenta — sin imputar a facturas (queda como crédito).</p>}
+                {(() => {
+                  const credDisp = Math.round((Number(op.total) - imps.reduce((x, i) => x + Number(i.monto), 0)) * 100) / 100
+                  if (op.anulada || credDisp <= 0.009) return null
+                  const pendF = comprobantes.filter(c => c.proveedor_id === op.proveedor_id && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0)
+                  return (
+                    <div className="bg-violet-50 border border-violet-100 rounded-xl px-3 py-2 space-y-1.5">
+                      <p className="text-[10px] font-bold uppercase text-violet-600">Crédito disponible de esta OP: {fmtMon(credDisp)} — elegí a qué factura aplicarlo</p>
+                      {pendF.length === 0 && <p className="text-xs text-violet-400">No hay facturas con deuda de este proveedor.</p>}
+                      {pendF.map(c => { const monto = Math.round(Math.min(credDisp, pendienteDe(c)) * 100) / 100; return (
+                        <div key={c.id} className="flex items-center justify-between gap-2 text-sm">
+                          <span className="min-w-0 truncate text-neutral-700">FC {c.letra ?? ''} {c.numero_proveedor} <span className="text-xs text-neutral-400">· debe {fmtMon(pendienteDe(c))}</span></span>
+                          <ConeButton loading={saving} onClick={async () => { setSaving(true); try { await api({ accion: 'op_aplicar_credito', orden_pago_id: op.id, comprobante_id: c.id, monto }); await recargar(); avisar('ok', `Crédito aplicado: ${fmtMon(monto)} a la ${c.numero_proveedor}`) } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo aplicar') } finally { setSaving(false) } }}>
+                            Aplicar {fmtMon(monto)}
+                          </ConeButton>
+                        </div>
+                      ) })}
+                    </div>
+                  )
+                })()}
                 {imps.map(i => {
                   const c = comprobantes.find(x => x.id === i.comprobante_id)
                   return (
