@@ -131,7 +131,6 @@ export default function ComprasPage() {
           setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
           setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? [])
       setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setChequeras(d.chequeras ?? []); setCompItems(d.comp_items ?? [])
-          setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setChequeras(d.chequeras ?? [])
         } catch { /* la página muestra vacío; las acciones reintentarán */ }
         setLoading(false)
       })
@@ -143,7 +142,8 @@ export default function ComprasPage() {
       setProveedores(d.proveedores ?? []); setArticulos(d.articulos ?? [])
       setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
       setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
-      setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? [])
+      setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? []); setCompItems(d.comp_items ?? [])
+      setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setChequeras(d.chequeras ?? [])
     } catch { /* siguiente acción reintenta */ }
   }
 
