@@ -839,6 +839,9 @@ export default function ComprasPage() {
         return (
           <ConeModal open onClose={() => setModalPago(false)} title="Pagar a proveedor" size="lg">
             <div className="space-y-4">
+              {(() => { const cred = ops.filter(o => o.proveedor_id === provAbierto && !o.anulada).reduce((acc, o) => acc + Math.max(0, Number(o.total) - opImputaciones.filter(i => i.orden_pago_id === o.id).reduce((x, i) => x + Number(i.monto), 0)), 0); return cred > 0.009 ? (
+                <p className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">💳 Este proveedor tiene {fmtMon(Math.round(cred * 100) / 100)} a cuenta sin imputar — se aplica desde su OP (próxima tanda)</p>
+              ) : null })()}
               <div className="space-y-1.5">
                 <Label>Qué paga — facturas con deuda (vacío = pago a cuenta)</Label>
                 {pend.length === 0 && <p className="text-sm text-neutral-400 bg-neutral-50 rounded-xl px-3 py-2">Sin facturas pendientes — lo que cargues queda a cuenta.</p>}
