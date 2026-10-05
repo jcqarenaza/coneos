@@ -560,8 +560,8 @@ export default function ComprasPage() {
                       className={`relative w-11 h-6 rounded-full transition-colors ${a.activo ? 'bg-green-500' : 'bg-neutral-200'}`}>
                       <span className={`absolute top-0.5 h-5 w-5 bg-white rounded-full shadow transition-all ${a.activo ? 'left-[22px]' : 'left-0.5'}`} />
                     </button>
-                    <button onClick={() => setKardexArt(a.id)} title="Kardex: movimientos y stock por sucursal"
-                      className="text-xs font-bold text-neutral-400 border border-neutral-200 rounded-lg px-2 py-1 hover:bg-neutral-50">📒 Kardex</button>
+                    <button onClick={() => setKardexArt(a.id)} title="Historial: movimientos y stock por sucursal"
+                      className="text-xs font-bold text-neutral-400 border border-neutral-200 rounded-lg px-2 py-1 hover:bg-neutral-50">📒 Historial</button>
                     <button onClick={() => { setFArt({ nombre: a.nombre, tipo: a.tipo, unidad_stock: a.unidad_stock, controla_stock: a.controla_stock, producto_id: a.producto_id ?? '' }); setArtEdit(a.id); setModalArt(true) }}
                       className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
                   </div>
@@ -963,7 +963,7 @@ export default function ComprasPage() {
         const porSuc = new Map<string, number>()
         for (const m of movs) { const k = m.sucursal_id ?? ''; porSuc.set(k, (porSuc.get(k) ?? 0) + Number(m.delta)) }
         return (
-          <ConeModal open onClose={() => setKardexArt(null)} title={`📒 Kardex — ${a.nombre}`} size="lg">
+          <ConeModal open onClose={() => setKardexArt(null)} title={`📒 Historial de stock — ${a.nombre}`} size="lg">
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 {[...porSuc.entries()].map(([sid, tot]) => (
