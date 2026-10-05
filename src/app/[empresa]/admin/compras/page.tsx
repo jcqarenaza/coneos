@@ -1108,6 +1108,7 @@ export default function ComprasPage() {
         const imps = opImputaciones.filter(i => i.orden_pago_id === op.id)
         const etiquetaValor = (v: OpValor) => {
           if (v.tipo === 'efectivo') return 'Efectivo'
+          if (v.tipo === 'credito_op') { const vo = v as OpValor & { orden_pago_origen_id?: string | null }; const o2 = ops.find(o => o.id === vo.orden_pago_origen_id); return 'Crédito de ' + (o2 ? 'OP-' + String(o2.numero).padStart(4, '0') : 'OP anterior') }
           if (v.tipo === 'transferencia') return `Transferencia · ${(() => { const cb = cuentasBanco.find(x => x.id === v.cuenta_banco_id); return cb ? cb.banco + (cb.alias ? ' · ' + cb.alias : '') : 'cuenta' })()}`
           const ch = chequesAll.find(c => c.id === v.cheque_id)
           return `Cheque ${ch?.numero != null ? `N° ${ch.numero}` : ''}${ch?.formato ? ` · ${ch.formato}` : ''}${ch?.estado ? ` · ${ch.estado}` : ''}`
