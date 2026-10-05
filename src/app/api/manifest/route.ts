@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { MARCA_DEFAULT } from '@/lib/brand'
 
 // Manifest dinámico por empresa/sucursal o por token de dispositivo
 // URL: /api/manifest?empresa=X&sucursal=Y  ó  /api/manifest?token=Z
@@ -9,7 +10,7 @@ export async function GET(request: Request) {
   const sucursalSlug = searchParams.get('sucursal')
   const token = searchParams.get('token')
 
-  let nombre = 'ConeOS'
+  let nombre = MARCA_DEFAULT
   let themeColor = '#1E3A5F'
   let logoUrl: string | null = null
   let pwaNombre: string | null = null

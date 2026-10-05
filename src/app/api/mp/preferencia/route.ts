@@ -91,7 +91,7 @@ export async function POST(request: Request) {
         }
       })(),
       auto_return: 'approved',
-      statement_descriptor: emp?.nombre?.substring(0, 22) ?? 'ConeOS',
+      statement_descriptor: emp?.nombre?.substring(0, 22) ?? 'GastrOS',
     }),
   })
 

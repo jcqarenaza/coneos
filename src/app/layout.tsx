@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 import { Geist } from 'next/font/google'
 import './globals.css'
+import { MARCA_DEFAULT } from '@/lib/brand'
 
 const geist = Geist({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'ConeOS',
+  title: MARCA_DEFAULT,
   description: 'Sistema de pedidos para heladerías',
 }
 

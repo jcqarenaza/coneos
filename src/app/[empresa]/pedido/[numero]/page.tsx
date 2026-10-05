@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { Loader2, CheckCircle, Clock, ChefHat, Package, Truck } from 'lucide-react'
 import MapaCliente from '@/components/reparto/MapaCliente'
+import { marcaDeRuta } from '@/lib/brand'
 
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface PedidoItem { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
@@ -238,7 +239,7 @@ export default function PedidoPage() {
             🛒 {pedido?.estado === 'DELIVERED' ? 'Hacer otro pedido' : 'Volver a la tienda'}
           </a>
         )}
-        <p className="text-center text-xs text-neutral-300">Esta página se actualiza automáticamente · ConeOS</p>
+        <p className="text-center text-xs text-neutral-300">Esta página se actualiza automáticamente · {marcaDeRuta()}</p>
       </div>
     </div>
   )

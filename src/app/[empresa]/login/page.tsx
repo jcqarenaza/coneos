@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, IceCream2 } from 'lucide-react'
 import Image from 'next/image'
+import { marcaDeRuta } from '@/lib/brand'
 
 export default function LoginPage() {
   const params = useParams()
@@ -102,7 +103,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-neutral-300 text-xs mt-6">ConeOS · Plataforma para heladerías</p>
+        <p className="text-center text-neutral-300 text-xs mt-6">{marcaDeRuta()} · Plataforma gastronómica</p>
       </div>
     </div>
   )

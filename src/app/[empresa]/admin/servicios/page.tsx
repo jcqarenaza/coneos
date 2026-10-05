@@ -27,6 +27,7 @@ import DispositivosTab from '@/components/admin/DispositivosTab'
 import QrAccesosTab from '@/components/admin/QrAccesosTab'
 import SucursalesTab from '@/components/admin/SucursalesTab'
 import EquipoTab from '@/components/admin/EquipoTab'
+import { marcaDeRuta } from '@/lib/brand'
 
 interface Franja { desde: string; hasta: string }
 interface Sucursal { id: string; nombre: string; slug: string }
@@ -625,7 +626,7 @@ export default function ServiciosPage() {
             <div className="w-12 h-12 bg-neutral-100 rounded-2xl flex items-center justify-center mb-4 text-2xl">🪑</div>
             <h3 className="font-black text-neutral-900 text-lg mb-2">Pedidos desde la Mesa</h3>
             <p className="text-neutral-500 text-sm mb-5">Tus clientes escanean un QR en la mesa y piden desde su celular: el pedido cae directo a cocina. Cobrás en caja (incluso dividido entre varios medios) o pagan con Mercado Pago. Con generador de QRs imprimibles incluido.</p>
-            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent('Hola, quiero activar el módulo Mesas en ConeOS')}`}
+            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar el módulo Mesas en ${marcaDeRuta()}`)}`}
               target="_blank" rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
               💬 Contactar a {soporte.nombre}

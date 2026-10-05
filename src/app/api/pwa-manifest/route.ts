@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { MARCA_DEFAULT } from '@/lib/brand'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -7,7 +8,7 @@ export async function GET(request: Request) {
   const token = searchParams.get('token')
   const path = searchParams.get('path') ?? '/'
 
-  let nombre = 'ConeOS'
+  let nombre = MARCA_DEFAULT
   let startUrl = path
 
   if (token) {
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
   const manifest = {
     name: nombre,
     short_name: nombre,
-    description: 'Sistema de pedidos ConeOS',
+    description: `Sistema de pedidos ${nombre}`,
     start_url: startUrl,
     id: startUrl,
     display: 'standalone',

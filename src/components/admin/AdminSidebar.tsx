@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, TrendingUp, CreditCard, Clock, Package } from 'lucide-react'
+import { marcaDe } from '@/lib/brand'
 
 interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean>; logoUrl?: string | null }
 
@@ -62,12 +63,12 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
               <img src={logoUrl} alt={empresaNombre}
                 className="w-7 h-7 rounded-lg object-cover bg-white border border-neutral-100 flex-shrink-0" />
             ) : (
-              <img src="/icon.png" alt="ConeOS"
+              <img src="/icon.png" alt="Plataforma"
                 className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
             )}
-            <span className="font-black text-neutral-800 truncate">{empresaNombre || 'ConeOS'}</span>
+            <span className="font-black text-neutral-800 truncate">{empresaNombre || marcaDe(slug)}</span>
           </div>
-          <p className="text-xs text-neutral-400 ml-9 truncate">ConeOS</p>
+          <p className="text-xs text-neutral-400 ml-9 truncate">{marcaDe(slug)}</p>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-0.5">
@@ -148,7 +149,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             </div>
             <h3 className="font-black text-neutral-900 text-lg mb-2">Facturación Electrónica</h3>
             <p className="text-neutral-500 text-sm mb-5">Emití Facturas C ante ARCA automáticamente al cobrar, con CAE y QR en el ticket. Incluye listado de comprobantes y notas de crédito. Cumplí con la facturación sin salir del sistema.</p>
-            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar la Facturación Electrónica en ConeOS`)}`}
+            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar la Facturación Electrónica en ${marcaDe(slug)}`)}`}
               target="_blank" rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
               💬 Contactar a {soporte.nombre}
@@ -170,7 +171,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             </div>
             <h3 className="font-black text-neutral-900 text-lg mb-2">Programa de Beneficios</h3>
             <p className="text-neutral-500 text-sm mb-5">Fidelizá a tus clientes con puntos por compra canjeables por premios. Sin registro ni contraseñas: solo con el celular. Incluye panel de clientes y canjes configurables.</p>
-            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar el Programa de Beneficios en ConeOS`)}`}
+            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar el Programa de Beneficios en ${marcaDe(slug)}`)}`}
               target="_blank" rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
               💬 Contactar a {soporte.nombre}
@@ -192,7 +193,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             </div>
             <h3 className="font-black text-neutral-900 text-lg mb-2">Módulo Delivery</h3>
             <p className="text-neutral-500 text-sm mb-5">El módulo de delivery no está incluido en tu plan actual. Incluye gestión de pedidos a domicilio, cadetes, comandas y seguimiento en tiempo real.</p>
-            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar el módulo de Delivery en ConeOS`)}`}
+            <a href={`https://wa.me/${soporte.wa}?text=${encodeURIComponent(`Hola, quiero activar el módulo de Delivery en ${marcaDe(slug)}`)}`}
               target="_blank" rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors text-sm">
               💬 Contactar a {soporte.nombre}

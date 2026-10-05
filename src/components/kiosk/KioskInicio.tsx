@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 
 import type { EmpresaConfig, DispositivoKiosk } from '@/app/[empresa]/kiosk/[sucursal]/page'
+import { marcaDeRuta } from '@/lib/brand'
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string }
@@ -233,7 +234,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar, canal = '
 
       {/* Footer */}
       <div className="text-center py-4">
-        <p className="text-neutral-300 text-xs tracking-wide">ConeOS · Sistema de pedidos</p>
+        <p className="text-neutral-300 text-xs tracking-wide">{marcaDeRuta()} · Sistema de pedidos</p>
       </div>
     </div>
   )

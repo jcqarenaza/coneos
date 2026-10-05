@@ -11,6 +11,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { marcaDeRuta } from '@/lib/brand'
 
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface PedidoCadete { id: string; numero_pedido: number; estado: string; total: number; metodo_pago: string | null; pagado?: boolean | null; notas: string | null; datos_delivery: DatosDelivery | null; hora_retiro: string | null; created_at: string }
@@ -316,7 +317,7 @@ export default function RepartoPage() {
             </div>
           )
         })}
-        <p className="text-center text-[10px] text-neutral-300 pt-2">Mantené la pantalla prendida mientras repartís para compartir tu ubicación · ConeOS</p>
+        <p className="text-center text-[10px] text-neutral-300 pt-2">Mantené la pantalla prendida mientras repartís para compartir tu ubicación · {marcaDeRuta()}</p>
       </div>
     </div>
   )
