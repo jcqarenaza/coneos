@@ -65,6 +65,9 @@ export default function ComprasPage() {
   const [opImputaciones, setOpImputaciones] = useState<OpImp[]>([])
   const [chequesAll, setChequesAll] = useState<ChequeRow[]>([])
   const [cuentasBanco, setCuentasBanco] = useState<{ id: string; nombre: string }[]>([])
+  const [chequeras, setChequeras] = useState<{ id: string; descripcion: string | null; proximo: number; hasta: number; estado: string }[]>([])
+  const [modalPago, setModalPago] = useState(false)
+  const [fPago, setFPago] = useState({ imput: {} as Record<string, string>, valores: [] as { tipo: 'efectivo' | 'transferencia' | 'cheque'; monto: string; cuenta_banco_id: string; chequera_id: string; modalidad: string; formato: string; fecha_cobro: string }[], observaciones: '' })
   const [provAbierto, setProvAbierto] = useState<string | null>(null)
   const [opAbierta, setOpAbierta] = useState<string | null>(null)
   const [compRemitos, setCompRemitos] = useState<CompRemito[]>([])
@@ -126,8 +129,8 @@ export default function ComprasPage() {
           setPresentaciones(d.presentaciones ?? []); setProductos(d.productos ?? [])
           setSucursales(d.sucursales ?? []); setOcs(d.ocs ?? []); setOcItems(d.oc_items ?? [])
           setRemitos(d.remitos ?? []); setRemitoItems(d.remito_items ?? []); setComprobantes(d.comprobantes ?? []); setCompRemitos(d.comp_remitos ?? [])
-      setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setCompItems(d.comp_items ?? [])
-          setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? [])
+      setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setChequeras(d.chequeras ?? []); setCompItems(d.comp_items ?? [])
+          setCc(d.cc ?? []); setSaldos(d.saldos ?? []); setOps(d.ops ?? []); setOpValores(d.op_valores ?? []); setOpImputaciones(d.op_imputaciones ?? []); setChequesAll(d.cheques ?? []); setCuentasBanco(d.cuentas_banco ?? []); setChequeras(d.chequeras ?? [])
         } catch { /* la página muestra vacío; las acciones reintentarán */ }
         setLoading(false)
       })
@@ -363,6 +366,28 @@ export default function ComprasPage() {
       avisar('ok', esNC ? 'NC registrada — el crédito ya vive en la cuenta corriente'
         : fFact.recepcionar ? 'Factura registrada — cargo en cuenta corriente y mercadería al stock' : 'Factura registrada — el cargo ya vive en la cuenta corriente')
     } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo registrar') } finally { setSaving(false) }
+  }
+  const imputadoDe = (comprobanteId: string) => opImputaciones
+    .filter(i => i.comprobante_id === comprobanteId && !ops.find(o => o.id === i.orden_pago_id)?.anulada)
+    .reduce((a, i) => a + Number(i.monto), 0)
+  const pendienteDe = (c: Comprobante) => Math.round((Number(c.total) - imputadoDe(c.id)) * 100) / 100
+  const sumaImput = () => Object.values(fPago.imput).reduce((a, v) => a + (Number(v) || 0), 0)
+  const sumaValores = () => fPago.valores.reduce((a, v) => a + (Number(v.monto) || 0), 0)
+  async function crearPago() {
+    if (!provAbierto) return
+    setSaving(true)
+    try {
+      await api({ accion: 'op_crear', proveedor_id: provAbierto, observaciones: fPago.observaciones || null,
+        imputaciones: Object.entries(fPago.imput).filter(([, m]) => Number(m) > 0).map(([cid, m]) => ({ comprobante_id: cid, monto: Number(m) })),
+        valores: fPago.valores.filter(v => Number(v.monto) > 0).map(v => ({ tipo: v.tipo, monto: Number(v.monto),
+          cuenta_banco_id: v.tipo === 'transferencia' ? v.cuenta_banco_id || null : null,
+          chequera_id: v.tipo === 'cheque' ? v.chequera_id || null : null,
+          modalidad: v.tipo === 'cheque' ? v.modalidad || null : null,
+          formato: v.tipo === 'cheque' ? v.formato || null : null,
+          fecha_cobro: v.tipo === 'cheque' && v.fecha_cobro ? v.fecha_cobro : null })) })
+      setModalPago(false); await recargar()
+      avisar('ok', 'Orden de pago registrada — la cuenta corriente ya la refleja')
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo registrar el pago') } finally { setSaving(false) }
   }
   const saldoDe = (proveedorId: string) => Number(saldos.find(sa => sa.proveedor_id === proveedorId)?.saldo ?? 0)
   const controla = (articuloId: string) => articulos.find(a => a.id === articuloId)?.controla_stock !== false
@@ -763,11 +788,14 @@ export default function ComprasPage() {
                 <h2 className="font-black text-neutral-900">{p.nombre}</h2>
                 {p.cuit && <span className="text-xs text-neutral-400">CUIT {p.cuit}</span>}
               </div>
+              <div className="flex items-center gap-3">
+              <ConeButton onClick={() => { setFPago({ imput: {}, valores: [{ tipo: 'efectivo', monto: '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '' }], observaciones: '' }); setModalPago(true) }}>💸 Pagar</ConeButton>
               <div className="text-right">
                 <p className="text-[10px] font-bold uppercase text-neutral-400">Saldo</p>
                 <p className={`font-black text-xl ${saldo > 0 ? 'text-amber-600' : saldo < 0 ? 'text-violet-600' : 'text-green-600'}`}>
                   {saldo === 0 ? 'Al día' : saldo > 0 ? `Le debemos ${fmtMon(saldo)}` : `A nuestro favor ${fmtMon(-saldo)}`}
                 </p>
+              </div>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -792,13 +820,111 @@ export default function ComprasPage() {
                 )
               })}
             </div>
-            <p className="text-[11px] text-neutral-400 bg-neutral-50 border border-neutral-100 rounded-xl px-3 py-2">
-              🔒 El saldo nace del motor (cargos − pagos − créditos). Acá no se calcula nada: se mira.
-            </p>
           </div>
         )
       })()}
 
+      {modalPago && provAbierto && (() => {
+        const pend = comprobantes.filter(c => c.proveedor_id === provAbierto && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0)
+        const aCuenta = Math.round((sumaValores() - sumaImput()) * 100) / 100
+        return (
+          <ConeModal open onClose={() => setModalPago(false)} title="Pagar a proveedor" size="lg">
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Qué paga — facturas con deuda (vacío = pago a cuenta)</Label>
+                {pend.length === 0 && <p className="text-sm text-neutral-400 bg-neutral-50 rounded-xl px-3 py-2">Sin facturas pendientes — lo que cargues queda a cuenta.</p>}
+                {pend.map(c => {
+                  const marcada = fPago.imput[c.id] !== undefined
+                  return (
+                    <div key={c.id} className="bg-neutral-50 rounded-xl px-3 py-2 flex items-center gap-3">
+                      <input type="checkbox" checked={marcada}
+                        onChange={e => { const n = { ...fPago.imput }; if (e.target.checked) n[c.id] = String(pendienteDe(c)); else delete n[c.id]; setFPago({ ...fPago, imput: n }) }} />
+                      <span className="flex-1 text-sm text-neutral-700">Factura {c.letra ?? ''} {c.numero_proveedor} <span className="text-xs text-neutral-400">· debe {fmtMon(pendienteDe(c))}</span></span>
+                      {marcada && (
+                        <input type="number" min="0" step="0.01" value={fPago.imput[c.id]}
+                          onChange={e => setFPago({ ...fPago, imput: { ...fPago.imput, [c.id]: e.target.value } })}
+                          className="w-32 rounded-lg border border-neutral-200 px-2 py-1 text-sm text-right" />
+                      )}
+                      {marcada && Number(fPago.imput[c.id]) > pendienteDe(c) && <span className="text-[10px] font-bold text-red-500">⛔ supera lo que debe</span>}
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Con qué se paga</Label>
+                {fPago.valores.map((v, idx) => (
+                  <div key={idx} className="bg-neutral-50 rounded-xl px-3 py-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select value={v.tipo} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, tipo: e.target.value as typeof v.tipo } : x) })}
+                        className="rounded-lg border border-neutral-200 px-2 py-1.5 text-sm bg-white">
+                        <option value="efectivo">Efectivo</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="cheque">Cheque</option>
+                      </select>
+                      {v.tipo === 'transferencia' && (
+                        <select value={v.cuenta_banco_id} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, cuenta_banco_id: e.target.value } : x) })}
+                          className="flex-1 rounded-lg border border-neutral-200 px-2 py-1.5 text-sm bg-white">
+                          <option value="">Cuenta…</option>
+                          {cuentasBanco.map(cb => <option key={cb.id} value={cb.id}>{cb.nombre}</option>)}
+                        </select>
+                      )}
+                      {v.tipo === 'cheque' && (
+                        <select value={v.chequera_id} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, chequera_id: e.target.value } : x) })}
+                          className="flex-1 rounded-lg border border-neutral-200 px-2 py-1.5 text-sm bg-white">
+                          <option value="">Chequera…</option>
+                          {chequeras.filter(ch => ch.estado === 'activa').map(ch => <option key={ch.id} value={ch.id}>{ch.descripcion ?? 'Chequera'} · próximo N° {ch.proximo}</option>)}
+                        </select>
+                      )}
+                      <input type="number" min="0" step="0.01" placeholder="0.00" value={v.monto}
+                        onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, monto: e.target.value } : x) })}
+                        className="w-32 rounded-lg border border-neutral-200 px-2 py-1.5 text-sm text-right" />
+                      <button onClick={() => setFPago({ ...fPago, valores: fPago.valores.filter((_, i2) => i2 !== idx) })} className="text-neutral-300 hover:text-red-500 font-bold">✕</button>
+                    </div>
+                    {v.tipo === 'cheque' && (
+                      <div className="flex items-center gap-2">
+                        <select value={v.modalidad} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, modalidad: e.target.value } : x) })}
+                          className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white">
+                          <option value="">Modalidad…</option>
+                          <option value="al_dia">Al día</option>
+                          <option value="diferido">Diferido</option>
+                        </select>
+                        <select value={v.formato} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, formato: e.target.value } : x) })}
+                          className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white">
+                          <option value="">Formato…</option>
+                          <option value="fisico">Físico</option>
+                          <option value="echeq">ECHEQ</option>
+                        </select>
+                        <input type="date" value={v.fecha_cobro} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, fecha_cobro: e.target.value } : x) })}
+                          className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <button onClick={() => setFPago({ ...fPago, valores: [...fPago.valores, { tipo: 'efectivo', monto: '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '' }] })}
+                  className="text-xs font-bold text-neutral-400 border border-neutral-200 rounded-xl px-3 py-1.5 hover:bg-neutral-50">+ Agregar valor</button>
+              </div>
+              <div className="ml-auto w-80 space-y-1 text-sm">
+                <div className="flex justify-between text-neutral-500"><span>Imputado a facturas</span><span className="font-bold text-neutral-700">{fmtMon(sumaImput())}</span></div>
+                <div className="flex justify-between border-t border-neutral-200 pt-1.5"><span className="font-black text-neutral-900">TOTAL valores</span><span className="font-black">{fmtMon(sumaValores())}</span></div>
+                {aCuenta > 0.009 && <p className="text-[11px] text-amber-600 font-semibold text-right">El excedente de {fmtMon(aCuenta)} queda a cuenta del proveedor</p>}
+                {sumaImput() - sumaValores() > 0.009 && <p className="text-[11px] font-bold text-red-500 text-right">⛔ lo imputado supera la plata de la orden</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Observaciones</Label>
+                <input value={fPago.observaciones} onChange={e => setFPago({ ...fPago, observaciones: e.target.value })}
+                  placeholder="Opcional" className="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm" />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-5">
+              <ConeButton variante="fantasma" onClick={() => setModalPago(false)}>Cancelar</ConeButton>
+              <ConeButton onClick={crearPago} loading={saving}
+                disabled={!(sumaValores() > 0) || sumaImput() - sumaValores() > 0.009 || Object.entries(fPago.imput).some(([cid, m]) => Number(m) > pendienteDe(comprobantes.find(c => c.id === cid)!))}>
+                💸 Registrar pago
+              </ConeButton>
+            </div>
+          </ConeModal>
+        )
+      })()}
       {opAbierta && (() => {
         const op = ops.find(o => o.id === opAbierta)
         if (!op) return null

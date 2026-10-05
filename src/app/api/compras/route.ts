@@ -154,7 +154,7 @@ export async function POST(request: Request) {
         .select('id, orden_compra_id, articulo_id, presentacion_id, cantidad, costo_previsto')
         .eq('empresa_id', empresaId),
     ])
-    const [{ data: cc }, { data: saldos }, { data: ops }, { data: opValores }, { data: opImputaciones }, { data: cheques }, { data: cuentasBanco }] = await Promise.all([
+    const [{ data: cc }, { data: saldos }, { data: ops }, { data: opValores }, { data: opImputaciones }, { data: cheques }, { data: cuentasBanco }, { data: chequeras }] = await Promise.all([
       supabase.from('cuenta_corriente_proveedor').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
       supabase.from('v_saldo_proveedor').select('*').eq('empresa_id', empresaId),
       supabase.from('ordenes_pago_proveedor').select('*').eq('empresa_id', empresaId),
@@ -162,6 +162,7 @@ export async function POST(request: Request) {
       supabase.from('ordenes_pago_imputaciones').select('*').eq('empresa_id', empresaId),
       supabase.from('cheques').select('*').eq('empresa_id', empresaId),
       supabase.from('cuentas_banco').select('*').eq('empresa_id', empresaId),
+      supabase.from('chequeras').select('*').eq('empresa_id', empresaId),
     ])
     const [{ data: comprobantes }, { data: compRemitos }, { data: compItems }] = await Promise.all([
       supabase.from('comprobantes_compra').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
@@ -169,7 +170,7 @@ export async function POST(request: Request) {
       supabase.from('comprobantes_compra_items').select('*').eq('empresa_id', empresaId),
     ])
     return NextResponse.json({ ok: true, proveedores, articulos, presentaciones, productos, sucursales, ocs, oc_items: ocItems, remitos, remito_items: remitoItems, comprobantes, comp_remitos: compRemitos, comp_items: compItems,
-      cc, saldos, ops, op_valores: opValores, op_imputaciones: opImputaciones, cheques, cuentas_banco: cuentasBanco })
+      cc, saldos, ops, op_valores: opValores, op_imputaciones: opImputaciones, cheques, cuentas_banco: cuentasBanco, chequeras })
   }
 
   // ── PROVEEDORES ──
@@ -613,6 +614,41 @@ export async function POST(request: Request) {
       .eq('id', id).eq('empresa_id', empresaId).eq('estado', 'borrador').select('id')
     if (!upd?.length) return err('Solo se puede editar un remito en borrador', 409)
     return NextResponse.json({ ok: true })
+  }
+
+  if (accion === 'op_crear') {
+    const imputaciones = Array.isArray(body.imputaciones) ? body.imputaciones.map((i: Record<string, unknown>) => ({
+      comprobante_id: String(i.comprobante_id), monto: Number(i.monto ?? 0) })) : []
+    const valores = Array.isArray(body.valores) ? body.valores.map((v: Record<string, unknown>) => ({
+      tipo: String(v.tipo), monto: Number(v.monto ?? 0),
+      cuenta_banco_id: v.cuenta_banco_id ? String(v.cuenta_banco_id) : null,
+      chequera_id: v.chequera_id ? String(v.chequera_id) : null,
+      modalidad: v.modalidad ? String(v.modalidad) : null,
+      formato: v.formato ? String(v.formato) : null,
+      fecha_cobro: v.fecha_cobro ? String(v.fecha_cobro) : null })) : []
+    const { data: d, error: e } = await admin.rpc('registrar_orden_pago', {
+      p_empresa_id: empresaId, p_proveedor_id: String(body.proveedor_id ?? ''),
+      p_fecha: body.fecha ? String(body.fecha) : null,
+      p_observaciones: body.observaciones ? String(body.observaciones) : null,
+      p_imputaciones: imputaciones, p_valores: valores })
+    if (e) {
+      const m = e.message ?? ''
+      if (m.includes('PROVEEDOR_INVALIDO')) return err('Proveedor inválido o inactivo', 409)
+      if (m.includes('SIN_VALORES')) return err('La orden de pago necesita al menos un valor (efectivo, transferencia o cheque)', 400)
+      if (m.includes('VALOR_INVALIDO')) return err('Hay un valor sin monto válido', 400)
+      if (m.includes('IMPUTACION_INVALIDA')) return err('Hay una imputación sin monto válido', 400)
+      if (m.includes('COMPROBANTE_DE_OTRO_PROVEEDOR')) return err('Una factura elegida es de otro proveedor', 409)
+      if (m.includes('COMPROBANTE_ANULADO')) return err('Una factura elegida está anulada', 409)
+      if (m.includes('COMPROBANTE_INVALIDO')) return err('Una factura elegida no existe', 409)
+      if (m.includes('IMPUTACION_SUPERA_PENDIENTE')) return err('Estás imputando más de lo que esa factura debe', 400)
+      if (m.includes('IMPUTADO_SUPERA_VALORES')) return err('Lo imputado supera la plata de la orden — agregá valores o bajá imputaciones', 400)
+      if (m.includes('NC_SUPERA_FACTURAS')) return err('El crédito de NC no puede superar lo imputado a facturas', 400)
+      if (m.includes('CHEQUERA_AGOTADA')) return err('La chequera no tiene cheques disponibles', 409)
+      if (m.includes('CHEQUERA_INVALIDA')) return err('Chequera inválida o inactiva', 409)
+      if (m.includes('CUENTA_INVALIDA')) return err('Cuenta de banco inválida', 409)
+      return err(`No se pudo registrar el pago (${m.slice(0, 120)})`, 500)
+    }
+    return NextResponse.json({ ok: true, ...(typeof d === 'object' ? d : {}) })
   }
 
   return err('Acción desconocida')
