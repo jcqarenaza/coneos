@@ -508,7 +508,7 @@ export default function ComprasPage() {
           ) })()}
           {proveedores.map(p => (
             <div key={p.id} className={`bg-white rounded-2xl border border-neutral-100 px-5 py-4 flex items-center justify-between shadow-sm ${!p.activo ? 'opacity-55 grayscale' : ''}`}>
-              <div className="min-w-0 cursor-pointer flex-1" onClick={() => setProvAbierto(p.id)}>
+              <div className="min-w-0 cursor-pointer flex-1" onClick={() => { setProvAbierto(p.id); setFichaSub(comprobantes.some(c => c.proveedor_id === p.id && c.tipo === 'factura' && c.estado !== 'anulada' && pendienteDe(c) > 0) ? 'saldos' : 'movs') }}>
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-neutral-900 truncate">{p.nombre}</span>
                   {p.cuit && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-neutral-100 text-neutral-600">CUIT {p.cuit}</span>}
