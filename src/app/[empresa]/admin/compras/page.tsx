@@ -377,7 +377,7 @@ export default function ComprasPage() {
   const aplicarImput = (n: Record<string, string>) => {
     const total = Object.values(n).reduce((a, v) => a + (Number(v) || 0), 0)
     const vs = fPago.valores.length === 1
-      ? [{ ...fPago.valores[0], monto: total > 0 ? String(Math.round(total * 100) / 100) : '' }]
+      ? [{ ...fPago.valores[0], monto: total > 0 ? (Math.round(total * 100) / 100).toFixed(2) : '' }]
       : fPago.valores
     setFPago({ ...fPago, imput: n, valores: vs })
   }
@@ -798,7 +798,7 @@ export default function ComprasPage() {
                 {p.cuit && <span className="text-xs text-neutral-400">CUIT {p.cuit}</span>}
               </div>
               <div className="flex items-center gap-3">
-              <ConeButton onClick={() => { setFPago({ imput: {}, valores: [{ tipo: 'efectivo', monto: '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '', fecha_emision: '' }], observaciones: '' }); setModalPago(true) }}>💸 Pagar</ConeButton>
+              <ConeButton onClick={() => { setFPago({ imput: {}, valores: [{ tipo: 'efectivo', monto: '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '', fecha_emision: new Date().toISOString().slice(0, 10) }], observaciones: '' }); setModalPago(true) }}>💸 Pagar</ConeButton>
               <div className="text-right">
                 <p className="text-[10px] font-bold uppercase text-neutral-400">Saldo</p>
                 <p className={`font-black text-xl ${saldo > 0 ? 'text-amber-600' : saldo < 0 ? 'text-violet-600' : 'text-green-600'}`}>
@@ -848,7 +848,7 @@ export default function ComprasPage() {
                     <div key={c.id} className="bg-neutral-50 rounded-xl px-3 py-2 flex items-center gap-3 cursor-pointer" title="Doble click: ver el comprobante"
                       onDoubleClick={() => setFichaPago(c.id)}>
                       <input type="checkbox" checked={marcada}
-                        onChange={e => { const n = { ...fPago.imput }; if (e.target.checked) n[c.id] = String(pendienteDe(c)); else delete n[c.id]; aplicarImput(n) }} />
+                        onChange={e => { const n = { ...fPago.imput }; if (e.target.checked) n[c.id] = pendienteDe(c).toFixed(2); else delete n[c.id]; aplicarImput(n) }} />
                       <span className="flex-1 text-sm text-neutral-700">Factura {c.letra ?? ''} {c.numero_proveedor} <span className="text-xs text-neutral-400">· debe {fmtMon(pendienteDe(c))}</span></span>
                       {marcada && (
                         <input type="number" min="0" step="0.01" value={fPago.imput[c.id]} placeholder={pendienteDe(c).toFixed(2)}
@@ -904,17 +904,17 @@ export default function ComprasPage() {
                           <option value="fisico">Físico</option>
                           <option value="echeq">ECHEQ</option>
                         </select>
-                        <div className="flex items-center gap-1"><span className="text-[10px] font-bold text-neutral-400 uppercase">Cobro</span>
-                        <input type="date" value={v.fecha_cobro} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, fecha_cobro: e.target.value } : x) })}
-                          className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white" /></div>
                         <div className="flex items-center gap-1"><span className="text-[10px] font-bold text-neutral-400 uppercase">Emisión</span>
                         <input type="date" value={v.fecha_emision} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, fecha_emision: e.target.value } : x) })}
                           className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white" title="Vacío = hoy" /></div>
+                        <div className="flex items-center gap-1"><span className="text-[10px] font-bold text-neutral-400 uppercase">Cobro</span>
+                        <input type="date" value={v.fecha_cobro} onChange={e => setFPago({ ...fPago, valores: fPago.valores.map((x, i2) => i2 === idx ? { ...x, fecha_cobro: e.target.value } : x) })}
+                          className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs bg-white" /></div>
                       </div>
                     )}
                   </div>
                 ))}
-                <button onClick={() => { const resto = Math.max(0, Math.round((sumaImput() - sumaValores()) * 100) / 100); setFPago({ ...fPago, valores: [...fPago.valores, { tipo: 'efectivo', monto: resto > 0 ? String(resto) : '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '', fecha_emision: '' }] }) }}
+                <button onClick={() => { const resto = Math.max(0, Math.round((sumaImput() - sumaValores()) * 100) / 100); setFPago({ ...fPago, valores: [...fPago.valores, { tipo: 'efectivo', monto: resto > 0 ? resto.toFixed(2) : '', cuenta_banco_id: '', chequera_id: '', modalidad: '', formato: '', fecha_cobro: '', fecha_emision: new Date().toISOString().slice(0, 10) }] }) }}
                   className="text-xs font-bold text-neutral-400 border border-neutral-200 rounded-xl px-3 py-1.5 hover:bg-neutral-50">+ Agregar valor</button>
               </div>
               <div className="ml-auto w-80 space-y-1 text-sm">
