@@ -68,6 +68,7 @@ export default function ComprasPage() {
   const [chequeras, setChequeras] = useState<{ id: string; descripcion: string | null; proximo: number; hasta: number; estado: string }[]>([])
   const [modalPago, setModalPago] = useState(false)
   const [fichaPago, setFichaPago] = useState<string | null>(null)
+  const [fichaRemito, setFichaRemito] = useState<string | null>(null)
   const [fichaSub, setFichaSub] = useState<'saldos' | 'movs'>('saldos')
   const [kardexArt, setKardexArt] = useState<string | null>(null)
   const [stockMovs, setStockMovs] = useState<{ id: string; articulo_id: string; sucursal_id: string | null; delta: number; costo_unitario: number | null; detalle: string | null; comprobante_compra_id: string | null; remito_id: string | null; created_at: string }[]>([])
@@ -847,6 +848,14 @@ export default function ComprasPage() {
                     <span className="text-right font-bold text-red-600">{fmtMon(ac)}</span>
                   </button>
                 ))}
+                {(() => { const ncs = comprobantes.filter(c => c.proveedor_id === provAbierto && c.tipo === 'nota_credito' && c.estado !== 'anulada'); const totNc = ncs.reduce((a, c) => a + Number(c.total), 0); return (totNc > 0.009 || cred > 0.009) ? (
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-xs text-amber-700">
+                    <p className="font-bold uppercase text-[10px] mb-0.5">Créditos sin aplicar a facturas</p>
+                    {ncs.map(c => <p key={c.id}>NC {c.letra ?? ''} {c.numero_proveedor} · {fmtMon(Number(c.total))}</p>)}
+                    {cred > 0.009 && <p>Pagos a cuenta · {fmtMon(Math.round(cred * 100) / 100)}</p>}
+                    <p className="text-[10px] text-amber-500 mt-0.5">Se imputan a facturas en la próxima tanda (aplicar crédito) — hoy netean el saldo global.</p>
+                  </div>
+                ) : null })()}
               </>)}
               {fichaSub === 'movs' && (<>
                 <div className="grid grid-cols-[90px_1fr_110px_110px_130px] gap-2 px-3 text-[10px] font-bold uppercase text-neutral-400"><span>Fecha</span><span>Descripción</span><span className="text-right">Debe</span><span className="text-right">Haber</span><span className="text-right">Saldo</span></div>
@@ -1004,7 +1013,7 @@ export default function ComprasPage() {
                 {movs.slice(0, 200).map(m => {
                   const doc = m.comprobante_compra_id || m.remito_id
                   return (
-                    <div key={m.id} onClick={() => { if (m.comprobante_compra_id) { setKardexArt(null); setTab('facturas'); setFactAbierta(m.comprobante_compra_id) } else if (m.remito_id) { setKardexArt(null); setTab('remitos') } }}
+                    <div key={m.id} onClick={() => { if (m.comprobante_compra_id) setFichaPago(m.comprobante_compra_id); else if (m.remito_id) setFichaRemito(m.remito_id) }}
                       className={`bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center gap-3 ${doc ? 'cursor-pointer hover:bg-neutral-100' : ''}`}>
                       <span className="text-xs text-neutral-400 whitespace-nowrap">{m.created_at.slice(0, 10)}</span>
                       <span className={`font-black whitespace-nowrap ${Number(m.delta) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{Number(m.delta) >= 0 ? '+' : ''}{Math.round(Number(m.delta) * 100) / 100}</span>
@@ -1016,6 +1025,26 @@ export default function ComprasPage() {
                 })}
               </div>
               <p className="text-[10px] text-neutral-300">Lectura pura de stock_movimientos — el stock es la suma del libro.</p>
+            </div>
+          </ConeModal>
+        )
+      })()}
+      {fichaRemito && (() => {
+        const r = remitos.find(x => x.id === fichaRemito) as (typeof remitos)[number] & { numero?: string | null; tipo?: string | null; estado?: string | null; created_at: string } | undefined
+        if (!r) return null
+        const items = remitoItems.filter(i => i.remito_id === r.id)
+        return (
+          <ConeModal open onClose={() => setFichaRemito(null)} title={`Remito ${r.numero ?? ''}`}>
+            <div className="space-y-2">
+              <p className="text-xs text-neutral-400">{r.created_at.slice(0, 10)}{r.tipo ? ` · ${r.tipo}` : ''}{r.estado ? ` · ${r.estado}` : ''}</p>
+              {items.map(i => (
+                <div key={i.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center justify-between gap-3">
+                  <span className="text-neutral-700 min-w-0 truncate">{articulos.find(a => a.id === i.articulo_id)?.nombre ?? '—'}</span>
+                  <span className="text-xs font-bold text-neutral-600 whitespace-nowrap">{Number(i.cantidad)}</span>
+                </div>
+              ))}
+              {items.length === 0 && <p className="text-sm text-neutral-400">Sin renglones.</p>}
+              <div className="flex justify-end pt-1"><ConeButton variante="fantasma" onClick={() => setFichaRemito(null)}>Volver</ConeButton></div>
             </div>
           </ConeModal>
         )
