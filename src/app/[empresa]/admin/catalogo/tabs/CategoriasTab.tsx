@@ -1,5 +1,6 @@
 'use client'
 
+import { confirmar } from '@/components/admin/ConeDialog'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
@@ -79,7 +80,7 @@ export default function CategoriasTab() {
   }
 
   async function handleDelete(row: Categoria) {
-    if (!confirm(`¿Eliminar "${row.nombre}"?`)) return
+    if (!(await confirmar(`¿Eliminar "${row.nombre}"?`, { peligro: true, confirmarLabel: 'Eliminar' }))) return
     const supabase = createClient()
     await supabase.from('categorias').update({ deleted_at: new Date().toISOString(), activo: false }).eq('id', row.id)
     load()

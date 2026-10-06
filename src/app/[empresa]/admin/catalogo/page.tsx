@@ -1,5 +1,6 @@
 'use client'
 
+import { avisar, confirmar } from '@/components/admin/ConeDialog'
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PRESETS_RUBRO } from '@/lib/presets-rubro'
@@ -98,21 +99,21 @@ export default function CatalogoPage() {
     setSavingInline(presId)
     const { error } = await createClient().from('presentaciones').update({ precio: nuevo }).eq('id', presId)
     if (!error) setPresentaciones(prev => prev.map(p => p.id === presId ? { ...p, precio: nuevo } : p))
-    else alert('No se pudo guardar el precio: ' + error.message)
+    else avisar('No se pudo guardar el precio: ' + error.message)
     setSavingInline(null)
   }
   // Eliminar SUAVE (JC 18/09): el producto sale de la venta pero TODO lo suyo
   // queda para el futuro — stock, movimientos del libro, históricos de pedidos.
   // (La vista vieja hace delete físico: hallazgo reportado, acá nace bien.)
   async function softDeleteProd(prod: Producto) {
-    if (!confirm(`¿Eliminar "${prod.nombre}"? Sale de la venta; su stock e historial quedan guardados.`)) return
+    if (!(await confirmar(`¿Eliminar "${prod.nombre}"? Sale de la venta; su stock e historial quedan guardados.`, { peligro: true, confirmarLabel: 'Eliminar' }))) return
     const sb = createClient()
     await sb.from('productos').update({ deleted_at: new Date().toISOString(), activo: false }).eq('id', prod.id)
     await sb.from('presentaciones').update({ activo: false }).eq('producto_id', prod.id)
     load(true)
   }
   async function softDeletePres(pres: Presentacion) {
-    if (!confirm(`¿Eliminar la presentación "${pres.nombre}"?`)) return
+    if (!(await confirmar(`¿Eliminar la presentación "${pres.nombre}"?`, { peligro: true, confirmarLabel: 'Eliminar' }))) return
     await createClient().from('presentaciones').update({ activo: false }).eq('id', pres.id)
     load(true)
   }
@@ -294,7 +295,7 @@ export default function CatalogoPage() {
     const min = parseInt(stockForm.minimo, 10)
     // Regla CTO: activar EXIGE cargar el stock actual (jamás asumir 0)
     if (activando && (stockForm.cantidad.trim() === '' || isNaN(cant) || cant < 0)) {
-      alert('Para activar el control de stock cargá la cantidad actual (0 o más).')
+      avisar('Para activar el control de stock cargá la cantidad actual (0 o más).')
       return
     }
     setSavingStock(true)
@@ -309,15 +310,15 @@ export default function CatalogoPage() {
         p_valor: cant, p_modo: 'set', p_motivo: 'ajuste',
         p_detalle: 'Ajuste desde Catálogo',
       })
-      if (e1) { alert('No se pudo guardar el stock: ' + e1.message); setSavingStock(false); return }
+      if (e1) { avisar('No se pudo guardar el stock: ' + e1.message); setSavingStock(false); return }
       const { error: eMin } = await supabase.from('producto_stock')
         .update({ stock_minimo: isNaN(min) || min < 0 ? 0 : min })
         .eq('producto_id', modalStock.id).eq('sucursal_id', sucursalDispo)
-      if (eMin) { alert('Stock guardado, pero no se pudo guardar el mínimo: ' + eMin.message) }
+      if (eMin) { avisar('Stock guardado, pero no se pudo guardar el mínimo: ' + eMin.message) }
     }
     const { error: e2 } = await supabase.from('productos')
       .update({ controla_stock: activando }).eq('id', modalStock.id).eq('empresa_id', ctx.empresaId)
-    if (e2) { alert('No se pudo guardar: ' + e2.message); setSavingStock(false); return }
+    if (e2) { avisar('No se pudo guardar: ' + e2.message); setSavingStock(false); return }
     setProductos(prev => prev.map(p => p.id === modalStock.id ? { ...p, controla_stock: activando } : p))
     if (activando) setStockSuc(prev => ({ ...prev, [modalStock.id]: { cantidad: cant, stock_minimo: isNaN(min) || min < 0 ? 0 : min } }))
     setSavingStock(false)
@@ -399,7 +400,7 @@ export default function CatalogoPage() {
     setSaving(false); setModalCat(false); load(true)
   }
   async function deleteCat(id: string) {
-    if (!confirm('¿Eliminar categoría?')) return
+    if (!(await confirmar('¿Eliminar categoría?', { peligro: true, confirmarLabel: 'Eliminar' }))) return
     await createClient().from('categorias').delete().eq('id', id)
     load(true)
   }
@@ -409,7 +410,7 @@ export default function CatalogoPage() {
   function openEditProd(p: Producto) { setFormProd({ nombre: p.nombre, descripcion: p.descripcion ?? '', imagen_url: p.imagen_url, categoria_id: p.categoria_id, codigo: p.codigo ?? '', orden: p.orden, activo: p.activo, visible_kiosk: p.visible_kiosk, visible_delivery: p.visible_delivery !== false, visible_mesa: p.visible_mesa !== false, visible_takeaway: p.visible_takeaway !== false }); setEditId(p.id); setModalProd(true) }
   async function saveProd() {
     if (!ctx || !formProd.nombre) return
-    if (!formProd.categoria_id) { alert('Elegí la categoría (o creala con "+ nueva")'); return }
+    if (!formProd.categoria_id) { avisar('Elegí la categoría (o creala con "+ nueva")'); return }
     setSaving(true)
     const supabase = createClient()
     const payload = { nombre: formProd.nombre, descripcion: formProd.descripcion || null, imagen_url: formProd.imagen_url, categoria_id: formProd.categoria_id, codigo: formProd.codigo || null, orden: formProd.orden, activo: formProd.activo, visible_kiosk: formProd.visible_kiosk, visible_delivery: formProd.visible_delivery, visible_mesa: formProd.visible_mesa, visible_takeaway: formProd.visible_takeaway }
@@ -424,7 +425,7 @@ export default function CatalogoPage() {
     setSaving(false); setModalProd(false); load(true)
   }
   async function deleteProd(id: string) {
-    if (!confirm('¿Eliminar producto?')) return
+    if (!(await confirmar('¿Eliminar producto?', { peligro: true, confirmarLabel: 'Eliminar' }))) return
     await createClient().from('productos').delete().eq('id', id)
     load(true)
   }
@@ -455,7 +456,7 @@ export default function CatalogoPage() {
     setSaving(false); setModalPres(false); load(true)
   }
   async function deletePres(id: string) {
-    if (!confirm('¿Eliminar presentación?')) return
+    if (!(await confirmar('¿Eliminar presentación?', { peligro: true, confirmarLabel: 'Eliminar' }))) return
     await createClient().from('presentaciones').delete().eq('id', id)
     load(true)
   }
@@ -480,7 +481,7 @@ export default function CatalogoPage() {
   function openEditOp(o: Opcion) { setFormOp({ nombre: o.nombre, descripcion: o.descripcion ?? '', emoji: o.emoji ?? '', imagen_url: o.imagen_url, grupo_id: o.grupo_id, orden: o.orden, activo: o.activo, visible_kiosk: o.visible_kiosk, es_novedad: o.es_novedad === true, precio_adicional: Number(o.precio_adicional ?? 0) }); setEditId(o.id); setModalOp(true) }
   async function saveOp() {
     if (!ctx || !formOp.nombre || !formOp.grupo_id) return
-    if (!editId && grupoAccesorioIds.has(formOp.grupo_id)) { alert('Los accesorios se crean desde su propia sección.'); return }
+    if (!editId && grupoAccesorioIds.has(formOp.grupo_id)) { avisar('Los accesorios se crean desde su propia sección.'); return }
     setSaving(true)
     const supabase = createClient()
     const payload = { nombre: formOp.nombre, descripcion: formOp.descripcion || null, emoji: formOp.emoji || null, imagen_url: formOp.imagen_url, grupo_id: formOp.grupo_id, orden: formOp.orden, activo: formOp.activo, visible_kiosk: formOp.visible_kiosk, es_novedad: formOp.es_novedad, precio_adicional: Number(formOp.precio_adicional) > 0 ? Number(formOp.precio_adicional) : null }
@@ -493,7 +494,7 @@ export default function CatalogoPage() {
     setSaving(false); setModalOp(false); load(true)
   }
   async function deleteOp(id: string) {
-    if (!confirm('¿Eliminar opción?')) return
+    if (!(await confirmar('¿Eliminar opción?', { peligro: true, confirmarLabel: 'Eliminar' }))) return
     // Soft-delete (misma semántica que Accesorios): la fila sobrevive con su
     // historial de ventas; solo deja de ofrecerse. El delete físico murió acá.
     await createClient().from('opciones').update({ deleted_at: new Date().toISOString() }).eq('id', id)
