@@ -677,5 +677,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ...(typeof d === 'object' ? d : {}) })
   }
 
+  // ══ VIDA FINANCIERA VF1 (GO CTO 06/10): exponer RPCs certificados ══
+  if (accion === 'cheque_cobrar' || accion === 'cheque_rebotar') {
+    const rpc = accion === 'cheque_cobrar' ? 'cobrar_cheque' : 'rebotar_cheque'
+    const { data: d, error: e } = await supabase.rpc(rpc, {
+      p_empresa_id: empresaId, p_cheque_id: String(body.cheque_id ?? '') })
+    if (e) {
+      const m = e.message ?? ''
+      if (m.includes('CHEQUE_NO_COBRABLE')) return err('Ese cheque no está emitido — solo un cheque emitido se puede cobrar', 409)
+      if (m.includes('CHEQUE_NO_REBOTABLE')) return err('Ese cheque no está emitido — solo un cheque emitido puede rebotar', 409)
+      return err(`No se pudo actualizar el cheque (${m.slice(0, 120)})`, 500)
+    }
+    return NextResponse.json({ ok: true, ...(typeof d === 'object' ? d : {}) })
+  }
+
+  if (accion === 'op_anular') {
+    const { data: d, error: e } = await supabase.rpc('anular_orden_pago', {
+      p_empresa_id: empresaId, p_orden_pago_id: String(body.orden_pago_id ?? ''),
+      p_motivo: String(body.motivo ?? '') })
+    if (e) {
+      const m = e.message ?? ''
+      if (m.includes('MOTIVO_REQUERIDO')) return err('La anulación necesita un motivo', 400)
+      if (m.includes('OP_CHEQUE_COBRADO')) return err('No se puede anular: un cheque de esta OP ya fue cobrado', 409)
+      if (m.includes('OP_NO_ANULABLE')) return err('La OP no existe o ya está anulada', 409)
+      return err(`No se pudo anular la OP (${m.slice(0, 120)})`, 500)
+    }
+    return NextResponse.json({ ok: true, ...(typeof d === 'object' ? d : {}) })
+  }
+
   return err('Acción desconocida')
 }

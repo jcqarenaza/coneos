@@ -188,6 +188,19 @@ export default function ComprasPage() {
       alert(`Orden de compra OC-${String(d.numero).padStart(4, '0')} creada`)
     } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo crear') } finally { setSaving(false) }
   }
+  // ══ VIDA FINANCIERA VF2/VF3 (GO CTO 06/10) ══
+  async function accionCheque(chequeId: string, accion: 'cheque_cobrar' | 'cheque_rebotar') {
+    if (accion === 'cheque_rebotar' && !confirm('¿Marcar el cheque como REBOTADO? El estado queda documentado; para recuperar la deuda, anulá la OP.')) return
+    try { await api({ accion, cheque_id: chequeId }); await recargar() }
+    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo actualizar el cheque') }
+  }
+  async function anularOP(op: Op) {
+    const motivo = prompt(`Anular OP-${String(op.numero).padStart(4, '0')} — revierte la CC y las facturas recuperan su deuda.\n\nMotivo (obligatorio):`)
+    if (motivo === null) return
+    if (!motivo.trim()) { alert('La anulación necesita un motivo.'); return }
+    try { await api({ accion: 'op_anular', orden_pago_id: op.id, motivo: motivo.trim() }); setOpAbierta(null); await recargar() }
+    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo anular') }
+  }
   async function anularOC(id: string) {
     if (!confirm('¿Anular esta orden de compra? No se puede volver a abrir.')) return
     try { await api({ accion: 'oc_anular', id }); setOcDetalle(null); await recargar() }
@@ -1123,12 +1136,28 @@ export default function ComprasPage() {
               </div>
               <div className="space-y-1.5">
                 <p className="text-[11px] font-bold text-neutral-400 uppercase">Con qué se pagó</p>
-                {vals.map(v => (
-                  <div key={v.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm flex items-center justify-between">
-                    <span className="text-neutral-700">{etiquetaValor(v)}</span>
-                    <span className="font-bold text-neutral-900">{fmtMon(Number(v.monto))}</span>
-                  </div>
-                ))}
+                {vals.map(v => {
+                  const ch = v.tipo === 'cheque' ? chequesAll.find(c => c.id === v.cheque_id) : null
+                  const estCls = ch?.estado === 'cobrado' ? 'bg-green-50 text-green-700' : ch?.estado === 'rebotado' ? 'bg-red-50 text-red-600' : ch?.estado === 'anulado' ? 'bg-neutral-100 text-neutral-400' : 'bg-amber-50 text-amber-700'
+                  return (
+                    <div key={v.id} className="bg-neutral-50 rounded-xl px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-700">{v.tipo === 'cheque' ? `Cheque${ch?.numero != null ? ` N° ${ch.numero}` : ''}${ch?.formato ? ` · ${ch.formato}` : ''}` : etiquetaValor(v)}
+                          {ch?.estado && <span className={`ml-2 text-[10px] font-bold rounded-full px-2 py-0.5 ${estCls}`}>{ch.estado.toUpperCase()}</span>}</span>
+                        <span className="font-bold text-neutral-900">{fmtMon(Number(v.monto))}</span>
+                      </div>
+                      {ch?.estado === 'emitido' && !op.anulada && (
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => accionCheque(ch.id, 'cheque_cobrar')} className="text-xs font-bold bg-green-600 hover:bg-green-700 text-white rounded-lg px-3 py-1.5 transition-colors">✓ Se cobró</button>
+                          <button onClick={() => accionCheque(ch.id, 'cheque_rebotar')} className="text-xs font-bold bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg px-3 py-1.5 transition-colors">✗ Rebotó</button>
+                        </div>
+                      )}
+                      {ch?.estado === 'rebotado' && !op.anulada && (
+                        <p className="text-[11px] text-red-500 mt-1.5">Cheque rebotado — para que las facturas recuperen su deuda, anulá esta OP y registrá el pago de nuevo.</p>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
               <div className="space-y-1.5">
                 <p className="text-[11px] font-bold text-neutral-400 uppercase">Qué paga</p>
@@ -1144,6 +1173,11 @@ export default function ComprasPage() {
                   )
                 })}
               </div>
+              {!op.anulada && (
+                <div className="pt-1 border-t border-neutral-100 flex justify-end">
+                  <button onClick={() => anularOP(op)} className="text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg px-3 py-1.5 transition-colors">Anular esta orden de pago…</button>
+                </div>
+              )}
             </div>
           </ConeModal>
         )
