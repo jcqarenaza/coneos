@@ -11,7 +11,7 @@ import { Plus, Loader2, Pencil, Link2, Check } from 'lucide-react'
 // REPARTO V1: el cadete gana PUERTA — sucursal (null = todas) + PIN de 4
 // dígitos hasheado en Postgres (RPC set_pin_colaborador, mismo bcrypt que
 // operadores). El PIN JAMÁS se lee ni se muestra: solo se setea/cambia.
-interface Colaborador { id: string; nombre: string; rol: string; activo: boolean; sucursal_id: string | null; pin_cargado?: boolean; emoji_reparto?: string | null }
+interface Colaborador { id: string; nombre: string; rol: string; activo: boolean; sucursal_id: string | null; pin_cargado?: boolean; emoji_reparto?: string | null; alias_publico?: string | null }
 
 // Identidad visual del cadete (GO CTO 29/09): catálogo CONTROLADO — cambiar
 // la lista no toca la base. NULL = 🛵 por defecto. Una casa para el dato:
@@ -30,7 +30,7 @@ export default function ColaboradoresTab() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '', emoji: '' })
+  const [form, setForm] = useState({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '', emoji: '', alias: '' })
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [saving, setSaving] = useState(false)
   const [copiado, setCopiado] = useState<string | null>(null)
@@ -56,7 +56,7 @@ export default function ColaboradoresTab() {
     const supabase = createClient()
     const [{ data: rows }, { data: sucs }] = await Promise.all([
       supabase.from('colaboradores')
-        .select('id, nombre, rol, activo, sucursal_id, pin_hash, emoji_reparto')
+        .select('id, nombre, rol, activo, sucursal_id, pin_hash, emoji_reparto, alias_publico')
         .eq('empresa_id', ctx.empresaId)
         .order('nombre'),
       supabase.from('sucursales').select('id, nombre, slug').eq('empresa_id', ctx.empresaId).order('nombre'),
@@ -66,6 +66,7 @@ export default function ColaboradoresTab() {
       id: r.id, nombre: r.nombre, rol: r.rol, activo: r.activo,
       sucursal_id: r.sucursal_id ?? null, pin_cargado: !!r.pin_hash,
       emoji_reparto: (r.emoji_reparto as string | null) ?? null,
+      alias_publico: (r.alias_publico as string | null) ?? null,
     })) as Colaborador[])
     setSucursales((sucs ?? []) as Sucursal[])
     setLoading(false)
@@ -73,8 +74,8 @@ export default function ColaboradoresTab() {
 
   useEffect(() => { load() }, [ctx])
 
-  function openNew() { setForm({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '', emoji: '' }); setEditId(null); setModal(true) }
-  function openEdit(row: Colaborador) { setForm({ nombre: row.nombre, rol: row.rol, sucursal_id: row.sucursal_id ?? 'todas', pin: '', emoji: row.emoji_reparto ?? '' }); setEditId(row.id); setModal(true) }
+  function openNew() { setForm({ nombre: '', rol: 'cadete', sucursal_id: 'todas', pin: '', emoji: '', alias: '' }); setEditId(null); setModal(true) }
+  function openEdit(row: Colaborador) { setForm({ nombre: row.nombre, rol: row.rol, sucursal_id: row.sucursal_id ?? 'todas', pin: '', emoji: row.emoji_reparto ?? '', alias: row.alias_publico ?? '' }); setEditId(row.id); setModal(true) }
 
   async function handleSave() {
     if (!ctx || !form.nombre.trim()) return
@@ -82,7 +83,8 @@ export default function ColaboradoresTab() {
     setSaving(true)
     const supabase = createClient()
     const payload = { nombre: form.nombre.trim(), rol: form.rol, sucursal_id: form.sucursal_id === 'todas' ? null : form.sucursal_id,
-      emoji_reparto: form.emoji && EMOJIS_REPARTO.includes(form.emoji) ? form.emoji : null }
+      emoji_reparto: form.emoji && EMOJIS_REPARTO.includes(form.emoji) ? form.emoji : null,
+      alias_publico: form.alias.trim() ? form.alias.trim().slice(0, 40) : null }
     let id = editId
     if (editId) {
       await supabase.from('colaboradores').update(payload).eq('id', editId)
@@ -147,7 +149,7 @@ export default function ColaboradoresTab() {
                 </div>
                 <span className={`text-xs font-semibold mt-0.5 ${row.activo ? 'text-green-600' : 'text-neutral-400'}`}>
                   {row.activo ? '● Activo' : '○ Inactivo'}
-                  {row.rol === 'cadete' && <span className="text-neutral-400 font-normal"> · {sucursales.find(su => su.id === row.sucursal_id)?.nombre ?? 'Todas las sucursales'} · PIN {row.pin_cargado ? '✓' : '✗ sin cargar'}</span>}
+                  {row.rol === 'cadete' && <span className="text-neutral-400 font-normal"> · {sucursales.find(su => su.id === row.sucursal_id)?.nombre ?? 'Todas las sucursales'} · PIN {row.pin_cargado ? '✓' : '✗ sin cargar'}{row.alias_publico ? ` · público: “${row.alias_publico}”` : ''}</span>}
                 </span>
               </div>
             </div>
@@ -197,6 +199,13 @@ export default function ColaboradoresTab() {
                 ))}
               </div>
               <p className="text-[11px] text-neutral-400">Así aparece en el mapa de caja, la app del cadete y el seguimiento del cliente. Sin elegir = 🛵.</p>
+            </div>
+          )}
+          {form.rol === 'cadete' && (
+            <div className="space-y-1.5">
+              <Label>Nombre público (lo ve el cliente)</Label>
+              <Input value={form.alias} onChange={e => setForm({ ...form, alias: e.target.value })} placeholder="Cadete 1" maxLength={40} />
+              <p className="text-[11px] text-neutral-400">Por seguridad, el cliente puede ver este nombre en vez del real. Vacío = se muestra el nombre real, como siempre. Caja, comanda y la app del cadete siguen con el nombre real.</p>
             </div>
           )}
           <div className="space-y-1.5">

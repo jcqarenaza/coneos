@@ -93,10 +93,11 @@ export async function POST(request: Request) {
       : null
     // Identidad visual del cadete (GO CTO 29/09) — una casa: colaboradores
     const { data: colPed } = p.colaborador_id
-      ? await supabase.from('colaboradores').select('emoji_reparto').eq('id', p.colaborador_id).maybeSingle()
+      ? await supabase.from('colaboradores').select('emoji_reparto, alias_publico').eq('id', p.colaborador_id).maybeSingle()
       : { data: null }
     return NextResponse.json({ ok: true, encontrado: true,
-      pedido: { ...p, colaborador_emoji: colPed?.emoji_reparto ?? '🛵' }, volver_url,
+      pedido: { ...p, colaborador_nombre: p.colaborador_nombre ? (colPed?.alias_publico ?? p.colaborador_nombre) : null,
+        colaborador_emoji: colPed?.emoji_reparto ?? '🛵' }, volver_url,
       marca: { nombre: emp.nombre, empresa_id: emp.id,
         primary_color: cfg?.primary_color ?? '#1E3A5F', secondary_color: cfg?.secondary_color ?? '#F5C842',
         logo_url: cfg?.logo_url ?? null,
@@ -175,7 +176,11 @@ export async function POST(request: Request) {
     }
     const { data: pos } = await supabase.from('reparto_posiciones')
       .select('lat, lng, updated_at').eq('colaborador_id', ped.colaborador_id).eq('empresa_id', empresa_id).maybeSingle()
-    return NextResponse.json({ ok: true, activo: !!pos, nombre: ped.colaborador_nombre, ...(pos ?? {}) })
+    // Alias publico (GO CTO 06/10): la frontera de privacidad vive ACA — el
+    // JSON publico jamas lleva el nombre real si hay alias cargado.
+    const { data: colAlias } = await supabase.from('colaboradores')
+      .select('alias_publico').eq('id', ped.colaborador_id).maybeSingle()
+    return NextResponse.json({ ok: true, activo: !!pos, nombre: colAlias?.alias_publico ?? ped.colaborador_nombre, ...(pos ?? {}) })
   }
 
   // ── Todo lo demás exige sesión de cadete ──
