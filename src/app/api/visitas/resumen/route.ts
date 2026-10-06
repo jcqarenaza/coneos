@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
   const [{ data: visitas }, { data: pedidos }] = await Promise.all([
     supabase.from('visitas_canal')
-      .select('fecha, canal, visitante_id, hits, referrer, utm')
+      .select('fecha, canal, visitante_id, hits, referrer, utm, ciudad')
       .eq('empresa_id', empresa_id).gte('fecha', desde),
     supabase.from('pedidos')
       .select('fecha_pedido, tipo_pedido, estado, datos_delivery')
@@ -40,6 +40,8 @@ export async function GET(request: Request) {
   }
 
   const refCount: Record<string, number> = {}
+  const ciudadCount: Record<string, number> = {}
+  let sinCiudad = 0
   const utmCount: Record<string, number> = {}
   for (const v of visitas ?? []) {
     const d = dia(v.canal, v.fecha)
@@ -51,6 +53,9 @@ export async function GET(request: Request) {
       try { host = new URL(v.referrer).hostname.replace(/^www\./, '') } catch {}
       refCount[host] = (refCount[host] ?? 0) + 1
     }
+    const ciu = (v as { ciudad?: string | null }).ciudad
+    if (ciu) ciudadCount[ciu] = (ciudadCount[ciu] ?? 0) + 1
+    else sinCiudad += 1
     const src = (v.utm as { source?: string } | null)?.source
     if (src) utmCount[src] = (utmCount[src] ?? 0) + 1
   }
@@ -90,6 +95,7 @@ export async function GET(request: Request) {
     delivery: serie('DELIVERY'), mesa: serie('MESA'),
     takeaway: serie('TAKEAWAY'), app: serie('APP'),
     adquisicion: { referrers: top(refCount), utm_sources: top(utmCount) },
+    ciudades: { items: top(ciudadCount, 10), sin_identificar: sinCiudad },
     destinos: { total: destinoTotal, items: destinos },
   })
 }

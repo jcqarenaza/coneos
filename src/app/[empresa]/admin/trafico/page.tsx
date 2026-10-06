@@ -93,6 +93,7 @@ export default function TraficoPage() {
   const [app, setApp] = useState<Dia[]>([])
   const [adquisicion, setAdquisicion] = useState<{ referrers: { nombre: string; visitas: number }[]; utm_sources: { nombre: string; visitas: number }[] }>({ referrers: [], utm_sources: [] })
   const [destinos, setDestinos] = useState<{ total: number; items: { destino: string; pedidos: number; participacion: number }[] }>({ total: 0, items: [] })
+  const [ciudades, setCiudades] = useState<{ items: { nombre: string; visitas: number }[]; sin_identificar: number }>({ items: [], sin_identificar: 0 })
   const [modulos, setModulos] = useState<Record<string, boolean>>({})
   const [appHabilitada, setAppHabilitada] = useState(false)
 
@@ -110,6 +111,7 @@ export default function TraficoPage() {
         setApp(d.app ?? [])
         setAdquisicion(d.adquisicion ?? { referrers: [], utm_sources: [] })
         setDestinos(d.destinos ?? { total: 0, items: [] })
+        setCiudades(d.ciudades ?? { items: [], sin_identificar: 0 })
         setModulos((cfg?.modulos ?? {}) as Record<string, boolean>)
         setAppHabilitada((cfg as { entrada_unificada?: boolean } | null)?.entrada_unificada === true)
         setLoading(false)
@@ -154,6 +156,23 @@ export default function TraficoPage() {
             )}
           </div>
           <p className="text-xs text-neutral-300 mt-3">Solo se registra el primer origen conocido de cada visitante por día. Sin campaña ni sitio derivador, la visita cuenta igual pero no aparece acá.</p>
+        </div>
+      )}
+
+      {/* ¿Desde dónde miran? — TR (GO CTO 06/10): ciudad aproximada por visita,
+          first-known, sin IP guardada. Ranking alcanza para V1 — sin mapa. */}
+      {ciudades.items.length > 0 && (
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-5">
+          <h2 className="font-black text-neutral-800 mb-1">📍 ¿Desde dónde miran?</h2>
+          <p className="text-xs text-neutral-400 mb-3">Ciudad aproximada de quienes abren tus menús — últimos 14 días, compren o no</p>
+          <div className="space-y-1">
+            {ciudades.items.map(c => (
+              <div key={c.nombre} className="flex justify-between text-sm py-0.5"><span className="text-neutral-600 font-semibold">{c.nombre}</span><span className="text-neutral-400 font-bold">{c.visitas}</span></div>
+            ))}
+            {ciudades.sin_identificar > 0 && (
+              <div className="flex justify-between text-sm py-0.5 border-t border-neutral-50 pt-1.5"><span className="text-neutral-300">Sin identificar</span><span className="text-neutral-300 font-bold">{ciudades.sin_identificar}</span></div>
+            )}
+          </div>
         </div>
       )}
 

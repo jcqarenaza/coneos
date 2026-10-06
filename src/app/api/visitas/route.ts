@@ -11,6 +11,27 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // · Adquisición first-known: referrer/utm se guardan al nacer la fila, y en
 //   updates SOLO rellenan si aún son null — el primer origen conocido del día
 //   jamás se pisa (10:00 Instagram + 12:00 directo → queda Instagram).
+// ══ TR "¿Desde dónde miran?" (GO CTO 06/10) ══
+// Ciudad aproximada desde los headers que Vercel resuelve en el edge.
+// AUTORIDAD: el server — el body del navegador JAMÁS manda ciudad.
+// Header ausente/ilegible → ciudad NULL y la visita vale igual.
+// La IP no se guarda, no se mira, no existe columna para ella.
+function ciudadDeHeaders(request: Request): string | null {
+  try {
+    const h = request.headers
+    const raw = h.get('x-vercel-ip-city')
+    if (!raw) return null
+    let ciudad = decodeURIComponent(raw).trim()
+    if (!ciudad) return null
+    const region = h.get('x-vercel-ip-country-region')
+    const pais = h.get('x-vercel-ip-country')
+    // Fuera de Argentina, el país solo (granularidad comercial suficiente)
+    if (pais && pais !== 'AR') return pais.slice(0, 60)
+    if (region) ciudad = `${ciudad} (${decodeURIComponent(region).trim()})`
+    return ciudad.slice(0, 80)
+  } catch { return null }
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   const { visitante_id, empresa_id, sucursal_id, canal, referrer, utm } = body ?? {}
@@ -22,9 +43,10 @@ export async function POST(request: Request) {
   const can = String(canal).toUpperCase().slice(0, 20)
   const ref = typeof referrer === 'string' && referrer ? referrer.slice(0, 300) : null
   const utmVal = utm && typeof utm === 'object' && Object.keys(utm).length ? utm : null
+  const ciudad = ciudadDeHeaders(request)
 
   const { data: existente } = await supabase.from('visitas_canal')
-    .select('hits, referrer, utm')
+    .select('hits, referrer, utm, ciudad')
     .eq('empresa_id', empresa_id).eq('visitante_id', vid).eq('fecha', hoy).eq('canal', can)
     .maybeSingle()
 
@@ -32,6 +54,7 @@ export async function POST(request: Request) {
     const patch: Record<string, unknown> = { hits: existente.hits + 1, last_seen: new Date().toISOString() }
     if (!existente.referrer && ref) patch.referrer = ref
     if (!existente.utm && utmVal) patch.utm = utmVal
+    if (!existente.ciudad && ciudad) patch.ciudad = ciudad  // first-known, como referrer/utm
     await supabase.from('visitas_canal')
       .update(patch)
       .eq('empresa_id', empresa_id).eq('visitante_id', vid).eq('fecha', hoy).eq('canal', can)
@@ -39,7 +62,7 @@ export async function POST(request: Request) {
     await supabase.from('visitas_canal').insert({
       visitante_id: vid, fecha: hoy, canal: can,
       empresa_id, sucursal_id: sucursal_id ?? null,
-      referrer: ref, utm: utmVal,
+      referrer: ref, utm: utmVal, ciudad,
     })
   }
   return NextResponse.json({ ok: true })
