@@ -42,3 +42,4 @@ next-env.d.ts
 *.key 
 *.csr 
 *.crt
+para-fable.tar 
