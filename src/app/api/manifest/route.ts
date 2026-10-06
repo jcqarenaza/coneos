@@ -9,6 +9,7 @@ export async function GET(request: Request) {
   const empresaSlug = searchParams.get('empresa')
   const sucursalSlug = searchParams.get('sucursal')
   const token = searchParams.get('token')
+  const tipo = searchParams.get('tipo')
 
   let nombre = MARCA_DEFAULT
   let themeColor = '#1E3A5F'
@@ -56,8 +57,9 @@ export async function GET(request: Request) {
       if (cfg?.pwa_nombre) pwaNombre = cfg.pwa_nombre
       if (cfg?.pwa_icono_url) pwaIconoUrl = cfg.pwa_icono_url
       if (cfg?.favicon_url) faviconUrl = cfg.favicon_url
-      if (sucursalSlug) startUrl = `/${empresaSlug}/delivery/${sucursalSlug}`
-      else startUrl = `/${empresaSlug}/pedidos`  // app de la marca (JC 05/10)
+      if (tipo === 'pedidos' && sucursalSlug) startUrl = `/${empresaSlug}/pedidos/${sucursalSlug}`  // app de la marca: la ruta REAL lleva sucursal (fix 404 06/10)
+      else if (sucursalSlug) startUrl = `/${empresaSlug}/delivery/${sucursalSlug}`
+
     }
   }
 

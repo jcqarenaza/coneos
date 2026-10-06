@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             } else if (partes[1] === 'd' && partes[2]) {
               href = '/api/manifest?token=' + encodeURIComponent(partes[2]);
             } else if (partes[1] === 'pedir' || partes[1] === 'pedidos') {
-              href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]);
+              href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]) + '&tipo=pedidos' + (partes[2] ? '&sucursal=' + encodeURIComponent(partes[2]) : '');
             } else if (partes[1] === 'delivery' && partes[2]) {
               href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]) + '&sucursal=' + encodeURIComponent(partes[2]);
             }
