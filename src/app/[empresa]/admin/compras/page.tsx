@@ -11,6 +11,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
+import { confirmar, pedirTexto } from '@/components/admin/ConeDialog'
 import { ConeButton, ConeModal } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -158,11 +159,11 @@ export default function ComprasPage() {
     try {
       await api({ accion: 'proveedor_guardar', id: provEdit, ...fProv })
       setModalProv(false); await recargar()
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo guardar') } finally { setSaving(false) }
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo guardar') } finally { setSaving(false) }
   }
   async function toggleProveedor(p: Proveedor) {
     try { await api({ accion: 'proveedor_toggle', id: p.id, activo: !p.activo }); await recargar() }
-    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo actualizar') }
+    catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo actualizar') }
   }
   async function guardarArticulo() {
     if (!fArt.nombre.trim()) return
@@ -170,11 +171,11 @@ export default function ComprasPage() {
     try {
       await api({ accion: 'articulo_guardar', id: artEdit, ...fArt, producto_id: fArt.producto_id || null })
       setModalArt(false); await recargar()
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo guardar') } finally { setSaving(false) }
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo guardar') } finally { setSaving(false) }
   }
   async function toggleArticulo(a: Articulo) {
     try { await api({ accion: 'articulo_toggle', id: a.id, activo: !a.activo }); await recargar() }
-    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo actualizar') }
+    catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo actualizar') }
   }
   async function crearOC() {
     setSaving(true)
@@ -185,26 +186,26 @@ export default function ComprasPage() {
           cantidad: r.cantidad, costo_previsto: r.costo_previsto,
         })) })
       setModalOC(false); await recargar()
-      alert(`Orden de compra OC-${String(d.numero).padStart(4, '0')} creada`)
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo crear') } finally { setSaving(false) }
+      avisar('ok', `Orden de compra OC-${String(d.numero).padStart(4, '0')} creada`)
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo crear') } finally { setSaving(false) }
   }
   // ══ VIDA FINANCIERA VF2/VF3 (GO CTO 06/10) ══
   async function accionCheque(chequeId: string, accion: 'cheque_cobrar' | 'cheque_rebotar') {
-    if (accion === 'cheque_rebotar' && !confirm('¿Marcar el cheque como REBOTADO? El estado queda documentado; para recuperar la deuda, anulá la OP.')) return
+    if (accion === 'cheque_rebotar' && !(await confirmar('¿Marcar el cheque como REBOTADO? El estado queda documentado; para recuperar la deuda, anulá la OP.', { peligro: true, confirmarLabel: 'Sí, rebotó' }))) return
     try { await api({ accion, cheque_id: chequeId }); await recargar() }
-    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo actualizar el cheque') }
+    catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo actualizar el cheque') }
   }
   async function anularOP(op: Op) {
-    const motivo = prompt(`Anular OP-${String(op.numero).padStart(4, '0')} — revierte la CC y las facturas recuperan su deuda.\n\nMotivo (obligatorio):`)
+    const motivo = await pedirTexto(`Anular OP-${String(op.numero).padStart(4, '0')} revierte la cuenta corriente y las facturas recuperan su deuda.`, { titulo: 'Anular orden de pago', placeholder: 'Motivo (obligatorio)', peligro: true, confirmarLabel: 'Anular OP' })
     if (motivo === null) return
-    if (!motivo.trim()) { alert('La anulación necesita un motivo.'); return }
+    if (!motivo.trim()) { avisar('error', 'La anulación necesita un motivo.'); return }
     try { await api({ accion: 'op_anular', orden_pago_id: op.id, motivo: motivo.trim() }); setOpAbierta(null); await recargar() }
-    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo anular') }
+    catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo anular') }
   }
   async function anularOC(id: string) {
-    if (!confirm('¿Anular esta orden de compra? No se puede volver a abrir.')) return
+    if (!(await confirmar('¿Anular esta orden de compra? No se puede volver a abrir.', { peligro: true, confirmarLabel: 'Anular' }))) return
     try { await api({ accion: 'oc_anular', id }); setOcDetalle(null); await recargar() }
-    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo anular') }
+    catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo anular') }
   }
   async function crearRemito() {
     // JC 02/10: UN ACTO. El confirm cuenta solo lo que mueve stock.
@@ -219,7 +220,7 @@ export default function ComprasPage() {
       ? '¿Confirmar? Este remito solo DOCUMENTA (sus artículos no controlan stock) — no mueve ninguna unidad. No se deshace.'
       : (esDev ? `¿Confirmar la DEVOLUCIÓN? Se restan ${fmtU(unidades)} unidades del stock.` : `¿Confirmar la recepción? Se suman ${fmtU(unidades)} unidades al stock.`)
         + (sinControl > 0 ? ` (${sinControl} línea${sinControl > 1 ? 's' : ''} sin control solo documenta)` : '') + ' Este paso no se deshace.'
-    if (!confirm(msj)) return
+    if (!(await confirmar(msj, { confirmarLabel: 'Confirmar recepción' }))) return
     setSaving(true)
     try {
       const d = await api({ accion: 'remito_crear', confirmar: true, tipo: fRem.tipo, proveedor_id: fRem.proveedor_id, sucursal_id: fRem.sucursal_id,
@@ -230,8 +231,8 @@ export default function ComprasPage() {
           cantidad: r.cantidad, costo_bulto: r.costo_bulto || '0',
         })) })
       setModalRemito(false); setRemitoAbierto(null); await recargar()
-      alert(`✅ REM-${String(d.numero).padStart(4, '0')} confirmado: ${d.lineas} líneas, ${fmtU(Number(d.unidades ?? 0))} unidades${d.oc_estado ? ` · OC → ${d.oc_estado}` : ''}`)
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo confirmar — nada quedó cargado') } finally { setSaving(false) }
+      avisar('ok', `✅ REM-${String(d.numero).padStart(4, '0')} confirmado: ${d.lineas} líneas, ${fmtU(Number(d.unidades ?? 0))} unidades${d.oc_estado ? ` · OC → ${d.oc_estado}` : ''}`)
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo confirmar — nada quedó cargado') } finally { setSaving(false) }
   }
   async function guardarLinea() {
     if (!lineaForm || !remitoAbierto) return
@@ -241,12 +242,12 @@ export default function ComprasPage() {
         articulo_id: lineaForm.articulo_id, presentacion_id: lineaForm.presentacion_id || null,
         cantidad: lineaForm.cantidad, costo_bulto: lineaForm.costo_bulto || '0' })
       setLineaForm(null); await recargar()
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo guardar') } finally { setSaving(false) }
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo guardar') } finally { setSaving(false) }
   }
   async function borrarLinea(itemId: string) {
     if (!remitoAbierto) return
     try { await api({ accion: 'remito_item_borrar', remito_id: remitoAbierto, item_id: itemId }); await recargar() }
-    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo borrar') }
+    catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo borrar') }
   }
   function msjConfirmar(id: string) {
     const lineas = itemsDe(id)
@@ -260,19 +261,19 @@ export default function ComprasPage() {
     return base + (sinControl > 0 ? ` (${sinControl} línea${sinControl > 1 ? 's' : ''} sin control de stock solo documenta)` : '') + ' Este paso no se deshace.'
   }
   async function confirmarRemito(id: string, silencioso = false) {
-    if (!silencioso && !confirm(msjConfirmar(id))) return
+    if (!silencioso && !(await confirmar(msjConfirmar(id), { confirmarLabel: 'Confirmar recepción' }))) return
     setSaving(true)
     try {
       const d = await api({ accion: 'remito_confirmar', id })
       await recargar()
       setRemitoAbierto(null)  // JC 02/10: confirmado -> de vuelta a la lista, se ven todos
-      alert(`✅ Recepción confirmada: ${d.lineas} líneas, ${d.unidades} unidades al stock${d.oc_estado ? ` · OC → ${d.oc_estado}` : ''}`)
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo confirmar') } finally { setSaving(false) }
+      avisar('ok', `✅ Recepción confirmada: ${d.lineas} líneas, ${d.unidades} unidades al stock${d.oc_estado ? ` · OC → ${d.oc_estado}` : ''}`)
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo confirmar') } finally { setSaving(false) }
   }
   async function descartarRemito(id: string) {
-    if (!confirm('¿Descartar este borrador? Se pierde lo cargado.')) return
+    if (!(await confirmar('¿Descartar este borrador? Se pierde lo cargado.', { peligro: true, confirmarLabel: 'Descartar' }))) return
     try { await api({ accion: 'remito_borrar', id }); setRemitoAbierto(null); await recargar() }
-    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo descartar') }
+    catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo descartar') }
   }
   async function importarCatalogo() {
     if (!importSel.length) return
@@ -280,8 +281,8 @@ export default function ComprasPage() {
     try {
       const d = await api({ accion: 'importar_catalogo', producto_ids: importSel })
       setModalImport(false); setImportSel([]); await recargar()
-      if (d.rechazados?.length) alert(`Importados: ${d.creados}. Ya tenían artículo (los importó otro usuario): ${d.rechazados.join(', ')}`)
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo importar') } finally { setSaving(false) }
+      if (d.rechazados?.length) avisar('ok', `Importados: ${d.creados}. Ya tenían artículo (los importó otro usuario): ${d.rechazados.join(', ')}`)
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo importar') } finally { setSaving(false) }
   }
   async function guardarPresentacion() {
     if (!modalPres || !fPres.nombre.trim()) return
@@ -289,15 +290,15 @@ export default function ComprasPage() {
     try {
       await api({ accion: 'presentacion_guardar', id: presEdit, articulo_id: modalPres.articuloId, nombre: fPres.nombre, factor: fPres.factor })
       setPresEdit(null); setFPres({ nombre: '', factor: '' }); await recargar()
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo guardar') } finally { setSaving(false) }
+    } catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo guardar') } finally { setSaving(false) }
   }
   async function borrarPresentacion(id: string) {
     try { await api({ accion: 'presentacion_borrar', id }); await recargar() }
-    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo borrar') }
+    catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo borrar') }
   }
   async function togglePresentacion(pr: Presentacion) {
     try { await api({ accion: 'presentacion_toggle', id: pr.id, activo: !pr.activo }); await recargar() }
-    catch (e) { alert(e instanceof Error ? e.message : 'No se pudo actualizar') }
+    catch (e) { avisar('error', e instanceof Error ? e.message : 'No se pudo actualizar') }
   }
 
   const nombreProducto = (id: string | null) => id ? (productos.find(p => p.id === id)?.nombre ?? '—') : null
