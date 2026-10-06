@@ -26,10 +26,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             var partes = path.split('/').filter(Boolean);
             var href = '/manifest.json';
 
-            if (token && (path.indexOf('/delivery/') !== -1 || partes[1] === 'd')) {
+            if (token && (path.indexOf('/delivery/') !== -1 || path.indexOf('/pedir') !== -1 || path.indexOf('/pedidos') !== -1 || partes[1] === 'd')) {
               href = '/api/manifest?token=' + encodeURIComponent(token);
             } else if (partes[1] === 'd' && partes[2]) {
               href = '/api/manifest?token=' + encodeURIComponent(partes[2]);
+            } else if (partes[1] === 'pedir' || partes[1] === 'pedidos') {
+              href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]);
             } else if (partes[1] === 'delivery' && partes[2]) {
               href = '/api/manifest?empresa=' + encodeURIComponent(partes[0]) + '&sucursal=' + encodeURIComponent(partes[2]);
             }
