@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { avisar } from '@/components/admin/ConeDialog'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { ConeButton, ConeModal } from '@/components/admin/ConeComponents'
@@ -46,8 +47,8 @@ export default function ColaboradoresTab() {
   }
   async function copiarLink(row: Colaborador) {
     const link = linkReparto(row)
-    if (!link) { alert('No hay sucursal para armar el link.'); return }
-    try { await navigator.clipboard.writeText(link) } catch { prompt('Copiá el link:', link); return }
+    if (!link) { avisar('No hay sucursal para armar el link.'); return }
+    try { await navigator.clipboard.writeText(link) } catch { avisar('No se pudo copiar automáticamente. Copiá el link a mano:\n\n' + link, { titulo: 'Link de la app de reparto' }); return }
     setCopiado(row.id); setTimeout(() => setCopiado(null), 2000)
   }
 
@@ -79,7 +80,7 @@ export default function ColaboradoresTab() {
 
   async function handleSave() {
     if (!ctx || !form.nombre.trim()) return
-    if (form.pin && !/^\d{4}$/.test(form.pin)) { alert('El PIN debe ser de 4 dígitos numéricos.'); return }
+    if (form.pin && !/^\d{4}$/.test(form.pin)) { avisar('El PIN debe ser de 4 dígitos numéricos.'); return }
     setSaving(true)
     const supabase = createClient()
     const payload = { nombre: form.nombre.trim(), rol: form.rol, sucursal_id: form.sucursal_id === 'todas' ? null : form.sucursal_id,
@@ -98,7 +99,7 @@ export default function ColaboradoresTab() {
       const { error: ePin } = await supabase.rpc('set_pin_colaborador', {
         p_colaborador: id, p_empresa: ctx.empresaId, p_pin: form.pin,
       })
-      if (ePin) alert(`Colaborador guardado, pero el PIN no se pudo setear: ${ePin.message}`)
+      if (ePin) avisar(`Colaborador guardado, pero el PIN no se pudo setear: ${ePin.message}`)
     }
     setSaving(false); setModal(false); load()
   }
@@ -113,14 +114,14 @@ export default function ColaboradoresTab() {
         .eq('colaborador_id', row.id)
         .in('estado', ['PREPARING', 'READY'])
       if ((count ?? 0) > 0) {
-        alert(`${row.nombre} tiene ${count} pedido${count === 1 ? '' : 's'} activo${count === 1 ? '' : 's'} en reparto. Esperá que los entregue (o reasignalos desde Caja) antes de desactivarlo.`)
+        avisar(`${row.nombre} tiene ${count} pedido${count === 1 ? '' : 's'} activo${count === 1 ? '' : 's'} en reparto. Esperá que los entregue (o reasignalos desde Caja) antes de desactivarlo.`)
         return
       }
     }
     const { error, data: upd } = await supabase.from('colaboradores')
       .update({ activo: !row.activo }).eq('id', row.id).select('id')
-    if (error) { alert(`No se pudo actualizar: ${error.message}`); return }
-    if (!upd || upd.length === 0) { alert('No se pudo actualizar (sin permisos o fila no encontrada). Probá recargar la página y reintentá.'); return }
+    if (error) { avisar(`No se pudo actualizar: ${error.message}`); return }
+    if (!upd || upd.length === 0) { avisar('No se pudo actualizar (sin permisos o fila no encontrada). Probá recargar la página y reintentá.'); return }
     load()
   }
 

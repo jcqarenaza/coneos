@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { avisar, confirmar } from '@/components/admin/ConeDialog'
 import { createClient } from '@/lib/supabase/client'
 import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, History, ChevronLeft, ChevronRight, CloudRain, Trash2, Volume2, VolumeX } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
@@ -232,9 +233,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       observaciones: obsCierre || null, cerrado_por: sesion?.operador?.nombre ?? null,
     })
     setGuardandoCierre(false)
-    if (error) { alert(error.code === '23505' ? 'La caja de hoy ya fue cerrada.' : 'No se pudo guardar: ' + error.message); return }
+    if (error) { avisar(error.code === '23505' ? 'La caja de hoy ya fue cerrada.' : 'No se pudo guardar: ' + error.message); return }
     setModalCierre(false); setDeclarados({}); setObsCierre(''); setConteo({}); setConteoAbierto(false)
-    alert('✓ Caja cerrada. El cierre quedó registrado.')
+    avisar('✓ Caja cerrada. El cierre quedó registrado.')
   }
 
   // ══ 9b — ARQUEO DE STOCK (GO CTO): conteo CIEGO del operador → PENDIENTE →
@@ -252,7 +253,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     setModalArqueo(true); setArqAlcance('completo'); setArqFisico({}); setArqObs('')
     const sb = createClient()
     const { data: pend } = await sb.from('arqueos_stock').select('id').eq('sucursal_id', dispositivo.sucursal_id).eq('estado', 'pendiente').limit(1)
-    if ((pend ?? []).length > 0) { alert('Ya hay un arqueo PENDIENTE de esta sucursal esperando confirmación del admin.'); setModalArqueo(false); return }
+    if ((pend ?? []).length > 0) { avisar('Ya hay un arqueo PENDIENTE de esta sucursal esperando confirmación del admin.'); setModalArqueo(false); return }
     const [{ data: cats }, { data: prods }] = await Promise.all([
       sb.from('categorias').select('id, nombre').eq('empresa_id', dispositivo.empresa_id).eq('activo', true).order('orden'),
       sb.from('productos').select('id, nombre, categoria_id').eq('empresa_id', dispositivo.empresa_id).eq('activo', true).eq('controla_stock', true).is('deleted_at', null).order('nombre'),
@@ -276,15 +277,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       alcance: arqAlcance === 'completo' ? 'completo' : `categoria:${arqCats.find(c => c.id === arqAlcance)?.nombre ?? ''}`,
       contado_por: sesion?.operador?.nombre ?? null, observaciones: arqObs || null,
     }).select('id').single()
-    if (error || !arq) { alert('No se pudo guardar: ' + (error?.message ?? '')); setArqGuardando(false); return }
+    if (error || !arq) { avisar('No se pudo guardar: ' + (error?.message ?? '')); setArqGuardando(false); return }
     const { error: e2 } = await sb.from('arqueo_items').insert(cargados.map(p => ({
       arqueo_id: arq.id, producto_id: p.id,
       teorico: teorico.get(p.id) ?? 0, fisico: parseFloat(arqFisico[p.id]) || 0,
     })))
     setArqGuardando(false)
-    if (e2) { alert('Error guardando ítems: ' + e2.message); return }
+    if (e2) { avisar('Error guardando ítems: ' + e2.message); return }
     setModalArqueo(false)
-    alert(`✓ Conteo guardado (${cargados.length} productos). Queda PENDIENTE para confirmación del admin.`)
+    avisar(`✓ Conteo guardado (${cargados.length} productos). Queda PENDIENTE para confirmación del admin.`)
   }
 
   const cargarPedidos = useCallback(async () => {
@@ -443,7 +444,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       : <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700">🧾 Facturado</span>
   }
   async function eliminarPedido(p: Pedido, desdeHistorial: boolean) {
-    if (!confirm(`¿Eliminar el pedido #${p.numero_pedido}? Esta acción no se puede deshacer.`)) return
+    if (!(await confirmar(`¿Eliminar el pedido #${p.numero_pedido}? Esta acción no se puede deshacer.`, { peligro: true, confirmarLabel: 'Eliminar' }))) return
     setEliminando(true)
     const res = await fetch('/api/pedidos/eliminar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -455,7 +456,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       else { setSeleccionado(null); cargarPedidos() }
     } else {
       const d = await res.json().catch(() => null)
-      alert(d?.error ?? 'No se pudo eliminar el pedido')
+      avisar(d?.error ?? 'No se pudo eliminar el pedido')
     }
   }
 

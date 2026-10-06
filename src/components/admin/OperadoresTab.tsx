@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { avisar } from '@/components/admin/ConeDialog'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeComponents'
@@ -47,8 +48,8 @@ export default function OperadoresTab() {
     if (!ctx || !form.nombre) return
     // D2 (GO CTO 06/10): el PIN se hashea DENTRO de Postgres via RPC
     // set_pin_operador (patrón de colaboradores) — el hash jamás viaja.
-    if (form.pin && !/^\d{4,6}$/.test(form.pin)) { alert('El PIN debe ser de 4 a 6 dígitos numéricos.'); return }
-    if (!editId && !form.pin) { alert('El operador nuevo necesita un PIN.'); return }
+    if (form.pin && !/^\d{4,6}$/.test(form.pin)) { avisar('El PIN debe ser de 4 a 6 dígitos numéricos.'); return }
+    if (!editId && !form.pin) { avisar('El operador nuevo necesita un PIN.'); return }
     setSaving(true)
     const supabase = createClient()
     const payload: Record<string, unknown> = {
@@ -63,14 +64,14 @@ export default function OperadoresTab() {
       // jamás lo matchea) y el RPC lo reemplaza en el paso siguiente.
       const { data: nuevo, error: eIns } = await supabase.from('operadores')
         .insert({ ...payload, empresa_id: ctx.empresaId, activo: true, pin_hash: 'pendiente' }).select('id').single()
-      if (eIns || !nuevo) { alert(`No se pudo crear: ${eIns?.message ?? 'sin datos'}`); setSaving(false); return }
+      if (eIns || !nuevo) { avisar(`No se pudo crear: ${eIns?.message ?? 'sin datos'}`); setSaving(false); return }
       id = nuevo.id
     }
     if (form.pin && id) {
       const { data: okPin, error: ePin } = await supabase.rpc('set_pin_operador', {
         p_operador: id, p_empresa: ctx.empresaId, p_pin: form.pin,
       })
-      if (ePin || !okPin) alert(`Operador guardado, pero el PIN no se pudo setear${ePin ? `: ${ePin.message}` : ''}. Editalo y cargale el PIN de nuevo.`)
+      if (ePin || !okPin) avisar(`Operador guardado, pero el PIN no se pudo setear${ePin ? `: ${ePin.message}` : ''}. Editalo y cargale el PIN de nuevo.`)
     }
     setSaving(false); setModal(false); load()
   }
