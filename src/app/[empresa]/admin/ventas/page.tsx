@@ -1,5 +1,6 @@
 'use client'
 
+import { avisar } from '@/components/admin/ConeDialog'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
@@ -187,7 +188,7 @@ export default function VentasPage() {
         p_valor: Number(it.diferencia), p_modo: 'delta', p_motivo: 'arqueo',
         p_detalle: `Arqueo ${formatFecha(a.created_at.slice(0, 10))} — dif ${Number(it.diferencia) > 0 ? '+' : ''}${it.diferencia}${a.observaciones ? ' · ' + a.observaciones : ''}`,
       })
-      if (error) { alert(`Error ajustando ${prodNombres[it.producto_id] ?? it.producto_id}: ${error.message}`); setConfirmando(null); return }
+      if (error) { avisar(`Error ajustando ${prodNombres[it.producto_id] ?? it.producto_id}: ${error.message}`); setConfirmando(null); return }
       await sb.from('arqueo_items').update({ ajustado: true }).eq('id', it.id)
     }
     await sb.from('arqueos_stock').update({ estado: 'confirmado', confirmado_por: confirmadoPor || 'admin', confirmado_at: new Date().toISOString() }).eq('id', a.id)
@@ -237,7 +238,7 @@ export default function VentasPage() {
       diferencia, observaciones: notasArqueo || null, cerrado_por: cerradoPor || null,
     })
     setGuardandoArqueo(false)
-    if (error) { alert(error.code === '23505' ? 'La caja de hoy ya fue cerrada para esta sucursal (un cierre por día).' : 'No se pudo guardar: ' + error.message); return }
+    if (error) { avisar(error.code === '23505' ? 'La caja de hoy ya fue cerrada para esta sucursal (un cierre por día).' : 'No se pudo guardar: ' + error.message); return }
     setArqueoGuardado(true); setDeclarados({}); setNotasArqueo(''); setCerradoPor('')
     setTimeout(() => setArqueoGuardado(false), 3000)
     cargarArqueos()

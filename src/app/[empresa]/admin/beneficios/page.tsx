@@ -1,5 +1,6 @@
 'use client'
 
+import { avisar } from '@/components/admin/ConeDialog'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
@@ -62,7 +63,7 @@ export default function BeneficiosPage() {
       .update({ habilitado_admin: !config.habilitado_admin, updated_at: new Date().toISOString() })
       .eq('empresa_id', ctx.empresaId)
     setGuardandoToggle(false)
-    if (error) { alert(`No se pudo guardar: ${error.message}`); return }
+    if (error) { avisar(`No se pudo guardar: ${error.message}`); return }
     setConfig({ ...config, habilitado_admin: !config.habilitado_admin })
   }
 
@@ -73,7 +74,7 @@ export default function BeneficiosPage() {
     const valor = raw === '' ? null : Math.max(0, parseInt(raw) || 0) || null
     const { error } = await supabase.from('opciones').update({ puntos_canje: valor }).eq('id', acc.id)
     setGuardandoAcc(null)
-    if (error) { alert(`No se pudo guardar: ${error.message}`); return }
+    if (error) { avisar(`No se pudo guardar: ${error.message}`); return }
     setAccesorios(prev => prev.map(a => a.id === acc.id ? { ...a, puntos_canje: valor } : a))
   }
 

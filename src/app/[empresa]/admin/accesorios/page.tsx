@@ -1,5 +1,6 @@
 'use client'
 
+import { confirmar } from '@/components/admin/ConeDialog'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
@@ -125,7 +126,7 @@ export default function AccesoriosPage() {
   }
 
   async function eliminar(id: string) {
-    if (!confirm('¿Eliminar este accesorio?')) return
+    if (!(await confirmar('¿Eliminar este accesorio?', { peligro: true, confirmarLabel: 'Eliminar' }))) return
     const supabase = createClient()
     await supabase.from('opciones').update({ deleted_at: new Date().toISOString() }).eq('id', id)
     load()

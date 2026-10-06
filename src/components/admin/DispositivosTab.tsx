@@ -1,5 +1,6 @@
 'use client'
 
+import { confirmar } from '@/components/admin/ConeDialog'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
@@ -134,7 +135,7 @@ export default function DispositivosTab({ sucursalId }: { sucursalId?: string } 
   }
 
   async function handleDelete(row: Dispositivo) {
-    if (!confirm(`¿Eliminar el dispositivo "${row.nombre}"?`)) return
+    if (!(await confirmar(`¿Eliminar el dispositivo "${row.nombre}"?`, { peligro: true, confirmarLabel: 'Eliminar' }))) return
     const supabase = createClient()
     const { error } = await supabase.rpc('delete_dispositivo', { p_id: row.id })
     if (error) {

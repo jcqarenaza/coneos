@@ -1,5 +1,6 @@
 'use client'
 
+import { confirmar, pedirTexto } from '@/components/admin/ConeDialog'
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
@@ -294,7 +295,7 @@ export default function CuentasPage() {
                   <FacturaComo tipo="mp" cuentaId={c.id} vinculo={c.facturacion_config_id} />
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button onClick={() => { const n = prompt('Nuevo nombre de la cuenta:', c.nombre); if (n?.trim() && n.trim() !== c.nombre) accion({ accion: 'renombrar_credencial', credencial_id: c.id, nombre: n.trim() }, 'Cuenta renombrada') }}
+                  <button onClick={async () => { const n = await pedirTexto('Nuevo nombre de la cuenta:', { titulo: 'Renombrar cuenta', placeholder: c.nombre, confirmarLabel: 'Renombrar' }); if (n?.trim() && n.trim() !== c.nombre) accion({ accion: 'renombrar_credencial', credencial_id: c.id, nombre: n.trim() }, 'Cuenta renombrada') }}
                     title="Renombrar esta cuenta"
                     className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 transition-colors">
                     ✏️
@@ -431,7 +432,7 @@ export default function CuentasPage() {
                       <button disabled={guardando}
                         title="Genera la clave privada acá (queda guardada, nunca se muestra) y descarga el pedido .csr para subir a ARCA"
                         onClick={async () => {
-                          if ((c.cert_cargado || c.estado === 'validado') && !confirm(`Esto genera una clave privada NUEVA para el CUIT ${c.cuit}: el certificado actual deja de servir y hay que subir uno nuevo de ARCA (mientras tanto no emite). ¿Continuar?`)) return
+                          if ((c.cert_cargado || c.estado === 'validado') && !(await confirmar(`Esto genera una clave privada NUEVA para el CUIT ${c.cuit}: el certificado actual deja de servir y hay que subir uno nuevo de ARCA (mientras tanto no emite). ¿Continuar?`, { peligro: true, confirmarLabel: 'Sí, generar nueva' }))) return
                           const d = await accionCuit({ accion: 'generar_csr', cuit_id: c.id }, 'Clave generada y guardada — bajando el pedido .csr para ARCA')
                           if (d?.csr_pem) {
                             const a = document.createElement('a')
@@ -449,8 +450,8 @@ export default function CuentasPage() {
                         {probando === c.id ? '⏳ Probando…' : '🔌 Probar conexión'}
                       </button>
                       <button disabled={guardando || (c.estado !== 'validado' && !c.activo)}
-                        onClick={() => {
-                          if (!c.activo && !confirm(`¿Activar la emisión de facturas REALES con el CUIT ${c.cuit}?`)) return
+                        onClick={async () => {
+                          if (!c.activo && !(await confirmar(`¿Activar la emisión de facturas REALES con el CUIT ${c.cuit}?`, { confirmarLabel: 'Activar emisión' }))) return
                           accionCuit({ accion: 'toggle_activo_cuit', cuit_id: c.id, activo: !c.activo }, c.activo ? 'CUIT apagado — no emite más' : 'CUIT emitiendo facturas reales')
                         }}
                         className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-500 hover:border-neutral-400 transition-colors disabled:opacity-40">

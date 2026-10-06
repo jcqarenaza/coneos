@@ -1,5 +1,6 @@
 'use client'
 
+import { avisar } from '@/components/admin/ConeDialog'
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
@@ -87,7 +88,7 @@ export default function ConfigPage() {
       entrada_unificada: config.entrada_unificada === true,
     }).eq('empresa_id', ctx.empresaId)
     setSaving(false)
-    if (upd.error) { alert(`No se pudo guardar: ${upd.error.message}`); return }
+    if (upd.error) { avisar(`No se pudo guardar: ${upd.error.message}`); return }
     setSucio(false)
     setSaved(true); setTimeout(() => setSaved(false), 2500)
   }

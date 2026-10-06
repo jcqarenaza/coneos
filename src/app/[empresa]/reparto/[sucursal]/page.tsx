@@ -9,6 +9,7 @@
 // Limitación V1 documentada: la PWA debe estar en pantalla (Wake
 // Lock pedido); background con app cerrada = V2/nativa.
 // ═══════════════════════════════════════════════════════════════
+import { avisar } from '@/components/admin/ConeDialog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { marcaDeRuta } from '@/lib/brand'
@@ -155,7 +156,7 @@ export default function RepartoPage() {
       const d = await api({ accion: 'entregar', pedido_id: p.id })
       setPedidos(prev => prev.filter(x => x.id !== p.id))
       if (d?.modo_regreso) setModoRegreso(true)
-    } catch (e) { alert(e instanceof Error ? e.message : 'No se pudo marcar') } finally { setEntregando(null); setConfirmando(null) }
+    } catch (e) { avisar(e instanceof Error ? e.message : 'No se pudo marcar') } finally { setEntregando(null); setConfirmando(null) }
   }
 
   function salir() {
