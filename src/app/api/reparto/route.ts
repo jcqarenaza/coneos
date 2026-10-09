@@ -25,6 +25,16 @@ async function moduloReparto(supabase: ReturnType<typeof createAdminClient>, emp
   return (data?.modulos as Record<string, unknown> | null)?.reparto === true
 }
 
+// ══ SEGUIMIENTO EN 3 ESCALONES (GO JC 09/10) ══
+// delivery → reparto (app cadete, asignación, "va en camino") → reparto_mapa
+// (posición en vivo para el CLIENTE). El mapa EXIGE reparto: jerarquía.
+// JC habilita reparto_mapa por comercio desde el panel, según pago.
+async function moduloMapa(supabase: ReturnType<typeof createAdminClient>, empresaId: string): Promise<boolean> {
+  const { data } = await supabase.from('empresa_config').select('modulos').eq('empresa_id', empresaId).maybeSingle()
+  const m = data?.modulos as Record<string, unknown> | null
+  return m?.reparto === true && m?.reparto_mapa === true
+}
+
 // Valida token → { colaborador } o null. Sesión vencida/colaborador
 // inactivo o sin rol cadete = null (G3/G5: el token no es autoridad).
 async function validarSesion(supabase: ReturnType<typeof createAdminClient>, token: string) {
@@ -101,7 +111,8 @@ export async function POST(request: Request) {
       marca: { nombre: emp.nombre, empresa_id: emp.id,
         primary_color: cfg?.primary_color ?? '#1E3A5F', secondary_color: cfg?.secondary_color ?? '#F5C842',
         logo_url: cfg?.logo_url ?? null,
-        reparto: ((cfg?.modulos ?? {}) as Record<string, unknown>).reparto === true } })
+        reparto: ((cfg?.modulos ?? {}) as Record<string, unknown>).reparto === true
+          && ((cfg?.modulos ?? {}) as Record<string, unknown>).reparto_mapa === true } })
   }
 
   // ── CONTEXTO de la puerta (público): resuelve la sucursal por slug o id
@@ -167,7 +178,7 @@ export async function POST(request: Request) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(refPos)) {
       return NextResponse.json({ ok: true, activo: false })
     }
-    if (!(await moduloReparto(supabase, empresa_id))) return NextResponse.json({ ok: true, activo: false })
+    if (!(await moduloMapa(supabase, empresa_id))) return NextResponse.json({ ok: true, activo: false })
     const { data: ped } = await supabase.from('pedidos')
       .select('colaborador_id, colaborador_nombre, estado, tipo_pedido')
       .eq('empresa_id', empresa_id).eq('id', refPos).maybeSingle()
