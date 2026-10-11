@@ -21,6 +21,12 @@ export async function POST(request: Request) {
   if (!disp?.activo) return NextResponse.json({ error: 'Dispositivo no válido' }, { status: 403 })
 
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+  // FIX MEDIANOCHE (JC 11/10 00:13, en vivo con Federal): un pedido ACTIVO
+  // de antes de las 00:00 no puede desaparecer de caja/cocina/display al
+  // cambiar la fecha. Las vistas operativas suman los pedidos VIVOS de ayer;
+  // los terminados de ayer siguen siendo del historial, como siempre.
+  const ayer = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const ACTIVOS_AYER = ['PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY']
 
   if (accion === 'pedidos_hoy') {
     let query = supabase.from('pedidos')
@@ -30,9 +36,9 @@ export async function POST(request: Request) {
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
       .eq('empresa_id', disp.empresa_id)
-      .eq('fecha_pedido', hoy)
+      .or(`fecha_pedido.eq.${hoy},and(fecha_pedido.eq.${ayer},estado.in.(${ACTIVOS_AYER.join(',')}))`)
       .in('estado', ['PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY', 'DELIVERED'])
-      .order('numero_pedido', { ascending: false })
+      .order('created_at', { ascending: false })
     if (!body.verTodas) query = query.eq('sucursal_id', disp.sucursal_id)
     const { data: pedidos } = await query
     const { data: colaboradores } = await supabase.from('colaboradores')
@@ -77,7 +83,7 @@ export async function POST(request: Request) {
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
       .eq('empresa_id', disp.empresa_id)
-      .eq('fecha_pedido', hoy)
+      .or(`fecha_pedido.eq.${hoy},fecha_pedido.eq.${ayer}`)
       .in('estado', ['PAID', 'PREPARING'])
       .order('numero_pedido', { ascending: true })
     if (!body.verTodas) query = query.eq('sucursal_id', disp.sucursal_id)
@@ -101,7 +107,7 @@ export async function POST(request: Request) {
       .select('id, numero_pedido, codigo_retiro, tipo_pedido')
       .eq('empresa_id', disp.empresa_id)
       .eq('sucursal_id', disp.sucursal_id)
-      .eq('fecha_pedido', hoy)
+      .or(`fecha_pedido.eq.${hoy},fecha_pedido.eq.${ayer}`)
       .neq('tipo_pedido', 'mesa')
       .order('numero_pedido', { ascending: true })
     const [{ data: preparando }, { data: listos }] = await Promise.all([
