@@ -269,10 +269,58 @@ export async function POST(request: Request) {
   const codigo_retiro = Math.random().toString(36).substring(2, 6).toUpperCase()
   const esMesa = origen === 'MESA'
 
-  const itemsRpc = items.map((item: {
+  // ══ PROMOCIONES V1 — E1-C (GO CTO 11/10): PRECIO AUTORITATIVO ══
+  // Los componentes de combo llegan agrupados por combo_ref; el precio de
+  // cada hijo lo fija ESTE server (lo que mande el browser se descarta):
+  // prorrateo proporcional al precio de lista, redondeado a centavo, con
+  // el ajuste del resto en el PRIMER slot (determinista) + los adicionales
+  // PAGOS de cada hijo encima del suyo. Σ hijos == promo.precio + Σ adic,
+  // que es EXACTAMENTE lo que la RPC v1.5 exige. El prorrateo es PRECIO
+  // cobrado: no toca costos ni kardex (condición CTO sellada).
+  type ItemIn = {
     presentacion_id: string; nombre_producto_snap: string; nombre_presentacion_snap: string
-    precio_snap: number; cantidad: number; opciones?: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }[]
-  }) => ({
+    precio_snap: number; cantidad: number
+    promo_id?: string | null; combo_ref?: string | null; promo_slot_id?: string | null
+    opciones?: { opcion_id: string; nombre_snap: string; emoji_snap: string | null; color_snap: string | null }[]
+  }
+  const itemsIn: ItemIn[] = items
+  const refs = [...new Set(itemsIn.filter(i => i.combo_ref && i.promo_id).map(i => String(i.combo_ref)))]
+  if (refs.length > 0) {
+    const promoIds = [...new Set(itemsIn.filter(i => i.promo_id).map(i => String(i.promo_id)))]
+    const presIds = [...new Set(itemsIn.filter(i => i.combo_ref).map(i => String(i.presentacion_id)))]
+    const opIds = [...new Set(itemsIn.filter(i => i.combo_ref).flatMap(i => (i.opciones ?? []).map(o => o.opcion_id)))]
+    const [{ data: promosDb }, { data: presDb }, { data: opsDb }, { data: slotsDb }] = await Promise.all([
+      supabase.from('promociones').select('id, precio').in('id', promoIds).eq('empresa_id', empresa_id),
+      supabase.from('presentaciones').select('id, precio').in('id', presIds).eq('empresa_id', empresa_id),
+      opIds.length ? supabase.from('opciones').select('id, precio_adicional').in('id', opIds).eq('empresa_id', empresa_id) : Promise.resolve({ data: [] }),
+      supabase.from('promo_slots').select('id, orden').in('promo_id', promoIds),
+    ])
+    const promoPrecio: Record<string, number> = {}; (promosDb ?? []).forEach((p: { id: string; precio: number }) => { promoPrecio[p.id] = Number(p.precio) })
+    const presPrecio: Record<string, number> = {}; (presDb ?? []).forEach((p: { id: string; precio: number }) => { presPrecio[p.id] = Number(p.precio) })
+    const opPrecio: Record<string, number> = {}; ((opsDb ?? []) as { id: string; precio_adicional: number }[]).forEach(o => { opPrecio[o.id] = Number(o.precio_adicional ?? 0) })
+    const slotOrden: Record<string, number> = {}; (slotsDb ?? []).forEach((s: { id: string; orden: number }) => { slotOrden[s.id] = s.orden })
+    for (const ref of refs) {
+      const grupo = itemsIn.filter(i => String(i.combo_ref) === ref)
+        .sort((a, b) => (slotOrden[String(a.promo_slot_id)] ?? 99) - (slotOrden[String(b.promo_slot_id)] ?? 99))
+      const total = promoPrecio[String(grupo[0]?.promo_id)] 
+      if (!total || grupo.length === 0) return NextResponse.json({ error: 'Promoción inválida' }, { status: 400 })
+      const listas = grupo.map(i => presPrecio[String(i.presentacion_id)] ?? 0)
+      const sumaLista = listas.reduce((a, b) => a + b, 0)
+      // base por hijo: proporcional a lista (o partes iguales si lista=0), a centavo
+      let asignado = 0
+      grupo.forEach((i, idx) => {
+        const base = idx === grupo.length - 1
+          ? Math.round((total - asignado) * 100) / 100
+          : Math.round((sumaLista > 0 ? total * listas[idx] / sumaLista : total / grupo.length) * 100) / 100
+        asignado = Math.round((asignado + base) * 100) / 100
+        const adic = (i.opciones ?? []).reduce((s, o) => s + (opPrecio[o.opcion_id] ?? 0), 0)
+        i.precio_snap = Math.round((base + adic) * 100) / 100
+        i.cantidad = 1
+      })
+    }
+  }
+
+  const itemsRpc = itemsIn.map((item: ItemIn) => ({
     presentacion_id: item.presentacion_id || null,
     nombre_producto_snap: item.nombre_producto_snap,
     nombre_presentacion_snap: item.nombre_presentacion_snap,
@@ -282,6 +330,9 @@ export async function POST(request: Request) {
       opcion_id: op.opcion_id, nombre_snap: op.nombre_snap,
       emoji_snap: op.emoji_snap, color_snap: op.color_snap,
     })),
+    promo_id: item.promo_id || null,
+    combo_ref: item.combo_ref || null,
+    promo_slot_id: item.promo_slot_id || null,
   }))
 
   const { data: pedido, error } = await supabase.rpc('crear_pedido_stock', {
