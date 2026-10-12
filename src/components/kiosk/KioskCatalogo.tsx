@@ -466,10 +466,31 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 </div>
               </div>
             )}
-            {novedades.length > 0 && (
+            {(novedades.length > 0 || promos.some(pr => pr.es_novedad)) && (
               <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-3 mb-5">
                 <p className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: config.primary_color }}>✨ Novedades</p>
                 <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                  {/* PROMOS V1: las promos novedad viven también acá — click = asistente */}
+                  {promos.filter(pr => pr.es_novedad).map(promo => (
+                    <button key={'promo-' + promo.id} onClick={() => iniciarPromo(promo)}
+                      className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 flex-shrink-0 active:scale-95 transition-transform bg-white text-left border"
+                      style={{ borderColor: config.primary_color }}>
+                      {promo.imagen_url && (
+                        <div className="w-11 h-11 rounded-lg overflow-hidden bg-neutral-50 flex-shrink-0">
+                          <img src={promo.imagen_url} alt="" className="object-cover w-full h-full" />
+                        </div>
+                      )}
+                      <div className="pr-1">
+                        <p className="text-sm font-semibold text-neutral-800 leading-tight whitespace-nowrap">🎁 {promo.nombre}</p>
+                        <p className="text-xs leading-tight whitespace-nowrap">
+                          {promo.precio_regular != null && Number(promo.precio_regular) > Number(promo.precio) && (
+                            <span className="text-neutral-400 line-through mr-1">{formatPrecio(Number(promo.precio_regular))}</span>
+                          )}
+                          <span className="font-bold" style={{ color: config.primary_color }}>{formatPrecio(Number(promo.precio))}</span>
+                        </p>
+                      </div>
+                    </button>
+                  ))}
                   {novedades.map(({ pres, prod, sabor }) => (
                     <button key={pres.id + (sabor ?? '')} onClick={() => irANovedad(pres)}
                       className="flex items-center gap-2.5 border border-neutral-100 rounded-xl px-2.5 py-2 flex-shrink-0 active:scale-95 transition-transform bg-white text-left">
