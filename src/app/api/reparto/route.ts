@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       .select('primary_color, secondary_color, logo_url, modulos').eq('empresa_id', emp.id).maybeSingle()
     const { data: p } = await supabase.from('pedidos')
       .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, created_at, tipo_pedido, costo_envio, datos_delivery, colaborador_id, colaborador_nombre, sucursal_id,
-        pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
+        pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
       .eq('empresa_id', emp.id).eq('id', ref).maybeSingle()
     if (!p) return NextResponse.json({ ok: true, encontrado: false })

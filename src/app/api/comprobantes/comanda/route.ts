@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const { data: pedido } = await supabase
     .from('pedidos')
     .select(`id, numero_pedido, total, metodo_pago, datos_delivery, costo_envio, colaborador_nombre, created_at, tipo_pedido, hora_retiro,
-      pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
+      pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap,
         pedido_item_opciones(nombre_snap, emoji_snap))`)
     .eq('id', pedido_id)
     .single()
@@ -20,6 +20,7 @@ export async function POST(request: Request) {
   type Item = {
     nombre_producto_snap: string; nombre_presentacion_snap: string
     precio_snap: number; cantidad: number
+    combo_ref?: string | null; promo_nombre_snap?: string | null
     pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[]
   }
   const items = (pedido.pedido_items ?? []) as Item[]
@@ -41,11 +42,25 @@ export async function POST(request: Request) {
   const retiraLabel = p2.tipo_pedido === 'takeaway' ? (horaFmt ?? 'LO ANTES POSIBLE') : null
   const entregaLabel = p2.tipo_pedido === 'delivery' && horaFmt ? horaFmt : null
 
-  const bloquesItems = normales.map(item => {
+  // PROMOS E1-D: combo agrupado bajo el nombre de la promo (la comanda es para
+  // preparar: cada componente con SUS sabores, sin precios)
+  const sueltosC = normales.filter(it => !it.combo_ref)
+  const combosC = new Map<string, Item[]>()
+  normales.filter(it => it.combo_ref).forEach(it => {
+    const arr = combosC.get(it.combo_ref!) ?? []
+    arr.push(it); combosC.set(it.combo_ref!, arr)
+  })
+
+  const bloquesItems = sueltosC.map(item => {
     const prod = (item.nombre_producto_snap ?? '').toLowerCase()
     const pres = (item.nombre_presentacion_snap ?? '').toLowerCase()
     const mostrarProd = prod && !pres.includes(prod) && !prod.includes(pres)
     return `<div>${mostrarProd ? `<div class="item-prod">${item.nombre_producto_snap}</div>` : ''}<div class="item-pres">${item.cantidad > 1 ? `${item.cantidad}x ` : ''}${item.nombre_presentacion_snap}</div>${item.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${item.pedido_item_opciones.map((op: {nombre_snap: string}) => op.nombre_snap).join(' - ')}</div>` : ''}</div>`
+  })
+
+  combosC.forEach(grupo => {
+    const titulo = grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap
+    bloquesItems.push(`<div><div class="item-prod">🎁 ${titulo}</div>${grupo.map(it => `<div class="item-pres">• ${it.nombre_presentacion_snap}</div>${it.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${it.pedido_item_opciones.map((op: {nombre_snap: string}) => op.nombre_snap).join(' - ')}</div>` : ''}`).join('')}</div>`)
   })
 
   if (accesorios.length > 0) {

@@ -9,7 +9,7 @@ import NuevoPedido from './NuevoPedido'
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string; nombre: string; puede_cobrar: boolean; puede_preparar: boolean; sucursal_id: string | null } }
 interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
-interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: OpcionItem[] }
+interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; combo_ref?: string | null; promo_nombre_snap?: string | null; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string; emoji_reparto?: string | null }
 interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; ticket_impreso_at?: string | null; updated_at?: string; facturas?: { estado: string }[]; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
@@ -1209,10 +1209,36 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                 <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden shadow-sm mb-4">
                   {(() => {
                     const esAccesorio = (it: PedidoItem) => it.nombre_producto_snap === 'Accesorios' || it.nombre_producto_snap === it.nombre_presentacion_snap
-                    const normales = seleccionado.pedido_items.filter(it => !esAccesorio(it))
+                    const todos = seleccionado.pedido_items.filter(it => !esAccesorio(it))
+                    // PROMOS E1-D: hermanos de combo agrupados bajo la promo (render-only)
+                    const normales = todos.filter(it => !it.combo_ref)
+                    const combos = new Map<string, PedidoItem[]>()
+                    todos.filter(it => it.combo_ref).forEach(it => { const a = combos.get(it.combo_ref!) ?? []; a.push(it); combos.set(it.combo_ref!, a) })
                     const accs = seleccionado.pedido_items.filter(esAccesorio)
                     const totalAccs = accs.reduce((s, it) => s + Number(it.precio_snap) * it.cantidad, 0)
                     return (<>
+                      {[...combos.entries()].map(([ref, grupo]) => (
+                        <div key={ref} className="p-4 border-b border-neutral-50">
+                          <div className="flex justify-between items-start gap-4">
+                            <p className="text-neutral-800 font-bold">🎁 {grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap}</p>
+                            <p className="text-neutral-800 font-bold">{formatPrecio(grupo.reduce((s, it) => s + Number(it.precio_snap), 0))}</p>
+                          </div>
+                          <div className="mt-1 space-y-1.5">
+                            {grupo.map(it => (
+                              <div key={it.id}>
+                                <p className="text-neutral-500 text-sm">• {it.nombre_presentacion_snap}</p>
+                                {it.pedido_item_opciones.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5 mt-1 ml-3">
+                                    {it.pedido_item_opciones.map((op, j) => (
+                                      <span key={j} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-1 rounded-full">{op.emoji_snap} {op.nombre_snap}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                       {normales.map((item, i) => (
                         <div key={item.id} className={`p-4 ${i < normales.length - 1 || accs.length > 0 ? 'border-b border-neutral-50' : ''}`}>
                           <div className="flex justify-between items-start gap-4">
