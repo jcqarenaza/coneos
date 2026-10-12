@@ -32,6 +32,8 @@ export interface ItemCarrito {
   precio: number
   cantidad: number
   opciones: { opcion_id: string; nombre: string; emoji: string | null; color: string | null }[]
+  // PROMOS V1 (E1-C): identidad del combo — viaja hasta /api/pedidos
+  promo_id?: string | null; combo_ref?: string | null; promo_slot_id?: string | null; promo_nombre?: string | null
 }
 
 export interface Accesorio {
@@ -117,7 +119,12 @@ export default function KioskPage() {
   }
 
   function quitarItem(id: string) {
-    setCarrito(prev => prev.filter(i => i.id !== id))
+    setCarrito(prev => {
+      // PROMOS V1: quitar un componente de combo quita el combo entero
+      const item = prev.find(i => i.id === id)
+      if (item?.combo_ref) return prev.filter(i => i.combo_ref !== item.combo_ref)
+      return prev.filter(i => i.id !== id)
+    })
   }
 
   function limpiarCarrito() {

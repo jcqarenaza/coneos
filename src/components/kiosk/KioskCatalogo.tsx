@@ -12,7 +12,12 @@ interface Presentacion { id: string; nombre: string; precio: number; permite_opc
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string; precio_adicional?: number ; es_novedad?: boolean }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
-interface PendienteSabores { presentacion: Presentacion; producto: Producto; numero: number; total: number }
+// PROMOS V1 (E1-C): shapes del catálogo (misma forma que devuelve /api/kiosk/catalogo)
+interface PromoSlotAPI { id: string; orden: number; titulo: string | null; promo_slot_presentaciones: { presentacion_id: string }[] }
+interface Promo { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; precio: number; precio_regular: number | null; es_novedad?: boolean; promo_slots: PromoSlotAPI[] }
+// Contexto que viaja con cada componente del combo hasta el carrito
+interface PromoCtx { promo_id: string; combo_ref: string; promo_slot_id: string; promo_nombre: string; slot_titulo: string | null; precio_asignado: number }
+interface PendienteSabores { presentacion: Presentacion; producto: Producto; numero: number; total: number; promo?: PromoCtx }
 type Paso = 'categorias' | 'productos' | 'opciones'
 
 interface Props {
@@ -60,6 +65,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [opciones, setOpciones] = useState<Opcion[]>([])
   const [grupos, setGrupos] = useState<GrupoOpciones[]>([])
   const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
+  const [promos, setPromos] = useState<Promo[]>([])
+  // Asistente de combo en curso (overlay de elección por slot)
+  const [promoSel, setPromoSel] = useState<{ promo: Promo; combo_ref: string; idx: number; elecciones: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] } | null>(null)
   const [loading, setLoading] = useState(true)
 
   const [paso, setPaso] = useState<Paso>('categorias')
@@ -84,6 +92,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         setOpciones(data.opciones ?? [])
         setGrupos(data.grupos ?? [])
         setPresGrupos(data.presentacion_grupos ?? [])
+        setPromos(data.promociones ?? [])
         if (inicial) {
           setLoading(false)
           if (categoriaIdInicial) {
@@ -173,6 +182,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           setOpciones(data.opciones ?? [])
           setGrupos(data.grupos ?? [])
           setPresGrupos(data.presentacion_grupos ?? [])
+          setPromos(data.promociones ?? [])
         })
         .catch(() => {})  // sin red no pasa nada: reintenta al próximo tick
     }, 60000)
@@ -194,6 +204,72 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     setCategoriaActiva(cat); setCantidad({}); setPaso('productos')
     setTimeout(() => { document.getElementById(`prod-${prod.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, 200)
   }
+
+  // ── PROMOS V1 (E1-C) ─────────────────────────────────────────────
+  // Presentaciones visibles permitidas para un slot (intersección con el catálogo cargado)
+  function presDeSlot(slot: PromoSlotAPI): { pres: Presentacion; prod: Producto }[] {
+    const ids = new Set(slot.promo_slot_presentaciones.map(x => x.presentacion_id))
+    return presentaciones.filter(p => ids.has(p.id))
+      .map(pres => ({ pres, prod: productos.find(pr => pr.id === pres.producto_id) }))
+      .filter((x): x is { pres: Presentacion; prod: Producto } => !!x.prod && !x.prod.agotado)
+  }
+
+  function nuevoComboRef(): string {
+    try { return crypto.randomUUID() } catch { return `combo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` }
+  }
+
+  function iniciarPromo(promo: Promo) {
+    const sel = { promo, combo_ref: nuevoComboRef(), idx: 0, elecciones: [] as { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] }
+    avanzarPromo(sel)
+  }
+
+  // Avanza slot a slot: los de una sola variedad se eligen solos, los múltiples abren el overlay
+  function avanzarPromo(sel: { promo: Promo; combo_ref: string; idx: number; elecciones: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] }) {
+    const slots = [...sel.promo.promo_slots].sort((a, b) => a.orden - b.orden)
+    let { idx } = sel
+    const elecciones = [...sel.elecciones]
+    while (idx < slots.length) {
+      const permitidas = presDeSlot(slots[idx])
+      if (permitidas.length === 0) { setPromoSel(null); return }  // algo quedó invisible: abortar sin ruido
+      if (permitidas.length === 1) { elecciones.push({ slot: slots[idx], ...permitidas[0] }); idx++; continue }
+      setPromoSel({ ...sel, idx, elecciones })
+      return
+    }
+    setPromoSel(null)
+    encolarPromo(sel.promo, sel.combo_ref, elecciones)
+  }
+
+  function elegirSlot(pres: Presentacion, prod: Producto) {
+    if (!promoSel) return
+    const slots = [...promoSel.promo.promo_slots].sort((a, b) => a.orden - b.orden)
+    avanzarPromo({ ...promoSel, idx: promoSel.idx + 1, elecciones: [...promoSel.elecciones, { slot: slots[promoSel.idx], pres, prod }] })
+  }
+
+  // Emite los componentes: con opciones → a la cola de sabores; sin opciones → directo al carrito.
+  // Precio visual: el primer componente carga promo.precio, el resto $0 (el server reprorratea igual).
+  function encolarPromo(promo: Promo, combo_ref: string, elecciones: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[]) {
+    const nuevaCola: PendienteSabores[] = []
+    elecciones.forEach((e, i) => {
+      const ctx: PromoCtx = { promo_id: promo.id, combo_ref, promo_slot_id: e.slot.id, promo_nombre: promo.nombre, slot_titulo: e.slot.titulo, precio_asignado: i === 0 ? Number(promo.precio) : 0 }
+      if (e.pres.permite_opciones) {
+        nuevaCola.push({ presentacion: e.pres, producto: e.prod, numero: 1, total: 1, promo: ctx })
+      } else {
+        onAgregar({
+          presentacion_id: e.pres.id, nombre_producto: `🎁 ${promo.nombre}`,
+          nombre_presentacion: `${e.slot.titulo ? e.slot.titulo + ': ' : ''}${e.prod.nombre} ${e.pres.nombre}`,
+          precio: ctx.precio_asignado, cantidad: 1, opciones: [],
+          promo_id: ctx.promo_id, combo_ref: ctx.combo_ref, promo_slot_id: ctx.promo_slot_id, promo_nombre: ctx.promo_nombre,
+        })
+      }
+    })
+    if (nuevaCola.length > 0) {
+      setCola(nuevaCola); setColaIndex(0); setOpcionesSeleccionadas([]); setGrupoActivo(null); setPaso('opciones')
+    } else {
+      setAgregado(true)
+      setTimeout(() => setAgregado(false), 900)
+    }
+  }
+  // ── fin PROMOS V1 ────────────────────────────────────────────────
 
   function agregarSinOpciones(prod: Producto, pres: Presentacion, cant: number) {
     for (let i = 0; i < cant; i++) {
@@ -246,13 +322,25 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     if (!actual) return
     const saboresCount = opcionesSeleccionadas.filter(o => { const g = grupos.find(gr => gr.id === o.grupo_id); return !g?.nombre.toLowerCase().includes('accesorio') }).length
     if (actual.presentacion.permite_opciones && saboresCount < actual.presentacion.opciones_min) return
+    const adicionales = opcionesSeleccionadas.reduce((a, op) => a + Number(op.precio_adicional ?? 0), 0)
+    if (actual.promo) {
+      // PROMOS V1: componente de combo — identidad promo + precio asignado (el server reprorratea)
+      onAgregar({
+        presentacion_id: actual.presentacion.id, nombre_producto: `🎁 ${actual.promo.promo_nombre}`,
+        nombre_presentacion: `${actual.promo.slot_titulo ? actual.promo.slot_titulo + ': ' : ''}${actual.producto.nombre} ${actual.presentacion.nombre}`,
+        precio: actual.promo.precio_asignado + adicionales,
+        cantidad: 1, opciones: opcionesSeleccionadas.map(op => ({ opcion_id: op.id, nombre: op.nombre, emoji: op.emoji, color: op.color })),
+        promo_id: actual.promo.promo_id, combo_ref: actual.promo.combo_ref, promo_slot_id: actual.promo.promo_slot_id, promo_nombre: actual.promo.promo_nombre,
+      })
+    } else {
     onAgregar({
       presentacion_id: actual.presentacion.id, nombre_producto: actual.producto.nombre,
       nombre_presentacion: actual.presentacion.nombre,
       // Precio = presentación + adicionales con precio de las opciones elegidas
-      precio: actual.presentacion.precio + opcionesSeleccionadas.reduce((a, op) => a + Number(op.precio_adicional ?? 0), 0),
+      precio: actual.presentacion.precio + adicionales,
       cantidad: 1, opciones: opcionesSeleccionadas.map(op => ({ opcion_id: op.id, nombre: op.nombre, emoji: op.emoji, color: op.color })),
     })
+    }
     const siguiente = colaIndex + 1
     if (siguiente < cola.length) { setColaIndex(siguiente); setOpcionesSeleccionadas([]); setGrupoActivo(null) }
     else {
@@ -351,6 +439,33 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         {/* Categorías */}
         {paso === 'categorias' && (
           <div className="max-w-3xl mx-auto pt-6">
+            {promos.length > 0 && (
+              <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-3 mb-5">
+                <p className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: config.primary_color }}>🎁 Promos</p>
+                <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                  {promos.map(promo => (
+                    <button key={promo.id} onClick={() => iniciarPromo(promo)}
+                      className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 flex-shrink-0 active:scale-95 transition-transform bg-white text-left border"
+                      style={{ borderColor: config.primary_color }}>
+                      {promo.imagen_url && (
+                        <div className="w-11 h-11 rounded-lg overflow-hidden bg-neutral-50 flex-shrink-0">
+                          <img src={promo.imagen_url} alt="" className="object-cover w-full h-full" />
+                        </div>
+                      )}
+                      <div className="pr-1">
+                        <p className="text-sm font-semibold text-neutral-800 leading-tight whitespace-nowrap">{promo.nombre}</p>
+                        <p className="text-xs leading-tight whitespace-nowrap">
+                          {promo.precio_regular != null && Number(promo.precio_regular) > Number(promo.precio) && (
+                            <span className="text-neutral-400 line-through mr-1">{formatPrecio(Number(promo.precio_regular))}</span>
+                          )}
+                          <span className="font-bold" style={{ color: config.primary_color }}>{formatPrecio(Number(promo.precio))}</span>
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {novedades.length > 0 && (
               <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-3 mb-5">
                 <p className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: config.primary_color }}>✨ Novedades</p>
@@ -654,6 +769,40 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           </div>
         </div>
       )}
+      {/* PROMOS V1: overlay de elección por slot */}
+      {promoSel && (() => {
+        const slots = [...promoSel.promo.promo_slots].sort((a, b) => a.orden - b.orden)
+        const slot = slots[promoSel.idx]
+        const permitidas = presDeSlot(slot)
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center" onClick={() => setPromoSel(null)}>
+            <div className="bg-white rounded-t-3xl md:rounded-3xl w-full max-w-md max-h-[80vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-1">
+                <p className="font-bold text-lg" style={{ color: config.primary_color }}>🎁 {promoSel.promo.nombre}</p>
+                <button onClick={() => setPromoSel(null)} className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-100"><X className="h-5 w-5" /></button>
+              </div>
+              <p className="text-sm text-neutral-500 mb-4">{slot.titulo ?? `Elegí el producto`} · paso {promoSel.idx + 1} de {slots.length}</p>
+              <div className="flex flex-col gap-2">
+                {permitidas.map(({ pres, prod }) => (
+                  <button key={pres.id} onClick={() => elegirSlot(pres, prod)}
+                    className="flex items-center gap-3 border border-neutral-100 rounded-xl px-3 py-2.5 text-left active:scale-98 transition-transform">
+                    {(pres.imagen_url || prod.imagen_url) && (
+                      <div className="w-11 h-11 rounded-lg overflow-hidden bg-neutral-50 flex-shrink-0">
+                        <img src={pres.imagen_url ?? prod.imagen_url!} alt="" className="object-cover w-full h-full" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-800 leading-tight">{prod.nombre}</p>
+                      <p className="text-xs text-neutral-400 leading-tight">{pres.nombre}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setPromoSel(null)} className="mt-4 w-full py-2.5 rounded-xl text-sm font-medium text-neutral-500 hover:bg-neutral-50">Cancelar</button>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
