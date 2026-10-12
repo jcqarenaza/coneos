@@ -32,6 +32,7 @@ const MODULOS = [
   { emoji: '🧾', color: NAVY, title: 'Facturación', desc: 'Integración con ARCA: comprobante con CAE y QR fiscal desde la misma venta — y automático cuando el pago online se acredita.' },
   { emoji: '💳', color: AZUL, title: 'Mercado Pago', desc: 'El cliente paga online desde su celular y el pedido se marca cobrado solo, al instante. La plata va directo a la cuenta del comercio, sin intermediarios.' },
   { emoji: '👥', color: ROJO, title: 'Clientes y beneficios', desc: 'Identificación por teléfono, puntos por compra y canjes configurables. Sin registros ni contraseñas.' },
+  { emoji: '🎁', color: VERDE, title: 'Promociones y combos', desc: 'Armá combos con precio especial en minutos: el cliente elige cada producto con sus gustos, ve el precio tachado y paga un único total. Con vigencia automática y en todos los canales.' },
   { emoji: '📊', color: AMARILLO, title: 'Gestión', desc: 'Ventas, productos, opciones, sucursales, equipo, dispositivos, horarios y métricas del negocio.' },
   { emoji: '📲', color: ROJO, title: 'Tu app, con tu marca', desc: 'Los clientes instalan el acceso en su celular como una app: con el logo, el ícono y los colores del negocio. Y el comprobante del pedido les llega con tu marca.' },
 ]
@@ -59,6 +60,7 @@ const FAQ: [string, string][] = [
   ['¿Cómo evito los pedidos que nadie retira?', 'Con el modo prepago del Take Away: el cliente paga (Mercado Pago o transferencia con comprobante) antes de confirmar. Sin pago, no hay pedido.'],
   ['¿El cliente recibe un comprobante?', 'Sí: al confirmar descarga un comprobante digital con el logo del negocio, su número de pedido, el código de retiro y el horario elegido.'],
   ['¿Puedo facturar desde GastrOS?', 'Sí, mediante la integración fiscal correspondiente con ARCA: el comprobante sale con CAE y QR desde la misma venta.'],
+  ['¿Puedo hacer promociones y combos?', 'Sí. Creás el combo desde el panel: componentes, variedades que puede elegir el cliente, precio especial con el "antes" tachado y vigencia con fechas. El ticket, el stock y la facturación reflejan el precio real cobrado.'],
   ['¿Tengo que cambiar mi forma de trabajar?', 'No necesariamente. GastrOS se configura según la operación del negocio: podés empezar por un canal y sumar el resto cuando quieras.'],
   ['¿Me ayudan con la implementación?', 'Sí. La implementación incluye configuración, capacitación y acompañamiento inicial.'],
 ]
