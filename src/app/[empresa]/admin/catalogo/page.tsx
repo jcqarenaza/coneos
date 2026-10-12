@@ -7,6 +7,7 @@ import { PRESETS_RUBRO } from '@/lib/presets-rubro'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { ConePageHeader, ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeComponents'
 import { colorSucursal } from '@/components/admin/SucursalColor'
+import PromocionesTab from './tabs/PromocionesTab'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -73,7 +74,7 @@ export default function CatalogoPage() {
   const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
 
   // Tabs
-  const [vistaActiva, setVistaActiva] = useState<'catalogo' | 'sabores' | 'disponibilidad'>('catalogo')
+  const [vistaActiva, setVistaActiva] = useState<'catalogo' | 'sabores' | 'disponibilidad' | 'promos'>('catalogo')
   const [sucursales, setSucursales] = useState<{id: string; nombre: string}[]>([])
   // Plantilla de arranque (F3): solo con catálogo vacío
   const [plantillaRubro, setPlantillaRubro] = useState<string>('OTRO')
@@ -521,6 +522,10 @@ export default function CatalogoPage() {
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'disponibilidad' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
           🏪 Disponibilidad por sucursal
         </button>
+        <button onClick={() => setVistaActiva('promos')}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${vistaActiva === 'promos' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}>
+          🎁 Promociones
+        </button>
       </div>
 
       {vistaActiva === 'catalogo' && !loading && categorias.length === 0 && grupos.length === 0 && (
@@ -679,6 +684,8 @@ export default function CatalogoPage() {
       </div>
 
       </div>}
+
+      {vistaActiva === 'promos' && <PromocionesTab />}
 
       {vistaActiva === 'sabores' && <div className="mt-0">
         <div className="flex items-center justify-between mb-4">

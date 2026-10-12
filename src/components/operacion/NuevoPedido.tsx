@@ -12,6 +12,10 @@ interface Presentacion { id: string; nombre: string; precio: number; permite_opc
 interface Grupo { id: string; nombre: string }
 interface Opcion { id: string; nombre: string; emoji: string | null; color: string | null; imagen_url: string | null; grupo_id: string; precio_adicional: number; es_novedad?: boolean }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
+// PROMOS V1 (E1-C caja): misma forma que devuelve /api/kiosk/catalogo
+interface PromoSlotAPI { id: string; orden: number; titulo: string | null; presentaciones: string[] }
+interface Promo { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; precio: number; precio_regular: number | null; es_novedad?: boolean; slots: PromoSlotAPI[] }
+interface PromoCtx { promo_id: string; combo_ref: string; promo_slot_id: string; promo_nombre: string; slot_titulo: string | null; precio_asignado: number }
 interface ItemCarrito {
   uid: string
   presentacion_id: string
@@ -20,6 +24,7 @@ interface ItemCarrito {
   precio: number
   cantidad: number
   opciones: Opcion[]
+  promo_id?: string | null; combo_ref?: string | null; promo_slot_id?: string | null
 }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles: string }
 interface Props { dispositivo: Dispositivo; sesion: SesionOperador; onPedidoCreado: () => void }
@@ -34,6 +39,12 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [opciones, setOpciones] = useState<Opcion[]>([])
   const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
+  const [promos, setPromos] = useState<Promo[]>([])
+  // Asistente de combo: elección de slot (si hay variedad) + cola de sabores
+  const [promoSel, setPromoSel] = useState<{ promo: Promo; combo_ref: string; idx: number; elecciones: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] } | null>(null)
+  const [promoCola, setPromoCola] = useState<{ pres: Presentacion; prod: Producto; ctx: PromoCtx }[]>([])
+  const [promoColaIdx, setPromoColaIdx] = useState(0)
+  const promoCtxActual = promoCola[promoColaIdx]?.ctx ?? null
 
   const [carrito, setCarrito] = useState<ItemCarrito[]>([])
   const [categoriaActiva, setCategoriaActiva] = useState<string | null>(null)
@@ -74,6 +85,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
         setGrupos(cat.grupos ?? [])
         setOpciones(cat.opciones ?? [])
         setPresGrupos(cat.presentacion_grupos ?? [])
+        setPromos(cat.promociones ?? [])
         if (inicial && cat.categorias?.length) setCategoriaActiva(cat.categorias[0].id)
       }
     } catch {}  // sin red: la UI vigente sigue; el timbre reintenta
@@ -163,6 +175,75 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     return opciones.filter(op => !grupoIdsAccesorios.has(op.grupo_id))
   }
 
+  // ── PROMOS V1 (caja) ─────────────────────────────────────────────
+  function presDeSlot(slot: PromoSlotAPI): { pres: Presentacion; prod: Producto }[] {
+    const ids = new Set(slot.presentaciones)
+    return presentaciones.filter(p => ids.has(p.id))
+      .map(pres => ({ pres, prod: productos.find(pr => pr.id === pres.producto_id) }))
+      .filter((x): x is { pres: Presentacion; prod: Producto } => !!x.prod)
+  }
+
+  function nuevoComboRef(): string {
+    try { return crypto.randomUUID() } catch { return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}` }
+  }
+
+  function iniciarPromo(promo: Promo) {
+    avanzarPromo({ promo, combo_ref: nuevoComboRef(), idx: 0, elecciones: [] })
+  }
+
+  function avanzarPromo(sel: { promo: Promo; combo_ref: string; idx: number; elecciones: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] }) {
+    const slots = [...sel.promo.slots].sort((a, b) => a.orden - b.orden)
+    let { idx } = sel
+    const elecciones = [...sel.elecciones]
+    while (idx < slots.length) {
+      const permitidas = presDeSlot(slots[idx])
+      if (permitidas.length === 0) { setPromoSel(null); setError('La promo tiene un componente sin productos disponibles.'); return }
+      if (permitidas.length === 1) { elecciones.push({ slot: slots[idx], ...permitidas[0] }); idx++; continue }
+      setPromoSel({ ...sel, idx, elecciones })
+      return
+    }
+    setPromoSel(null)
+    encolarPromo(sel.promo, sel.combo_ref, elecciones)
+  }
+
+  function elegirSlot(pres: Presentacion, prod: Producto) {
+    if (!promoSel) return
+    const slots = [...promoSel.promo.slots].sort((a, b) => a.orden - b.orden)
+    avanzarPromo({ ...promoSel, idx: promoSel.idx + 1, elecciones: [...promoSel.elecciones, { slot: slots[promoSel.idx], pres, prod }] })
+  }
+
+  // Con opciones → cola de sabores (reutiliza el panel de siempre); sin opciones → directo
+  function encolarPromo(promo: Promo, combo_ref: string, elecciones: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[]) {
+    const cola: { pres: Presentacion; prod: Producto; ctx: PromoCtx }[] = []
+    elecciones.forEach((e, i) => {
+      const ctx: PromoCtx = { promo_id: promo.id, combo_ref, promo_slot_id: e.slot.id, promo_nombre: promo.nombre, slot_titulo: e.slot.titulo, precio_asignado: i === 0 ? Number(promo.precio) : 0 }
+      if (e.pres.permite_opciones) cola.push({ pres: e.pres, prod: e.prod, ctx })
+      else agregarItem(e.pres, e.prod, [], ctx)
+    })
+    if (cola.length > 0) {
+      setPromoCola(cola); setPromoColaIdx(0)
+      setProductoActivo(cola[0].prod); setPresentacionActiva(cola[0].pres); setOpcionesSeleccionadas([])
+    }
+  }
+
+  function avanzarColaPromo() {
+    const sig = promoColaIdx + 1
+    if (sig < promoCola.length) {
+      setPromoColaIdx(sig)
+      setProductoActivo(promoCola[sig].prod); setPresentacionActiva(promoCola[sig].pres); setOpcionesSeleccionadas([])
+    } else {
+      setPromoCola([]); setPromoColaIdx(0)
+      setPresentacionActiva(null); setProductoActivo(null); setOpcionesSeleccionadas([])
+    }
+  }
+
+  function cancelarPromo() {
+    if (promoCtxActual) setCarrito(prev => prev.filter(i => i.combo_ref !== promoCtxActual.combo_ref))
+    setPromoSel(null); setPromoCola([]); setPromoColaIdx(0)
+    setPresentacionActiva(null); setProductoActivo(null); setOpcionesSeleccionadas([])
+  }
+  // ── fin PROMOS V1 ────────────────────────────────────────────────
+
   function seleccionarPresentacion(p: Presentacion, prod: Producto) {
     setProductoActivo(prod)
     setOpcionesSeleccionadas([])
@@ -180,19 +261,31 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     else { if (opcionesSeleccionadas.length >= presentacionActiva.opciones_max) return; setOpcionesSeleccionadas(prev => [...prev, op]) }
   }
 
-  function agregarItem(pres: Presentacion, prod: Producto, ops: Opcion[]) {
-    setCarrito(prev => [...prev, {
+  function agregarItem(pres: Presentacion, prod: Producto, ops: Opcion[], ctx?: PromoCtx) {
+    const adic = ops.reduce((a, op) => a + Number(op.precio_adicional ?? 0), 0)
+    setCarrito(prev => [...prev, ctx ? {
+      uid: uid(), presentacion_id: pres.id,
+      nombre_producto: `🎁 ${ctx.promo_nombre}`,
+      nombre_presentacion: `${ctx.slot_titulo ? ctx.slot_titulo + ': ' : ''}${prod.nombre} ${pres.nombre}`,
+      precio: ctx.precio_asignado + adic, cantidad: 1, opciones: ops,
+      promo_id: ctx.promo_id, combo_ref: ctx.combo_ref, promo_slot_id: ctx.promo_slot_id,
+    } : {
       uid: uid(), presentacion_id: pres.id,
       nombre_producto: prod.nombre, nombre_presentacion: pres.nombre,
       precio: pres.precio, cantidad: 1, opciones: ops,
     }])
-    setPresentacionActiva(null); setProductoActivo(null); setOpcionesSeleccionadas([])
+    if (!ctx) { setPresentacionActiva(null); setProductoActivo(null); setOpcionesSeleccionadas([]) }
   }
 
   function confirmarConOpciones() {
     if (!presentacionActiva || !productoActivo) return
     if (opcionesSeleccionadas.length < presentacionActiva.opciones_min) return
-    agregarItem(presentacionActiva, productoActivo, opcionesSeleccionadas)
+    if (promoCtxActual) {
+      agregarItem(presentacionActiva, productoActivo, opcionesSeleccionadas, promoCtxActual)
+      avanzarColaPromo()
+    } else {
+      agregarItem(presentacionActiva, productoActivo, opcionesSeleccionadas)
+    }
   }
 
   function agregarAccesorio(acc: Opcion) {
@@ -209,7 +302,15 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   }
 
   function cambiarCantidad(id: string, delta: number) {
-    setCarrito(prev => prev.map(i => i.uid === id ? { ...i, cantidad: Math.max(0, i.cantidad + delta) } : i).filter(i => i.cantidad > 0))
+    setCarrito(prev => {
+      // PROMOS V1: un combo no cambia de cantidad — quitar quita el grupo entero
+      const item = prev.find(i => i.uid === id)
+      if (item?.combo_ref) {
+        if (delta < 0) return prev.filter(i => i.combo_ref !== item.combo_ref)
+        return prev
+      }
+      return prev.map(i => i.uid === id ? { ...i, cantidad: Math.max(0, i.cantidad + delta) } : i).filter(i => i.cantidad > 0)
+    })
   }
 
   const subtotal = carrito.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
@@ -225,6 +326,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
       nombre_presentacion_snap: item.nombre_presentacion,
       precio_snap: item.precio,
       cantidad: item.cantidad,
+      promo_id: item.promo_id ?? null, combo_ref: item.combo_ref ?? null, promo_slot_id: item.promo_slot_id ?? null,
       opciones: item.opciones.map(op => ({ opcion_id: op.id, nombre_snap: op.nombre, emoji_snap: op.emoji, color_snap: op.color })),
     }))
     const res = await fetch('/api/pedidos', {
@@ -277,6 +379,20 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     <div className="flex h-full overflow-hidden">
       {/* Catálogo */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {promos.length > 0 && (
+          <div className="flex gap-2 px-3 pt-3 bg-white overflow-x-auto">
+            {promos.map(promo => (
+              <button key={promo.id} onClick={() => iniciarPromo(promo)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-800 text-sm font-semibold whitespace-nowrap bg-white hover:bg-neutral-50 transition-colors active:scale-98">
+                🎁 {promo.nombre}
+                {promo.precio_regular != null && Number(promo.precio_regular) > Number(promo.precio) && (
+                  <span className="text-neutral-400 line-through text-xs">{formatPrecio(Number(promo.precio_regular))}</span>
+                )}
+                <span className="font-black">{formatPrecio(Number(promo.precio))}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2 p-3 border-b border-neutral-100 bg-white overflow-x-auto">
           {categorias.map(cat => (
             <button key={cat.id} onClick={() => { setCategoriaActiva(cat.id); setPresentacionActiva(null) }}
@@ -287,7 +403,35 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          {!presentacionActiva ? (
+          {promoSel ? (() => {
+            const slots = [...promoSel.promo.slots].sort((a, b) => a.orden - b.orden)
+            const slot = slots[promoSel.idx]
+            return (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-neutral-800 font-bold">🎁 {promoSel.promo.nombre}</p>
+                    <p className="text-neutral-400 text-sm">{slot.titulo || 'Elegí el producto'} · paso {promoSel.idx + 1} de {slots.length}</p>
+                  </div>
+                  <button onClick={cancelarPromo} className="text-neutral-400 text-sm hover:text-neutral-600 transition-colors">✕ Cancelar promo</button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {presDeSlot(slot).map(({ pres, prod }) => (
+                    <button key={pres.id} onClick={() => elegirSlot(pres, prod)}
+                      className="flex items-center gap-2.5 p-3 bg-white rounded-xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98">
+                      {(pres.imagen_url || prod.imagen_url)
+                        ? <img src={pres.imagen_url ?? prod.imagen_url!} alt={prod.nombre} className="w-12 h-12 object-cover rounded-lg flex-shrink-0 bg-neutral-50" />
+                        : <span className="w-10 h-10 rounded-lg bg-neutral-50 flex items-center justify-center text-xl flex-shrink-0">🍦</span>}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-neutral-800 font-bold text-sm leading-tight truncate">{prod.nombre}</p>
+                        <p className="text-neutral-400 text-xs truncate">{pres.nombre}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })() : !presentacionActiva ? (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
               {productosFiltrados.map(prod => {
                 const pres = presentaciones.filter(p => p.producto_id === prod.id)
@@ -325,11 +469,13 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-neutral-800 font-bold">{productoActivo?.nombre} — {presentacionActiva.nombre}</p>
-                  <p className="text-neutral-400 text-sm">Elegí {presentacionActiva.opciones_min}–{presentacionActiva.opciones_max} sabores ({opcionesSeleccionadas.length}/{presentacionActiva.opciones_max})</p>
+                  <p className="text-neutral-800 font-bold">{promoCtxActual && '🎁 '}{productoActivo?.nombre} — {presentacionActiva.nombre}{promoCtxActual?.slot_titulo ? ` (${promoCtxActual.slot_titulo})` : ''}</p>
+                  <p className="text-neutral-400 text-sm">Elegí {presentacionActiva.opciones_min}–{presentacionActiva.opciones_max} sabores ({opcionesSeleccionadas.length}/{presentacionActiva.opciones_max}){promoCtxActual && promoCola.length > 1 ? ` · componente ${promoColaIdx + 1} de ${promoCola.length}` : ''}</p>
                 </div>
-                <button onClick={() => { setPresentacionActiva(null); setOpcionesSeleccionadas([]) }}
-                  className="text-neutral-400 text-sm hover:text-neutral-600 transition-colors">← Volver</button>
+                {promoCtxActual
+                  ? <button onClick={cancelarPromo} className="text-neutral-400 text-sm hover:text-neutral-600 transition-colors">✕ Cancelar promo</button>
+                  : <button onClick={() => { setPresentacionActiva(null); setOpcionesSeleccionadas([]) }}
+                      className="text-neutral-400 text-sm hover:text-neutral-600 transition-colors">← Volver</button>}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 mb-4">
                 {[...opcionesVisibles].sort((a, b) => (b.es_novedad === true ? 1 : 0) - (a.es_novedad === true ? 1 : 0)).map(op => {
@@ -350,7 +496,9 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
               <button onClick={confirmarConOpciones}
                 disabled={opcionesSeleccionadas.length < presentacionActiva.opciones_min}
                 className="w-full py-3 bg-neutral-800 text-white rounded-xl font-bold disabled:opacity-40 hover:bg-neutral-700 transition-colors">
-                Agregar — {formatPrecio(presentacionActiva.precio)}
+                {promoCtxActual
+                  ? (promoColaIdx < promoCola.length - 1 ? 'Confirmar y siguiente →' : `Agregar promo — ${formatPrecio(Number(promos.find(pr => pr.id === promoCtxActual.promo_id)?.precio ?? 0))}`)
+                  : <>Agregar — {formatPrecio(presentacionActiva.precio)}</>}
               </button>
             </div>
           )}
@@ -399,8 +547,16 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                   <p className="text-neutral-700 text-sm font-bold">{item.nombre_producto}</p>
                   <p className="text-neutral-400 text-xs">{item.nombre_presentacion}</p>
                   {item.opciones.length > 0 && <p className="text-neutral-400 text-xs mt-0.5">{item.opciones.map(o => o.nombre).join(', ')}</p>}
-                  <p className="text-neutral-700 text-sm font-bold mt-1">{formatPrecio(item.precio * item.cantidad)}</p>
+                  {item.combo_ref && item.precio === 0
+                    ? <p className="text-neutral-400 text-xs font-semibold mt-1">incluido en promo</p>
+                    : <p className="text-neutral-700 text-sm font-bold mt-1">{formatPrecio(item.precio * item.cantidad)}</p>}
                 </div>
+                {item.combo_ref ? (
+                  <button onClick={() => cambiarCantidad(item.uid, -1)}
+                    className="w-7 h-7 flex items-center justify-center bg-white border border-neutral-200 rounded-lg text-red-400 active:bg-neutral-100 flex-shrink-0">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
                 <div className="flex items-center gap-0 bg-white border border-neutral-200 rounded-lg overflow-hidden flex-shrink-0">
                   <button onClick={() => cambiarCantidad(item.uid, -1)}
                     className="w-7 h-7 flex items-center justify-center text-neutral-500 active:bg-neutral-100">
@@ -412,6 +568,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                     <Plus className="h-3.5 w-3.5" />
                   </button>
                 </div>
+                )}
               </div>
             </div>
           ))}

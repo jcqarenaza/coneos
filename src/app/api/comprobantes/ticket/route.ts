@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     .from('pedidos')
     .select(`id, numero_pedido, codigo_retiro, total, metodo_pago, created_at, costo_envio, tipo_pedido, mp_payment_id, notas,
       empresa_id, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva, receptor_razon_social, detalle_facturable, sucursales(nombre, direccion),
-      pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
+      pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap,
         pedido_item_opciones(nombre_snap, emoji_snap))`)
     .eq('id', pedido_id)
     .single()
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   const fmt = (n: number) => `$${Number(n).toLocaleString('es-AR')}`
   const fecha = new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   const metodoLabel: Record<string, string> = { efectivo: 'EFECTIVO', transferencia: 'TRANSFERENCIA', mp: 'MERCADO PAGO', debito: 'DÉBITO', credito: 'CRÉDITO' } // E2: gemelo del fix de comanda
-  type Item = { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
+  type Item = { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; combo_ref?: string | null; promo_nombre_snap?: string | null; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
   const items = (pedido.pedido_items ?? []) as Item[]
   // Operación de Mercado Pago (JC 25/09): últimos 6 dígitos para que caja/cliente la ubiquen.
   // Fuente: mp_payment_id; fallback a la nota del webhook para los pedidos anteriores al fix.
@@ -109,7 +109,16 @@ export async function POST(request: Request) {
   const accesorios = items.filter(esAccesorio)
   const totalAccesorios = accesorios.reduce((s, it) => s + Number(it.precio_snap) * it.cantidad, 0)
 
-  const bloquesItems = normales.map(item => {
+  // PROMOS E1-D: los hermanos de un combo_ref se agrupan bajo el nombre de la
+  // promo con su precio TOTAL (render-only; los datos no cambian)
+  const sueltos = normales.filter(it => !it.combo_ref)
+  const combosMap = new Map<string, Item[]>()
+  normales.filter(it => it.combo_ref).forEach(it => {
+    const arr = combosMap.get(it.combo_ref!) ?? []
+    arr.push(it); combosMap.set(it.combo_ref!, arr)
+  })
+
+  const bloquesItems = sueltos.map(item => {
   const prod = (item.nombre_producto_snap ?? '').toLowerCase()
   const pres = (item.nombre_presentacion_snap ?? '').toLowerCase()
   const mostrarProd = prod && !pres.includes(prod) && !prod.includes(pres)
@@ -119,6 +128,16 @@ export async function POST(request: Request) {
   ${item.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${item.pedido_item_opciones.map(op => op.nombre_snap).join(' - ')}</div>` : ''}
   <div class="item-precio"><span class="item-precio-cant">x${item.cantidad}</span><span class="item-precio-val">${fmt(item.precio_snap)}</span></div>
 </div>`})
+
+  combosMap.forEach(grupo => {
+    const totalCombo = grupo.reduce((s, it) => s + Number(it.precio_snap), 0)
+    const titulo = grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap
+    bloquesItems.push(`<div>
+  <div class="item-prod">🎁 ${titulo}</div>
+  ${grupo.map(it => `<div class="item-pres">• ${it.nombre_presentacion_snap}</div>${it.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${it.pedido_item_opciones.map(op => op.nombre_snap).join(' - ')}</div>` : ''}`).join('')}
+  <div class="item-precio"><span class="item-precio-cant">x1</span><span class="item-precio-val">${fmt(totalCombo)}</span></div>
+</div>`)
+  })
 
   if (accesorios.length > 0) {
     bloquesItems.push(`<div>

@@ -35,6 +35,11 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
     setCarrito(carrito.map(i => i.id === id ? { ...i, cantidad: Math.max(0, i.cantidad + delta) } : i).filter(i => i.cantidad > 0))
   }
 
+  // PROMOS V1: un combo se quita entero (sus componentes no cambian de cantidad)
+  function quitarCombo(ref: string) {
+    setCarrito(carrito.filter(i => i.combo_ref !== ref))
+  }
+
   function cambiarAcc(id: string, delta: number) {
     setCantAccesorios(prev => ({ ...prev, [id]: Math.max(0, (prev[id] ?? 0) + delta) }))
   }
@@ -136,8 +141,16 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
                   {item.opciones.length > 0 && (
                     <p className="text-neutral-400 text-xs mt-0.5 leading-tight">{item.opciones.map(o => o.nombre).join(', ')}</p>
                   )}
-                  <p className="font-bold text-base mt-1.5" style={{ color: config.primary_color }}>{formatPrecio(item.precio)}</p>
+                  {item.combo_ref && item.precio === 0
+                    ? <p className="text-xs font-semibold text-neutral-400 mt-1.5">incluido en promo</p>
+                    : <p className="font-bold text-base mt-1.5" style={{ color: config.primary_color }}>{formatPrecio(item.precio)}</p>}
                 </div>
+                {item.combo_ref ? (
+                  <button onClick={() => quitarCombo(item.combo_ref!)}
+                    className="w-10 h-10 flex items-center justify-center rounded-xl bg-neutral-100 text-red-400 active:bg-neutral-200 flex-shrink-0">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                ) : (
                 <div className="flex items-center gap-0 bg-neutral-100 rounded-xl overflow-hidden flex-shrink-0">
                   <button onClick={() => cambiarCantidad(item.id, -1)}
                     className="w-10 h-10 flex items-center justify-center text-neutral-500 active:bg-neutral-200">
@@ -150,6 +163,7 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
+                )}
               </div>
             </div>
           ))}

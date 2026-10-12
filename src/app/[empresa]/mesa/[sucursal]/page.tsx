@@ -21,6 +21,8 @@ interface ItemCarrito {
   id: string; presentacion_id: string; nombre_producto: string
   nombre_presentacion: string; precio: number; cantidad: number
   opciones: { opcion_id: string; nombre: string; emoji: string | null; color: string | null }[]
+  // PROMOS V1 (E1-C): identidad del combo — viaja hasta /api/pedidos
+  promo_id?: string | null; combo_ref?: string | null; promo_slot_id?: string | null; promo_nombre?: string | null
 }
 
 type Paso = 'datos' | 'catalogo' | 'carrito' | 'exito'
@@ -115,6 +117,7 @@ export default function MesaPage() {
             nombre_presentacion_snap: i.nombre_presentacion,
             precio_snap: i.precio,
             cantidad: i.cantidad,
+            promo_id: i.promo_id ?? null, combo_ref: i.combo_ref ?? null, promo_slot_id: i.promo_slot_id ?? null,
             opciones: i.opciones.map(o => ({ opcion_id: o.opcion_id, nombre_snap: o.nombre, emoji_snap: o.emoji, color_snap: o.color })),
           })),
           metodo_pago: pagoMP ? 'mp' : null,

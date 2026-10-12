@@ -7,7 +7,7 @@ import { Loader2, ChefHat, CheckCircle, Clock } from 'lucide-react'
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string; sucursal_id: string | null } }
 interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
-interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; cantidad: number; pedido_item_opciones: OpcionItem[] }
+interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; cantidad: number; combo_ref?: string | null; promo_nombre_snap?: string | null; pedido_item_opciones: OpcionItem[] }
 interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; tipo_pedido?: string; notas: string | null; created_at: string; hora_retiro?: string | null; sucursales?: { nombre: string }; pedido_items: PedidoItem[] }
 
 // Las notas del pedido pueden traer marcas del circuito de COBRO ("MP payment
@@ -143,14 +143,35 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                         </div>
                       </div>
                       <div className="p-4 space-y-2">
-                        {pedido.pedido_items.map(item => (
-                          <div key={item.id}>
-                            <p className="text-neutral-800 text-sm font-bold">{item.cantidad > 1 ? `${item.cantidad}× ` : ''}{item.nombre_producto_snap} <span className="font-normal text-neutral-500">— {item.nombre_presentacion_snap}</span></p>
-                            {item.pedido_item_opciones.length > 0 && (
-                              <p className="text-neutral-400 text-xs mt-0.5">{item.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}</p>
-                            )}
-                          </div>
-                        ))}
+                        {(() => {
+                          // PROMOS E1-D: combo agrupado (render-only)
+                          const sueltos = pedido.pedido_items.filter(it => !it.combo_ref)
+                          const combos = new Map<string, PedidoItem[]>()
+                          pedido.pedido_items.filter(it => it.combo_ref).forEach(it => { const a = combos.get(it.combo_ref!) ?? []; a.push(it); combos.set(it.combo_ref!, a) })
+                          return (<>
+                            {[...combos.entries()].map(([ref, grupo]) => (
+                              <div key={ref}>
+                                <p className="text-neutral-800 text-sm font-bold">🎁 {grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap}</p>
+                                {grupo.map(it => (
+                                  <div key={it.id} className="ml-2">
+                                    <p className="text-neutral-500 text-sm">• {it.nombre_presentacion_snap}</p>
+                                    {it.pedido_item_opciones.length > 0 && (
+                                      <p className="text-neutral-400 text-xs ml-2">{it.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                            {sueltos.map(item => (
+                              <div key={item.id}>
+                                <p className="text-neutral-800 text-sm font-bold">{item.cantidad > 1 ? `${item.cantidad}× ` : ''}{item.nombre_producto_snap} <span className="font-normal text-neutral-500">— {item.nombre_presentacion_snap}</span></p>
+                                {item.pedido_item_opciones.length > 0 && (
+                                  <p className="text-neutral-400 text-xs mt-0.5">{item.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}</p>
+                                )}
+                              </div>
+                            ))}
+                          </>)
+                        })()}
                         {notasCocina(pedido.notas) && <p className="text-amber-600 text-xs font-medium">📝 {notasCocina(pedido.notas)}</p>}
                       </div>
                       <div className="px-4 pb-4">
@@ -180,19 +201,44 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
           {seleccionado.tipo_pedido === 'delivery' && horaRetiroLabel(seleccionado.hora_retiro) && <p className="text-neutral-700 text-xs font-bold mb-0.5">🚚 Entrega {horaRetiroLabel(seleccionado.hora_retiro)}</p>}
           <p className="text-neutral-300 text-xs mb-5">{tiempoRelativo(seleccionado.created_at)}</p>
           <div className="space-y-3">
-            {seleccionado.pedido_items.map(item => (
-              <div key={item.id} className="bg-neutral-50 rounded-xl p-3">
-                <p className="text-neutral-800 text-sm font-bold">{item.nombre_producto_snap}</p>
-                <p className="text-neutral-400 text-xs">{item.nombre_presentacion_snap}</p>
-                {item.pedido_item_opciones.length > 0 && (
-                  <ul className="mt-2 space-y-0.5">
-                    {item.pedido_item_opciones.map((op, i) => (
-                      <li key={i} className="text-xs text-neutral-500">• {op.emoji_snap} {op.nombre_snap}</li>
+            {(() => {
+              // PROMOS E1-D: combo agrupado (render-only)
+              const sueltos = seleccionado.pedido_items.filter(it => !it.combo_ref)
+              const combos = new Map<string, PedidoItem[]>()
+              seleccionado.pedido_items.filter(it => it.combo_ref).forEach(it => { const a = combos.get(it.combo_ref!) ?? []; a.push(it); combos.set(it.combo_ref!, a) })
+              return (<>
+                {[...combos.entries()].map(([ref, grupo]) => (
+                  <div key={ref} className="bg-neutral-50 rounded-xl p-3">
+                    <p className="text-neutral-800 text-sm font-bold">🎁 {grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap}</p>
+                    {grupo.map(it => (
+                      <div key={it.id} className="mt-1.5">
+                        <p className="text-neutral-500 text-xs font-semibold">• {it.nombre_presentacion_snap}</p>
+                        {it.pedido_item_opciones.length > 0 && (
+                          <ul className="mt-0.5 ml-3 space-y-0.5">
+                            {it.pedido_item_opciones.map((op, i) => (
+                              <li key={i} className="text-xs text-neutral-500">{op.emoji_snap} {op.nombre_snap}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                     ))}
-                  </ul>
-                )}
-              </div>
-            ))}
+                  </div>
+                ))}
+                {sueltos.map(item => (
+                  <div key={item.id} className="bg-neutral-50 rounded-xl p-3">
+                    <p className="text-neutral-800 text-sm font-bold">{item.nombre_producto_snap}</p>
+                    <p className="text-neutral-400 text-xs">{item.nombre_presentacion_snap}</p>
+                    {item.pedido_item_opciones.length > 0 && (
+                      <ul className="mt-2 space-y-0.5">
+                        {item.pedido_item_opciones.map((op, i) => (
+                          <li key={i} className="text-xs text-neutral-500">• {op.emoji_snap} {op.nombre_snap}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </>)
+            })()}
           </div>
           {notasCocina(seleccionado.notas) && <div className="mt-3 bg-amber-50 rounded-xl p-3"><p className="text-amber-700 text-sm">📝 {notasCocina(seleccionado.notas)}</p></div>}
           <div className="mt-4 space-y-2">

@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_id, colaborador_nombre, hora_retiro, comanda_impresa_at, ticket_impreso_at, updated_at, facturas(estado), cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre),
         sucursales(nombre),
         pedido_pagos(metodo, monto),
-        pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
+        pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
       .eq('empresa_id', disp.empresa_id)
       .or(`fecha_pedido.eq.${hoy},and(fecha_pedido.eq.${ayer},estado.in.(${ACTIVOS_AYER.join(',')}))`)
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
   if (accion === 'historial') {
     if (!body.fecha) return NextResponse.json({ error: 'fecha requerida' }, { status: 400 })
     let query = supabase.from('pedidos')
-      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_nombre, hora_retiro, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre), pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, pedido_item_opciones(nombre_snap, emoji_snap))')
+      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_nombre, hora_retiro, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre), pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap, pedido_item_opciones(nombre_snap, emoji_snap))')
       .eq('empresa_id', disp.empresa_id)
       .eq('fecha_pedido', body.fecha)
       .order('numero_pedido', { ascending: true })
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     let query = supabase.from('pedidos')
       .select(`id, numero_pedido, codigo_retiro, estado, notas, created_at, tipo_pedido, hora_retiro,
         sucursales(nombre),
-        pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, cantidad,
+        pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, cantidad, combo_ref, promo_nombre_snap,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
       .eq('empresa_id', disp.empresa_id)
       .or(`fecha_pedido.eq.${hoy},fecha_pedido.eq.${ayer}`)

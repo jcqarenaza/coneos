@@ -173,6 +173,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       nombre_producto_snap: item.nombre_producto,
       nombre_presentacion_snap: item.nombre_presentacion,
       precio_snap: item.precio, cantidad: item.cantidad,
+      // PROMOS V1 (E1-C): identidad del combo — el server reprorratea y el RPC valida el grupo
+      promo_id: item.promo_id ?? null, combo_ref: item.combo_ref ?? null, promo_slot_id: item.promo_slot_id ?? null,
       opciones: item.opciones.map(op => ({ opcion_id: op.opcion_id, nombre_snap: op.nombre, emoji_snap: op.emoji, color_snap: op.color })),
     }))
     const res = await fetch('/api/pedidos', {

@@ -31,6 +31,8 @@ export interface ItemCarrito {
   id: string; presentacion_id: string; nombre_producto: string
   nombre_presentacion: string; precio: number; cantidad: number
   opciones: { opcion_id: string; nombre: string; emoji: string | null; color: string | null }[]
+  // PROMOS V1 (E1-C): identidad del combo — viaja hasta /api/pedidos
+  promo_id?: string | null; combo_ref?: string | null; promo_slot_id?: string | null; promo_nombre?: string | null
 }
 
 type Paso = 'inicio' | 'catalogo' | 'carrito' | 'confirmacion'

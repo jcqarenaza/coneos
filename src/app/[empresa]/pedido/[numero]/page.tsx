@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import Image from 'next/image'
 import { Loader2, CheckCircle, Clock, ChefHat, Package, Truck } from 'lucide-react'
 import MapaCliente from '@/components/reparto/MapaCliente'
 import { marcaDeRuta } from '@/lib/brand'
 
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
-interface PedidoItem { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
+interface PedidoItem { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; combo_ref?: string | null; promo_nombre_snap?: string | null; pedido_item_opciones: { nombre_snap: string; emoji_snap: string | null }[] }
 interface Pedido {
   id: string; numero_pedido: number; codigo_retiro: string; estado: string
   total: number; metodo_pago: string | null; created_at: string
@@ -202,22 +202,48 @@ export default function PedidoPage() {
           <div className="px-4 py-3 border-b border-neutral-50">
             <p className="font-bold text-neutral-700 text-sm">Tu pedido</p>
           </div>
-          {pedido.pedido_items.map((item, i) => (
-            <div key={i} className={`px-4 py-3 ${i < pedido.pedido_items.length - 1 ? 'border-b border-neutral-50' : ''}`}>
-              <div className="flex justify-between items-start gap-2">
-                <div className="flex-1">
-                  <p className="font-semibold text-neutral-800 text-sm">{item.cantidad}x {item.nombre_producto_snap}</p>
-                  <p className="text-neutral-400 text-xs">{item.nombre_presentacion_snap}</p>
-                  {item.pedido_item_opciones.length > 0 && (
-                    <p className="text-neutral-400 text-xs mt-0.5">
-                      {item.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}
-                    </p>
-                  )}
+          {(() => {
+            // PROMOS E1-D: hermanos de combo agrupados bajo la promo (render-only)
+            const sueltos = pedido.pedido_items.filter(it => !it.combo_ref)
+            const combos = new Map<string, PedidoItem[]>()
+            pedido.pedido_items.filter(it => it.combo_ref).forEach(it => { const a = combos.get(it.combo_ref!) ?? []; a.push(it); combos.set(it.combo_ref!, a) })
+            const bloques: ReactNode[] = []
+            combos.forEach((grupo, ref) => bloques.push(
+              <div key={`c-${ref}`} className="px-4 py-3 border-b border-neutral-50">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="flex-1">
+                    <p className="font-semibold text-neutral-800 text-sm">🎁 {grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap}</p>
+                    {grupo.map((it, j) => (
+                      <div key={j}>
+                        <p className="text-neutral-400 text-xs mt-0.5">• {it.nombre_presentacion_snap}</p>
+                        {it.pedido_item_opciones.length > 0 && (
+                          <p className="text-neutral-400 text-xs ml-2">{it.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="font-bold text-sm text-neutral-700">{formatPrecio(grupo.reduce((s, it) => s + Number(it.precio_snap), 0))}</p>
                 </div>
-                <p className="font-bold text-sm text-neutral-700">{formatPrecio(item.precio_snap)}</p>
               </div>
-            </div>
-          ))}
+            ))
+            sueltos.forEach((item, i) => bloques.push(
+              <div key={`s-${i}`} className={`px-4 py-3 ${i < sueltos.length - 1 ? 'border-b border-neutral-50' : ''}`}>
+                <div className="flex justify-between items-start gap-2">
+                  <div className="flex-1">
+                    <p className="font-semibold text-neutral-800 text-sm">{item.cantidad}x {item.nombre_producto_snap}</p>
+                    <p className="text-neutral-400 text-xs">{item.nombre_presentacion_snap}</p>
+                    {item.pedido_item_opciones.length > 0 && (
+                      <p className="text-neutral-400 text-xs mt-0.5">
+                        {item.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}
+                      </p>
+                    )}
+                  </div>
+                  <p className="font-bold text-sm text-neutral-700">{formatPrecio(item.precio_snap)}</p>
+                </div>
+              </div>
+            ))
+            return bloques
+          })()}
           {esDelivery && Number(pedido.costo_envio) > 0 && (
             <div className="px-4 py-3 border-t border-neutral-50 flex justify-between">
               <span className="text-neutral-400 text-sm flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Envío</span>

@@ -88,5 +88,43 @@ export async function GET(request: Request) {
   ;(inventario ?? []).forEach((i: { opcion_id: string; disponible: boolean }) => { inventarioMap[i.opcion_id] = i.disponible })
   const opcionesFiltradas = (opciones ?? []).filter((op: { id: string }) => inventarioMap[op.id] !== false)
 
-  return NextResponse.json({ categorias, productos: productosFinal, presentaciones: presentacionesFiltradas, grupos, opciones: opcionesFiltradas, presentacion_grupos: presGrupos ?? [] })
+  // ══ PROMOCIONES V1 — E1-C (GO CTO 11/10): promos VIGENTES del canal ══
+  // Vigencia por fecha de SERVER (hora argentina, la misma del RPC). Solo
+  // viajan promos cuyos slots tienen TODAS sus presentaciones visibles en
+  // este catálogo (si una variedad está oculta/agotada-podada, la promo no
+  // se ofrece a medias). Campo nuevo: los clientes viejos lo ignoran.
+  const hoyArg = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const colPromo: Record<string, string | null> = {
+    kiosk: 'visible_kiosk', delivery: 'visible_delivery', mesa: 'visible_mesa',
+    takeaway: 'visible_takeaway', operacion: null,
+  }
+  let qPromo = supabase.from('promociones')
+    .select('id, nombre, descripcion, imagen_url, precio, precio_regular, es_novedad, vigencia_desde, vigencia_hasta, promo_slots(id, orden, titulo, promo_slot_presentaciones(presentacion_id))')
+    .eq('empresa_id', empresa_id).eq('activo', true)
+  const colP = colPromo[canal]
+  if (colP) qPromo = qPromo.eq(colP, true)
+  const { data: promosRaw } = await qPromo
+  const presVisibles = new Set(presentacionesFiltradas.map((p: { id: string }) => p.id))
+  type SlotRaw = { id: string; orden: number; titulo: string; promo_slot_presentaciones: { presentacion_id: string }[] }
+  const promociones = (promosRaw ?? [])
+    .filter((pr: { vigencia_desde?: string | null; vigencia_hasta?: string | null } & Record<string, unknown>) => true)
+    .map((pr: Record<string, unknown>) => ({
+      id: pr.id, nombre: pr.nombre, descripcion: pr.descripcion, imagen_url: pr.imagen_url,
+      precio: Number(pr.precio), precio_regular: pr.precio_regular != null ? Number(pr.precio_regular) : null,
+      es_novedad: pr.es_novedad === true,
+      vigencia_desde: (pr as { vigencia_desde?: string | null }).vigencia_desde ?? null,
+      vigencia_hasta: (pr as { vigencia_hasta?: string | null }).vigencia_hasta ?? null,
+      slots: ((pr.promo_slots ?? []) as SlotRaw[])
+        .sort((a, b) => a.orden - b.orden)
+        .map(s => ({ id: s.id, orden: s.orden, titulo: s.titulo,
+          presentaciones: s.promo_slot_presentaciones.map(x => x.presentacion_id).filter(id => presVisibles.has(id)) })),
+    }))
+    .filter(pr => {
+      const desdeOk = !pr.vigencia_desde || hoyArg >= pr.vigencia_desde
+      const hastaOk = !pr.vigencia_hasta || hoyArg <= pr.vigencia_hasta
+      const slotsOk = pr.slots.length > 0 && pr.slots.every(s => s.presentaciones.length > 0)
+      return desdeOk && hastaOk && slotsOk
+    })
+
+  return NextResponse.json({ categorias, productos: productosFinal, presentaciones: presentacionesFiltradas, grupos, opciones: opcionesFiltradas, presentacion_grupos: presGrupos ?? [], promociones })
 }

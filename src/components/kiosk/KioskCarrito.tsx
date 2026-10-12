@@ -130,7 +130,9 @@ export default function KioskCarrito({ config, carrito, accesorios, onQuitar, on
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <p className="font-bold text-lg" style={{ color: config.primary_color }}>{formatPrecio(item.precio)}</p>
+                  {item.combo_ref && item.precio === 0
+                    ? <p className="text-xs font-semibold text-neutral-400 mt-1">incluido en promo</p>
+                    : <p className="font-bold text-lg" style={{ color: config.primary_color }}>{formatPrecio(item.precio)}</p>}
                   <button onClick={() => onQuitar(item.id)} className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors">
                     <Trash2 className="h-4 w-4" />
                   </button>
