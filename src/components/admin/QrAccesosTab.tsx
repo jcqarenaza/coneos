@@ -33,6 +33,10 @@ const DESTINOS = [
 // REPARTO V1: entrada de los CADETES (no de clientes) — aparece solo con el
 // módulo reparto prendido. Misma naturaleza: URL estable, login adentro.
 const DESTINO_REPARTO = { id: 'reparto', emoji: '🛵', titulo: 'App de cadetes', desc: 'Solo para tus repartidores: entran con su nombre y PIN, ven sus entregas y comparten ubicación.', path: 'reparto' }
+// QR DE EMPRESA (JC 13/10): un solo QR para toda la empresa — el cliente
+// elige la sucursal y recién ahí el canal. Solo aparece con 2+ sucursales
+// (con una sola, la entrada de empresa redirige igual: el QR por sucursal basta).
+const DESTINO_EMPRESA = { id: 'app-empresa', emoji: '🏪', titulo: 'App de pedidos — toda la empresa', desc: 'Un solo QR para todas las sucursales: el cliente elige dónde pedir y después el canal.', path: 'pedidos-empresa' }
 
 // UN solo selector (orden JC): el de la casa manda; este tab obedece la
 // sucursal que le pasan y esconde su selector propio.
@@ -73,10 +77,16 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
   // preview igual deben apuntar a producción.
   const urlDe = (path: string) => {
     if (!ctx || !sucursalSel) return ''
+    // QR de empresa: URL sin sucursal — el selector vive en la página
+    if (path === 'pedidos-empresa') return `https://coneos.com.ar/${ctx.empresaSlug}/pedidos`
     return `https://coneos.com.ar/${ctx.empresaSlug}/${path}/${sucursalSel.slug}`
   }
 
-  const destinos = moduloReparto ? [...DESTINOS, DESTINO_REPARTO] : DESTINOS
+  const destinos = [
+    ...(sucursales.length > 1 ? [DESTINO_EMPRESA] : []),
+    ...DESTINOS,
+    ...(moduloReparto ? [DESTINO_REPARTO] : []),
+  ]
 
   // Dibujar los QRs cada vez que cambia la sucursal (o el set de destinos)
   useEffect(() => {
