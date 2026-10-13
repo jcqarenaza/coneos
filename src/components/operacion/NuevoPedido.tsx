@@ -59,8 +59,21 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   const [credsMp, setCredsMp] = useState<{ id: string; nombre: string }[]>([])
   const [ctaSel, setCtaSel] = useState<string | null>(null)
   const [credSel, setCredSel] = useState<string | null>(null)
-  // PR-DM: % de descuento por pago en efectivo (0 = sin descuento, nada visible)
+  // PR-DM: % de descuento por pago en efectivo (0 = sin descuento, nada visible).
+  // La leyenda se refresca al volver a la pestaña (patrón "al despertar"); la
+  // AUTORIDAD siempre es el server al confirmar, con el pct vigente.
   const [descEfPct, setDescEfPct] = useState(0)
+  useEffect(() => {
+    async function refrescarPct() {
+      try {
+        const r = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'cuentas_cobro' }) })
+        if (r.ok) { const d = await r.json(); setDescEfPct(Number(d.descuento_efectivo_pct ?? 0)) }
+      } catch {}
+    }
+    const alVolver = () => { if (document.visibilityState === 'visible') refrescarPct() }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => document.removeEventListener('visibilitychange', alVolver)
+  }, [dispositivo])
   const [notas, setNotas] = useState('')
 
   // Delivery telefónico
