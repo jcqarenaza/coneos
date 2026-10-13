@@ -22,7 +22,7 @@ interface Canal { configurado: boolean; visible?: boolean; disponible: boolean; 
 interface SucursalItem { nombre: string; slug: string; direccion: string | null; url: string }
 interface CtxSucursal {
   sucursal_nombre: string
-  negocio: { mensaje: string | null }
+  negocio: { mensaje: string | null; horarios?: { desde: string; hasta: string }[] }
   servicios: { delivery: Canal; takeaway: Canal }
 }
 interface Fila { suc: SucursalItem; ctx: CtxSucursal | null }
@@ -96,12 +96,13 @@ export default function EntradaEmpresaPage() {
         <div className="min-w-0">
           <p className={`text-sm font-bold ${abierto ? 'text-neutral-800' : 'text-neutral-400'}`}>{emoji} {titulo}</p>
           <p className="text-xs text-neutral-400">{bajada}</p>
-          {abierto && canal.anticipado && canal.proximo && (
-            <p className="text-xs font-semibold text-amber-500 mt-0.5">🟠 Abre a las {canal.proximo} — pedí ahora</p>
-          )}
+          {abierto && (canal.anticipado && canal.proximo
+            ? <p className="text-xs font-semibold text-amber-500 mt-0.5 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Abre a las {canal.proximo} — pedí ahora</p>
+            : <p className="text-xs font-semibold text-green-600 mt-0.5 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Abierto</p>)}
           {!abierto && (
-            <p className="text-xs font-semibold text-amber-500 mt-0.5">
-              {canal.motivo === 'No disponible' ? 'No disponible' : canal.proximo ? `🟠 Abre a las ${canal.proximo}` : canal.motivo ?? 'Cerrado'}
+            <p className="text-xs font-semibold text-amber-500 mt-0.5 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+              {canal.motivo === 'No disponible' ? 'No disponible' : canal.proximo ? `Abre a las ${canal.proximo}` : canal.motivo ?? 'Cerrado'}
             </p>
           )}
         </div>
@@ -125,7 +126,13 @@ export default function EntradaEmpresaPage() {
           return (
             <div key={suc.slug} className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4">
               <p className="font-bold text-neutral-800">{suc.nombre}</p>
-              {suc.direccion && <p className="text-neutral-400 text-xs mb-2.5">📍 {suc.direccion}</p>}
+              {suc.direccion && <p className="text-neutral-400 text-xs">📍 {suc.direccion}</p>}
+              {ctx && (ctx.negocio?.horarios?.length ?? 0) > 0 && (
+                <p className="text-neutral-400 text-xs mb-2.5 mt-0.5">
+                  🕐 {ctx.negocio.horarios!.map(h => h.desde === h.hasta ? 'Abierto las 24 h' : `${h.desde} a ${h.hasta}`).join(' · ')}
+                </p>
+              )}
+              {(!ctx || (ctx.negocio?.horarios?.length ?? 0) === 0) && <div className="mb-2" />}
               {ctx === null ? (
                 <p className="text-neutral-300 text-sm py-1">No disponible por el momento</p>
               ) : canales.length === 0 ? (
