@@ -40,12 +40,38 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const empresaSlug = searchParams.get('empresa')
   const sucursalSlug = searchParams.get('sucursal')
-  if (!empresaSlug || !sucursalSlug) return NextResponse.json({ error: 'Faltan parámetros' }, { status: 400 })
+  if (!empresaSlug) return NextResponse.json({ error: 'Faltan parámetros' }, { status: 400 })
 
   const supabase = createAdminClient()
   const { data: empresa } = await supabase.from('empresas')
     .select('id, nombre, slug').eq('slug', empresaSlug).maybeSingle()
   if (!empresa) return NextResponse.json({ error: 'Local no encontrado' }, { status: 404 })
+
+  // ══ ALCANCE EMPRESA (QR de empresa, JC 13/10): sin ?sucursal= esta capa
+  // LISTA las sucursales activas para que el cliente elija — mismo gate
+  // entrada_unificada, cero lógica de canal (eso sigue viviendo por sucursal).
+  if (!sucursalSlug) {
+    const [{ data: cfgE }, { data: sucs }] = await Promise.all([
+      supabase.from('empresa_config')
+        .select('primary_color, secondary_color, logo_url, entrada_unificada')
+        .eq('empresa_id', empresa.id).maybeSingle(),
+      supabase.from('sucursales')
+        .select('nombre, slug, direccion')
+        .eq('empresa_id', empresa.id).eq('activo', true).order('nombre'),
+    ])
+    if (cfgE?.entrada_unificada !== true) {
+      return NextResponse.json({ error: 'No disponible' }, { status: 404 })
+    }
+    return NextResponse.json({
+      nombre: empresa.nombre,
+      config: {
+        primary_color: cfgE?.primary_color ?? '#1E3A5F',
+        secondary_color: cfgE?.secondary_color ?? '#F5C842',
+        logo_url: cfgE?.logo_url ?? null,
+      },
+      sucursales: (sucs ?? []).map(s => ({ nombre: s.nombre, slug: s.slug, direccion: s.direccion ?? null, url: `/${empresa.slug}/pedidos/${s.slug}` })),
+    })
+  }
 
   const [{ data: cfg }, { data: sucursal }] = await Promise.all([
     supabase.from('empresa_config')

@@ -86,6 +86,10 @@ export function estaAbierto(
       const [hah, ham] = hasta.split(':').map(Number)
       const minDesde = dh * 60 + dm
       const finCrudo = hah * 60 + ham
+      // FIX 13/10 (JC, caso real: 00:00→00:00 cargado como "todo el día"):
+      // desde == hasta = vuelta completa = 24 h. Antes era una franja de
+      // CERO minutos y el negocio quedaba "cerrado, abre a las 00:00".
+      if (finCrudo === minDesde) return true
       const cruza = finCrudo < minDesde // 18:00→02:00 (y 00:00 cuenta como cruce)
       const minHasta = cruza ? (finCrudo + tol) % 1440 : Math.min(finCrudo + tol, 1439)
       return cruza ? minActual >= minDesde : (minActual >= minDesde && minActual <= minHasta)
@@ -100,6 +104,7 @@ export function estaAbierto(
       const [hah, ham] = hasta.split(':').map(Number)
       const minDesde = dh * 60 + dm
       const finCrudo = hah * 60 + ham
+      if (finCrudo === minDesde) return true // 24 h: la jornada de ayer cubre toda la madrugada
       const cruza = finCrudo < minDesde
       if (!cruza) return false
       const minHasta = (finCrudo + tol) % 1440
