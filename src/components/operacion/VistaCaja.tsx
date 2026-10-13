@@ -660,8 +660,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     // hasta que el cadete entrega — recién ahí la plata existe.
     const cobrados = lista.filter(p => p.estado !== 'PENDING_PAYMENT' && p.estado !== 'CANCELLED' && p.pagado !== false)
     const sum = (arr: Pedido[], f: (p: Pedido) => number) => arr.reduce((a, p) => a + f(p), 0)
+    // PR-DM: la plata que EXISTE es total - descuento_cobro (0 en casi todos)
+    const neto = (p: Pedido) => Number(p.total) - Number(p.descuento_cobro ?? 0)
     const envios = sum(cobrados, p => Number(p.costo_envio ?? 0))
-    const total = sum(cobrados, p => Number(p.total))
+    const total = sum(cobrados, neto)
     const kiosk = cobrados.filter(p => p.tipo_pedido !== 'delivery' && p.tipo_pedido !== 'mesa' && p.tipo_pedido !== 'takeaway' && p.tipo_pedido !== 'caja')
     const takeaway = cobrados.filter(p => p.tipo_pedido === 'takeaway')
     const delivery = cobrados.filter(p => p.tipo_pedido === 'delivery')
@@ -672,15 +674,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       total,
       productos: total - envios,
       envios,
-      kiosk: sum(kiosk, p => Number(p.total)),
-      deliveryProductos: sum(delivery, p => Number(p.total) - Number(p.costo_envio ?? 0)),
-      mesa: sum(mesa, p => Number(p.total)),
+      kiosk: sum(kiosk, neto),
+      deliveryProductos: sum(delivery, p => neto(p) - Number(p.costo_envio ?? 0)),
+      mesa: sum(mesa, neto),
       kioskCant: kiosk.length,
       deliveryCant: delivery.length,
       mesaCant: mesa.length,
-      takeaway: sum(takeaway, p => Number(p.total)),
+      takeaway: sum(takeaway, neto),
       takeawayCant: takeaway.length,
-      caja: sum(caja, p => Number(p.total)),
+      caja: sum(caja, neto),
       cajaCant: caja.length,
       mesaPorCobrar: sum(lista.filter(p => p.numero_mesa != null && p.pagado === false), p => Number(p.total)),
       ...(() => {
@@ -691,7 +693,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           if (p.pedido_pagos && p.pedido_pagos.length > 0) {
             for (const pg of p.pedido_pagos) por[pg.metodo] = (por[pg.metodo] ?? 0) + Number(pg.monto)
           } else if (p.metodo_pago && por[p.metodo_pago] !== undefined) {
-            por[p.metodo_pago] += Number(p.total)
+            por[p.metodo_pago] += neto(p)
           }
         }
         return { efectivo: por.efectivo, transferencia: por.transferencia, mp: por.mp, debito: por.debito, credito: por.credito }
@@ -898,7 +900,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
               <div className="w-64 border-r border-neutral-100 flex flex-col overflow-hidden bg-white">
                 {/* Resumen del día */}
                 {historialPedidos.length > 0 && (() => {
-                  const ef = historialPedidos.filter(p => p.metodo_pago === 'efectivo').reduce((a, p) => a + p.total, 0)
+                  const ef = historialPedidos.filter(p => p.metodo_pago === 'efectivo').reduce((a, p) => a + Number(p.total) - Number(p.descuento_cobro ?? 0), 0)
                   const tr = historialPedidos.filter(p => p.metodo_pago === 'transferencia').reduce((a, p) => a + p.total, 0)
                   const mp = historialPedidos.filter(p => p.metodo_pago === 'mp').reduce((a, p) => a + p.total, 0)
                   const total = ef + tr + mp

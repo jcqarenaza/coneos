@@ -319,7 +319,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   const subtotal = carrito.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
   const total = subtotal + (esDelivery ? Number(costoEnvio) : 0)
   // PR-DM: leyenda del descuento efectivo (solo mostrador; el server lo persiste)
-  const descEfectivo = !esDelivery && metodoPago === 'efectivo' && descEfPct > 0 ? Math.round(total * descEfPct / 100) : 0
+  const descEfectivo = !esDelivery && metodoPago === 'efectivo' && descEfPct > 0 ? Math.floor(total * descEfPct / 100) : 0
   const deliveryValido = !esDelivery || (datosDelivery.nombre.trim() && datosDelivery.telefono.trim() && datosDelivery.direccion.trim())
 
   async function confirmarPedido() {

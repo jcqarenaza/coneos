@@ -412,7 +412,7 @@ export async function POST(request: Request) {
         if (pct > 0) {
           const { data: pedRow } = await supabase.from('pedidos').select('total').eq('id', pid).single()
           const tot = Number(pedRow?.total ?? 0)
-          const desc = Math.round(tot * pct / 100)  // redondeo al peso
+          const desc = Math.floor(tot * pct / 100)  // al peso, SIEMPRE para abajo: el descuento jamás supera el pct
           if (desc > 0) {
             await supabase.from('pedidos').update({
               descuento_cobro: desc,
