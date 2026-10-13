@@ -926,7 +926,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-neutral-400">{p.metodo_pago ?? '—'}{cuentaDe(p) ? ` · ${cuentaDe(p)}` : ''}</span>
-                        <span className="text-xs font-bold text-neutral-600">{formatPrecio(p.total)}</span>
+                        <span className="text-xs font-bold text-neutral-600">{formatPrecio(Number(p.total) - Number(p.descuento_cobro ?? 0))}</span>
                       </div>
                       {p.colaborador_nombre && <p className="text-xs text-neutral-400 mt-0.5">{emojiCadete(p.colaborador_id)} {p.colaborador_nombre}</p>}
                     </button>
@@ -1038,7 +1038,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                           #{p.numero_pedido}{p.nombre_cliente ? ` — ${p.nombre_cliente}` : ''}
                           {p.pagado !== false && <span className="text-xs ml-1.5">({p.metodo_pago === 'mp' ? 'MP' : p.metodo_pago ?? 'pagado'})</span>}
                         </span>
-                        <span className={p.pagado === false ? 'font-bold text-neutral-800' : 'text-neutral-400'}>{formatPrecio(Number(p.total))}</span>
+                        <span className={p.pagado === false ? 'font-bold text-neutral-800' : 'text-neutral-400'}>{formatPrecio(Number(p.total) - Number(p.descuento_cobro ?? 0))}</span>
                       </div>
                     ))}
                   </div>
@@ -1285,13 +1285,13 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     </div>
                   )}
                   <div className="px-4 py-3 bg-neutral-50 border-t border-neutral-100 flex justify-between">
-                    <span className="text-neutral-500 font-medium">Total</span>
-                    <span className="text-neutral-900 font-black text-lg">{formatPrecio(seleccionado.total)}</span>
+                    <span className="text-neutral-500 font-medium">{Number(seleccionado.descuento_cobro ?? 0) > 0 ? 'Total cobrado' : 'Total'}</span>
+                    <span className="text-neutral-900 font-black text-lg">{formatPrecio(Number(seleccionado.total) - Number(seleccionado.descuento_cobro ?? 0))}</span>
                   </div>
                   {Number(seleccionado.descuento_cobro ?? 0) > 0 && (
                   <div className="flex items-center justify-between mt-1">
                     <span className="text-green-600 text-xs font-semibold">💵 {seleccionado.descuento_cobro_detalle ?? 'Descuento'}</span>
-                    <span className="text-green-600 font-bold">−{formatPrecio(Number(seleccionado.descuento_cobro))} → cobrado {formatPrecio(Number(seleccionado.total) - Number(seleccionado.descuento_cobro))}</span>
+                    <span className="text-green-600 font-bold">{formatPrecio(Number(seleccionado.total))} −{formatPrecio(Number(seleccionado.descuento_cobro))}</span>
                   </div>
                   )}
                 </div>
