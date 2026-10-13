@@ -10,7 +10,8 @@
 // Se RETIRAN de esta pantalla (solo la tarjeta; las RUTAS siguen vivas y
 // funcionando — /delivery/{sucursal} también la usan los dispositivos
 // DELIVERY vinculados con ?token=): Delivery directo, Take Away directo.
-// El QR de CADETES se muestra ahora en Equipo → Colaboradores.
+// El QR de CADETES SE QUEDA en esta pantalla (JC: no mezclar Colaboradores con QR),
+// aparte, en "Equipo interno" — Colaboradores NO cambia.
 // REGLAS DEL CICLO:
 //  - Sin tabla nueva: el QR público ES una URL estable dibujada
 //  - COMPLETAMENTE separado del QR-token de dispositivos (operación)
@@ -29,6 +30,9 @@ interface Sucursal { id: string; nombre: string; slug: string }
 
 // QR PRINCIPAL: toda la empresa (un solo acceso destacado para clientes)
 const DESTINO_EMPRESA = { id: 'app-empresa', emoji: '📱', titulo: 'App de pedidos', desc: 'Un solo QR para toda la empresa: el cliente elige sucursal y canal (Delivery o Take Away) y ve los horarios. Con una sola sucursal entra directo. Es el que se recomienda imprimir.', path: 'pedidos-empresa' }
+// REPARTO V1: entrada de los CADETES (no de clientes) — aparece solo con el
+// módulo reparto prendido. URL estable, login (nombre + PIN) adentro.
+const DESTINO_REPARTO = { id: 'reparto', emoji: '🛵', titulo: 'App de cadetes', desc: 'Solo para tus repartidores: entran con su nombre y PIN, ven sus entregas y comparten ubicación.', path: 'reparto' }
 // OPCIÓN SECUNDARIA: una sola sucursal (dentro de "Otros accesos")
 const DESTINO_SUCURSAL = { id: 'app', emoji: '📱', titulo: 'App de pedidos — una sucursal', desc: 'Para un cartel o un local puntual: entra a la App de esa sucursal.', path: 'pedidos' }
 
@@ -47,6 +51,7 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
   const [qrs, setQrs] = useState<Record<string, string>>({})
   const [copiado, setCopiado] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
+  const [moduloReparto, setModuloReparto] = useState(false)
   const [moduloMesas, setModuloMesas] = useState(false)
 
   useEffect(() => {
@@ -60,6 +65,7 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
       if (lista.length > 0) setSucursalSel(lista.find(s => s.id === sucursalId) ?? lista[0])
       setAppEncendida(cfg?.entrada_unificada === true)
       setModuloMesas(((cfg?.modulos ?? {}) as Record<string, boolean>).mesas === true)
+      setModuloReparto(((cfg?.modulos ?? {}) as Record<string, boolean>).reparto === true)
       setCargando(false)
     })
   }, [ctx?.empresaId, supabase])
@@ -75,7 +81,7 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
     return `https://coneos.com.ar/${ctx.empresaSlug}/${path}/${sucursalSel.slug}`
   }
 
-  const destinos = [DESTINO_EMPRESA, ...(sucursalSel ? [DESTINO_SUCURSAL] : [])]
+  const destinos = [DESTINO_EMPRESA, ...(sucursalSel ? [DESTINO_SUCURSAL] : []), ...(sucursalSel && moduloReparto ? [DESTINO_REPARTO] : [])]
 
   // Dibujar los QRs cada vez que cambia la sucursal (o el set de destinos)
   useEffect(() => {
@@ -87,7 +93,7 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
     )).then(pares => { if (vivo) setQrs(Object.fromEntries(pares)) })
     return () => { vivo = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sucursalSel, ctx])
+  }, [sucursalSel, ctx, moduloReparto])
 
   async function copiar(id: string, url: string) {
     try { await navigator.clipboard.writeText(url); setCopiado(id); setTimeout(() => setCopiado(null), 1800) } catch {}
@@ -164,19 +170,31 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
       {/* ═══ QR PRINCIPAL — un solo acceso destacado para clientes ═══ */}
       <div className="max-w-md">{tarjeta(DESTINO_EMPRESA)}</div>
 
+      {!sucursalId && sucursales.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-neutral-400">Sucursal para los accesos de abajo:</span>
+          <select value={sucursalSel?.id ?? ''} onChange={e => setSucursalSel(sucursales.find(s => s.id === e.target.value) ?? null)}
+            className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
+            {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          </select>
+        </div>
+      )}
+
       {/* ═══ OTROS ACCESOS — opción secundaria, colapsado ═══ */}
       <details className="group rounded-2xl border border-neutral-100 bg-white">
         <summary className="cursor-pointer select-none px-5 py-3 text-sm font-bold text-neutral-600 hover:text-neutral-800">Otros accesos — QR de una sola sucursal</summary>
-        <div className="px-5 pb-5 space-y-4">
-          {!sucursalId && sucursales.length > 1 && (
-            <select value={sucursalSel?.id ?? ''} onChange={e => setSucursalSel(sucursales.find(s => s.id === e.target.value) ?? null)}
-              className="px-3 py-2 rounded-xl border border-neutral-200 text-sm font-semibold bg-white text-neutral-700">
-              {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-          )}
+        <div className="px-5 pb-5">
           {sucursalSel && <div className="max-w-md">{tarjeta(DESTINO_SUCURSAL)}</div>}
         </div>
       </details>
+
+      {/* ═══ EQUIPO INTERNO — cadetes (solo con el módulo reparto) ═══ */}
+      {moduloReparto && sucursalSel && (
+        <div>
+          <p className="font-bold text-neutral-800 mb-2">👥 Equipo interno</p>
+          <div className="max-w-md">{tarjeta(DESTINO_REPARTO)}</div>
+        </div>
+      )}
 
       {/* ═══ MESAS — otra entrada pública más (generador mudado de Admin→Mesas;
           la llave "Recibir pedidos de mesa" sigue en su página) ═══ */}
@@ -187,7 +205,7 @@ export default function QrAccesosTab({ sucursalId }: { sucursalId?: string } = {
         </div>
       )}
 
-      <p className="text-xs text-neutral-400">💡 Todo lo de esta página es <b>entrada pública</b>: URL estable de producción, sin token — cambiar horarios, servicios o la UI de la App jamás invalida un QR impreso. Los QR para <b>vincular equipos</b> (kiosk, caja, delivery) viven en el tab <b>🔧 Dispositivos</b>: llevan la llave del equipo y no se reparten a clientes. El acceso de los <b>cadetes</b> está en <b>Equipo → Colaboradores</b>.</p>
+      <p className="text-xs text-neutral-400">💡 Todo lo de esta página es <b>entrada pública</b>: URL estable de producción, sin token — cambiar horarios, servicios o la UI de la App jamás invalida un QR impreso. Los QR para <b>vincular equipos</b> (kiosk, caja, delivery) viven en el tab <b>🔧 Dispositivos</b>: llevan la llave del equipo y no se reparten a clientes. Los cadetes se administran (PIN, sucursal) en <b>Equipo → Colaboradores</b>.</p>
     </div>
   )
 }

@@ -7,8 +7,7 @@ import { useEmpresa } from '@/lib/useEmpresa'
 import { ConeButton, ConeModal } from '@/components/admin/ConeComponents'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Loader2, Pencil, Link2, Check, QrCode, Download, Printer } from 'lucide-react'
-import QRCode from 'qrcode'
+import { Plus, Loader2, Pencil, Link2, Check } from 'lucide-react'
 
 // REPARTO V1: el cadete gana PUERTA — sucursal (null = todas) + PIN de 4
 // dígitos hasheado en Postgres (RPC set_pin_colaborador, mismo bcrypt que
@@ -36,9 +35,6 @@ export default function ColaboradoresTab() {
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [saving, setSaving] = useState(false)
   const [copiado, setCopiado] = useState<string | null>(null)
-  // QR de la app del cadete (mismo link que el botón copiar, dibujado). Dominio
-  // CANÓNICO de producción: el QR se imprime/comparte, no debe apuntar a un preview.
-  const [qrCadete, setQrCadete] = useState<{ nombre: string; url: string; png: string } | null>(null)
 
   // REPARTO V1: link de la app del cadete — [host]/[slug]/reparto/[sucursal]
   // El slug sale del pathname del admin (/[empresa]/admin/...). Cadete "Todas
@@ -54,35 +50,6 @@ export default function ColaboradoresTab() {
     if (!link) { avisar('No hay sucursal para armar el link.'); return }
     try { await navigator.clipboard.writeText(link) } catch { avisar('No se pudo copiar automáticamente. Copiá el link a mano:\n\n' + link, { titulo: 'Link de la app de reparto' }); return }
     setCopiado(row.id); setTimeout(() => setCopiado(null), 2000)
-  }
-
-  async function verQr(row: Colaborador) {
-    const link = linkReparto(row)
-    if (!link) { avisar('No hay sucursal para armar el link.'); return }
-    const url = link.replace(window.location.origin, 'https://coneos.com.ar')
-    try {
-      const png = await QRCode.toDataURL(url, { width: 640, margin: 2, color: { dark: '#1a1a1a', light: '#ffffff' } })
-      setQrCadete({ nombre: row.nombre, url, png })
-    } catch { avisar('No se pudo generar el QR.') }
-  }
-  function descargarQrCadete() {
-    if (!qrCadete) return
-    const a = document.createElement('a')
-    a.href = qrCadete.png
-    a.download = `qr-reparto-${qrCadete.nombre.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`
-    a.click()
-  }
-  function imprimirQrCadete() {
-    if (!qrCadete) return
-    const w = window.open('', '_blank'); if (!w) return
-    w.document.write(`<!doctype html><html><head><title>QR App de cadetes</title></head>
-      <body style="margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;background:#fff">
-        <img src="${qrCadete.png}" style="width:70vmin;height:70vmin" />
-        <p style="font-size:22px;font-weight:800;margin:8px 0 0">🛵 App de cadetes</p>
-        <p style="font-size:14px;color:#888;margin:4px 0 0">Entrá con tu nombre y PIN</p>
-        <script>window.onload = () => setTimeout(() => window.print(), 300)</script>
-      </body></html>`)
-    w.document.close()
   }
 
   async function load() {
@@ -198,31 +165,11 @@ export default function ColaboradoresTab() {
                   {copiado === row.id ? <Check className="h-4 w-4 text-green-600" /> : <Link2 className="h-4 w-4" />}
                 </button>
               )}
-              {row.rol === 'cadete' && (
-                <button onClick={() => verQr(row)} title="Ver QR de la app de reparto (para que el cadete lo escanee)"
-                  className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors">
-                  <QrCode className="h-4 w-4" />
-                </button>
-              )}
               <button onClick={() => openEdit(row)} className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors"><Pencil className="h-4 w-4" /></button>
             </div>
           </div>
         ))}
       </div>
-      <ConeModal open={!!qrCadete} onClose={() => setQrCadete(null)} title="🛵 App de cadetes — QR"
-        footer={<ConeButton variant="outline" onClick={() => setQrCadete(null)}>Cerrar</ConeButton>}>
-        {qrCadete && (
-          <div className="text-center space-y-3">
-            <p className="text-xs text-neutral-400">Solo para tus repartidores: escanean, eligen su nombre y entran con su PIN. Es el mismo link del botón copiar.</p>
-            <div className="flex justify-center"><img src={qrCadete.png} alt="QR App de cadetes" className="w-48 h-48 rounded-xl border border-neutral-100" /></div>
-            <p className="text-[11px] text-neutral-400 break-all bg-neutral-50 border border-neutral-100 rounded-lg px-2 py-1.5">{qrCadete.url}</p>
-            <div className="flex justify-center gap-2">
-              <button onClick={descargarQrCadete} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-200 text-xs font-bold text-neutral-600 hover:border-neutral-400 transition-colors"><Download className="h-3.5 w-3.5" /> PNG</button>
-              <button onClick={imprimirQrCadete} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-200 text-xs font-bold text-neutral-600 hover:border-neutral-400 transition-colors"><Printer className="h-3.5 w-3.5" /> Imprimir</button>
-            </div>
-          </div>
-        )}
-      </ConeModal>
       <ConeModal open={modal} onClose={() => setModal(false)} title={editId ? 'Editar colaborador' : 'Nuevo colaborador'}
         footer={<><ConeButton variant="outline" onClick={() => setModal(false)}>Cancelar</ConeButton><ConeButton onClick={handleSave} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">
