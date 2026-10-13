@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   const supabase = createAdminClient()
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select('estado, metodo_pago, pagado, total, notas, empresa_id, sucursal_id, mp_credencial_id')
+    .select('estado, metodo_pago, pagado, total, notas, empresa_id, sucursal_id, mp_credencial_id, descuento_cobro')
     .eq('id', pedido_id)
     .single()
   if (!pedido) {
@@ -108,6 +108,11 @@ export async function POST(request: Request) {
       detalle_facturable: String(receptor.detalle_facturable ?? '').trim() || null,
     }).eq('id', pedido_id)
   }
+
+  // PR-DM: el descuento efectivo es SOLO de la venta de mostrador (se aplica
+  // en /api/pedidos al nacer cobrada). El cobro diferido (delivery telefónica,
+  // etc.) queda a precio pleno: el cadete cobra lo que dice el pedido — aplicar
+  // descuento acá crearía diferencia entre la puerta y el registro. V2 si hace falta.
 
   // ══ 9c — TRANSICIÓN OPERATIVA CENTRAL ══
   // "Pago confirmado = habilitado para preparación. PREPARING es el único

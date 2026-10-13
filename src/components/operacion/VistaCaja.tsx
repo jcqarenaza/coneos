@@ -12,7 +12,7 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; combo_ref?: string | null; promo_nombre_snap?: string | null; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string; emoji_reparto?: string | null }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; ticket_impreso_at?: string | null; updated_at?: string; facturas?: { estado: string }[]; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; descuento_cobro?: number | null; descuento_cobro_detalle?: string | null; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; ticket_impreso_at?: string | null; updated_at?: string; facturas?: { estado: string }[]; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -200,7 +200,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   // el inicio si nunca hubo) — turnos sin cerrar se ACUMULAN, jamás se inventan
   // cierres. V1: el corte filtra por nacimiento del pedido (created_at); el
   // timestamp exacto de cobro llega con 1.b (extracciones/cuadre por tramo).
-  const [pedidosCierre, setPedidosCierre] = useState<{ total: number; metodo_pago: string | null }[]>([])
+  const [pedidosCierre, setPedidosCierre] = useState<{ total: number; metodo_pago: string | null; descuento_cobro?: number | null }[]>([])
   const [desdeCorte, setDesdeCorte] = useState<string | null>(null)
   const [cargandoCierre, setCargandoCierre] = useState(false)
   async function abrirCierre() {
@@ -210,15 +210,16 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       .eq('sucursal_id', dispositivo.sucursal_id).order('created_at', { ascending: false }).limit(1).maybeSingle()
     const corte = ult?.created_at ?? null
     setDesdeCorte(corte)
-    let q = sb.from('pedidos').select('total, metodo_pago')
+    let q = sb.from('pedidos').select('total, metodo_pago, descuento_cobro')
       .eq('sucursal_id', dispositivo.sucursal_id)
       .in('estado', ['PAID', 'PREPARING', 'READY', 'DELIVERED'])
     if (corte) q = q.gt('created_at', corte)
     const { data } = await q
-    setPedidosCierre((data ?? []) as { total: number; metodo_pago: string | null }[])
+    setPedidosCierre((data ?? []) as { total: number; metodo_pago: string | null; descuento_cobro?: number | null }[])
     setCargandoCierre(false)
   }
-  const totalSistema = (met: string) => pedidosCierre.filter(p => p.metodo_pago === met).reduce((a, p) => a + Number(p.total), 0)
+  // PR-DM: el sistema cuenta lo COBRADO — total menos descuento (0 en casi todos)
+  const totalSistema = (met: string) => pedidosCierre.filter(p => p.metodo_pago === met).reduce((a, p) => a + Number(p.total) - Number(p.descuento_cobro ?? 0), 0)
   async function guardarCierre() {
     setGuardandoCierre(true)
     const sistema: Record<string, number> = {}
@@ -659,8 +660,10 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     // hasta que el cadete entrega — recién ahí la plata existe.
     const cobrados = lista.filter(p => p.estado !== 'PENDING_PAYMENT' && p.estado !== 'CANCELLED' && p.pagado !== false)
     const sum = (arr: Pedido[], f: (p: Pedido) => number) => arr.reduce((a, p) => a + f(p), 0)
+    // PR-DM: la plata que EXISTE es total - descuento_cobro (0 en casi todos)
+    const neto = (p: Pedido) => Number(p.total) - Number(p.descuento_cobro ?? 0)
     const envios = sum(cobrados, p => Number(p.costo_envio ?? 0))
-    const total = sum(cobrados, p => Number(p.total))
+    const total = sum(cobrados, neto)
     const kiosk = cobrados.filter(p => p.tipo_pedido !== 'delivery' && p.tipo_pedido !== 'mesa' && p.tipo_pedido !== 'takeaway' && p.tipo_pedido !== 'caja')
     const takeaway = cobrados.filter(p => p.tipo_pedido === 'takeaway')
     const delivery = cobrados.filter(p => p.tipo_pedido === 'delivery')
@@ -671,15 +674,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
       total,
       productos: total - envios,
       envios,
-      kiosk: sum(kiosk, p => Number(p.total)),
-      deliveryProductos: sum(delivery, p => Number(p.total) - Number(p.costo_envio ?? 0)),
-      mesa: sum(mesa, p => Number(p.total)),
+      kiosk: sum(kiosk, neto),
+      deliveryProductos: sum(delivery, p => neto(p) - Number(p.costo_envio ?? 0)),
+      mesa: sum(mesa, neto),
       kioskCant: kiosk.length,
       deliveryCant: delivery.length,
       mesaCant: mesa.length,
-      takeaway: sum(takeaway, p => Number(p.total)),
+      takeaway: sum(takeaway, neto),
       takeawayCant: takeaway.length,
-      caja: sum(caja, p => Number(p.total)),
+      caja: sum(caja, neto),
       cajaCant: caja.length,
       mesaPorCobrar: sum(lista.filter(p => p.numero_mesa != null && p.pagado === false), p => Number(p.total)),
       ...(() => {
@@ -690,7 +693,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
           if (p.pedido_pagos && p.pedido_pagos.length > 0) {
             for (const pg of p.pedido_pagos) por[pg.metodo] = (por[pg.metodo] ?? 0) + Number(pg.monto)
           } else if (p.metodo_pago && por[p.metodo_pago] !== undefined) {
-            por[p.metodo_pago] += Number(p.total)
+            por[p.metodo_pago] += neto(p)
           }
         }
         return { efectivo: por.efectivo, transferencia: por.transferencia, mp: por.mp, debito: por.debito, credito: por.credito }
@@ -897,7 +900,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
               <div className="w-64 border-r border-neutral-100 flex flex-col overflow-hidden bg-white">
                 {/* Resumen del día */}
                 {historialPedidos.length > 0 && (() => {
-                  const ef = historialPedidos.filter(p => p.metodo_pago === 'efectivo').reduce((a, p) => a + p.total, 0)
+                  const ef = historialPedidos.filter(p => p.metodo_pago === 'efectivo').reduce((a, p) => a + Number(p.total) - Number(p.descuento_cobro ?? 0), 0)
                   const tr = historialPedidos.filter(p => p.metodo_pago === 'transferencia').reduce((a, p) => a + p.total, 0)
                   const mp = historialPedidos.filter(p => p.metodo_pago === 'mp').reduce((a, p) => a + p.total, 0)
                   const total = ef + tr + mp
@@ -1285,6 +1288,12 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <span className="text-neutral-500 font-medium">Total</span>
                     <span className="text-neutral-900 font-black text-lg">{formatPrecio(seleccionado.total)}</span>
                   </div>
+                  {Number(seleccionado.descuento_cobro ?? 0) > 0 && (
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-green-600 text-xs font-semibold">💵 {seleccionado.descuento_cobro_detalle ?? 'Descuento'}</span>
+                    <span className="text-green-600 font-bold">−{formatPrecio(Number(seleccionado.descuento_cobro))} → cobrado {formatPrecio(Number(seleccionado.total) - Number(seleccionado.descuento_cobro))}</span>
+                  </div>
+                  )}
                 </div>
 
                 {seleccionado.notas && seleccionado.notas.startsWith('Comprobante:') ? (

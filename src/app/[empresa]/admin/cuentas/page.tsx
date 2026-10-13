@@ -116,6 +116,26 @@ export default function CuentasPage() {
 
   useEffect(() => { if (ctx) cargar(sucursalSel || undefined) }, [ctx, sucursalSel, cargar])
 
+  // ── PR-DM: descuento por pago en efectivo (empresa_config, una llave) ──
+  const [descEfPct, setDescEfPct] = useState<string>('')
+  const [descEfGuardando, setDescEfGuardando] = useState(false)
+  useEffect(() => {
+    if (!ctx) return
+    createClient().from('empresa_config').select('descuento_efectivo_pct').eq('empresa_id', ctx.empresaId).maybeSingle()
+      .then(({ data }) => setDescEfPct(String(Number(data?.descuento_efectivo_pct ?? 0))))
+  }, [ctx])
+  async function guardarDescEf() {
+    if (!ctx) return
+    const pct = Number(descEfPct)
+    if (!Number.isFinite(pct) || pct < 0 || pct >= 100) { setError('El descuento debe ser un número entre 0 y 99.'); return }
+    setDescEfGuardando(true); setError(null)
+    const { error: e } = await createClient().from('empresa_config')
+      .update({ descuento_efectivo_pct: pct }).eq('empresa_id', ctx.empresaId)
+    setDescEfGuardando(false)
+    if (e) setError('No se pudo guardar el descuento: ' + e.message)
+    else { setAviso(pct > 0 ? `Descuento efectivo ${pct}% activado` : 'Descuento efectivo desactivado'); setTimeout(() => setAviso(null), 2500) }
+  }
+
   async function accion(payload: Record<string, unknown>, ok?: string) {
     setGuardando(true)
     setError(null)
@@ -259,6 +279,23 @@ export default function CuentasPage() {
   return (
     <div className="space-y-5">
       <ConePageHeader title="💳 Cuentas y cobros" subtitle="Cuentas de Mercado Pago y transferencia, y qué cuenta cobra cada canal" />
+
+      {/* PR-DM: descuento por pago en efectivo — SOLO venta de mostrador */}
+      <ConeCard>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <p className="font-bold text-neutral-800">💵 Descuento por pago en efectivo</p>
+            <p className="text-xs text-neutral-400 mt-0.5 max-w-md">Se aplica solo en la venta de mostrador (caja) pagada en efectivo. 0 = sin descuento. El ticket, el cierre de caja y la factura reflejan lo cobrado.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Input type="number" min={0} max={99} value={descEfPct} onChange={e => setDescEfPct(e.target.value)} className="w-24 pr-7 text-right font-bold" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 text-sm font-bold">%</span>
+            </div>
+            <ConeButton onClick={guardarDescEf} loading={descEfGuardando}>Guardar</ConeButton>
+          </div>
+        </div>
+      </ConeCard>
 
       {error && <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700 font-medium">{error}</div>}
       {/* toast flotante: no participa del layout — el guardado no hace saltar la grilla */}

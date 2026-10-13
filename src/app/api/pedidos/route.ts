@@ -397,6 +397,35 @@ export async function POST(request: Request) {
     }
   }
 
+  // ── PR-DM (GO CTO 13/10, B5-a): DESCUENTO EFECTIVO EN CAJA ──
+  // Server-authoritative: el pct vive en empresa_config; el browser solo
+  // muestra. Se aplica SOLO al cobro de mostrador en efectivo. El total y
+  // los items quedan intactos (el descuento es un dato del COBRO).
+  // Corre ANTES del hook de facturación: la Edge factura total - descuento.
+  if (venta_caja && tipo_pedido !== 'delivery' && metodo_pago === 'efectivo') {
+    try {
+      const pid = (pedido as { id?: string })?.id
+      if (pid) {
+        const { data: cfgDm } = await supabase.from('empresa_config')
+          .select('descuento_efectivo_pct').eq('empresa_id', empresa_id).maybeSingle()
+        const pct = Number(cfgDm?.descuento_efectivo_pct ?? 0)
+        if (pct > 0) {
+          const { data: pedRow } = await supabase.from('pedidos').select('total').eq('id', pid).single()
+          const tot = Number(pedRow?.total ?? 0)
+          const desc = Math.floor(tot * pct / 100)  // al peso, SIEMPRE para abajo: el descuento jamás supera el pct
+          if (desc > 0) {
+            await supabase.from('pedidos').update({
+              descuento_cobro: desc,
+              descuento_cobro_detalle: `Efectivo ${pct}%`,
+            }).eq('id', pid)
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[pedidos] descuento efectivo no aplicado (pedido intacto):', e)
+    }
+  }
+
   // ── 9c — VENTA MANUAL: facturación al nacer (mismo hook, reubicado) ──
   if (venta_caja && tipo_pedido !== 'delivery') {
     const pid = (pedido as { id?: string })?.id

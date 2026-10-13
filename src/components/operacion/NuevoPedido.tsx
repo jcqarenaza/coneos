@@ -59,6 +59,21 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   const [credsMp, setCredsMp] = useState<{ id: string; nombre: string }[]>([])
   const [ctaSel, setCtaSel] = useState<string | null>(null)
   const [credSel, setCredSel] = useState<string | null>(null)
+  // PR-DM: % de descuento por pago en efectivo (0 = sin descuento, nada visible).
+  // La leyenda se refresca al volver a la pestaña (patrón "al despertar"); la
+  // AUTORIDAD siempre es el server al confirmar, con el pct vigente.
+  const [descEfPct, setDescEfPct] = useState(0)
+  useEffect(() => {
+    async function refrescarPct() {
+      try {
+        const r = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivo.id, accion: 'cuentas_cobro' }) })
+        if (r.ok) { const d = await r.json(); setDescEfPct(Number(d.descuento_efectivo_pct ?? 0)) }
+      } catch {}
+    }
+    const alVolver = () => { if (document.visibilityState === 'visible') refrescarPct() }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => document.removeEventListener('visibilitychange', alVolver)
+  }, [dispositivo])
   const [notas, setNotas] = useState('')
 
   // Delivery telefónico
@@ -110,6 +125,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
           setCredsMp(dc.credenciales_mp ?? [])
           setCtaSel(dc.default_transferencia ?? (dc.transferencias?.[0]?.id ?? null))
           setCredSel(dc.default_mp ?? (dc.credenciales_mp?.[0]?.id ?? null))
+          setDescEfPct(Number(dc.descuento_efectivo_pct ?? 0))  // PR-DM: solo leyenda — la autoridad es el server
         }
       } catch {}
       setLoading(false)
@@ -315,6 +331,8 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
 
   const subtotal = carrito.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
   const total = subtotal + (esDelivery ? Number(costoEnvio) : 0)
+  // PR-DM: leyenda del descuento efectivo (solo mostrador; el server lo persiste)
+  const descEfectivo = !esDelivery && metodoPago === 'efectivo' && descEfPct > 0 ? Math.floor(total * descEfPct / 100) : 0
   const deliveryValido = !esDelivery || (datosDelivery.nombre.trim() && datosDelivery.telefono.trim() && datosDelivery.direccion.trim())
 
   async function confirmarPedido() {
@@ -638,6 +656,12 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
               <span className="text-neutral-400 text-sm">Total</span>
               <span className="text-neutral-800 font-black text-xl">{formatPrecio(total)}</span>
             </div>
+            {descEfectivo > 0 && (
+            <div className="flex items-center justify-between -mt-1 mb-1">
+              <span className="text-green-600 text-xs font-semibold">💵 Descuento efectivo {descEfPct}%</span>
+              <span className="text-green-600 text-sm font-bold">−{formatPrecio(descEfectivo)} → a cobrar {formatPrecio(total - descEfectivo)}</span>
+            </div>
+            )}
             {error && <p className="text-red-500 text-xs">{error}</p>}
             <button onClick={confirmarPedido} disabled={guardando || !deliveryValido}
               className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-bold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
