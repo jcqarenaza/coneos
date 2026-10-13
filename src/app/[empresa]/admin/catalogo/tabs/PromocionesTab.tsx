@@ -5,7 +5,9 @@
 // Crea/edita promociones y sus slots con las presentaciones reales
 // que el cliente puede elegir. El precio del combo lo valida el
 // SERVER (prorrateo en /api/pedidos + grupo en crear_pedido_stock
-// v1.5.1): acá solo se define. Eliminar una promo ya vendida no se
+// v1.5.1): acá solo se define. El precio regular (tachado) NO se carga a
+// mano: sale de la suma de los precios de lista de lo que se elige en los
+// componentes (JC 13/10). El admin solo pone el precio de la promo. Eliminar una promo ya vendida no se
 // puede (FK de pedido_items): cae a desactivar.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -32,7 +34,7 @@ interface Promo {
 
 const emptyForm = () => ({
   nombre: '', descripcion: '', imagen_url: null as string | null,
-  precio: '', precio_regular: '',
+  precio: '',
   vigencia_desde: '', vigencia_hasta: '',
   visible_kiosk: true, visible_delivery: true, visible_mesa: true, visible_takeaway: true,
   es_novedad: false, activo: true,
@@ -105,7 +107,7 @@ export default function PromocionesTab() {
     setEditId(p.id)
     setForm({
       nombre: p.nombre, descripcion: p.descripcion ?? '', imagen_url: p.imagen_url,
-      precio: String(p.precio), precio_regular: p.precio_regular != null ? String(p.precio_regular) : '',
+      precio: String(p.precio),
       vigencia_desde: p.vigencia_desde ?? '', vigencia_hasta: p.vigencia_hasta ?? '',
       visible_kiosk: p.visible_kiosk, visible_delivery: p.visible_delivery, visible_mesa: p.visible_mesa, visible_takeaway: p.visible_takeaway,
       es_novedad: p.es_novedad, activo: p.activo,
@@ -123,11 +125,14 @@ export default function PromocionesTab() {
 
   async function guardar() {
     if (!ctx) return
+    const rango = rangoLista()
     const precio = Number(form.precio)
-    const precioRegular = form.precio_regular.trim() === '' ? null : Number(form.precio_regular)
+    // Tachado automático: suma de lista de los componentes (la más baja posible si
+    // hay opciones con distinto precio → jamás promete un ahorro mayor al real).
+    // Solo se muestra si de verdad hay ahorro (suma de lista > precio de la promo).
+    const precioRegular = rango && rango.min > precio ? rango.min : null
     if (!form.nombre.trim()) { avisar('Poné un nombre a la promo.'); return }
     if (!Number.isFinite(precio) || precio <= 0) { avisar('El precio del combo debe ser mayor a 0.'); return }
-    if (precioRegular != null && (!Number.isFinite(precioRegular) || precioRegular <= precio)) { avisar('El precio regular (tachado) debe ser mayor al precio de la promo.'); return }
     if (form.vigencia_desde && form.vigencia_hasta && form.vigencia_hasta < form.vigencia_desde) { avisar('La vigencia "hasta" no puede ser anterior a "desde".'); return }
     if (slots.length === 0) { avisar('El combo necesita al menos un componente.'); return }
     if (slots.some(s => s.presentacion_ids.length === 0)) { avisar('Cada componente necesita al menos una presentación permitida.'); return }
@@ -272,8 +277,10 @@ export default function PromocionesTab() {
               <Input type="number" value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))} placeholder="32000" />
             </div>
             <div>
-              <Label>Precio regular (tachado, opcional)</Label>
-              <Input type="number" value={form.precio_regular} onChange={e => setForm(f => ({ ...f, precio_regular: e.target.value }))} placeholder="40000" />
+              <Label>Precio regular (tachado, automático)</Label>
+              <div className="h-10 px-3 flex items-center rounded-md border border-neutral-200 bg-neutral-50 text-sm text-neutral-500">
+                {rango ? fmt(rango.min) : 'Elegí los componentes'}
+              </div>
             </div>
             <div>
               <Label>Vigente desde (opcional)</Label>
@@ -288,6 +295,9 @@ export default function PromocionesTab() {
           {rango && Number(form.precio) > 0 && (
             <p className="text-xs text-neutral-400 bg-neutral-50 rounded-lg px-3 py-2">
               💡 Suma de lista según lo elegido: {rango.min === rango.max ? fmt(rango.min) : `${fmt(rango.min)} a ${fmt(rango.max)}`} → el cliente paga {fmt(Number(form.precio))}.
+              {rango.min > Number(form.precio)
+                ? ` Se muestra tachado ${fmt(rango.min)} (ahorro ${fmt(rango.min - Number(form.precio))}).`
+                : ' La suma de lista no supera el precio de la promo: no se muestra tachado.'}
             </p>
           )}
 
