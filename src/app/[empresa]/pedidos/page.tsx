@@ -3,19 +3,29 @@
 // ============================================================
 // APP PÚBLICA DE PEDIDOS · ALCANCE EMPRESA · /{empresa}/pedidos
 // (JC 13/10: una empresa con 2+ sucursales no tenía QR "de la
-// empresa" — la puerta única nacía atada a la sucursal.)
-// Es un ESCALÓN ARRIBA del orquestador existente: lista las
-// sucursales activas y manda a /{empresa}/pedidos/{sucursal},
-// que sigue siendo el único que conoce canales y estados.
-//   · 1 sola sucursal → redirect directo, sin selector
-//   · 2+ → tarjetas con nombre y dirección
-//   · query string (token, desde) → passthrough PURO al destino
+// empresa". Ajuste JC 13/10 08:52: la pantalla muestra DE UNA
+// los canales de cada sucursal — nada de elegir sucursal y
+// después el modo, un paso menos.)
+// Sigue siendo entrada/orquestación: el estado de cada canal lo
+// COMPONE el agregador por sucursal existente (una llamada por
+// sucursal, misma fuente de verdad); esta página no inventa
+// ninguna regla. Click → derecho al flujo del canal.
+//   · 1 sola sucursal → redirect a /pedidos/{slug} (sin selector)
+//   · 2+ → una card por sucursal con sus canales y estados
+//   · query string (token, desde) → passthrough PURO
 // Los QR por sucursal siguen vivos e intactos (regla sagrada).
 // ============================================================
 
 import { useEffect, useState } from 'react'
 
+interface Canal { configurado: boolean; visible?: boolean; disponible: boolean; anticipado?: boolean; motivo: string | null; proximo: string | null; url: string }
 interface SucursalItem { nombre: string; slug: string; direccion: string | null; url: string }
+interface CtxSucursal {
+  sucursal_nombre: string
+  negocio: { mensaje: string | null }
+  servicios: { delivery: Canal; takeaway: Canal }
+}
+interface Fila { suc: SucursalItem; ctx: CtxSucursal | null }
 interface ContextoEmpresa {
   nombre: string
   config: { primary_color: string; secondary_color: string; logo_url: string | null }
@@ -23,7 +33,8 @@ interface ContextoEmpresa {
 }
 
 export default function EntradaEmpresaPage() {
-  const [ctx, setCtx] = useState<ContextoEmpresa | null>(null)
+  const [marca, setMarca] = useState<ContextoEmpresa | null>(null)
+  const [filas, setFilas] = useState<Fila[]>([])
   const [estado, setEstado] = useState<'cargando' | 'no-disponible' | 'selector' | 'redirigiendo'>('cargando')
 
   useEffect(() => {
@@ -37,14 +48,22 @@ export default function EntradaEmpresaPage() {
         const d = (await res.json()) as ContextoEmpresa
         const sucs = d.sucursales ?? []
         if (sucs.length === 0) { setEstado('no-disponible'); return }
-        // Passthrough puro de la query (token del puente de delivery, desde=app)
         const qs = window.location.search ?? ''
         if (sucs.length === 1) {
           setEstado('redirigiendo')
           window.location.replace(sucs[0].url + qs)
           return
         }
-        setCtx({ ...d, sucursales: sucs.map(s => ({ ...s, url: s.url + qs })) })
+        setMarca(d)
+        // Los canales de CADA sucursal, del agregador existente (fuente única)
+        const detalles = await Promise.all(sucs.map(async (s): Promise<Fila> => {
+          try {
+            const r = await fetch(`/api/pedidos-entrada/contexto?empresa=${encodeURIComponent(empresaSlug)}&sucursal=${encodeURIComponent(s.slug)}`)
+            if (!r.ok) return { suc: s, ctx: null }
+            return { suc: s, ctx: (await r.json()) as CtxSucursal }
+          } catch { return { suc: s, ctx: null } }
+        }))
+        setFilas(detalles)
         setEstado('selector')
       } catch { setEstado('no-disponible') }
     }
@@ -57,7 +76,7 @@ export default function EntradaEmpresaPage() {
     </div>
   )
 
-  if (estado === 'no-disponible' || !ctx) return (
+  if (estado === 'no-disponible' || !marca) return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3" style={{ backgroundColor: '#faf8f5' }}>
       <p className="text-3xl">🍦</p>
       <p className="text-neutral-700 font-bold text-lg">Pedidos online no disponible</p>
@@ -65,30 +84,61 @@ export default function EntradaEmpresaPage() {
     </div>
   )
 
-  const color = ctx.config.primary_color
+  const color = marca.config.primary_color
+  const qs = typeof window !== 'undefined' ? (window.location.search ?? '') : ''
+
+  function CanalBtn({ canal, emoji, titulo, bajada }: { canal: Canal; emoji: string; titulo: string; bajada: string }) {
+    if (!canal.configurado || canal.visible === false) return null
+    const abierto = canal.disponible
+    return (
+      <a href={abierto ? canal.url + qs : undefined}
+        className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 ${abierto ? 'border-neutral-100 bg-white active:scale-98 transition-transform' : 'border-neutral-100 bg-neutral-50 pointer-events-none'}`}>
+        <div className="min-w-0">
+          <p className={`text-sm font-bold ${abierto ? 'text-neutral-800' : 'text-neutral-400'}`}>{emoji} {titulo}</p>
+          <p className="text-xs text-neutral-400">{bajada}</p>
+          {abierto && canal.anticipado && canal.proximo && (
+            <p className="text-xs font-semibold text-amber-500 mt-0.5">🟠 Abre a las {canal.proximo} — pedí ahora</p>
+          )}
+          {!abierto && (
+            <p className="text-xs font-semibold text-amber-500 mt-0.5">
+              {canal.motivo === 'No disponible' ? 'No disponible' : canal.proximo ? `🟠 Abre a las ${canal.proximo}` : canal.motivo ?? 'Cerrado'}
+            </p>
+          )}
+        </div>
+        {abierto
+          ? <span className="flex-shrink-0 px-4 py-1.5 rounded-xl text-white text-sm font-bold" style={{ backgroundColor: color }}>Elegir</span>
+          : <span className="flex-shrink-0 px-4 py-1.5 rounded-xl text-sm font-bold bg-neutral-100 text-neutral-300">No disponible</span>}
+      </a>
+    )
+  }
 
   return (
-    <div className="min-h-screen flex flex-col items-center px-6 py-12" style={{ backgroundColor: '#faf8f5' }}>
-      {ctx.config.logo_url
-        ? <img src={ctx.config.logo_url} alt={ctx.nombre} className="h-16 object-contain mb-6" />
-        : <p className="text-2xl font-black mb-6" style={{ color }}>{ctx.nombre}</p>}
-      <h1 className="text-xl font-bold text-neutral-800 mb-1 text-center">{ctx.nombre}</h1>
-      <p className="text-neutral-400 text-sm mb-8 text-center">¿En qué sucursal querés pedir?</p>
-      <div className="w-full max-w-md space-y-3">
-        {ctx.sucursales.map(s => (
-          <a key={s.slug} href={s.url}
-            className="block bg-white rounded-2xl border border-neutral-100 shadow-sm px-5 py-4 active:scale-98 transition-transform">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-bold text-neutral-800">{s.nombre}</p>
-                {s.direccion && <p className="text-neutral-400 text-sm truncate">📍 {s.direccion}</p>}
-              </div>
-              <span className="flex-shrink-0 px-4 py-2 rounded-xl text-white text-sm font-bold" style={{ backgroundColor: color }}>
-                Pedir
-              </span>
+    <div className="min-h-screen flex flex-col items-center px-5 py-10" style={{ backgroundColor: '#faf8f5' }}>
+      {marca.config.logo_url
+        ? <img src={marca.config.logo_url} alt={marca.nombre} className="h-16 object-contain mb-5" />
+        : <p className="text-2xl font-black mb-5" style={{ color }}>{marca.nombre}</p>}
+      <h1 className="text-xl font-bold text-neutral-800 mb-1 text-center">{marca.nombre}</h1>
+      <p className="text-neutral-400 text-sm mb-7 text-center">¿Cómo querés recibir tu pedido?</p>
+      <div className="w-full max-w-md space-y-4">
+        {filas.map(({ suc, ctx }) => {
+          const canales = ctx ? [ctx.servicios.delivery, ctx.servicios.takeaway].filter(c => c.configurado && c.visible !== false) : []
+          return (
+            <div key={suc.slug} className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4">
+              <p className="font-bold text-neutral-800">{suc.nombre}</p>
+              {suc.direccion && <p className="text-neutral-400 text-xs mb-2.5">📍 {suc.direccion}</p>}
+              {ctx === null ? (
+                <p className="text-neutral-300 text-sm py-1">No disponible por el momento</p>
+              ) : canales.length === 0 ? (
+                <p className="text-neutral-300 text-sm py-1">{ctx.negocio?.mensaje ?? 'Sin pedidos online en esta sucursal'}</p>
+              ) : (
+                <div className="space-y-2">
+                  <CanalBtn canal={ctx.servicios.delivery} emoji="🛵" titulo="Delivery" bajada="Te lo llevamos" />
+                  <CanalBtn canal={ctx.servicios.takeaway} emoji="🥡" titulo="Take Away" bajada="Pedí y pasá a retirarlo" />
+                </div>
+              )}
             </div>
-          </a>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
