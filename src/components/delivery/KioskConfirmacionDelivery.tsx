@@ -289,13 +289,22 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
       <Header onBack={onVolver} title={esTakeaway ? 'Tu pedido para retirar' : 'Datos de entrega'} />
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-48">
+        {!esTakeaway && (
+          <div className="rounded-2xl px-4 py-3 mb-3 flex items-start gap-2.5 border"
+            style={{ backgroundColor: config.primary_color + '0D', borderColor: config.primary_color + '33' }}>
+            <span className="text-lg leading-none mt-0.5">🛵</span>
+            <p className="text-sm text-neutral-600 leading-snug">
+              <span className="font-bold" style={{ color: config.primary_color }}>Dirección completa = pedido más rápido.</span> No te olvides del número, piso y depto si tenés.
+            </p>
+          </div>
+        )}
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-4 space-y-4">
           {[
             { key: 'nombre', label: esTakeaway ? 'Tu nombre' : 'Nombre y apellido', placeholder: 'Juan García', type: 'text', required: true },
             // JC 30/09: TA también pide teléfono — si no retira a horario, el local llama
             { key: 'telefono', label: 'Teléfono', placeholder: '3491 123456', type: 'tel', required: true },
             ...(esTakeaway ? [] : [
-              { key: 'direccion', label: 'Dirección', placeholder: 'San Martín 456', type: 'text', required: true },
+              { key: 'direccion', label: 'Dirección (calle, número, piso y depto)', placeholder: 'San Martín 456, 2° B', type: 'text', required: true },
               { key: 'entre_calles', label: 'Entre calles', placeholder: '268 y 270', type: 'text', required: true },
             ] as const),
           ].map(({ key, label, placeholder, type, required }) => (
