@@ -9,7 +9,7 @@ export async function POST(request: Request) {
 
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select(`id, numero_pedido, codigo_retiro, total, metodo_pago, created_at, costo_envio, tipo_pedido, mp_payment_id, notas,
+    .select(`id, numero_pedido, codigo_retiro, total, descuento_cobro, descuento_cobro_detalle, metodo_pago, created_at, costo_envio, tipo_pedido, mp_payment_id, notas,
       empresa_id, receptor_doc_tipo, receptor_doc_nro, receptor_cond_iva, receptor_razon_social, detalle_facturable, sucursales(nombre, direccion),
       pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap,
         pedido_item_opciones(nombre_snap, emoji_snap))`)
@@ -208,13 +208,17 @@ ${pedido.detalle_facturable ? `<div><div class="item-pres">${pedido.detalle_fact
 
 <div class="linea"></div>
 
+${Number((pedido as { descuento_cobro?: number }).descuento_cobro ?? 0) > 0 ? `<div class="item-precio">
+  <span class="item-precio-cant">💵 ${(pedido as { descuento_cobro_detalle?: string }).descuento_cobro_detalle ?? 'Descuento'}</span>
+  <span class="item-precio-val">-${fmt(Number((pedido as { descuento_cobro?: number }).descuento_cobro))}</span>
+</div>` : ''}
 ${Number(pedido.costo_envio ?? 0) > 0 ? `<div class="item-precio">
   <span class="item-precio-cant">${pedido.tipo_pedido === 'takeaway' ? 'Servicio de retiro' : 'Envío'}</span>
   <span class="item-precio-val">${fmt(Number(pedido.costo_envio))}</span>
 </div>` : ''}
 <div class="fila">
   <span class="total-label">TOTAL</span>
-  <span class="total-valor">${fmt(pedido.total)}</span>
+  <span class="total-valor">${fmt(Number(pedido.total) - Number((pedido as { descuento_cobro?: number }).descuento_cobro ?? 0))}</span>
 </div>
 <div class="metodo">${metodoLabel[pedido.metodo_pago ?? ''] ?? pedido.metodo_pago ?? '—'}</div>
 ${opMp ? `<div class="sub">Op. MP ···${opMp.slice(-6)}</div>` : ''}

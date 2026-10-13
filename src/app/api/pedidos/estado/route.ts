@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   const supabase = createAdminClient()
   const { data: pedido } = await supabase
     .from('pedidos')
-    .select('estado, metodo_pago, pagado, total, notas, empresa_id, sucursal_id, mp_credencial_id')
+    .select('estado, metodo_pago, pagado, total, notas, empresa_id, sucursal_id, mp_credencial_id, descuento_cobro')
     .eq('id', pedido_id)
     .single()
   if (!pedido) {
@@ -109,6 +109,23 @@ export async function POST(request: Request) {
     }).eq('id', pedido_id)
   }
 
+  // ── PR-DM: descuento efectivo al cobro DIFERIDO (primera transición a
+  // cobrado de un pedido en efectivo sin descuento previo). Antes del update
+  // y del hook de facturación — misma regla que la venta de mostrador.
+  let dmExtras: { descuento_cobro: number; descuento_cobro_detalle: string } | null = null
+  if ((estado_nuevo === 'PAID' || estado_nuevo === 'DELIVERED')
+      && pedido.metodo_pago === 'efectivo'
+      && Number(pedido.descuento_cobro ?? 0) === 0
+      && !['PAID', 'PREPARING', 'READY', 'DELIVERED'].includes(pedido.estado)) {
+    try {
+      const { data: cfgDm } = await supabase.from('empresa_config')
+        .select('descuento_efectivo_pct').eq('empresa_id', pedido.empresa_id).maybeSingle()
+      const pct = Number(cfgDm?.descuento_efectivo_pct ?? 0)
+      const desc = Math.round(Number(pedido.total) * pct / 100)
+      if (pct > 0 && desc > 0) dmExtras = { descuento_cobro: desc, descuento_cobro_detalle: `Efectivo ${pct}%` }
+    } catch {}
+  }
+
   // ══ 9c — TRANSICIÓN OPERATIVA CENTRAL ══
   // "Pago confirmado = habilitado para preparación. PREPARING es el único
   // estado operativo posterior al cobro." PAID es transitorio; DELIVERED
@@ -118,6 +135,7 @@ export async function POST(request: Request) {
     estado: estadoFinal,
     updated_at: new Date().toISOString(),
     ...(mpExtras ?? {}),
+    ...(dmExtras ?? {}),
   }).eq('id', pedido_id)
   await supabase.from('pedido_estados_log').insert({
     pedido_id,

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   if (accion === 'pedidos_hoy') {
     let query = supabase.from('pedidos')
-      .select(`id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_id, colaborador_nombre, hora_retiro, comanda_impresa_at, ticket_impreso_at, updated_at, facturas(estado), cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre),
+      .select(`id, numero_pedido, codigo_retiro, estado, total, descuento_cobro, descuento_cobro_detalle, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_id, colaborador_nombre, hora_retiro, comanda_impresa_at, ticket_impreso_at, updated_at, facturas(estado), cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre),
         sucursales(nombre),
         pedido_pagos(metodo, monto),
         pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap,
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
   if (accion === 'historial') {
     if (!body.fecha) return NextResponse.json({ error: 'fecha requerida' }, { status: 400 })
     let query = supabase.from('pedidos')
-      .select('id, numero_pedido, codigo_retiro, estado, total, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_nombre, hora_retiro, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre), pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap, pedido_item_opciones(nombre_snap, emoji_snap))')
+      .select('id, numero_pedido, codigo_retiro, estado, total, descuento_cobro, descuento_cobro_detalle, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_nombre, hora_retiro, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre), pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap, pedido_item_opciones(nombre_snap, emoji_snap))')
       .eq('empresa_id', disp.empresa_id)
       .eq('fecha_pedido', body.fecha)
       .order('numero_pedido', { ascending: true })
@@ -179,7 +179,7 @@ export async function POST(request: Request) {
   // sucursal + credenciales MP de la sucursal o de marca (null). El default
   // sale del mapeo del canal CAJA en Cobros — misma fuente que el resolver.
   if (accion === 'cuentas_cobro') {
-    const [ctas, creds, mapeos] = await Promise.all([
+    const [ctas, creds, mapeos, cfgDm] = await Promise.all([
       supabase.from('cuentas_transferencia')
         .select('id, nombre, alias')
         .eq('empresa_id', disp.empresa_id).eq('sucursal_id', disp.sucursal_id)
@@ -190,6 +190,8 @@ export async function POST(request: Request) {
       supabase.from('canales_medios_pago')
         .select('medio, mp_credencial_id, transferencia_cuenta_id')
         .eq('sucursal_id', disp.sucursal_id).eq('canal', 'CAJA'),
+      // PR-DM: el pct viaja para la LEYENDA de caja (la autoridad es el server al crear)
+      supabase.from('empresa_config').select('descuento_efectivo_pct').eq('empresa_id', disp.empresa_id).maybeSingle(),
     ])
     const credsSucursal = (creds.data ?? []).filter(c => c.sucursal_id === null || c.sucursal_id === disp.sucursal_id)
       .map(c => ({ id: c.id, nombre: c.nombre }))
@@ -199,6 +201,7 @@ export async function POST(request: Request) {
       credenciales_mp: credsSucursal,
       default_transferencia: mapa.find(m => m.medio === 'TRANSFERENCIA')?.transferencia_cuenta_id ?? null,
       default_mp: mapa.find(m => m.medio === 'MERCADO_PAGO')?.mp_credencial_id ?? null,
+      descuento_efectivo_pct: Number(cfgDm.data?.descuento_efectivo_pct ?? 0),
     })
   }
 

@@ -522,7 +522,7 @@ Deno.serve(async (req: Request) => {
   if (!cfg.activo) return json({ok:false,error:'Facturación inactiva para la empresa'},400);
 
   const { data: pedido } = await supabase.from('pedidos')
-    .select('id, empresa_id, total, metodo_pago, numero_pedido')
+    .select('id, empresa_id, total, metodo_pago, numero_pedido, descuento_cobro')
     .eq('id', p.pedido_id).eq('empresa_id', p.empresa_id).single();
   if (!pedido) return json({ok:false,error:'Pedido no encontrado'},404);
   const { data: yaFacturada } = await supabase.from('facturas')
@@ -532,7 +532,12 @@ Deno.serve(async (req: Request) => {
   const docTipo = p.docTipo ?? 99;
   const docNro = p.docNro ?? '0';
   const condIva = p.condIvaReceptor ?? 5;
-  const impTotal = Number(pedido.total);
+  // PR-DM (GO CTO 13/10, B5-a): lo facturado = lo COBRADO. El descuento por
+  // método entra como menor ImpTotal — WSFE es a nivel importes (sin renglones
+  // ni campo descuento): calcularImportes re-deriva neto/IVA del total menor y
+  // la invariante ImpTotal = ImpNeto + ImpIVA se conserva por construcción.
+  // descuento_cobro default 0 → pedidos sin descuento: byte a byte igual.
+  const impTotal = round2(Number(pedido.total) - Number((pedido as { descuento_cobro?: number }).descuento_cobro ?? 0));
 
   // FA-2: tipo por regla centralizada (mono o flag OFF → 11; RI+flag: A/B)
   const tipoCbte = determinarTipoCbte(cfg.condicion_fiscal, cfg.emite_factura_a, condIva, false);
