@@ -68,6 +68,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [promos, setPromos] = useState<Promo[]>([])
   // Asistente de combo en curso (overlay de elección por slot)
   const [promoSel, setPromoSel] = useState<{ promo: Promo; combo_ref: string; idx: number; elecciones: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] } | null>(null)
+  // Promo pedida desde el inicio (categoriaIdInicial = 'promo:<id>'): se arranca recién cuando el catálogo ya cargó
+  const [promoInicialId, setPromoInicialId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const [paso, setPaso] = useState<Paso>('categorias')
@@ -95,6 +97,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         setPromos(data.promociones ?? [])
         if (inicial) {
           setLoading(false)
+          if (categoriaIdInicial?.startsWith('promo:')) setPromoInicialId(categoriaIdInicial.slice(6))
           if (categoriaIdInicial) {
             const cat = cats.find((c: Categoria) => c.id === categoriaIdInicial)
             if (cat) { setCategoriaActiva(cat); setPaso('productos') }
@@ -105,6 +108,16 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   }, [dispositivo, categoriaIdInicial])
 
   useEffect(() => { refetchCatalogo(true) }, [refetchCatalogo])
+
+  // 🎁 Arranque directo de la promo elegida en el inicio. Se dispara una sola vez, ya con
+  // el catálogo cargado (presDeSlot necesita productos y presentaciones). Si la promo ya no
+  // está (venció o se ocultó entre el inicio y acá), no pasa nada: queda en las categorías.
+  useEffect(() => {
+    if (!promoInicialId || loading) return
+    const promo = promos.find(p => p.id === promoInicialId)
+    setPromoInicialId(null)
+    if (promo) iniciarPromo(promo)
+  }, [promoInicialId, loading, promos])
 
   // ── REALTIME CATÁLOGO — libro de versiones (ciclo feature/realtime-catalogo, GO CTO) ──
   // DB cambia → version++ → Realtime avisa → INVALIDA → refetch en reposo → UI.
@@ -352,7 +365,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   function volverPaso() {
     if (paso === 'opciones') {
       if (colaIndex > 0) { setColaIndex(colaIndex - 1); setOpcionesSeleccionadas([]) }
-      else { setPaso('productos'); setCola([]); setColaIndex(0); setOpcionesSeleccionadas([]) }
+      else { setPaso(categoriaActiva ? 'productos' : 'categorias'); setCola([]); setColaIndex(0); setOpcionesSeleccionadas([]) }
     } else if (paso === 'productos') {
       setPaso('categorias')
       // NO reseteamos categoriaActiva ni cantidad — el usuario puede volver a entrar

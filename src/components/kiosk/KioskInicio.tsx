@@ -10,6 +10,8 @@ interface Producto { id: string; nombre: string; imagen_url: string | null; cate
 interface Presentacion { id: string; producto_id: string; imagen_url: string | null; es_novedad?: boolean; nombre?: string; precio?: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 interface Opcion { id: string; grupo_id: string; imagen_url: string | null; emoji: string | null ; es_novedad?: boolean }
+// 🎁 Promos en el inicio (16/10): misma forma que devuelve /api/kiosk/catalogo
+interface PromoInicio { id: string; nombre: string; imagen_url: string | null; precio: number; precio_regular: number | null }
 
 interface Props {
   config: EmpresaConfig
@@ -69,6 +71,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar, canal = '
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
   const [presGrupos, setPresGrupos] = useState<PresGrupo[]>([])
   const [opciones, setOpciones] = useState<Opcion[]>([])
+  const [promos, setPromos] = useState<PromoInicio[]>([])
   const [hora, setHora] = useState('')
 
   useEffect(() => {
@@ -80,6 +83,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar, canal = '
         setPresentaciones(data.presentaciones ?? [])
         setPresGrupos(data.presentacion_grupos ?? [])
         setOpciones(data.opciones ?? [])
+        setPromos(data.promociones ?? [])
       })
     const tick = () => setHora(new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }))
     tick()
@@ -163,6 +167,40 @@ export default function KioskInicio({ config, dispositivo, onComenzar, canal = '
         </h1>
         <p className="text-neutral-400 text-lg">Tocá una categoría para comenzar</p>
       </div>
+
+      {/* 🎁 Promos (16/10): delivery tiene inicio propio y salteaba el paso del
+          catálogo donde vivía la tira de promos — acá se ve SIEMPRE. Tocar una
+          promo abre directo el armado del combo (prefijo 'promo:' en el id que
+          recibe el catálogo). El endpoint ya filtró canal, vigencia y variedades. */}
+      {promos.length > 0 && (
+        <div className="px-6 pb-6">
+          <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-neutral-100 shadow-sm p-3">
+            <p className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: config.primary_color }}>🎁 Promos</p>
+            <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+              {promos.map(promo => (
+                <button key={promo.id} onClick={() => onComenzar(`promo:${promo.id}`)}
+                  className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 flex-shrink-0 active:scale-95 transition-transform bg-white text-left border"
+                  style={{ borderColor: config.primary_color }}>
+                  {promo.imagen_url && (
+                    <div className="w-11 h-11 rounded-lg overflow-hidden bg-neutral-50 flex-shrink-0">
+                      <img src={promo.imagen_url} alt="" className="object-cover w-full h-full" />
+                    </div>
+                  )}
+                  <div className="pr-1">
+                    <p className="text-sm font-bold text-neutral-800 leading-tight whitespace-nowrap">{promo.nombre}</p>
+                    <p className="text-[11px] leading-tight whitespace-nowrap">
+                      {promo.precio_regular != null && Number(promo.precio_regular) > Number(promo.precio) && (
+                        <span className="text-neutral-400 line-through mr-1">${Number(promo.precio_regular).toLocaleString('es-AR')}</span>
+                      )}
+                      <span className="font-bold" style={{ color: config.primary_color }}>${Number(promo.precio).toLocaleString('es-AR')}</span>
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ✨ Novedades */}
       {novedades.length > 0 && (
