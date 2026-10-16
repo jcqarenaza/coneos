@@ -962,8 +962,14 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         ))}
                       </div>
                       <div className="flex justify-between font-bold">
-                        <span>Total</span><span>{formatPrecio(historialSeleccionado.total)}</span>
+                        <span>{Number(historialSeleccionado.descuento_cobro ?? 0) > 0 ? 'Total cobrado' : 'Total'}</span><span>{formatPrecio(Number(historialSeleccionado.total) - Number(historialSeleccionado.descuento_cobro ?? 0))}</span>
                       </div>
+                      {Number(historialSeleccionado.descuento_cobro ?? 0) > 0 && (
+                        <div className="flex justify-between text-xs text-green-600 font-semibold">
+                          <span>💵 {historialSeleccionado.descuento_cobro_detalle ?? 'Descuento'}</span>
+                          <span>{formatPrecio(Number(historialSeleccionado.total))} −{formatPrecio(Number(historialSeleccionado.descuento_cobro))}</span>
+                        </div>
+                      )}
                       <p className="text-xs text-neutral-400 mt-1">Pago: {historialSeleccionado.metodo_pago ?? '—'}{cuentaDe(historialSeleccionado) ? ` · ${cuentaDe(historialSeleccionado)}` : ''}{horaRetiroDe(historialSeleccionado) ? ` · 🕐 ${horaRetiroDe(historialSeleccionado)}` : ''}</p>
                       {historialSeleccionado.colaborador_nombre && <p className="text-xs text-neutral-400">{emojiCadete(historialSeleccionado.colaborador_id)} {historialSeleccionado.colaborador_nombre}</p>}
                       {historialSeleccionado.notas && <p className="text-xs text-amber-600 mt-1">{historialSeleccionado.notas}</p>}
@@ -1176,7 +1182,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-neutral-300 text-xs flex items-center gap-1.5">{tiempoRelativo(pedido.created_at)}{verTodas && pedido.sucursales?.nombre && <span className="text-neutral-400 font-semibold">· 📍 {pedido.sucursales.nombre}</span>}{pedido.colaborador_nombre && <span className="text-neutral-500 font-semibold">· {emojiCadete(pedido.colaborador_id)} {pedido.colaborador_nombre}</span>}</span>
-                    <span className="text-neutral-600 text-xs font-bold">{formatPrecio(pedido.total)}</span>
+                    <span className="text-neutral-600 text-xs font-bold">{formatPrecio(Number(pedido.total) - Number(pedido.descuento_cobro ?? 0))}</span>
                   </div>
                   </button>
                 </div>

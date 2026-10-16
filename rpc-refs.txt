@@ -1,0 +1,18 @@
+src\app\api\compras\route.ts:78:    const { data, error: e } = await supabase.rpc(esNC ? 'registrar_nc_compra' : 'registrar_factura_compra', {
+src\app\api\compras\route.ts:350:    const { data, error: e } = await supabase.rpc('crear_orden_compra', {
+src\app\api\compras\route.ts:398:    const { data, error: e } = await supabase.rpc('crear_remito_borrador', {
+src\app\api\compras\route.ts:467:      const { data: conf, error: ec } = await supabase.rpc('ingresar_remito_stock', {
+src\app\api\compras\route.ts:589:    const { data, error: e } = await supabase.rpc('ingresar_remito_stock', {
+src\app\api\compras\route.ts:621:    const { data: d, error: e } = await supabase.rpc('aplicar_credito_op', {
+src\app\api\compras\route.ts:647:    const { data: d, error: e } = await supabase.rpc('registrar_orden_pago', {
+src\app\api\compras\route.ts:683:    const { data: d, error: e } = await supabase.rpc(rpc, {
+src\app\api\compras\route.ts:695:    const { data: d, error: e } = await supabase.rpc('anular_orden_pago', {
+src\app\api\operador\login\route.ts:26:  const { data: pinValido } = await supabase.rpc('verificar_pin_operador', {
+src\app\api\pedidos\eliminar\route.ts:58:        await supabase.rpc('ajustar_stock', {
+src\app\api\pedidos\route.ts:338:  const { data: pedido, error } = await supabase.rpc('crear_pedido_stock', {
+src\app\api\reparto\route.ts:161:    const { data: pinValido } = await supabase.rpc('verificar_pin_operador', { p_pin: String(pin), p_hash: col.pin_hash })
+src\app\[empresa]\admin\catalogo\page.tsx:309:      const { error: e1 } = await supabase.rpc('ajustar_stock', {
+src\app\[empresa]\admin\ventas\page.tsx:186:      const { error } = await sb.rpc('ajustar_stock', {
+src\components\admin\ColaboradoresTab.tsx:99:      const { error: ePin } = await supabase.rpc('set_pin_colaborador', {
+src\components\admin\DispositivosTab.tsx:140:    const { error } = await supabase.rpc('delete_dispositivo', { p_id: row.id })
+src\components\admin\OperadoresTab.tsx:71:      const { data: okPin, error: ePin } = await supabase.rpc('set_pin_operador', {
