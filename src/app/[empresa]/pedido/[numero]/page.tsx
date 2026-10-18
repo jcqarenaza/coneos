@@ -53,12 +53,13 @@ function estadoDeliveryLabel(estado: string, cadete: string | null, emoji?: stri
 // se lee del pathname, como kiosk/TA/mesa/reparto. Con el estilo viejo,
 // params.empresa llegaba undefined y TODO pedido daba "no encontrado".
 function rutaDesdeURL() {
+  // SSR: en el servidor no hay window (fix 17/10: ReferenceError en prod)
+  if (typeof window === 'undefined') return { empresa: '', numero: '' }
   const partes = window.location.pathname.split('/').filter(Boolean)
   return { empresa: partes[0] ?? '', numero: partes[2] ?? '' }
 }
 
 export default function PedidoPage() {
-  const params = rutaDesdeURL()
   const [pedido, setPedido] = useState<Pedido | null>(null)
   const [volverUrl, setVolverUrl] = useState<string | null>(null)  // JC 29/09: la pantalla era un callejón sin salida en PWA
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
@@ -66,6 +67,8 @@ export default function PedidoPage() {
   const [notFound, setNotFound] = useState(false)
 
   async function cargar() {
+    const params = rutaDesdeURL()
+    if (!params.numero) return  // sin ruta todavía: no marcar "no encontrado"
     // TODO server-side por la API (bug 29/09: el anon del browser no lee
     // pedidos/empresas — en el celu del cliente real daba "no encontrado")
     try {
@@ -75,11 +78,12 @@ export default function PedidoPage() {
       })
       const d = await res.json().catch(() => null)
       if (!d?.encontrado) { setNotFound(true); setLoading(false); return }
+      setNotFound(false)  // un acierto posterior limpia un error transitorio
       setConfig(d.marca as EmpresaConfig)
       setPedido(d.pedido as Pedido)
       setVolverUrl(d.volver_url ?? null)
       setLoading(false)
-    } catch { setNotFound(true); setLoading(false) }
+    } catch { setLoading(false) }  // error de red: el próximo polling reintenta
   }
 
   useEffect(() => {
