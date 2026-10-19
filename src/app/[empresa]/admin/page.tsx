@@ -103,20 +103,30 @@ export default function AdminDashboard() {
       if (periodoCadetes === 'semana') desde = new Date(ahora.getTime() - 6 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
       if (periodoCadetes === 'mes') desde = new Date(ahora.getTime() - 29 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
       const { data } = await supabase.from('pedidos')
-        .select('colaborador_nombre, total, metodo_pago')
+        .select('colaborador_id, colaborador_nombre, total, metodo_pago')
         .eq('empresa_id', empresaIdState).eq('tipo_pedido', 'delivery').eq('estado', 'DELIVERED')
         .not('colaborador_nombre', 'is', null)
         .gte('fecha_pedido', desde).lte('fecha_pedido', hoyStr)
-      const agg: Record<string, { envios: number; transportado: number; efectivo: number }> = {}
+      // Agrupar por PERSONA (colaborador_id), no por el nombre guardado en el
+      // pedido: si renombran a un cadete, sus envíos viejos conservan el nombre
+      // de entonces y salían como filas separadas (fix 18/10). Nombre = el actual.
+      const ids = [...new Set((data ?? []).map(p => p.colaborador_id).filter(Boolean))] as string[]
+      const nombreActual: Record<string, string> = {}
+      if (ids.length > 0) {
+        const { data: cols } = await supabase.from('colaboradores').select('id, nombre').in('id', ids)
+        for (const c of cols ?? []) nombreActual[c.id] = c.nombre
+      }
+      const agg: Record<string, { nombre: string; envios: number; transportado: number; efectivo: number }> = {}
       for (const p of data ?? []) {
-        const k = (p.colaborador_nombre ?? '').trim()
+        const snap = (p.colaborador_nombre ?? '').trim()
+        const k = p.colaborador_id ?? snap
         if (!k) continue
-        if (!agg[k]) agg[k] = { envios: 0, transportado: 0, efectivo: 0 }
+        if (!agg[k]) agg[k] = { nombre: (p.colaborador_id && nombreActual[p.colaborador_id]) || snap, envios: 0, transportado: 0, efectivo: 0 }
         agg[k].envios++
         agg[k].transportado += Number(p.total)
         if (p.metodo_pago === 'efectivo') agg[k].efectivo += Number(p.total)
       }
-      setCadetes(Object.entries(agg).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.envios - a.envios))
+      setCadetes(Object.values(agg).map(v => ({ ...v })).sort((a, b) => b.envios - a.envios))
       setCadetesLoading(false)
     }
     loadCadetes()
@@ -272,7 +282,7 @@ export default function AdminDashboard() {
                 <span className="font-bold text-neutral-800">{c.nombre}</span>
                 <span className="text-right font-black text-neutral-800 text-lg">{c.envios}</span>
                 <span className="text-right text-neutral-600 font-semibold text-sm">{formatPrecio(c.transportado)}</span>
-                <span className="text-right text-neutral-400 text-sm">{formatPrecio(c.efectivo)}</span>
+                <span className="text-right text-neutral-600 font-semibold text-sm">{formatPrecio(c.efectivo)}</span>
               </div>
             ))}
           </div>
