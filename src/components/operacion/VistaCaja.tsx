@@ -900,17 +900,18 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
               <div className="w-64 border-r border-neutral-100 flex flex-col overflow-hidden bg-white">
                 {/* Resumen del día */}
                 {historialPedidos.length > 0 && (() => {
-                  const ef = historialPedidos.filter(p => p.metodo_pago === 'efectivo').reduce((a, p) => a + Number(p.total) - Number(p.descuento_cobro ?? 0), 0)
-                  const tr = historialPedidos.filter(p => p.metodo_pago === 'transferencia').reduce((a, p) => a + p.total, 0)
-                  const mp = historialPedidos.filter(p => p.metodo_pago === 'mp').reduce((a, p) => a + p.total, 0)
-                  const total = ef + tr + mp
+                  // Misma cuenta que la barra de arriba (calcResumen): solo plata
+                  // COBRADA, neto de descuento, con pagos divididos (fix 19/10).
+                  const r = resumenHist
                   return (
                     <div className="px-3 py-3 border-b border-neutral-100 bg-neutral-50">
-                      <p className="text-xs font-bold text-neutral-500 mb-2">{historialPedidos.length} pedidos — {formatPrecio(total)}</p>
+                      <p className="text-xs font-bold text-neutral-500 mb-2">{r.cantidad} pedidos — {formatPrecio(r.total)}</p>
                       <div className="space-y-1">
-                        {ef > 0 && <div className="flex justify-between text-xs"><span className="text-green-600 font-semibold">💵 Efectivo</span><span className="font-bold">{formatPrecio(ef)}</span></div>}
-                        {tr > 0 && <div className="flex justify-between text-xs"><span className="text-blue-600 font-semibold">📲 Transfer.</span><span className="font-bold">{formatPrecio(tr)}</span></div>}
-                        {mp > 0 && <div className="flex justify-between text-xs"><span className="text-sky-600 font-semibold">📱 MP</span><span className="font-bold">{formatPrecio(mp)}</span></div>}
+                        {r.efectivo > 0 && <div className="flex justify-between text-xs"><span className="text-green-600 font-semibold">💵 Efectivo</span><span className="font-bold">{formatPrecio(r.efectivo)}</span></div>}
+                        {r.transferencia > 0 && <div className="flex justify-between text-xs"><span className="text-blue-600 font-semibold">📲 Transfer.</span><span className="font-bold">{formatPrecio(r.transferencia)}</span></div>}
+                        {r.mp > 0 && <div className="flex justify-between text-xs"><span className="text-sky-600 font-semibold">📱 MP</span><span className="font-bold">{formatPrecio(r.mp)}</span></div>}
+                        {r.debito > 0 && <div className="flex justify-between text-xs"><span className="text-neutral-600 font-semibold">💳 Débito</span><span className="font-bold">{formatPrecio(r.debito)}</span></div>}
+                        {r.credito > 0 && <div className="flex justify-between text-xs"><span className="text-neutral-600 font-semibold">💳 Crédito</span><span className="font-bold">{formatPrecio(r.credito)}</span></div>}
                       </div>
                     </div>
                   )
