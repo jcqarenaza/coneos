@@ -546,28 +546,31 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 return (
                   <button key={cat.id} onClick={() => seleccionarCategoria(cat)}
                     className="group relative flex flex-col rounded-2xl bg-white border border-neutral-100 shadow-sm hover:shadow-lg active:scale-95 transition-all duration-200 overflow-hidden min-h-[150px]">
-                    <div className="flex-1 w-full p-2">
+                    <div className="w-full p-2">
+                     {/* Tamaño SIEMPRE igual: cuadrado fijo, sin importar cuántas fotos ni su proporción (fix 20/10) */}
+                     <div className="relative w-full aspect-square">
                       {tieneIcono ? (
-                        <div className="w-full h-full rounded-xl overflow-hidden">
+                        <div className="absolute inset-0 rounded-xl overflow-hidden">
                           <img src={cat.icono_url!} alt={cat.nombre} width={200} height={200} className="object-cover w-full h-full" />
                         </div>
                       ) : fotos.length === 1 ? (
-                        <div className="w-full h-full rounded-xl overflow-hidden">
+                        <div className="absolute inset-0 rounded-xl overflow-hidden">
                           <img src={fotos[0]} alt="" width={200} height={200} className="object-cover w-full h-full" />
                         </div>
                       ) : fotos.length > 1 ? (
-                        <div className={`w-full h-full grid gap-0.5 rounded-xl overflow-hidden ${fotos.length >= 4 ? 'grid-cols-2 grid-rows-2' : fotos.length === 3 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2'}`}>
+                        <div className={`absolute inset-0 grid gap-0.5 rounded-xl overflow-hidden ${fotos.length >= 4 ? 'grid-cols-2 grid-rows-2' : fotos.length === 3 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2'}`}>
                           {fotos.slice(0, 4).map((url, i) => (
-                            <div key={i} className={`overflow-hidden ${fotos.length === 3 && i === 0 ? 'row-span-2' : ''}`}>
-                              <img src={url} alt="" width={100} height={100} className="object-cover w-full h-full" />
+                            <div key={i} className={`relative overflow-hidden ${fotos.length === 3 && i === 0 ? 'row-span-2' : ''}`}>
+                              <img src={url} alt="" width={100} height={100} className="absolute inset-0 object-cover w-full h-full" />
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center">
+                        <div className="absolute inset-0 flex items-center justify-center">
                           <span className="text-6xl group-hover:scale-110 transition-transform duration-200">{getEmoji(cat.nombre)}</span>
                         </div>
                       )}
+                      </div>
                     </div>
                     <div className="px-3 pb-3 pt-1 text-center">
                       <span className="text-sm font-bold text-neutral-700">{cat.nombre}</span>
