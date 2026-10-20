@@ -1,5 +1,6 @@
 'use client'
 
+import { agruparComponentes } from '@/lib/agruparComponentes'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, ChefHat, CheckCircle, Clock } from 'lucide-react'
@@ -152,9 +153,9 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                             {[...combos.entries()].map(([ref, grupo]) => (
                               <div key={ref}>
                                 <p className="text-neutral-800 text-sm font-bold">🎁 {grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap}</p>
-                                {grupo.map(it => (
+                                {agruparComponentes(grupo).map(({ it, n }) => (
                                   <div key={it.id} className="ml-2">
-                                    <p className="text-neutral-500 text-sm">• {it.nombre_presentacion_snap}</p>
+                                    <p className="text-neutral-500 text-sm">• {n > 1 ? `${n}× ` : ''}{it.nombre_presentacion_snap}</p>
                                     {it.pedido_item_opciones.length > 0 && (
                                       <p className="text-neutral-400 text-xs ml-2">{it.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}</p>
                                     )}

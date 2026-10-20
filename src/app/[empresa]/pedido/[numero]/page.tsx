@@ -1,5 +1,6 @@
 'use client'
 
+import { agruparComponentes } from '@/lib/agruparComponentes'
 import { useEffect, useState, type ReactNode } from 'react'
 import Image from 'next/image'
 import { Loader2, CheckCircle, Clock, ChefHat, Package, Truck } from 'lucide-react'
@@ -217,9 +218,9 @@ export default function PedidoPage() {
                 <div className="flex justify-between items-start gap-2">
                   <div className="flex-1">
                     <p className="font-semibold text-neutral-800 text-sm">🎁 {grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap}</p>
-                    {grupo.map((it, j) => (
+                    {agruparComponentes(grupo).map(({ it, n }, j) => (
                       <div key={j}>
-                        <p className="text-neutral-400 text-xs mt-0.5">• {it.nombre_presentacion_snap}</p>
+                        <p className="text-neutral-400 text-xs mt-0.5">• {n > 1 ? `${n}× ` : ''}{it.nombre_presentacion_snap}</p>
                         {it.pedido_item_opciones.length > 0 && (
                           <p className="text-neutral-400 text-xs ml-2">{it.pedido_item_opciones.map(op => `${op.emoji_snap ?? ''} ${op.nombre_snap}`).join(' · ')}</p>
                         )}

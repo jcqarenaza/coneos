@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { agruparComponentes } from '@/lib/agruparComponentes'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
 
   combosC.forEach(grupo => {
     const titulo = grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap
-    bloquesItems.push(`<div><div class="item-prod">🎁 ${titulo}</div>${grupo.map(it => `<div class="item-pres">• ${it.nombre_presentacion_snap}</div>${it.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${it.pedido_item_opciones.map((op: {nombre_snap: string}) => op.nombre_snap).join(' - ')}</div>` : ''}`).join('')}</div>`)
+    bloquesItems.push(`<div><div class="item-prod">🎁 ${titulo}</div>${agruparComponentes(grupo).map(({ it, n }) => `<div class="item-pres">• ${n > 1 ? `${n}x ` : ''}${it.nombre_presentacion_snap}</div>${it.pedido_item_opciones?.length > 0 ? `<div class="item-ops">${it.pedido_item_opciones.map((op: {nombre_snap: string}) => op.nombre_snap).join(' - ')}</div>` : ''}`).join('')}</div>`)
   })
 
   if (accesorios.length > 0) {

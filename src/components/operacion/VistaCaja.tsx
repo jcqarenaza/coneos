@@ -1,5 +1,6 @@
 'use client'
 
+import { agruparComponentes, lineasResumen } from '@/lib/agruparComponentes'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { avisar, confirmar } from '@/components/admin/ConeDialog'
 import { createClient } from '@/lib/supabase/client'
@@ -1171,15 +1172,15 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     <BadgeMesa p={pedido} /><BadgeTakeaway p={pedido} /><BadgeFiscal id={pedido.id} /><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
                   </div>
                   <div className="mb-1 space-y-0.5">
-                    {pedido.pedido_items.slice(0, 3).map((item, i) => (
+                    {lineasResumen(pedido.pedido_items).slice(0, 3).map(({ it: item, n }, i) => (
                       <div key={i}>
-                        <p className="text-neutral-600 text-xs font-medium truncate">{item.cantidad}× {item.nombre_presentacion_snap}</p>
+                        <p className="text-neutral-600 text-xs font-medium truncate">{n}× {item.nombre_presentacion_snap}</p>
                         {item.pedido_item_opciones.length > 0 && (
                           <p className="text-neutral-400 text-xs truncate">{item.pedido_item_opciones.map(o => `${o.emoji_snap ?? ''} ${o.nombre_snap}`).join(', ')}</p>
                         )}
                       </div>
                     ))}
-                    {pedido.pedido_items.length > 3 && <p className="text-neutral-300 text-xs">+{pedido.pedido_items.length - 3} más</p>}
+                    {lineasResumen(pedido.pedido_items).length > 3 && <p className="text-neutral-300 text-xs">+{lineasResumen(pedido.pedido_items).length - 3} más</p>}
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-neutral-300 text-xs flex items-center gap-1.5">{tiempoRelativo(pedido.created_at)}{verTodas && pedido.sucursales?.nombre && <span className="text-neutral-400 font-semibold">· 📍 {pedido.sucursales.nombre}</span>}{pedido.colaborador_nombre && <span className="text-neutral-500 font-semibold">· {emojiCadete(pedido.colaborador_id)} {pedido.colaborador_nombre}</span>}</span>
@@ -1234,9 +1235,9 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                             <p className="text-neutral-800 font-bold">{formatPrecio(grupo.reduce((s, it) => s + Number(it.precio_snap), 0))}</p>
                           </div>
                           <div className="mt-1 space-y-1.5">
-                            {grupo.map(it => (
+                            {agruparComponentes(grupo).map(({ it, n }) => (
                               <div key={it.id}>
-                                <p className="text-neutral-500 text-sm">• {it.nombre_presentacion_snap}</p>
+                                <p className="text-neutral-500 text-sm">• {n > 1 ? `${n}× ` : ''}{it.nombre_presentacion_snap}</p>
                                 {it.pedido_item_opciones.length > 0 && (
                                   <div className="flex flex-wrap gap-1.5 mt-1 ml-3">
                                     {it.pedido_item_opciones.map((op, j) => (
