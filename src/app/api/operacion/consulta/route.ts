@@ -70,7 +70,7 @@ export async function POST(request: Request) {
       .select('id, numero_pedido, codigo_retiro, estado, total, descuento_cobro, descuento_cobro_detalle, metodo_pago, notas, created_at, numero_mesa, pagado, nombre_cliente, mesa_cuenta_id, tipo_pedido, costo_envio, datos_delivery, captura_transferencia_url, colaborador_nombre, hora_retiro, cuenta_transfer:cuentas_transferencia(nombre), cuenta_mp:mp_credenciales(nombre), pedido_pagos(metodo, monto), pedido_items(id, nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref, promo_nombre_snap, pedido_item_opciones(nombre_snap, emoji_snap))')
       .eq('empresa_id', disp.empresa_id)
       .eq('fecha_pedido', body.fecha)
-      .order('numero_pedido', { ascending: true })
+      .order('created_at', { ascending: false })
     if (!body.verTodas) query = query.eq('sucursal_id', disp.sucursal_id)
     const { data } = await query
     return NextResponse.json({ pedidos: data ?? [] })
