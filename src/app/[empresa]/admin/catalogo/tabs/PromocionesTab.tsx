@@ -20,7 +20,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Plus, Loader2, Pencil, Trash2, Upload, X } from 'lucide-react'
 
-interface Producto { id: string; nombre: string; activo: boolean }
+interface Producto { id: string; nombre: string; activo: boolean; categoria_id: string | null; orden: number | null }
+interface Categoria { id: string; nombre: string; orden: number | null }
 interface Presentacion { id: string; nombre: string; precio: number; producto_id: string; activo: boolean }
 interface SlotForm { titulo: string; presentacion_ids: string[] }
 interface Promo {
@@ -46,6 +47,7 @@ export default function PromocionesTab() {
   const { ctx } = useEmpresa()
   const [promos, setPromos] = useState<Promo[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
+  const [categorias, setCategorias] = useState<Categoria[]>([])
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
@@ -59,16 +61,18 @@ export default function PromocionesTab() {
   async function load() {
     if (!ctx) return
     const supabase = createClient()
-    const [{ data: ps }, { data: prods }, { data: pres }] = await Promise.all([
+    const [{ data: ps }, { data: prods }, { data: pres }, { data: cats }] = await Promise.all([
       supabase.from('promociones')
         .select('*, promo_slots(id, orden, titulo, promo_slot_presentaciones(presentacion_id))')
         .eq('empresa_id', ctx.empresaId)
         .order('created_at', { ascending: false }),
-      supabase.from('productos').select('id, nombre, activo').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('nombre'),
+      supabase.from('productos').select('id, nombre, activo, categoria_id, orden').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('orden'),
       supabase.from('presentaciones').select('id, nombre, precio, producto_id, activo').eq('empresa_id', ctx.empresaId).order('orden'),
+      supabase.from('categorias').select('id, nombre, orden').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('orden'),
     ])
     setPromos(((ps ?? []) as Promo[]).map(p => ({ ...p, promo_slots: [...(p.promo_slots ?? [])].sort((a, b) => a.orden - b.orden) })))
     setProductos((prods ?? []) as Producto[])
+    setCategorias((cats ?? []) as Categoria[])
     setPresentaciones((pres ?? []) as Presentacion[])
     setLoading(false)
   }
@@ -353,17 +357,30 @@ export default function PromocionesTab() {
                   </div>
                   <p className="text-xs text-neutral-400 mb-1.5">Qué puede elegir el cliente acá ({slot.presentacion_ids.length} marcadas):</p>
                   <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
-                    {productos.filter(pr => pr.activo && presActivas.some(p => p.producto_id === pr.id)).map(pr => (
-                      <div key={pr.id}>
-                        <p className="text-xs font-semibold text-neutral-500 mt-1">{pr.nombre}</p>
-                        {presActivas.filter(p => p.producto_id === pr.id).map(p => (
-                          <label key={p.id} className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer py-0.5 pl-2">
-                            <input type="checkbox" checked={slot.presentacion_ids.includes(p.id)} onChange={() => togglePres(idx, p.id)} className="rounded" />
-                            {p.nombre} <span className="text-xs text-neutral-400">{fmt(p.precio)}</span>
-                          </label>
-                        ))}
-                      </div>
-                    ))}
+                    {/* Por FAMILIA (categoría) en el orden del catálogo, y dentro de cada una
+                        los productos en su orden — igual que se ven en el kiosk (fix 20/10) */}
+                    {[...categorias.map(c => ({ id: c.id as string | null, nombre: c.nombre })), { id: null as string | null, nombre: 'Sin categoría' }].map(cat => {
+                      const prods = productos
+                        .filter(pr => pr.activo && (pr.categoria_id ?? null) === cat.id && presActivas.some(p => p.producto_id === pr.id))
+                        .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.nombre.localeCompare(b.nombre))
+                      if (prods.length === 0) return null
+                      return (
+                        <div key={cat.id ?? 'sin-cat'}>
+                          <p className="text-[11px] font-black uppercase tracking-wide text-neutral-400 mt-2 pt-1 border-t border-neutral-100">{cat.nombre}</p>
+                          {prods.map(pr => (
+                            <div key={pr.id}>
+                              <p className="text-xs font-semibold text-neutral-500 mt-1">{pr.nombre}</p>
+                              {presActivas.filter(p => p.producto_id === pr.id).map(p => (
+                                <label key={p.id} className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer py-0.5 pl-2">
+                                  <input type="checkbox" checked={slot.presentacion_ids.includes(p.id)} onChange={() => togglePres(idx, p.id)} className="rounded" />
+                                  {p.nombre} <span className="text-xs text-neutral-400">{fmt(p.precio)}</span>
+                                </label>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
