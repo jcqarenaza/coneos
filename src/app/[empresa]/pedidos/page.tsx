@@ -87,7 +87,7 @@ export default function EntradaEmpresaPage() {
   const color = marca.config.primary_color
   const qs = typeof window !== 'undefined' ? (window.location.search ?? '') : ''
 
-  function CanalBtn({ canal, emoji, titulo, bajada }: { canal: Canal; emoji: string; titulo: string; bajada: string }) {
+  function CanalBtn({ canal, emoji, titulo, bajada, dir }: { canal: Canal; emoji: string; titulo: string; bajada: string; dir?: string | null }) {
     if (!canal.configurado || canal.visible === false) return null
     const abierto = canal.disponible
     return (
@@ -96,6 +96,7 @@ export default function EntradaEmpresaPage() {
         <div className="min-w-0">
           <p className={`text-sm font-bold ${abierto ? 'text-neutral-800' : 'text-neutral-400'}`}>{emoji} {titulo}</p>
           <p className="text-xs text-neutral-400">{bajada}</p>
+          {dir && <p className="text-xs font-bold text-neutral-700">📍 {dir}</p>}
           {abierto && (canal.anticipado && canal.proximo
             ? <p className="text-xs font-semibold text-amber-500 mt-0.5 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Abre a las {canal.proximo} — pedí ahora</p>
             : <p className="text-xs font-semibold text-green-600 mt-0.5 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Abierto</p>)}
@@ -139,8 +140,8 @@ export default function EntradaEmpresaPage() {
                 <p className="text-neutral-300 text-sm py-1">{ctx.negocio?.mensaje ?? 'Sin pedidos online en esta sucursal'}</p>
               ) : (
                 <div className="space-y-2">
-                  <CanalBtn canal={ctx.servicios.delivery} emoji="🛵" titulo="Delivery" bajada="Te lo llevamos" />
-                  <CanalBtn canal={ctx.servicios.takeaway} emoji="🥡" titulo="Take Away" bajada="Pedí y pasá a retirarlo" />
+                  <CanalBtn canal={ctx.servicios.delivery} emoji="🛵" titulo="Delivery" bajada="Pedí, Pagá y te lo llevamos" />
+                  <CanalBtn canal={ctx.servicios.takeaway} emoji="🥡" titulo="Take Away" bajada="Pedí, Pagá y Retirá por:" dir={suc.direccion} />
                 </div>
               )}
             </div>
