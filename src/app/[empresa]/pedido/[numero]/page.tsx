@@ -1,6 +1,6 @@
 'use client'
 
-import { agruparComponentes } from '@/lib/agruparComponentes'
+import { agruparComponentes, unificarSueltos } from '@/lib/agruparComponentes'
 import { useEffect, useState, type ReactNode } from 'react'
 import Image from 'next/image'
 import { Loader2, CheckCircle, Clock, ChefHat, Package, Truck } from 'lucide-react'
@@ -209,7 +209,7 @@ export default function PedidoPage() {
           </div>
           {(() => {
             // PROMOS E1-D: hermanos de combo agrupados bajo la promo (render-only)
-            const sueltos = pedido.pedido_items.filter(it => !it.combo_ref)
+            const sueltos = unificarSueltos(pedido.pedido_items.filter(it => !it.combo_ref))
             const combos = new Map<string, PedidoItem[]>()
             pedido.pedido_items.filter(it => it.combo_ref).forEach(it => { const a = combos.get(it.combo_ref!) ?? []; a.push(it); combos.set(it.combo_ref!, a) })
             const bloques: ReactNode[] = []
@@ -243,7 +243,7 @@ export default function PedidoPage() {
                       </p>
                     )}
                   </div>
-                  <p className="font-bold text-sm text-neutral-700">{formatPrecio(item.precio_snap)}</p>
+                  <p className="font-bold text-sm text-neutral-700">{formatPrecio(Number(item.precio_snap) * item.cantidad)}</p>
                 </div>
               </div>
             ))

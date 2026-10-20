@@ -1,6 +1,6 @@
 'use client'
 
-import { agruparComponentes } from '@/lib/agruparComponentes'
+import { agruparComponentes, unificarSueltos } from '@/lib/agruparComponentes'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, ChefHat, CheckCircle, Clock } from 'lucide-react'
@@ -146,7 +146,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                       <div className="p-4 space-y-2">
                         {(() => {
                           // PROMOS E1-D: combo agrupado (render-only)
-                          const sueltos = pedido.pedido_items.filter(it => !it.combo_ref)
+                          const sueltos = unificarSueltos(pedido.pedido_items.filter(it => !it.combo_ref))
                           const combos = new Map<string, PedidoItem[]>()
                           pedido.pedido_items.filter(it => it.combo_ref).forEach(it => { const a = combos.get(it.combo_ref!) ?? []; a.push(it); combos.set(it.combo_ref!, a) })
                           return (<>
@@ -204,16 +204,16 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
           <div className="space-y-3">
             {(() => {
               // PROMOS E1-D: combo agrupado (render-only)
-              const sueltos = seleccionado.pedido_items.filter(it => !it.combo_ref)
+              const sueltos = unificarSueltos(seleccionado.pedido_items.filter(it => !it.combo_ref))
               const combos = new Map<string, PedidoItem[]>()
               seleccionado.pedido_items.filter(it => it.combo_ref).forEach(it => { const a = combos.get(it.combo_ref!) ?? []; a.push(it); combos.set(it.combo_ref!, a) })
               return (<>
                 {[...combos.entries()].map(([ref, grupo]) => (
                   <div key={ref} className="bg-neutral-50 rounded-xl p-3">
                     <p className="text-neutral-800 text-sm font-bold">🎁 {grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap}</p>
-                    {grupo.map(it => (
+                    {agruparComponentes(grupo).map(({ it, n }) => (
                       <div key={it.id} className="mt-1.5">
-                        <p className="text-neutral-500 text-xs font-semibold">• {it.nombre_presentacion_snap}</p>
+                        <p className="text-neutral-500 text-xs font-semibold">• {n > 1 ? `${n}× ` : ''}{it.nombre_presentacion_snap}</p>
                         {it.pedido_item_opciones.length > 0 && (
                           <ul className="mt-0.5 ml-3 space-y-0.5">
                             {it.pedido_item_opciones.map((op, i) => (
@@ -227,7 +227,7 @@ export default function VistaPreparacion({ dispositivo, sesion }: { dispositivo:
                 ))}
                 {sueltos.map(item => (
                   <div key={item.id} className="bg-neutral-50 rounded-xl p-3">
-                    <p className="text-neutral-800 text-sm font-bold">{item.nombre_producto_snap}</p>
+                    <p className="text-neutral-800 text-sm font-bold">{item.cantidad > 1 ? `${item.cantidad}× ` : ''}{item.nombre_producto_snap}</p>
                     <p className="text-neutral-400 text-xs">{item.nombre_presentacion_snap}</p>
                     {item.pedido_item_opciones.length > 0 && (
                       <ul className="mt-2 space-y-0.5">

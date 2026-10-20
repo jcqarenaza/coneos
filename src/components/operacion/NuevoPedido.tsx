@@ -280,17 +280,17 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
 
   function agregarItem(pres: Presentacion, prod: Producto, ops: Opcion[], ctx?: PromoCtx) {
     const adic = ops.reduce((a, op) => a + Number(op.precio_adicional ?? 0), 0)
-    setCarrito(prev => [...prev, ctx ? {
+    setCarrito(prev => ctx ? [...prev, {
       uid: uid(), presentacion_id: pres.id,
       nombre_producto: `🎁 ${ctx.promo_nombre}`,
       nombre_presentacion: `${ctx.slot_titulo ? ctx.slot_titulo + ': ' : ''}${prod.nombre} ${pres.nombre}`,
       precio: ctx.precio_asignado + adic, cantidad: 1, opciones: ops,
       promo_id: ctx.promo_id, combo_ref: ctx.combo_ref, promo_slot_id: ctx.promo_slot_id,
-    } : {
+    }] : sumarAlCarrito(prev, {
       uid: uid(), presentacion_id: pres.id,
       nombre_producto: prod.nombre, nombre_presentacion: pres.nombre,
       precio: pres.precio, cantidad: 1, opciones: ops,
-    }])
+    }))
     if (!ctx) { setPresentacionActiva(null); setProductoActivo(null); setOpcionesSeleccionadas([]) }
   }
 

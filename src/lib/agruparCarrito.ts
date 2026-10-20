@@ -40,3 +40,20 @@ export function armarFilas<T extends ItemCarritoBase>(carrito: T[]): FilaCarrito
   }
   return filas
 }
+
+// Agregar al carrito: si ya hay una línea IDÉNTICA (misma presentación, mismas opciones,
+// mismo precio, sin promo) se suma la cantidad en vez de crear otra línea.
+// Las promos (combo_ref) y los accesorios nunca se fusionan.
+type ItemFusionable = {
+  presentacion_id: string; precio: number; cantidad: number
+  combo_ref?: string | null; promo_id?: string | null
+  opciones: { opcion_id?: string; id?: string }[]
+}
+export function sumarAlCarrito<T extends ItemFusionable>(prev: T[], nuevo: T): T[] {
+  if (nuevo.combo_ref || nuevo.promo_id || !nuevo.presentacion_id) return [...prev, nuevo]
+  const clave = (x: ItemFusionable) => `${x.presentacion_id}|${x.precio}|${x.opciones.map(o => o.opcion_id ?? o.id ?? '').sort().join(',')}`
+  const k = clave(nuevo)
+  const i = prev.findIndex(x => !x.combo_ref && !x.promo_id && clave(x) === k)
+  if (i < 0) return [...prev, nuevo]
+  return prev.map((x, j) => j === i ? { ...x, cantidad: x.cantidad + nuevo.cantidad } : x)
+}

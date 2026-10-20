@@ -1,6 +1,6 @@
 'use client'
 
-import { agruparComponentes, lineasResumen } from '@/lib/agruparComponentes'
+import { agruparComponentes, lineasResumen, unificarSueltos } from '@/lib/agruparComponentes'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { avisar, confirmar } from '@/components/admin/ConeDialog'
 import { createClient } from '@/lib/supabase/client'
@@ -1174,7 +1174,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                   <div className="mb-1 space-y-0.5">
                     {lineasResumen(pedido.pedido_items).slice(0, 3).map(({ it: item, n }, i) => (
                       <div key={i}>
-                        <p className="text-neutral-600 text-xs font-medium truncate">{n}× {item.nombre_presentacion_snap}</p>
+                        <p className="text-neutral-600 text-xs font-medium truncate">{n}× {item.combo_ref || !item.nombre_producto_snap || item.nombre_producto_snap === item.nombre_presentacion_snap ? item.nombre_presentacion_snap : `${item.nombre_producto_snap} · ${item.nombre_presentacion_snap}`}</p>
                         {item.pedido_item_opciones.length > 0 && (
                           <p className="text-neutral-400 text-xs truncate">{item.pedido_item_opciones.map(o => `${o.emoji_snap ?? ''} ${o.nombre_snap}`).join(', ')}</p>
                         )}
@@ -1222,7 +1222,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     const esAccesorio = (it: PedidoItem) => it.nombre_producto_snap === 'Accesorios' || it.nombre_producto_snap === it.nombre_presentacion_snap
                     const todos = seleccionado.pedido_items.filter(it => !esAccesorio(it))
                     // PROMOS E1-D: hermanos de combo agrupados bajo la promo (render-only)
-                    const normales = todos.filter(it => !it.combo_ref)
+                    const normales = unificarSueltos(todos.filter(it => !it.combo_ref))
                     const combos = new Map<string, PedidoItem[]>()
                     todos.filter(it => it.combo_ref).forEach(it => { const a = combos.get(it.combo_ref!) ?? []; a.push(it); combos.set(it.combo_ref!, a) })
                     const accs = seleccionado.pedido_items.filter(esAccesorio)
@@ -1254,7 +1254,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         <div key={item.id} className={`p-4 ${i < normales.length - 1 || accs.length > 0 ? 'border-b border-neutral-50' : ''}`}>
                           <div className="flex justify-between items-start gap-4">
                             <div className="flex-1">
-                              <p className="text-neutral-800 font-bold">{item.nombre_producto_snap}</p>
+                              <p className="text-neutral-800 font-bold">{item.cantidad > 1 ? `${item.cantidad}× ` : ''}{item.nombre_producto_snap}</p>
                               <p className="text-neutral-400 text-sm">{item.nombre_presentacion_snap}</p>
                               {item.pedido_item_opciones.length > 0 && (
                                 <div className="flex flex-wrap gap-1.5 mt-2">
@@ -1264,7 +1264,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                                 </div>
                               )}
                             </div>
-                            <p className="text-neutral-800 font-bold">{formatPrecio(item.precio_snap)}</p>
+                            <p className="text-neutral-800 font-bold">{formatPrecio(Number(item.precio_snap) * item.cantidad)}</p>
                           </div>
                         </div>
                       ))}

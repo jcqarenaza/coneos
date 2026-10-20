@@ -8,6 +8,7 @@ import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import KioskCarrito from '@/components/kiosk/KioskCarrito'
 import KioskConfirmacion from '@/components/kiosk/KioskConfirmacion'
 import LatidoDispositivo from '@/components/LatidoDispositivo'
+import { sumarAlCarrito } from '@/lib/agruparCarrito'
 
 export interface EmpresaConfig {
   primary_color: string
@@ -115,7 +116,7 @@ export default function KioskPage() {
   }, [config])
 
   function agregarItem(item: Omit<ItemCarrito, 'id'>) {
-    setCarrito(prev => [...prev, { ...item, id: Math.random().toString(36).substring(2) + Date.now().toString(36) }])
+    setCarrito(prev => sumarAlCarrito(prev, { ...item, id: Math.random().toString(36).substring(2) + Date.now().toString(36) }))
   }
 
   function quitarItem(id: string) {

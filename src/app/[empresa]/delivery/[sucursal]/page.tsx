@@ -10,6 +10,7 @@ import KioskConfirmacionDelivery from '@/components/delivery/KioskConfirmacionDe
 import { generarSlots } from '@/lib/takeaway/slots'
 import RegistroVisita from '@/components/RegistroVisita'
 import { useRetornoMp, type PedidoRetorno } from '@/lib/useRetornoMp'
+import { sumarAlCarrito } from '@/lib/agruparCarrito'
 
 export interface EmpresaConfig {
   primary_color: string; secondary_color: string; logo_url: string | null
@@ -294,7 +295,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   }, [carrito, claveCarrito, carritoRestaurado])
 
   const agregarAlCarrito = useCallback((item: Omit<ItemCarrito, 'id'>) => {
-    setCarrito(prev => [...prev, { ...item, id: generarId() }])
+    setCarrito(prev => sumarAlCarrito(prev, { ...item, id: generarId() }))
   }, [])
 
   function handleConfirmarCarrito(extras: { accesorio: Accesorio; cantidad: number }[]) {

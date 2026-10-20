@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { agruparComponentes } from '@/lib/agruparComponentes'
+import { agruparComponentes, unificarSueltos } from '@/lib/agruparComponentes'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
 
   // PROMOS E1-D: los hermanos de un combo_ref se agrupan bajo el nombre de la
   // promo con su precio TOTAL (render-only; los datos no cambian)
-  const sueltos = normales.filter(it => !it.combo_ref)
+  const sueltos = unificarSueltos(normales.filter(it => !it.combo_ref))
   const combosMap = new Map<string, Item[]>()
   normales.filter(it => it.combo_ref).forEach(it => {
     const arr = combosMap.get(it.combo_ref!) ?? []
