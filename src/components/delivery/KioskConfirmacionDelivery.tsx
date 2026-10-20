@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import type { PedidoRetorno } from '@/lib/useRetornoMp'
 
 import { Loader2, CheckCircle, Copy, Check, Truck, Upload, X, ArrowLeft } from 'lucide-react'
+import { armarFilas } from '@/lib/agruparCarrito'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface Props {
@@ -524,8 +525,10 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       })
     }
     const W = 640
-    const lineas = carrito.length + (costoEnvio > 0 ? 1 : 0)
-    const H = 460 + lineas * 34 + (esTakeaway && cod ? 110 : 0) + (esTakeaway && cod && (horaConfirmada || slotsRetiro.length > 0) ? 40 : 0) + (logo ? 96 : 0)
+    // PROMOS: cada combo es UN renglón con sus componentes agrupados debajo (solo visual)
+    const filasComp = armarFilas(carrito)
+    const lineasPx = filasComp.reduce((a, f) => a + 34 + (f.tipo === 'combo' ? f.lineas.length * 28 : 0), 0) + (costoEnvio > 0 ? 34 : 0)
+    const H = 460 + lineasPx + (esTakeaway && cod ? 110 : 0) + (esTakeaway && cod && (horaConfirmada || slotsRetiro.length > 0) ? 40 : 0) + (logo ? 96 : 0)
     const cv = document.createElement('canvas')
     cv.width = W; cv.height = H
     const cx = cv.getContext('2d')
@@ -568,8 +571,22 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     cx.strokeStyle = '#e5e5e5'; cx.beginPath(); cx.moveTo(48, y); cx.lineTo(W - 48, y); cx.stroke(); y += 34
     // detalle
     cx.textAlign = 'left'; cx.font = '16px system-ui, sans-serif'
-    for (const it of carrito) {
+    for (const f of filasComp) {
       cx.fillStyle = '#404040'
+      if (f.tipo === 'combo') {
+        const nomC = `🎁 ${f.nombre}`
+        cx.fillText(nomC.length > 44 ? nomC.slice(0, 43) + '…' : nomC, 48, y)
+        cx.textAlign = 'right'; cx.fillText(formatPrecio(f.precio), W - 48, y)
+        cx.textAlign = 'left'; y += 30
+        cx.font = '14px system-ui, sans-serif'; cx.fillStyle = '#737373'
+        for (const l of f.lineas) {
+          const t = `${l.grupo ? l.grupo + ': ' : ''}${l.n > 1 ? l.n + '× ' : ''}${l.nombre}${l.opciones ? ' · ' + l.opciones : ''}`
+          cx.fillText('   ' + (t.length > 56 ? t.slice(0, 55) + '…' : t), 48, y); y += 28
+        }
+        cx.font = '16px system-ui, sans-serif'; y += 4
+        continue
+      }
+      const it = f.item
       const nom = `${it.cantidad > 1 ? it.cantidad + '× ' : ''}${it.nombre_producto} — ${it.nombre_presentacion}`
       cx.fillText(nom.length > 44 ? nom.slice(0, 43) + '…' : nom, 48, y)
       cx.textAlign = 'right'; cx.fillText(formatPrecio(it.precio * it.cantidad), W - 48, y)
