@@ -23,14 +23,14 @@ import { Plus, Loader2, Pencil, Trash2, Upload, X } from 'lucide-react'
 interface Producto { id: string; nombre: string; activo: boolean; categoria_id: string | null; orden: number | null }
 interface Categoria { id: string; nombre: string; orden: number | null }
 interface Presentacion { id: string; nombre: string; precio: number; producto_id: string; activo: boolean }
-interface SlotForm { titulo: string; presentacion_ids: string[] }
+interface SlotForm { titulo: string; presentacion_ids: string[]; cantidad: number }  // V2-A: cantidad de unidades del componente (1 = como siempre)
 interface Promo {
   id: string; nombre: string; descripcion: string | null; imagen_url: string | null
   precio: number; precio_regular: number | null
   vigencia_desde: string | null; vigencia_hasta: string | null
   visible_kiosk: boolean; visible_delivery: boolean; visible_mesa: boolean; visible_takeaway: boolean
   es_novedad: boolean; activo: boolean
-  promo_slots: { id: string; orden: number; titulo: string; promo_slot_presentaciones: { presentacion_id: string }[] }[]
+  promo_slots: { id: string; orden: number; titulo: string; cantidad?: number | null; promo_slot_presentaciones: { presentacion_id: string }[] }[]
 }
 
 const emptyForm = () => ({
@@ -54,7 +54,7 @@ export default function PromocionesTab() {
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(emptyForm())
-  const [slots, setSlots] = useState<SlotForm[]>([{ titulo: '', presentacion_ids: [] }])
+  const [slots, setSlots] = useState<SlotForm[]>([{ titulo: '', presentacion_ids: [], cantidad: 1 }])
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -63,7 +63,7 @@ export default function PromocionesTab() {
     const supabase = createClient()
     const [{ data: ps }, { data: prods }, { data: pres }, { data: cats }] = await Promise.all([
       supabase.from('promociones')
-        .select('*, promo_slots(id, orden, titulo, promo_slot_presentaciones(presentacion_id))')
+        .select('*, promo_slots(id, orden, titulo, cantidad, promo_slot_presentaciones(presentacion_id))')
         .eq('empresa_id', ctx.empresaId)
         .order('created_at', { ascending: false }),
       supabase.from('productos').select('id, nombre, activo, categoria_id, orden').eq('empresa_id', ctx.empresaId).is('deleted_at', null).order('orden'),
@@ -85,7 +85,7 @@ export default function PromocionesTab() {
     for (const s of slots) {
       const precios = s.presentacion_ids.map(id => Number(presentaciones.find(p => p.id === id)?.precio ?? 0)).filter(n => n > 0)
       if (precios.length === 0) return null
-      min += Math.min(...precios); max += Math.max(...precios)
+      min += Math.min(...precios) * s.cantidad; max += Math.max(...precios) * s.cantidad
     }
     return { min, max }
   }
@@ -104,7 +104,7 @@ export default function PromocionesTab() {
   }
 
   function abrirNueva() {
-    setEditId(null); setForm(emptyForm()); setSlots([{ titulo: '', presentacion_ids: [] }]); setModal(true)
+    setEditId(null); setForm(emptyForm()); setSlots([{ titulo: '', presentacion_ids: [], cantidad: 1 }]); setModal(true)
   }
 
   function abrirEditar(p: Promo) {
@@ -116,7 +116,7 @@ export default function PromocionesTab() {
       visible_kiosk: p.visible_kiosk, visible_delivery: p.visible_delivery, visible_mesa: p.visible_mesa, visible_takeaway: p.visible_takeaway,
       es_novedad: p.es_novedad, activo: p.activo,
     })
-    setSlots(p.promo_slots.map(s => ({ titulo: s.titulo ?? '', presentacion_ids: s.promo_slot_presentaciones.map(x => x.presentacion_id) })))
+    setSlots(p.promo_slots.map(s => ({ cantidad: Math.max(1, Number(s.cantidad ?? 1)), titulo: s.titulo ?? '', presentacion_ids: s.promo_slot_presentaciones.map(x => x.presentacion_id) })))
     setModal(true)
   }
 
@@ -170,7 +170,7 @@ export default function PromocionesTab() {
     }
     for (let i = 0; i < slots.length; i++) {
       const { data: slotRow, error: e1 } = await supabase.from('promo_slots')
-        .insert({ empresa_id: ctx.empresaId, promo_id: promoId, orden: i + 1, titulo: slots[i].titulo.trim() || `Componente ${i + 1}` })
+        .insert({ empresa_id: ctx.empresaId, promo_id: promoId, orden: i + 1, titulo: slots[i].titulo.trim() || `Componente ${i + 1}`, cantidad: Math.min(50, Math.max(1, Math.floor(Number(slots[i].cantidad) || 1))) })
         .select('id').single()
       if (e1 || !slotRow) { avisar('No se pudo guardar un componente: ' + (e1?.message ?? 'sin datos')); setSaving(false); return }
       const { error: e2 } = await supabase.from('promo_slot_presentaciones')
@@ -243,7 +243,7 @@ export default function PromocionesTab() {
                   )}
                 </p>
                 <p className="text-xs text-neutral-400 mt-1">
-                  {p.promo_slots.map(s => `${s.titulo || `Componente ${s.orden}`} (${s.promo_slot_presentaciones.length})`).join(' + ')}
+                  {p.promo_slots.map(s => `${Number(s.cantidad ?? 1) > 1 ? `${s.cantidad}× ` : ''}${s.titulo || `Componente ${s.orden}`} (${s.promo_slot_presentaciones.length})`).join(' + ')}
                   <span className="ml-2">
                     {p.visible_kiosk && '🖥️'}{p.visible_delivery && '🛵'}{p.visible_takeaway && '🥡'}{p.visible_mesa && '🍽️'}
                   </span>
@@ -342,7 +342,7 @@ export default function PromocionesTab() {
           <div className="border-t border-neutral-100 pt-4">
             <div className="flex items-center justify-between mb-2">
               <p className="font-bold text-neutral-800 text-sm">Componentes del combo</p>
-              <ConeButton variant="ghost" onClick={() => setSlots(prev => [...prev, { titulo: '', presentacion_ids: [] }])} icon={<Plus className="h-4 w-4" />}>Agregar componente</ConeButton>
+              <ConeButton variant="ghost" onClick={() => setSlots(prev => [...prev, { titulo: '', presentacion_ids: [], cantidad: 1 }])} icon={<Plus className="h-4 w-4" />}>Agregar componente</ConeButton>
             </div>
             <div className="space-y-3">
               {slots.map((slot, idx) => (
@@ -351,6 +351,12 @@ export default function PromocionesTab() {
                     <span className="text-xs font-bold text-neutral-400 flex-shrink-0">{idx + 1}.</span>
                     <Input value={slot.titulo} onChange={e => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, titulo: e.target.value } : s))}
                       placeholder={`Título (ej: Pote ${idx + 1})`} className="h-8 text-sm" />
+                    <label className="flex items-center gap-1 text-xs text-neutral-500 flex-shrink-0" title="Cuántas unidades elige el cliente en este componente (ej: 12 empanadas)">
+                      Cant.
+                      <input type="number" min={1} max={50} value={slot.cantidad}
+                        onChange={e => setSlots(prev => prev.map((s, k) => k === idx ? { ...s, cantidad: Math.max(1, Math.min(50, Math.floor(Number(e.target.value) || 1))) } : s))}
+                        className="h-8 w-14 rounded-lg border border-neutral-200 px-2 text-sm text-neutral-800" />
+                    </label>
                     {slots.length > 1 && (
                       <button onClick={() => setSlots(prev => prev.filter((_, i) => i !== idx))} className="p-1.5 text-neutral-300 hover:text-red-500 rounded-lg flex-shrink-0"><Trash2 className="h-4 w-4" /></button>
                     )}

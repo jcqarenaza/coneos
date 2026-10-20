@@ -13,7 +13,7 @@ interface Opcion { id: string; nombre: string; descripcion: string | null; emoji
 interface GrupoOpciones { id: string; nombre: string; orden: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 // PROMOS V1 (E1-C): shapes del catálogo (misma forma que devuelve /api/kiosk/catalogo)
-interface PromoSlotAPI { id: string; orden: number; titulo: string | null; presentaciones: string[] }
+interface PromoSlotAPI { id: string; orden: number; titulo: string | null; presentaciones: string[]; cantidad?: number }  // PROMOS V2-A: cantidad (default 1 = comportamiento V1)
 interface Promo { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; precio: number; precio_regular: number | null; es_novedad?: boolean; slots: PromoSlotAPI[] }
 // Contexto que viaja con cada componente del combo hasta el carrito
 interface PromoCtx { promo_id: string; combo_ref: string; promo_slot_id: string; promo_nombre: string; slot_titulo: string | null; precio_asignado: number }
@@ -68,6 +68,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const [promos, setPromos] = useState<Promo[]>([])
   // Asistente de combo en curso (overlay de elección por slot)
   const [promoSel, setPromoSel] = useState<{ promo: Promo; combo_ref: string; idx: number; elecciones: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] } | null>(null)
+  const [cantSel, setCantSel] = useState<Record<string, number>>({})  // V2-A: unidades por presentación en el slot actual
   // Promo pedida desde el inicio (categoriaIdInicial = 'promo:<id>'): se arranca recién cuando el catálogo ya cargó
   const [promoInicialId, setPromoInicialId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -244,7 +245,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     while (idx < slots.length) {
       const permitidas = presDeSlot(slots[idx])
       if (permitidas.length === 0) { setPromoSel(null); return }  // algo quedó invisible: abortar sin ruido
-      if (permitidas.length === 1) { elecciones.push({ slot: slots[idx], ...permitidas[0] }); idx++; continue }
+      const cantSlot = Math.max(1, Number(slots[idx].cantidad ?? 1))
+      if (permitidas.length === 1) { for (let k = 0; k < cantSlot; k++) elecciones.push({ slot: slots[idx], ...permitidas[0] }); idx++; continue }
+      setCantSel({})
       setPromoSel({ ...sel, idx, elecciones })
       return
     }
@@ -256,6 +259,18 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     if (!promoSel) return
     const slots = [...promoSel.promo.slots].sort((a, b) => a.orden - b.orden)
     avanzarPromo({ ...promoSel, idx: promoSel.idx + 1, elecciones: [...promoSel.elecciones, { slot: slots[promoSel.idx], pres, prod }] })
+  }
+
+  // V2-A: slot con cantidad > 1 — el cliente reparte N unidades entre las variedades permitidas
+  function confirmarSlotMulti() {
+    if (!promoSel) return
+    const slots = [...promoSel.promo.slots].sort((a, b) => a.orden - b.orden)
+    const slot = slots[promoSel.idx]
+    const permitidas = presDeSlot(slot)
+    const nuevas: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] = []
+    permitidas.forEach(({ pres, prod }) => { for (let k = 0; k < (cantSel[pres.id] ?? 0); k++) nuevas.push({ slot, pres, prod }) })
+    if (nuevas.length !== Math.max(1, Number(slot.cantidad ?? 1))) return
+    avanzarPromo({ ...promoSel, idx: promoSel.idx + 1, elecciones: [...promoSel.elecciones, ...nuevas] })
   }
 
   // Emite los componentes: con opciones → a la cola de sabores; sin opciones → directo al carrito.
@@ -787,6 +802,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
         const slots = [...promoSel.promo.slots].sort((a, b) => a.orden - b.orden)
         const slot = slots[promoSel.idx]
         const permitidas = presDeSlot(slot)
+        const cantSlot = Math.max(1, Number(slot.cantidad ?? 1))
+        const totalSel = Object.values(cantSel).reduce((a, b) => a + b, 0)
         return (
           <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center" onClick={() => setPromoSel(null)}>
             <div className="bg-white rounded-t-3xl md:rounded-3xl w-full max-w-md max-h-[80vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
@@ -795,6 +812,40 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 <button onClick={() => setPromoSel(null)} className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-100"><X className="h-5 w-5" /></button>
               </div>
               <p className="text-sm text-neutral-500 mb-4">{slot.titulo ?? `Elegí el producto`} · paso {promoSel.idx + 1} de {slots.length}</p>
+              {cantSlot > 1 ? (
+                <>
+                  <p className="text-sm font-semibold mb-2" style={{ color: config.primary_color }}>Elegí {cantSlot} · llevás {totalSel} de {cantSlot}</p>
+                  <div className="flex flex-col gap-2">
+                    {permitidas.map(({ pres, prod }) => {
+                      const n = cantSel[pres.id] ?? 0
+                      return (
+                        <div key={pres.id} className="flex items-center gap-3 border border-neutral-100 rounded-xl px-3 py-2.5">
+                          {(pres.imagen_url || prod.imagen_url) && (
+                            <div className="w-11 h-11 rounded-lg overflow-hidden bg-neutral-50 flex-shrink-0">
+                              <img src={pres.imagen_url ?? prod.imagen_url!} alt="" className="object-cover w-full h-full" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-neutral-800 leading-tight">{prod.nombre}</p>
+                            <p className="text-xs text-neutral-400 leading-tight">{pres.nombre}</p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button onClick={() => setCantSel(prev => ({ ...prev, [pres.id]: Math.max(0, (prev[pres.id] ?? 0) - 1) }))} disabled={n === 0}
+                              className="w-8 h-8 rounded-full bg-neutral-100 text-neutral-600 font-bold disabled:opacity-30">−</button>
+                            <span className="w-5 text-center font-black text-neutral-800">{n}</span>
+                            <button onClick={() => setCantSel(prev => ({ ...prev, [pres.id]: (prev[pres.id] ?? 0) + 1 }))} disabled={totalSel >= cantSlot}
+                              className="w-8 h-8 rounded-full text-white font-bold disabled:opacity-30" style={{ backgroundColor: config.primary_color }}>+</button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <button onClick={confirmarSlotMulti} disabled={totalSel !== cantSlot}
+                    className="mt-3 w-full py-3 rounded-xl text-white font-bold disabled:opacity-40" style={{ backgroundColor: config.primary_color }}>
+                    {totalSel === cantSlot ? 'Confirmar' : `Faltan ${cantSlot - totalSel}`}
+                  </button>
+                </>
+              ) : (
               <div className="flex flex-col gap-2">
                 {permitidas.map(({ pres, prod }) => (
                   <button key={pres.id} onClick={() => elegirSlot(pres, prod)}
@@ -811,6 +862,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                   </button>
                 ))}
               </div>
+              )}
               <button onClick={() => setPromoSel(null)} className="mt-4 w-full py-2.5 rounded-xl text-sm font-medium text-neutral-500 hover:bg-neutral-50">Cancelar</button>
             </div>
           </div>

@@ -99,13 +99,13 @@ export async function GET(request: Request) {
     takeaway: 'visible_takeaway', operacion: null,
   }
   let qPromo = supabase.from('promociones')
-    .select('id, nombre, descripcion, imagen_url, precio, precio_regular, es_novedad, vigencia_desde, vigencia_hasta, promo_slots(id, orden, titulo, promo_slot_presentaciones(presentacion_id))')
+    .select('id, nombre, descripcion, imagen_url, precio, precio_regular, es_novedad, vigencia_desde, vigencia_hasta, promo_slots(id, orden, titulo, cantidad, promo_slot_presentaciones(presentacion_id))')
     .eq('empresa_id', empresa_id).eq('activo', true)
   const colP = colPromo[canal]
   if (colP) qPromo = qPromo.eq(colP, true)
   const { data: promosRaw } = await qPromo
   const presVisibles = new Set(presentacionesFiltradas.map((p: { id: string }) => p.id))
-  type SlotRaw = { id: string; orden: number; titulo: string; promo_slot_presentaciones: { presentacion_id: string }[] }
+  type SlotRaw = { id: string; orden: number; titulo: string; cantidad?: number | null; promo_slot_presentaciones: { presentacion_id: string }[] }
   const promociones = (promosRaw ?? [])
     .filter((pr: { vigencia_desde?: string | null; vigencia_hasta?: string | null } & Record<string, unknown>) => true)
     .map((pr: Record<string, unknown>) => ({
@@ -116,7 +116,7 @@ export async function GET(request: Request) {
       vigencia_hasta: (pr as { vigencia_hasta?: string | null }).vigencia_hasta ?? null,
       slots: ((pr.promo_slots ?? []) as SlotRaw[])
         .sort((a, b) => a.orden - b.orden)
-        .map(s => ({ id: s.id, orden: s.orden, titulo: s.titulo,
+        .map(s => ({ id: s.id, orden: s.orden, titulo: s.titulo, cantidad: Math.max(1, Number(s.cantidad ?? 1)),
           presentaciones: s.promo_slot_presentaciones.map(x => x.presentacion_id).filter(id => presVisibles.has(id)) })),
     }))
     .filter(pr => {
