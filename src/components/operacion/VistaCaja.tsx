@@ -951,18 +951,50 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         <BadgeMesa p={historialSeleccionado} /><BadgeTakeaway p={historialSeleccionado} /><BadgeFiscal id={historialSeleccionado.id} /><span className={`text-xs px-2 py-1 rounded-full font-semibold ${ESTADO_BADGE[historialSeleccionado.estado]}`}>{ESTADO_LABEL[historialSeleccionado.estado]}</span>
                       </div>
                       <div className="space-y-2 mb-3">
-                        {historialSeleccionado.pedido_items.map((item, i) => (
-                          <div key={i} className="border-b border-neutral-50 pb-2">
-                            <div className="flex justify-between text-sm">
-                              <span className="font-semibold">{item.cantidad}× {item.nombre_presentacion_snap}</span>
-                              <span className="font-bold">{formatPrecio(item.precio_snap)}</span>
-                            </div>
-                            {item.pedido_item_opciones.length > 0 && (
-                              <p className="text-xs text-neutral-400 mt-0.5">{item.pedido_item_opciones.map(o => `${o.emoji_snap ?? ''} ${o.nombre_snap}`).join(' · ')}</p>
-                            )}
-                          </div>
-                        ))}
+                        {(() => {
+                          // Igual que el detalle de Activos: combos bajo el nombre de la promo con
+                          // componentes agrupados, y sueltos idénticos unidos (render-only)
+                          const its = historialSeleccionado.pedido_items
+                          const combos = new Map<string, PedidoItem[]>()
+                          its.filter(it => it.combo_ref).forEach(it => { const a = combos.get(it.combo_ref!) ?? []; a.push(it); combos.set(it.combo_ref!, a) })
+                          const sueltos = unificarSueltos(its.filter(it => !it.combo_ref))
+                          return (<>
+                            {[...combos.entries()].map(([ref, grupo]) => (
+                              <div key={ref} className="border-b border-neutral-50 pb-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="font-semibold">🎁 {grupo[0].promo_nombre_snap ?? grupo[0].nombre_producto_snap}</span>
+                                  <span className="font-bold">{formatPrecio(grupo.reduce((s, it) => s + Number(it.precio_snap), 0))}</span>
+                                </div>
+                                {agruparComponentes(grupo).map(({ it, n }) => (
+                                  <div key={it.id} className="ml-2 mt-0.5">
+                                    <p className="text-xs text-neutral-500">• {n > 1 ? `${n}× ` : ''}{it.nombre_presentacion_snap}</p>
+                                    {it.pedido_item_opciones.length > 0 && (
+                                      <p className="text-xs text-neutral-400 ml-2">{it.pedido_item_opciones.map(o => `${o.emoji_snap ?? ''} ${o.nombre_snap}`).join(' · ')}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                            {sueltos.map((item, i) => (
+                              <div key={i} className="border-b border-neutral-50 pb-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="font-semibold">{item.cantidad}× {!item.nombre_producto_snap || item.nombre_producto_snap === item.nombre_presentacion_snap ? item.nombre_presentacion_snap : `${item.nombre_producto_snap} · ${item.nombre_presentacion_snap}`}</span>
+                                  <span className="font-bold">{formatPrecio(Number(item.precio_snap) * item.cantidad)}</span>
+                                </div>
+                                {item.pedido_item_opciones.length > 0 && (
+                                  <p className="text-xs text-neutral-400 mt-0.5">{item.pedido_item_opciones.map(o => `${o.emoji_snap ?? ''} ${o.nombre_snap}`).join(' · ')}</p>
+                                )}
+                              </div>
+                            ))}
+                          </>)
+                        })()}
                       </div>
+                      {Number(historialSeleccionado.costo_envio ?? 0) > 0 && (
+                        <div className="flex justify-between text-sm text-neutral-500 mb-2">
+                          <span>{historialSeleccionado.tipo_pedido === 'takeaway' ? '🥡 Servicio de retiro' : '🚚 Envío'}</span>
+                          <span className="font-semibold">{formatPrecio(Number(historialSeleccionado.costo_envio))}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between font-bold">
                         <span>{Number(historialSeleccionado.descuento_cobro ?? 0) > 0 ? 'Total cobrado' : 'Total'}</span><span>{formatPrecio(Number(historialSeleccionado.total) - Number(historialSeleccionado.descuento_cobro ?? 0))}</span>
                       </div>
