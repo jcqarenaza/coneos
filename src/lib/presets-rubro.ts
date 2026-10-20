@@ -42,7 +42,7 @@ export const PRESETS_RUBRO: Record<string, PresetRubro> = {
       { nombre: 'Punto de cocción', opciones: [{ nombre: 'Jugoso' }, { nombre: 'A punto' }, { nombre: 'Bien cocido' }] },
       { nombre: 'Guarnición', opciones: [{ nombre: 'Papas fritas', emoji: '🍟' }, { nombre: 'Puré' }, { nombre: 'Ensalada', emoji: '🥗' }] },
     ],
-    texto_bienvenida: 'Bienvenidos — pedí desde tu mesa',
+    texto_bienvenida: 'Bienvenidos — hacé tu pedido',
   },
   BAR: {
     etiqueta: '🍺 Bar',
@@ -50,7 +50,7 @@ export const PRESETS_RUBRO: Record<string, PresetRubro> = {
     grupos: [
       { nombre: 'Extras', opciones: [{ nombre: 'Porción de fritas', emoji: '🍟' }, { nombre: 'Maní' }] },
     ],
-    texto_bienvenida: 'Pedí desde tu mesa y seguí la charla',
+    texto_bienvenida: '¿Qué te sirvo hoy?',
   },
   PIZZERIA: {
     etiqueta: '🍕 Pizzería',
