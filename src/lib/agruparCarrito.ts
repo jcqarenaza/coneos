@@ -24,7 +24,7 @@ export function armarFilas<T extends ItemCarritoBase>(carrito: T[]): FilaCarrito
     if (!it.combo_ref) { filas.push({ tipo: 'item', item: it }); continue }
     let f = porRef.get(it.combo_ref)
     if (!f) {
-      f = { tipo: 'combo', ref: it.combo_ref, nombre: it.nombre_producto, precio: 0, lineas: [], primero: it }
+      f = { tipo: 'combo', ref: it.combo_ref, nombre: String(it.nombre_producto).replace(/^🎁\s*/u, ''), precio: 0, lineas: [], primero: it }
       porRef.set(it.combo_ref, f)
       filas.push(f)
     }

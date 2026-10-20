@@ -14,7 +14,7 @@ interface Grupo { id: string; nombre: string }
 interface Opcion { id: string; nombre: string; emoji: string | null; color: string | null; imagen_url: string | null; grupo_id: string; precio_adicional: number; es_novedad?: boolean }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 // PROMOS V1 (E1-C caja): misma forma que devuelve /api/kiosk/catalogo
-interface PromoSlotAPI { id: string; orden: number; titulo: string | null; presentaciones: string[] }
+interface PromoSlotAPI { id: string; orden: number; titulo: string | null; cantidad?: number; presentaciones: string[] }
 interface Promo { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; precio: number; precio_regular: number | null; es_novedad?: boolean; slots: PromoSlotAPI[] }
 interface PromoCtx { promo_id: string; combo_ref: string; promo_slot_id: string; promo_nombre: string; slot_titulo: string | null; precio_asignado: number }
 interface ItemCarrito {
@@ -43,6 +43,8 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   const [promos, setPromos] = useState<Promo[]>([])
   // Asistente de combo: elección de slot (si hay variedad) + cola de sabores
   const [promoSel, setPromoSel] = useState<{ promo: Promo; combo_ref: string; idx: number; elecciones: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] } | null>(null)
+  // V2-A: slot con cantidad > 1 — el operador reparte N unidades entre las variedades permitidas
+  const [cantSel, setCantSel] = useState<Record<string, number>>({})
   const [promoCola, setPromoCola] = useState<{ pres: Presentacion; prod: Producto; ctx: PromoCtx }[]>([])
   const [promoColaIdx, setPromoColaIdx] = useState(0)
   const promoCtxActual = promoCola[promoColaIdx]?.ctx ?? null
@@ -215,7 +217,9 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     while (idx < slots.length) {
       const permitidas = presDeSlot(slots[idx])
       if (permitidas.length === 0) { setPromoSel(null); setError('La promo tiene un componente sin productos disponibles.'); return }
-      if (permitidas.length === 1) { elecciones.push({ slot: slots[idx], ...permitidas[0] }); idx++; continue }
+      const cantSlot = Math.max(1, Number(slots[idx].cantidad ?? 1))
+      if (permitidas.length === 1) { for (let k = 0; k < cantSlot; k++) elecciones.push({ slot: slots[idx], ...permitidas[0] }); idx++; continue }
+      setCantSel({})
       setPromoSel({ ...sel, idx, elecciones })
       return
     }
@@ -227,6 +231,17 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     if (!promoSel) return
     const slots = [...promoSel.promo.slots].sort((a, b) => a.orden - b.orden)
     avanzarPromo({ ...promoSel, idx: promoSel.idx + 1, elecciones: [...promoSel.elecciones, { slot: slots[promoSel.idx], pres, prod }] })
+  }
+
+  // V2-A: confirma el reparto de N unidades de un slot con cantidad > 1
+  function confirmarSlotMulti() {
+    if (!promoSel) return
+    const slots = [...promoSel.promo.slots].sort((a, b) => a.orden - b.orden)
+    const slot = slots[promoSel.idx]
+    const nuevas: { slot: PromoSlotAPI; pres: Presentacion; prod: Producto }[] = []
+    presDeSlot(slot).forEach(({ pres, prod }) => { for (let k = 0; k < (cantSel[pres.id] ?? 0); k++) nuevas.push({ slot, pres, prod }) })
+    if (nuevas.length !== Math.max(1, Number(slot.cantidad ?? 1))) return
+    avanzarPromo({ ...promoSel, idx: promoSel.idx + 1, elecciones: [...promoSel.elecciones, ...nuevas] })
   }
 
   // Con opciones → cola de sabores (reutiliza el panel de siempre); sin opciones → directo
@@ -425,6 +440,8 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
           {promoSel ? (() => {
             const slots = [...promoSel.promo.slots].sort((a, b) => a.orden - b.orden)
             const slot = slots[promoSel.idx]
+            const cantSlot = Math.max(1, Number(slot.cantidad ?? 1))
+            const totalSel = Object.values(cantSel).reduce((x, y) => x + y, 0)
             return (
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -434,6 +451,38 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                   </div>
                   <button onClick={cancelarPromo} className="text-neutral-400 text-sm hover:text-neutral-600 transition-colors">✕ Cancelar promo</button>
                 </div>
+                {cantSlot > 1 ? (
+                  <>
+                    <p className="text-sm font-semibold text-neutral-700 mb-3">Elegí {cantSlot} · llevás {totalSel} de {cantSlot}</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {presDeSlot(slot).map(({ pres, prod }) => {
+                        const n = cantSel[pres.id] ?? 0
+                        return (
+                          <div key={pres.id} className="flex items-center gap-2.5 p-3 bg-white rounded-xl border border-neutral-100">
+                            {(pres.imagen_url || prod.imagen_url)
+                              ? <img src={pres.imagen_url ?? prod.imagen_url!} alt={prod.nombre} className="w-12 h-12 object-cover rounded-lg flex-shrink-0 bg-neutral-50" />
+                              : <span className="w-10 h-10 rounded-lg bg-neutral-50 flex items-center justify-center text-xl flex-shrink-0">🍦</span>}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-neutral-800 font-bold text-sm leading-tight truncate">{prod.nombre}</p>
+                              <p className="text-neutral-400 text-xs truncate">{pres.nombre}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button onClick={() => setCantSel(prev => ({ ...prev, [pres.id]: Math.max(0, (prev[pres.id] ?? 0) - 1) }))} disabled={n === 0}
+                                className="w-7 h-7 rounded-full bg-neutral-100 text-neutral-600 font-bold disabled:opacity-30">−</button>
+                              <span className="w-5 text-center font-black text-neutral-800 text-sm">{n}</span>
+                              <button onClick={() => setCantSel(prev => ({ ...prev, [pres.id]: (prev[pres.id] ?? 0) + 1 }))} disabled={totalSel >= cantSlot}
+                                className="w-7 h-7 rounded-full bg-neutral-800 text-white font-bold disabled:opacity-30">+</button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <button onClick={confirmarSlotMulti} disabled={totalSel !== cantSlot}
+                      className="mt-4 w-full md:w-auto md:px-10 py-3 rounded-xl bg-neutral-800 text-white font-bold disabled:opacity-40">
+                      {totalSel === cantSlot ? 'Confirmar' : `Faltan ${cantSlot - totalSel}`}
+                    </button>
+                  </>
+                ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                   {presDeSlot(slot).map(({ pres, prod }) => (
                     <button key={pres.id} onClick={() => elegirSlot(pres, prod)}
@@ -448,6 +497,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                     </button>
                   ))}
                 </div>
+                )}
               </div>
             )
           })() : !presentacionActiva ? (
