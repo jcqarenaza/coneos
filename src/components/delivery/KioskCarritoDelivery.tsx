@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Trash2, Plus, Minus, ShoppingBag, Truck, ArrowLeft } from 'lucide-react'
+import { armarFilas } from '@/lib/agruparCarrito'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito, Accesorio } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface AccesorioExtra { accesorio: Accesorio; cantidad: number }
@@ -25,6 +26,7 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
   const esTakeaway = canal === 'takeaway'
   const [cantAccesorios, setCantAccesorios] = useState<Record<string, number>>({})
 
+  const filas = armarFilas(carrito)
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const subtotalAcc = accesorios.reduce((acc, a) => acc + (cantAccesorios[a.id] ?? 0) * a.precio_adicional, 0)
   // Espejo delivery↔TA: el costo del canal SIEMPRE suma (delivery: envío ·
@@ -132,8 +134,36 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
 
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-48">
         <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden mb-4">
-          {carrito.map((item, i) => (
-            <div key={item.id} className={`px-4 py-4 ${i < carrito.length - 1 ? 'border-b border-neutral-50' : ''}`}>
+          {filas.map((fila, i) => {
+            const borde = i < filas.length - 1 ? 'border-b border-neutral-50' : ''
+            if (fila.tipo === 'combo') {
+              return (
+                <div key={fila.ref} className={`px-4 py-4 ${borde}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-neutral-800 text-sm leading-tight">🎁 {fila.nombre}</p>
+                      <div className="mt-1.5 space-y-0.5">
+                        {fila.lineas.map((l, k) => (
+                          <p key={k} className="text-neutral-500 text-xs leading-tight">
+                            {l.grupo && <span className="text-neutral-400">{l.grupo}: </span>}
+                            <span className="font-semibold text-neutral-700">{l.n > 1 ? `${l.n}× ` : ''}{l.nombre}</span>
+                            {l.opciones && <span className="text-neutral-400"> · {l.opciones}</span>}
+                          </p>
+                        ))}
+                      </div>
+                      <p className="font-bold text-base mt-1.5" style={{ color: config.primary_color }}>{formatPrecio(fila.precio)}</p>
+                    </div>
+                    <button onClick={() => quitarCombo(fila.ref)}
+                      className="w-10 h-10 flex items-center justify-center rounded-xl bg-neutral-100 text-red-400 active:bg-neutral-200 flex-shrink-0">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+            const item = fila.item
+            return (
+            <div key={item.id} className={`px-4 py-4 ${borde}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-neutral-800 text-sm leading-tight">{item.nombre_producto}</p>
@@ -141,16 +171,8 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
                   {item.opciones.length > 0 && (
                     <p className="text-neutral-400 text-xs mt-0.5 leading-tight">{item.opciones.map(o => o.nombre).join(', ')}</p>
                   )}
-                  {item.combo_ref && item.precio === 0
-                    ? <p className="text-xs font-semibold text-neutral-400 mt-1.5">incluido en promo</p>
-                    : <p className="font-bold text-base mt-1.5" style={{ color: config.primary_color }}>{formatPrecio(item.precio)}</p>}
+                  <p className="font-bold text-base mt-1.5" style={{ color: config.primary_color }}>{formatPrecio(item.precio)}</p>
                 </div>
-                {item.combo_ref ? (
-                  <button onClick={() => quitarCombo(item.combo_ref!)}
-                    className="w-10 h-10 flex items-center justify-center rounded-xl bg-neutral-100 text-red-400 active:bg-neutral-200 flex-shrink-0">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                ) : (
                 <div className="flex items-center gap-0 bg-neutral-100 rounded-xl overflow-hidden flex-shrink-0">
                   <button onClick={() => cambiarCantidad(item.id, -1)}
                     className="w-10 h-10 flex items-center justify-center text-neutral-500 active:bg-neutral-200">
@@ -163,10 +185,10 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
-                )}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
 
         <button onClick={onSeguirComprando}

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 
 import { Loader2, CheckCircle, RefreshCw, ArrowRight, Copy, Check } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
+import { armarFilas } from '@/lib/agruparCarrito'
 
 interface Props {
   config: EmpresaConfig
@@ -451,14 +452,28 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
             <div className="px-5 py-3 border-b border-neutral-50">
               <p className="text-neutral-400 text-xs font-semibold uppercase tracking-wide">Resumen del pedido</p>
             </div>
-            {carrito.map(item => (
-              <div key={item.id} className="px-5 py-3 border-b border-neutral-50 last:border-0">
+            {armarFilas(carrito).map(fila => fila.tipo === 'combo' ? (
+              <div key={fila.ref} className="px-5 py-3 border-b border-neutral-50 last:border-0">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-neutral-700 text-sm font-semibold">{item.nombre_producto} — {item.nombre_presentacion}</p>
-                    {item.opciones.length > 0 && <p className="text-neutral-400 text-xs mt-0.5">{item.opciones.map(o => o.nombre).join(', ')}</p>}
+                    <p className="text-neutral-700 text-sm font-semibold">🎁 {fila.nombre}</p>
+                    {fila.lineas.map((l, k) => (
+                      <p key={k} className="text-neutral-400 text-xs mt-0.5">
+                        {l.grupo && `${l.grupo}: `}{l.n > 1 ? `${l.n}× ` : ''}{l.nombre}{l.opciones && ` · ${l.opciones}`}
+                      </p>
+                    ))}
                   </div>
-                  <p className="text-neutral-700 font-bold text-sm ml-4">{formatPrecio(item.precio)}</p>
+                  <p className="text-neutral-700 font-bold text-sm ml-4">{formatPrecio(fila.precio)}</p>
+                </div>
+              </div>
+            ) : (
+              <div key={fila.item.id} className="px-5 py-3 border-b border-neutral-50 last:border-0">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-neutral-700 text-sm font-semibold">{fila.item.nombre_producto} — {fila.item.nombre_presentacion}</p>
+                    {fila.item.opciones.length > 0 && <p className="text-neutral-400 text-xs mt-0.5">{fila.item.opciones.map(o => o.nombre).join(', ')}</p>}
+                  </div>
+                  <p className="text-neutral-700 font-bold text-sm ml-4">{formatPrecio(fila.item.precio)}</p>
                 </div>
               </div>
             ))}

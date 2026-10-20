@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, Trash2, CheckCircle, Plus, Minus, Bike } from 'lucide-react'
+import { armarFilas } from '@/lib/agruparCarrito'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string } }
@@ -558,23 +559,33 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {carrito.length === 0 ? (
             <p className="text-neutral-300 text-sm text-center py-10">Sin items</p>
-          ) : carrito.map(item => (
+          ) : armarFilas(carrito).map(fila => fila.tipo === 'combo' ? (
+            <div key={fila.ref} className="bg-neutral-50 rounded-xl p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-neutral-700 text-sm font-bold">🎁 {fila.nombre}</p>
+                  {fila.lineas.map((l, k) => (
+                    <p key={k} className="text-neutral-400 text-xs">
+                      {l.grupo && `${l.grupo}: `}<span className="font-semibold text-neutral-600">{l.n > 1 ? `${l.n}× ` : ''}{l.nombre}</span>{l.opciones && ` · ${l.opciones}`}
+                    </p>
+                  ))}
+                  <p className="text-neutral-700 text-sm font-bold mt-1">{formatPrecio(fila.precio)}</p>
+                </div>
+                <button onClick={() => cambiarCantidad(fila.primero.uid, -1)}
+                  className="w-7 h-7 flex items-center justify-center bg-white border border-neutral-200 rounded-lg text-red-400 active:bg-neutral-100 flex-shrink-0">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : (() => { const item = fila.item; return (
             <div key={item.uid} className="bg-neutral-50 rounded-xl p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-neutral-700 text-sm font-bold">{item.nombre_producto}</p>
                   <p className="text-neutral-400 text-xs">{item.nombre_presentacion}</p>
                   {item.opciones.length > 0 && <p className="text-neutral-400 text-xs mt-0.5">{item.opciones.map(o => o.nombre).join(', ')}</p>}
-                  {item.combo_ref && item.precio === 0
-                    ? <p className="text-neutral-400 text-xs font-semibold mt-1">incluido en promo</p>
-                    : <p className="text-neutral-700 text-sm font-bold mt-1">{formatPrecio(item.precio * item.cantidad)}</p>}
+                  <p className="text-neutral-700 text-sm font-bold mt-1">{formatPrecio(item.precio * item.cantidad)}</p>
                 </div>
-                {item.combo_ref ? (
-                  <button onClick={() => cambiarCantidad(item.uid, -1)}
-                    className="w-7 h-7 flex items-center justify-center bg-white border border-neutral-200 rounded-lg text-red-400 active:bg-neutral-100 flex-shrink-0">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                ) : (
                 <div className="flex items-center gap-0 bg-white border border-neutral-200 rounded-lg overflow-hidden flex-shrink-0">
                   <button onClick={() => cambiarCantidad(item.uid, -1)}
                     className="w-7 h-7 flex items-center justify-center text-neutral-500 active:bg-neutral-100">
@@ -586,10 +597,9 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                     <Plus className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                )}
               </div>
             </div>
-          ))}
+          ) })())}
 
           {/* Datos delivery */}
           {esDelivery && (

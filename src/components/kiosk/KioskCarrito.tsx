@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { ArrowLeft, Trash2, ShoppingBag, Plus, Minus } from 'lucide-react'
+import { armarFilas } from '@/lib/agruparCarrito'
 import type { EmpresaConfig, ItemCarrito, Accesorio } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
 interface AccesorioExtra { accesorio: Accesorio; cantidad: number }
@@ -20,6 +21,7 @@ function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}
 
 export default function KioskCarrito({ config, carrito, accesorios, onQuitar, onConfirmar, onSeguirComprando, dispositivo }: Props & { dispositivo: { empresa_id: string } }) {
   const [cantAccesorios, setCantAccesorios] = useState<Record<string, number>>({})
+  const filas = armarFilas(carrito)
   const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
   const subtotalAcc = accesorios.reduce((acc, a) => acc + (cantAccesorios[a.id] ?? 0) * a.precio_adicional, 0)
   const total = subtotal + subtotalAcc
@@ -114,14 +116,35 @@ export default function KioskCarrito({ config, carrito, accesorios, onQuitar, on
           </div>
         ) : (
           <div className="max-w-lg mx-auto space-y-3">
-            {carrito.map(item => (
-              <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex items-start gap-4">
+            {filas.map(fila => fila.tipo === 'combo' ? (
+              <div key={fila.ref} className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex items-start gap-4">
                 <div className="flex-1">
-                  <p className="font-bold text-neutral-800 text-base">{item.nombre_producto}</p>
-                  <p className="text-neutral-500 text-sm">{item.nombre_presentacion}</p>
-                  {item.opciones.length > 0 && (
+                  <p className="font-bold text-neutral-800 text-base">🎁 {fila.nombre}</p>
+                  <div className="mt-1.5 space-y-0.5">
+                    {fila.lineas.map((l, k) => (
+                      <p key={k} className="text-neutral-500 text-sm leading-tight">
+                        {l.grupo && <span className="text-neutral-400">{l.grupo}: </span>}
+                        <span className="font-semibold text-neutral-700">{l.n > 1 ? `${l.n}× ` : ''}{l.nombre}</span>
+                        {l.opciones && <span className="text-neutral-400"> · {l.opciones}</span>}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <p className="font-bold text-lg" style={{ color: config.primary_color }}>{formatPrecio(fila.precio)}</p>
+                  <button onClick={() => onQuitar(fila.primero.id)} className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={fila.item.id} className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 flex items-start gap-4">
+                <div className="flex-1">
+                  <p className="font-bold text-neutral-800 text-base">{fila.item.nombre_producto}</p>
+                  <p className="text-neutral-500 text-sm">{fila.item.nombre_presentacion}</p>
+                  {fila.item.opciones.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                      {item.opciones.map((op, i) => (
+                      {fila.item.opciones.map((op, i) => (
                         <span key={i} className="text-xs px-2.5 py-1 rounded-full font-medium text-white" style={{ backgroundColor: config.primary_color }}>
                           {op.emoji} {op.nombre}
                         </span>
@@ -130,10 +153,8 @@ export default function KioskCarrito({ config, carrito, accesorios, onQuitar, on
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  {item.combo_ref && item.precio === 0
-                    ? <p className="text-xs font-semibold text-neutral-400 mt-1">incluido en promo</p>
-                    : <p className="font-bold text-lg" style={{ color: config.primary_color }}>{formatPrecio(item.precio)}</p>}
-                  <button onClick={() => onQuitar(item.id)} className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                  <p className="font-bold text-lg" style={{ color: config.primary_color }}>{formatPrecio(fila.item.precio)}</p>
+                  <button onClick={() => onQuitar(fila.item.id)} className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
