@@ -4,6 +4,7 @@ import { avisar } from '@/components/admin/ConeDialog'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
+import { confirmarArqueoStock } from '@/lib/arqueo-confirmar'
 import { ConePageHeader, ConeButton, ConeModal } from '@/components/admin/ConeComponents'
 import { Loader2, TrendingUp, ShoppingBag, BarChart3, CreditCard, ChevronDown, ChevronRight, XCircle } from 'lucide-react'
 
@@ -178,21 +179,15 @@ export default function VentasPage() {
   async function confirmarArqueo(a: ArqueoStock) {
     if (!ctx) return
     setConfirmando(a.id)
-    const sb = createClient()
-    // SEMÁNTICA CTO: cada diferencia se aplica como DELTA sobre el stock ACTUAL
-    // (fisico − teorico_snapshot) → las ventas posteriores al conteo SOBREVIVEN.
-    for (const it of a.arqueo_items) {
-      if (it.descartado || Number(it.diferencia) === 0) continue
-      const { error } = await sb.rpc('ajustar_stock', {
-        p_empresa_id: ctx.empresaId, p_sucursal_id: a.sucursal_id, p_producto_id: it.producto_id,
-        p_valor: Number(it.diferencia), p_modo: 'delta', p_motivo: 'arqueo',
-        p_detalle: `Arqueo ${formatFecha(a.created_at.slice(0, 10))} — dif ${Number(it.diferencia) > 0 ? '+' : ''}${it.diferencia}${a.observaciones ? ' · ' + a.observaciones : ''}`,
-      })
-      if (error) { avisar(`Error ajustando ${prodNombres[it.producto_id] ?? it.producto_id}: ${error.message}`); setConfirmando(null); return }
-      await sb.from('arqueo_items').update({ ajustado: true }).eq('id', it.id)
-    }
-    await sb.from('arqueos_stock').update({ estado: 'confirmado', confirmado_por: confirmadoPor || 'admin', confirmado_at: new Date().toISOString() }).eq('id', a.id)
-    setConfirmando(null); setConfirmadoPor('')
+    // R1 (21/10): la lógica vive en lib/arqueo-confirmar — relee el estado, salta los
+    // ítems ya ajustados y no marca un ítem si su ajuste falló. Mismo DELTA por ajustar_stock.
+    const r = await confirmarArqueoStock(createClient(), {
+      empresaId: ctx.empresaId, arqueoId: a.id, confirmadoPor: confirmadoPor || 'admin',
+      nombreProducto: id => prodNombres[id] ?? id, formatFecha,
+    })
+    if (!r.ok) avisar(r.error)
+    setConfirmando(null)
+    if (r.ok) setConfirmadoPor('')
     cargarArqueosStock()
   }
 
