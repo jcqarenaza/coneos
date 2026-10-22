@@ -37,7 +37,7 @@ function tiempoRelativo(ts: string) {
   return new Date(ts).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + ' hs'
 }
 
-export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispositivo; sesion: SesionOperador }) {
+export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispositivo: Dispositivo; sesion: SesionOperador; deviceToken: string }) {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'activos' | 'nuevo' | 'historial' | 'mesas'>('activos')
@@ -251,41 +251,45 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const [arqFisico, setArqFisico] = useState<Record<string, string>>({})
   const [arqObs, setArqObs] = useState('')
   const [arqGuardando, setArqGuardando] = useState(false)
+  // R1 (21/10): el navegador YA NO lee ni escribe arqueos_stock / arqueo_items / producto_stock.
+  // Todo pasa por /api/operacion/arqueo, que valida dispositivo (token), sesión y operador;
+  // empresa, sucursal, quién contó y el stock teórico los decide el SERVIDOR.
+  async function llamarArqueo(accion: 'preparar' | 'guardar', extra: Record<string, unknown> = {}) {
+    try {
+      const res = await fetch('/api/operacion/arqueo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion, device_token: deviceToken, session_id: sesion.session_id, ...extra }),
+      })
+      const data = await res.json().catch(() => ({}))
+      return { ok: res.ok, status: res.status, data }
+    } catch {
+      return { ok: false, status: 0, data: { error: 'Error de conexión' } as Record<string, unknown> }
+    }
+  }
   async function abrirArqueo() {
     setModalArqueo(true); setArqAlcance('completo'); setArqFisico({}); setArqObs('')
-    const sb = createClient()
-    const { data: pend } = await sb.from('arqueos_stock').select('id').eq('sucursal_id', dispositivo.sucursal_id).eq('estado', 'pendiente').limit(1)
-    if ((pend ?? []).length > 0) { avisar('Ya hay un arqueo PENDIENTE de esta sucursal esperando confirmación del admin.'); setModalArqueo(false); return }
-    const [{ data: cats }, { data: prods }] = await Promise.all([
-      sb.from('categorias').select('id, nombre').eq('empresa_id', dispositivo.empresa_id).eq('activo', true).order('orden'),
-      sb.from('productos').select('id, nombre, categoria_id').eq('empresa_id', dispositivo.empresa_id).eq('activo', true).eq('controla_stock', true).is('deleted_at', null).order('nombre'),
-    ])
-    setArqCats((cats ?? []) as { id: string; nombre: string }[])
-    setArqProds((prods ?? []) as { id: string; nombre: string; categoria_id: string }[])
+    const r = await llamarArqueo('preparar')
+    if (!r.ok) { avisar('No se pudo abrir el arqueo: ' + (typeof r.data?.error === 'string' ? r.data.error : 'error de conexión')); setModalArqueo(false); return }
+    if (r.data.pendiente) { avisar('Ya hay un arqueo PENDIENTE de esta sucursal esperando confirmación del admin.'); setModalArqueo(false); return }
+    setArqCats((r.data.categorias ?? []) as { id: string; nombre: string }[])
+    setArqProds((r.data.productos ?? []) as { id: string; nombre: string; categoria_id: string }[])
   }
   const arqLista = arqProds.filter(p => arqAlcance === 'completo' || p.categoria_id === arqAlcance)
   async function guardarArqueo9b() {
     const cargados = arqLista.filter(p => (arqFisico[p.id] ?? '') !== '')
     if (cargados.length === 0) return
+    // Validación visual (el servidor la repite): stock entero, 0 o más
+    const items = cargados.map(p => ({ producto_id: p.id, fisico: Number(arqFisico[p.id]) }))
+    if (items.some(i => !Number.isInteger(i.fisico) || i.fisico < 0)) {
+      avisar('Las cantidades deben ser números enteros, 0 o más.')
+      return
+    }
     setArqGuardando(true)
-    const sb = createClient()
-    // SNAPSHOT del teórico AL GUARDAR (garantía CTO) — la carrera de segundos
-    // es inofensiva: el delta preserva cualquier movimiento posterior.
-    const { data: stockRows } = await sb.from('producto_stock').select('producto_id, cantidad')
-      .eq('sucursal_id', dispositivo.sucursal_id).in('producto_id', cargados.map(p => p.id))
-    const teorico = new Map((stockRows ?? []).map((r: { producto_id: string; cantidad: number }) => [r.producto_id, Number(r.cantidad)]))
-    const { data: arq, error } = await sb.from('arqueos_stock').insert({
-      empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
-      alcance: arqAlcance === 'completo' ? 'completo' : `categoria:${arqCats.find(c => c.id === arqAlcance)?.nombre ?? ''}`,
-      contado_por: sesion?.operador?.nombre ?? null, observaciones: arqObs || null,
-    }).select('id').single()
-    if (error || !arq) { avisar('No se pudo guardar: ' + (error?.message ?? '')); setArqGuardando(false); return }
-    const { error: e2 } = await sb.from('arqueo_items').insert(cargados.map(p => ({
-      arqueo_id: arq.id, producto_id: p.id,
-      teorico: teorico.get(p.id) ?? 0, fisico: parseFloat(arqFisico[p.id]) || 0,
-    })))
+    // El teórico lo toma el servidor AL GUARDAR (snapshot); el delta del admin
+    // preserva cualquier movimiento posterior (semántica CTO sin cambios).
+    const r = await llamarArqueo('guardar', { alcance: arqAlcance, observaciones: arqObs || null, items })
     setArqGuardando(false)
-    if (e2) { avisar('Error guardando ítems: ' + e2.message); return }
+    if (!r.ok) { avisar('No se pudo guardar: ' + (typeof r.data?.error === 'string' ? r.data.error : 'error de conexión')); return }
     setModalArqueo(false)
     avisar(`✓ Conteo guardado (${cargados.length} productos). Queda PENDIENTE para confirmación del admin.`)
   }
@@ -1549,7 +1553,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
               {arqLista.map(p => (
                 <div key={p.id} className="flex items-center gap-3">
                   <span className="text-sm font-semibold text-neutral-700 flex-1 truncate">{p.nombre}</span>
-                  <input type="number" min={0} value={arqFisico[p.id] ?? ''} placeholder="físico"
+                  <input type="number" min={0} step={1} value={arqFisico[p.id] ?? ''} placeholder="físico"
                     onChange={e => setArqFisico(f => ({ ...f, [p.id]: e.target.value }))}
                     className="w-28 px-3 py-2 rounded-xl border border-neutral-200 text-sm font-bold text-right focus:outline-none focus:border-neutral-400" />
                 </div>
