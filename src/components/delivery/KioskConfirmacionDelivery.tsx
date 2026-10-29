@@ -423,6 +423,15 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               <p className="text-amber-800 text-sm font-semibold">😕 No hay medios de pago disponibles en este momento. Consultá en el local.</p>
             </div>
           )}
+          {metodos.length > 0 && (
+            <div className="rounded-2xl px-4 py-3 mb-3 flex items-start gap-2.5 border"
+              style={{ backgroundColor: config.primary_color + '0D', borderColor: config.primary_color + '33' }}>
+              <span className="text-lg leading-none mt-0.5">🔒</span>
+              <p className="text-sm text-neutral-600 leading-snug">
+                <span className="font-bold" style={{ color: config.primary_color }}>Elegí bien tu medio de pago.</span> Una vez confirmado el pedido no se puede cambiar.
+              </p>
+            </div>
+          )}
           <button onClick={confirmarPago} disabled={creando || metodos.length === 0}
             className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-md active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ backgroundColor: config.primary_color }}>
