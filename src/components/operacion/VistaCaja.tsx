@@ -534,7 +534,34 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
   const receptorListo = !conCuit || !!receptorActivo()
   function resetReceptor() { setConCuit(false); setRCuit(''); setRRazon(''); setRCond(1); setRDetalle(''); setRCant(1) }
 
-  async function cambiarEstado(pedidoId: string, estadoNuevo: string, receptor?: ReturnType<typeof receptorActivo>) {
+  // ANTI-DUPLICADO (01/11): cobrar un delivery / take away factura solo y sin
+  // vuelta atrás (anular = NC). Antes de marcar PAGADO se busca otro pedido del
+  // mismo teléfono, mismo total y mismo tipo, dentro de ±30 min. Si lo hay, se
+  // pide confirmación explícita. Si la búsqueda falla, NO bloquea el cobro.
+  async function confirmarSiHayRepetido(pedidoId: string): Promise<boolean> {
+    try {
+      const p = pedidos.find(x => x.id === pedidoId) ?? (seleccionado?.id === pedidoId ? seleccionado : null)
+      if (!p || (p.tipo_pedido !== 'delivery' && p.tipo_pedido !== 'takeaway')) return true
+      const digitos = (v: unknown) => String(v ?? '').replace(/\D/g, '')
+      const tel = digitos(p.datos_delivery?.telefono)
+      if (tel.length < 6) return true
+      const t0 = new Date(p.created_at).getTime()
+      const { data } = await createClient().from('pedidos')
+        .select('id, numero_pedido, estado, created_at, datos_delivery')
+        .eq('tipo_pedido', p.tipo_pedido).eq('total', p.total).neq('id', p.id).neq('estado', 'CANCELLED')
+        .gte('created_at', new Date(t0 - 30 * 60000).toISOString()).lte('created_at', new Date(t0 + 30 * 60000).toISOString())
+      const otro = (data ?? []).find(o => digitos((o.datos_delivery as { telefono?: string } | null)?.telefono) === tel)
+      if (!otro) return true
+      const tOtro = new Date(otro.created_at).getTime()
+      const min = Math.max(1, Math.round(Math.abs(tOtro - t0) / 60000))
+      const est: Record<string, string> = { PENDING_PAYMENT: 'pendiente de pago', PAID: 'cobrado', PREPARING: 'en preparación', READY: 'listo', DELIVERED: 'entregado' }
+      return await confirmar(`El pedido #${otro.numero_pedido} (${est[otro.estado] ?? otro.estado}) es del mismo teléfono y por el mismo total, cargado ${min} min ${tOtro < t0 ? 'antes' : 'después'}. Si es el mismo pedido repetido, NO lo cobres: cobrar emite la factura al instante y solo se anula con nota de crédito. Eliminá este pedido y cobrá uno solo.`,
+        { titulo: '⚠️ Posible pedido repetido', confirmarLabel: 'Es otro pedido — cobrar', cancelarLabel: 'No cobrar', peligro: true })
+    } catch { return true }
+  }
+
+  async function cambiarEstado(pedidoId: string, estadoNuevo: string, receptor?: ReturnType<typeof receptorActivo>): Promise<boolean> {
+    if (estadoNuevo === 'PAID' && !(await confirmarSiHayRepetido(pedidoId))) return false
     setProcesando(true)
     if (estadoNuevo === 'DELIVERED') setEntregado(false)
     await fetch('/api/pedidos/estado', {
@@ -552,6 +579,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
         setSeleccionado(null)
       }, 1800)
     }
+    return true
   }
 
   // FA-1: bloque "Con CUIT" (compartido por cobro de pedido y de mesa)
@@ -1395,7 +1423,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         el guard B decide. */}
                     {seleccionado.metodo_pago === 'mp' ? (
                       <button onClick={async () => {
-                          await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
+                          if (!(await cambiarEstado(seleccionado.id, 'PAID', receptorActivo()))) return
                           if (comandaAutoRef.current) comandaAutomatica(seleccionado.id)
                           if (ticketAutoRef.current) { /* 9g: el watcher imprime (espera-CAE) */ } else imprimirTicket(seleccionado.id)
                         }} disabled={procesando || !receptorListo}
@@ -1409,7 +1437,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         la preparación. */}
                     <button onClick={async () => {
                         const cobraCadete = seleccionado.tipo_pedido === 'delivery' && seleccionado.metodo_pago === 'efectivo'
-                        await cambiarEstado(seleccionado.id, 'PAID', receptorActivo())
+                        if (!(await cambiarEstado(seleccionado.id, 'PAID', receptorActivo()))) return
                         if (comandaAutoRef.current) comandaAutomatica(seleccionado.id)
                         // JC 29/09: con cobro del cadete NO sale ticket al aceptar —
                         // acá no se cobró nada. Si la sucursal usa ticket automático,
@@ -1421,7 +1449,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                       className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
                       {procesando ? <Loader2 className="h-4 w-4 animate-spin" /> : (seleccionado.tipo_pedido === 'delivery' && seleccionado.metodo_pago === 'efectivo' ? '✓ Aceptar pedido — 💵 cobra el cadete' : '✓ Cobrar efectivo')}
                     </button>
-                    <button onClick={async () => { const r = receptorActivo(); await cambiarEstado(seleccionado.id, 'PAID', r); if (comandaAutoRef.current) comandaAutomatica(seleccionado.id); setModalComprobante(true) }} disabled={procesando || !receptorListo}
+                    <button onClick={async () => { const r = receptorActivo(); if (!(await cambiarEstado(seleccionado.id, 'PAID', r))) return; if (comandaAutoRef.current) comandaAutomatica(seleccionado.id); setModalComprobante(true) }} disabled={procesando || !receptorListo}
                       className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-colors disabled:opacity-50 shadow-sm">
                       📱 Cobrar transferencia
                     </button>
