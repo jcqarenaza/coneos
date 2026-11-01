@@ -107,22 +107,34 @@ export default function VentasPage() {
         ? ['PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY', 'DELIVERED', 'CANCELLED']
         : [estadoFiltro]
 
-    let query = supabase
-      .from('pedidos')
-      .select(`id, numero_pedido, total, metodo_pago, estado, created_at, fecha_pedido, sucursal_id, codigo_retiro, notas, motivo_cancelacion,
+    // PostgREST corta en 1000 filas por request SIN avisar (los totales del mes salían
+    // subestimados). Se trae por páginas hasta completar; orden estable (created_at, id).
+    const POR_PAGINA = 1000
+    const armarQuery = () => {
+      let q = supabase
+        .from('pedidos')
+        .select(`id, numero_pedido, total, metodo_pago, estado, created_at, fecha_pedido, sucursal_id, codigo_retiro, notas, motivo_cancelacion,
         pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
-      .eq('empresa_id', ctx.empresaId)
-      .in('estado', estados)
-      .gte('fecha_pedido', desde)
-      .lte('fecha_pedido', hasta)
-      .order('created_at', { ascending: false })
-
-    if (sucursalFiltro !== 'todas') query = query.eq('sucursal_id', sucursalFiltro)
-    if (metodoPagoFiltro !== 'todos') query = query.eq('metodo_pago', metodoPagoFiltro)
-
-    const { data } = await query
-    setPedidos((data ?? []) as PedidoVenta[])
+        .eq('empresa_id', ctx.empresaId)
+        .in('estado', estados)
+        .gte('fecha_pedido', desde)
+        .lte('fecha_pedido', hasta)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+      if (sucursalFiltro !== 'todas') q = q.eq('sucursal_id', sucursalFiltro)
+      if (metodoPagoFiltro !== 'todos') q = q.eq('metodo_pago', metodoPagoFiltro)
+      return q
+    }
+    let todos: PedidoVenta[] = []
+    for (let desdeFila = 0; ; desdeFila += POR_PAGINA) {
+      const { data, error } = await armarQuery().range(desdeFila, desdeFila + POR_PAGINA - 1)
+      if (error) { avisar(`Error cargando ventas: ${error.message}`); break }
+      const pagina = (data ?? []) as PedidoVenta[]
+      todos = todos.concat(pagina)
+      if (pagina.length < POR_PAGINA) break
+    }
+    setPedidos(todos)
     setLoading(false)
   }
 
