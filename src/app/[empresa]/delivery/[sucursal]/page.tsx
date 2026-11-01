@@ -96,7 +96,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   // REPARTO V1: si este celu hizo un pedido hace < 3 h, ofrecer el seguimiento
   // al volver a entrar (localStorage, patrón coneos_mp_pedido). Solo banner,
   // nunca redirect: el cliente puede estar queriendo pedir OTRA cosa.
-  const [seguimiento, setSeguimiento] = useState<{ slug: string; numero: number; id: string } | null>(null)
+  const [seguimiento, setSeguimiento] = useState<{ slug: string; numero: number; id: string; pendiente?: boolean } | null>(null)
   useEffect(() => {
     try {
       const raw = localStorage.getItem('coneos_ultimo_pedido')
@@ -122,7 +122,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
             localStorage.removeItem('coneos_ultimo_pedido')
             return
           }
-          setSeguimiento({ slug: u.slug, numero: u.numero, id: u.id })
+          setSeguimiento({ slug: u.slug, numero: u.numero, id: u.id, pendiente: estado === 'PENDING_PAYMENT' })
         } catch { setSeguimiento({ slug: u.slug, numero: u.numero, id: u.id }) }
       })()
     } catch {}
@@ -411,7 +411,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
         <div className="fixed top-3 left-3 right-3 z-40 max-w-lg mx-auto bg-white border border-neutral-200 shadow-lg rounded-2xl px-4 py-3 flex items-center gap-3">
           <span className="text-2xl">🛵</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-neutral-800 leading-tight">Tu pedido #{seguimiento.numero} está en marcha</p>
+            <p className="text-sm font-bold text-neutral-800 leading-tight">{seguimiento.pendiente ? `Tu pedido #${seguimiento.numero} espera la confirmación de tu pago` : `Tu pedido #${seguimiento.numero} está en marcha`}</p>
             <a href={`/${seguimiento.slug}/pedido/${seguimiento.id}`} className="text-xs font-black underline" style={{ color: config.primary_color }}>Ver seguimiento →</a>
           </div>
           <button onClick={() => { setSeguimiento(null); try { localStorage.removeItem('coneos_ultimo_pedido') } catch {} }}
