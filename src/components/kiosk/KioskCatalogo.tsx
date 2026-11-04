@@ -391,15 +391,15 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
   const productosFiltrados = productos.filter(p => p.categoria_id === categoriaActiva?.id)
   const novedadesPres = presentaciones.filter(p => p.es_novedad === true)  // agotados fuera de la tira: se filtran abajo por prod.agotado
-    .map(pres => ({ pres, prod: productos.find(pr => pr.id === pres.producto_id), sabor: null as string | null }))
-    .filter((n): n is { pres: Presentacion; prod: Producto; sabor: null } => !!n.prod && !n.prod.agotado)
+    .map(pres => ({ pres, prod: productos.find(pr => pr.id === pres.producto_id), sabor: null as string | null, imgSabor: null as string | null }))
+    .filter((n): n is { pres: Presentacion; prod: Producto; sabor: null; imgSabor: null } => !!n.prod && !n.prod.agotado)
   // ✨ Sabor nuevo (JC 03/10): la opción novedad viaja EN la card del producto
   // que la permite (vía presentacion_grupos) — un sabor no se compra solo.
   const novedadesSabor = opciones.filter(o => o.es_novedad === true).flatMap(op => {
     const presIds = new Set(presGrupos.filter(pg => pg.grupo_id === op.grupo_id).map(pg => pg.presentacion_id))
     const pres = presentaciones.find(pr => presIds.has(pr.id) && !!productos.find(x => x.id === pr.producto_id && !x.agotado))
     const prod = pres ? productos.find(x => x.id === pres.producto_id) : undefined
-    return pres && prod ? [{ pres, prod, sabor: op.nombre }] : []
+    return pres && prod ? [{ pres, prod, sabor: op.nombre, imgSabor: op.imagen_url }] : []
   })
   const novedades = [...novedadesPres, ...novedadesSabor]
   const totalCarrito = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
@@ -498,12 +498,12 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-3 mb-5">
                 <p className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: config.primary_color }}>✨ Novedades</p>
                 <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                  {novedades.map(({ pres, prod, sabor }) => (
+                  {novedades.map(({ pres, prod, sabor, imgSabor }) => (
                     <button key={pres.id + (sabor ?? '')} onClick={() => irANovedad(pres)}
                       className="flex items-center gap-2.5 border border-neutral-100 rounded-xl px-2.5 py-2 flex-shrink-0 active:scale-95 transition-transform bg-white text-left">
-                      {(pres.imagen_url || prod.imagen_url) && (
+                      {(imgSabor || pres.imagen_url || prod.imagen_url) && (
                         <div className="w-11 h-11 rounded-lg overflow-hidden bg-neutral-50 flex-shrink-0">
-                          <img src={pres.imagen_url ?? prod.imagen_url!} alt="" className="object-cover w-full h-full" />
+                          <img src={(imgSabor || pres.imagen_url || prod.imagen_url)!} alt="" className="object-cover w-full h-full" />
                         </div>
                       )}
                       <div className="pr-1">
