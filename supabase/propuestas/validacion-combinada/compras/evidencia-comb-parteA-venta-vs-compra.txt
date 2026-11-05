@@ -1,0 +1,4 @@
+ord+def  PASS  S_a  compra [hi,lo] (orden inverso) vs venta {lo,hi}  {'escritor': 'ok', 'venta': 'ok'}
+ord+def  PASS  S_b  compra [lo,hi] vs venta {hi}  {'venta': 'ok', 'escritor': 'ok'}
+ord+def  PASS  S_c  compra [lo,hi] vs venta {lo,hi} (control)  {'escritor': 'ok', 'venta': 'ok'}
+ord+def  PASS  S_aj ajustar_stock(hi) vs venta {lo,hi}  {'escritor': 'ok', 'venta': 'ok'}

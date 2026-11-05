@@ -1,0 +1,75 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { factorEntero, consumoPorProducto, disponibilidadPresentacion as disp, validarCarrito, promoDisponible, etiquetaDisponibilidad } from './disponibilidad.ts'
+
+const ALF = 'alf', BEB = 'beb'
+const pres = [
+  { id: 'porcion', producto_id: ALF, factor_stock: 1 },
+  { id: 'x8', producto_id: ALF, factor_stock: 8 },
+  { id: 'x20', producto_id: ALF, factor_stock: '20' },
+  { id: 'lata', producto_id: BEB, factor_stock: 1 },
+  { id: 'acc', producto_id: 'sinctrl', factor_stock: 1 },
+]
+const P = (id: string) => pres.find(p => p.id === id)!
+
+test('factorEntero: entero >=1, lo demás cae a 1', () => {
+  assert.equal(factorEntero(8), 8); assert.equal(factorEntero('8'), 8)
+  for (const x of [0, -1, 2.5, null, undefined, 'x', NaN]) assert.equal(factorEntero(x), 1)
+})
+test('x8 con stock 15: alcanza 1; con 7: no disponible (INSUFICIENTE); con 0: AGOTADO', () => {
+  assert.deepEqual(disp(P('x8'), 15), { controla: true, restante: 15, maxUnidades: 1, disponible: true, motivo: null })
+  const d7 = disp(P('x8'), 7); assert.equal(d7.disponible, false); assert.equal(d7.motivo, 'INSUFICIENTE')
+  assert.equal(disp(P('x8'), 0).motivo, 'AGOTADO')
+})
+test('porción x1 sigue disponible cuando la caja x8 no', () => {
+  assert.equal(disp(P('x8'), 5).disponible, false); assert.equal(disp(P('porcion'), 5).maxUnidades, 5)
+})
+test('producto que no controla stock: sin límite ni leyenda', () => {
+  const d = disp(P('acc'), null); assert.equal(d.disponible, true); assert.equal(d.maxUnidades, null); assert.equal(etiquetaDisponibilidad(d), null)
+})
+test('stock compartido: 3 porciones en el carrito dejan x8 sin stock de 10 (10-3=7<8)', () => {
+  const c = consumoPorProducto([{ presentacion_id: 'porcion', cantidad: 3 }], pres)
+  assert.equal(c.get(ALF), 3)
+  assert.equal(disp(P('x8'), 10, c.get(ALF)).disponible, false)
+  assert.equal(disp(P('x8'), 10, 2).disponible, true) // con 2 todavía entra una caja
+})
+test('tope del "+" de la fila: stock 20, caja x8 → 2 cajas; con una porción en carrito → 2 (19//8)', () => {
+  assert.equal(disp(P('x8'), 20, 0).maxUnidades, 2); assert.equal(disp(P('x8'), 20, 1).maxUnidades, 2)
+  assert.equal(disp(P('x8'), 20, 5).maxUnidades, 1)
+})
+test('validarCarrito: carrito viejo contra stock fresco', () => {
+  const lineas = [{ presentacion_id: 'x8', cantidad: 2 }, { presentacion_id: 'lata', cantidad: 1 }]
+  assert.equal(validarCarrito(lineas, pres, { [ALF]: 16, [BEB]: 5 }).ok, true)
+  const r = validarCarrito(lineas, pres, { [ALF]: 9, [BEB]: 5 })
+  assert.equal(r.ok, false); assert.deepEqual(r.excesos, [{ producto_id: ALF, necesita: 16, hay: 9 }]); assert.deepEqual(r.lineasAfectadas, ['x8'])
+  assert.equal(validarCarrito(lineas, pres, { [ALF]: 16, [BEB]: 0 }).excesos[0].producto_id, BEB)
+})
+test('promo con componentes: Caja x8 + Lata', () => {
+  const promo = { slots: [{ presentaciones: ['x8'] }, { presentaciones: ['lata'] }] }
+  assert.equal(promoDisponible(promo, pres, { [ALF]: 8, [BEB]: 1 }), true)
+  assert.equal(promoDisponible(promo, pres, { [ALF]: 7, [BEB]: 1 }), false)
+  assert.equal(promoDisponible(promo, pres, { [ALF]: 8, [BEB]: 0 }), false)
+})
+test('promo con slot de variedades: elige la que entra (x8 no entra, porción sí)', () => {
+  const promo = { slots: [{ presentaciones: ['x8', 'porcion'] }] }
+  assert.equal(promoDisponible(promo, pres, { [ALF]: 3 }), true)
+  assert.equal(promoDisponible(promo, pres, { [ALF]: 0 }), false)
+})
+test('promo con slot cantidad 2 comparte stock: 2 unidades de x8 necesitan 16', () => {
+  const promo = { slots: [{ cantidad: 2, presentaciones: ['x8'] }] }
+  assert.equal(promoDisponible(promo, pres, { [ALF]: 15 }), false); assert.equal(promoDisponible(promo, pres, { [ALF]: 16 }), true)
+})
+test('promo resta lo ya consumido en el carrito', () => {
+  const promo = { slots: [{ presentaciones: ['x8'] }] }
+  assert.equal(promoDisponible(promo, pres, { [ALF]: 10 }, new Map([[ALF, 3]])), false)
+})
+test('promo con una presentación desconocida: no disponible', () => {
+  assert.equal(promoDisponible({ slots: [{ presentaciones: ['zzz'] }] }, pres, {}), false)
+})
+test('etiquetas', () => {
+  assert.equal(etiquetaDisponibilidad(disp(P('x8'), 7)), 'No disponible')
+  assert.equal(etiquetaDisponibilidad(disp(P('x8'), 0)), 'Agotado')
+  assert.equal(etiquetaDisponibilidad(disp(P('x8'), 8)), 'Queda 1')
+  assert.equal(etiquetaDisponibilidad(disp(P('x8'), 24)), 'Quedan 3')
+  assert.equal(etiquetaDisponibilidad(disp(P('x8'), 80)), null)
+})

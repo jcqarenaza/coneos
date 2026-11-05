@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { unidadesADevolverPorProducto, type ItemParaDevolucion } from '@/lib/stock/devolucion'
 
 // Elimina un pedido SOLO si no está cobrado (PAID/DELIVERED) ni facturado.
 // La regla vive acá (server-side): el cliente no puede saltearla.
@@ -41,15 +42,13 @@ export async function POST(request: Request) {
     if (flip && flip.length > 0) {
       // Cantidades a devolver: items del pedido → presentación → producto contable
       const { data: itemsStock } = await supabase.from('pedido_items')
-        .select('cantidad, presentacion_id, presentaciones(producto_id, productos(id, controla_stock))')
+        .select('cantidad, factor_stock_snap, presentacion_id, presentaciones(producto_id, productos(id, controla_stock))')
         .eq('pedido_id', pedido_id)
         .not('presentacion_id', 'is', null)
-      const porProducto = new Map<string, number>()
-      for (const it of itemsStock ?? []) {
-        const pres = it.presentaciones as unknown as { producto_id: string; productos: { id: string; controla_stock: boolean } | null } | null
-        if (!pres?.productos?.controla_stock) continue
-        porProducto.set(pres.producto_id, (porProducto.get(pres.producto_id) ?? 0) + it.cantidad)
-      }
+      // STOCK V2: unidades = cantidad × factor_stock_snap (el factor que el pedido
+      // guardó al venderse; NULL = pedido anterior a V2 = factor 1). Jamás se
+      // consulta el factor vigente de la presentación.
+      const porProducto = unidadesADevolverPorProducto((itemsStock ?? []) as unknown as ItemParaDevolucion[])
       // Devolución ATÓMICA y TRAZADA por la única puerta (Stock V1 Real):
       // adiós al read-modify-write — el lock de ajustar_stock elimina la
       // ventana de carrera contra ventas simultáneas, y el movimiento queda

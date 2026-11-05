@@ -1,0 +1,25 @@
+=== MATRIZ modo=base — Postgres local aislado (v2test_base) ===
+FAIL 1. Caja x8 ×2 descuenta 16 y porción ×3 descuenta 3 (stock 100→81)  [stock=95]
+FAIL 1b. snapshot del factor grabado (x8 → 8)  [[('x8', 2, None)]]
+FAIL 2. Mixto porción×2 + caja x8 + lata×3: Alfajor −10 y Bebida −3, un movimiento por producto  [alf=97 beb=47 movs=[('venta', -3.0), ('venta', -3.0)]]
+FAIL 2b. snapshots del mixto: lata 1, porción 1, caja x8 8  [[('lata', 3, None), ('p1', 2, None), ('x8', 1, None)]]
+FAIL 3. Caja x20 con stock 15 → SIN_STOCK, sin pedido, sin movimiento, stock intacto y no consume número  [no lanzó | pedidos=1 stock=14 movs=1 numero_siguiente=2]
+FAIL 4. Histórico: vender con factor 8, cambiarlo a 10, eliminar → vuelven 8 (por snapshot)  [descontó=1 stock_final=100]
+PASS 5. Eliminación repetida devuelve una sola vez (flip atómico)  [devuelto/sin_devolucion devoluciones=1 stock=100]
+PASS 6. Pedido anterior a V2 (snapshot NULL = factor 1): 4 porciones devuelven 4 (90→94)  [stock=94]
+PASS 6b. Snapshot NULL con factor vigente 10: devuelve 1 (NULL = 1, no el vigente)  [stock=91]
+FAIL 7. Promo caja x8 + lata: descuenta 8 y 1, exactamente dos movimientos (ninguno extra)  [alf=99 beb=49 movs=2]
+FAIL 7b. Promo: snapshots de factor en ambos componentes  [[('lata', 1, None), ('x8', 1, None)]]
+FAIL 8. Mesa 5: descuenta 9, queda stock_descontado=true y el libro dice "Mesa 5"  [stock=98 (True, 5, False) Venta pedido #1 · Mesa 5]
+PASS 9. Carrito viejo con producto agotado → SIN_STOCK (la API lo mapea a 409), sin efectos  [ERROR:  SIN_STOCK:Alfajor]
+FAIL 10. Dos ventas simultáneas de Caja x8 con stock 8: pasa una, la otra SIN_STOCK, stock 0, un pedido  [[('ok', 1), ('ok', 2)] stock=6 pedidos=2]
+PASS 11. Conciliación: stock inicial + Σ movimientos = stock actual; unidades de pedidos vivos = lo descontado neto  [libro_ok=True [] vivos=2 neto=2]
+PASS 12. Rollback: una falla al insertar el ítem deshace stock, movimiento y pedido; el número no se consume  [ERROR:  BOOM stock=99 pedidos_previos=0 numero=1]
+PASS C1. 12 ventas simultáneas mezcladas: sin deadlock, números 1..12 únicos, libro cerrado  [[] nums=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] libro=True]
+   (informativo) escritor en orden INVERSO vs venta: {'sale': '40P01', 'A': 'ok'}; en el MISMO orden: {'A': 'ok', 'sale': 'ok'}
+PASS C2a. Mismo orden de productos que la venta (por producto_id): sin deadlock  [{'A': 'ok', 'sale': 'ok'}]
+PASS C2b. HALLAZGO PREEXISTENTE: escritor en orden inverso + trigger bump_catalogo → 40P01 deadlock (una de las dos aborta)  [{'sale': '40P01', 'A': 'ok'}]
+FAIL C3. 180 ventas mientras un admin cambia el factor 8↔10 sin parar: sin errores y Σ snapshot = Σ descontado  [ventas=180 Σsnap=0 descontado=180 errores=[]]
+
+RESUMEN modo=base: 9/20 PASS
+(en modo base se espera que FALLEN las pruebas que exigen el factor: es el control negativo)

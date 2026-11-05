@@ -1,0 +1,19 @@
+PASS 1. Devolución: caja x8 + porción x3 + lata x2 vuelven 11 y 2, flag false, 2 movimientos  [(89, 98) {'devuelto': True, 'unidades': 13, 'movimientos': 2}]
+PASS 2. Devolución repetida: no-op (devuelto=false), sin movimientos nuevos, stock igual  [{'devuelto': False, 'unidades': 0, 'movimientos': 0}]
+PASS 3. Test histórico: vender con 8, cambiar a 10, devolver → vuelven 8  [stock=100 delta=(1, Decimal('8'))]
+PASS 4. Pedido anterior a V2 (snapshot NULL): 4 unidades devuelven 4 (no 32)  [stock=54]
+PASS 5a. Pedido con stock_descontado=false: no devuelve nada
+PASS 5b. Empresa equivocada → PEDIDO_NO_ENCONTRADO, nada se toca
+PASS 5c. Pedido inexistente → PEDIDO_NO_ENCONTRADO
+PASS 6a. RPC con falla en el 2º producto: ERROR, rollback total (flag true, stock y libro sin cambios)  [ERROR:  FALLA_SIMULADA (92, 98)]
+PASS 6b. Reintento tras la falla: devuelve todo, una sola vez  [{'devuelto': True, 'unidades': 10, 'movimientos': 2}]
+PASS 6c. CONTRASTE flujo actual: queda flag=false con la devolución A MEDIAS y el reintento no puede completarla (defecto confirmado)  [stock tras falla=(100, 98) (esperado 100,100) errores=['ERROR:  FALLA_SIMULADA'] reintento_flip=None]
+PASS 7. 8 devoluciones simultáneas del mismo pedido: exactamente 1 devuelve, 2 movimientos, stock exacto  [[True, False, False, False, False, False, False, False]]
+   (con bump diferido) errores=0 deadlocks, otros=[], libro=[('Alfajor', 4970, Decimal('4970')), ('Bebida', 4940, Decimal('4940'))]
+PASS 8a. Devoluciones y ventas cruzadas simultáneas (con bump diferido): 0 deadlocks y el libro cierra
+   (SIN bump diferido (informativo)) errores=0 deadlocks, otros=[], libro=[('Alfajor', 4970, Decimal('4970')), ('Bebida', 4940, Decimal('4940'))]
+PASS 8b. (informativo) sin el bump diferido: libro cierra aunque haya deadlocks  [deadlocks=0]
+PASS 9. Permisos: service_role sí; anon y PUBLIC no  [anon=False service_role=True public=False]
+PASS 10. Reversión elimina la función y no toca datos
+
+15/15 PASS

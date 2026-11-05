@@ -15,7 +15,7 @@ import { Plus, Loader2, Pencil, Trash2, Upload, X, ImageIcon, ChevronDown, Chevr
 
 interface Categoria { id: string; nombre: string; orden: number; activo: boolean; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; codigo: string | null; orden: number; activo: boolean; visible_kiosk: boolean; visible_delivery: boolean; visible_mesa: boolean; visible_takeaway: boolean; controla_stock?: boolean }
-interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null; visible_kiosk: boolean; es_novedad: boolean }
+interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; orden: number; activo: boolean; producto_id: string; imagen_url: string | null; visible_kiosk: boolean; es_novedad: boolean; factor_stock?: number }
 interface GrupoOpciones { id: string; nombre: string; orden: number; activo: boolean }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; grupo_id: string; orden: number; activo: boolean; visible_kiosk: boolean; es_novedad?: boolean; precio_adicional?: number | null }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
@@ -179,7 +179,7 @@ export default function CatalogoPage() {
 
   const [formCat, setFormCat] = useState({ nombre: '', orden: 1, activo: true, icono_url: null as string | null })
   const [formProd, setFormProd] = useState({ nombre: '', descripcion: '', imagen_url: null as string | null, categoria_id: '', codigo: '', orden: 1, activo: true, visible_kiosk: true, visible_delivery: true, visible_mesa: true, visible_takeaway: true })
-  const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null, visible_kiosk: true, es_novedad: false })
+  const [formPres, setFormPres] = useState({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: '', imagen_url: null as string | null, visible_kiosk: true, es_novedad: false, factor_stock: 1 })
   const [gruposSeleccionados, setGruposSeleccionados] = useState<string[]>([])
   // Regla de oro F1.5: crear una dependencia faltante sin abandonar el flujo.
   const [volverA, setVolverA] = useState<'prod' | 'pres' | null>(null)
@@ -432,13 +432,13 @@ export default function CatalogoPage() {
   }
 
   // Presentaciones
-  function openNewPres(prodId: string) { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: prodId, imagen_url: null, visible_kiosk: true, es_novedad: false }); setGruposSeleccionados([]); setEditId(null); setModalPres(true) }
-  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url, visible_kiosk: p.visible_kiosk, es_novedad: p.es_novedad ?? false }); setGruposSeleccionados(presGrupos.filter(pg => pg.presentacion_id === p.id).map(pg => pg.grupo_id)); setEditId(p.id); setModalPres(true) }
+  function openNewPres(prodId: string) { setFormPres({ nombre: '', precio: 0, permite_opciones: false, opciones_min: 0, opciones_max: 0, orden: 1, activo: true, producto_id: prodId, imagen_url: null, visible_kiosk: true, es_novedad: false, factor_stock: 1 }); setGruposSeleccionados([]); setEditId(null); setModalPres(true) }
+  function openEditPres(p: Presentacion) { setFormPres({ nombre: p.nombre, precio: p.precio, permite_opciones: p.permite_opciones, opciones_min: p.opciones_min, opciones_max: p.opciones_max, orden: p.orden, activo: p.activo, producto_id: p.producto_id, imagen_url: p.imagen_url, visible_kiosk: p.visible_kiosk, es_novedad: p.es_novedad ?? false, factor_stock: Number(p.factor_stock ?? 1) }); setGruposSeleccionados(presGrupos.filter(pg => pg.presentacion_id === p.id).map(pg => pg.grupo_id)); setEditId(p.id); setModalPres(true) }
   async function savePres() {
     if (!ctx || !formPres.nombre || !formPres.producto_id) return
     setSaving(true)
     const supabase = createClient()
-    const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id, imagen_url: formPres.imagen_url, visible_kiosk: formPres.visible_kiosk, es_novedad: formPres.es_novedad }
+    const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id, imagen_url: formPres.imagen_url, visible_kiosk: formPres.visible_kiosk, es_novedad: formPres.es_novedad, factor_stock: Math.max(1, Math.floor(Number(formPres.factor_stock) || 1)) }
     let presId = editId
     if (editId) {
       await supabase.from('presentaciones').update(payload).eq('id', editId)
@@ -1031,6 +1031,9 @@ export default function CatalogoPage() {
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formPres.nombre} onChange={e => setFormPres({ ...formPres, nombre: e.target.value })} placeholder="Porción / x8 / x20" autoFocus /></div>
           <div className="space-y-1.5"><Label>Precio *</Label><Input type="number" value={formPres.precio} onChange={e => setFormPres({ ...formPres, precio: Number(e.target.value) })} /></div>
           <div className="space-y-1.5"><Label>Orden</Label><Input type="number" value={formPres.orden} onChange={e => setFormPres({ ...formPres, orden: Number(e.target.value) })} className="w-24" /><p className="text-xs text-neutral-400">1 = primero en el listado</p></div>
+          {productos.find(p => p.id === formPres.producto_id)?.controla_stock === true && (
+            <div className="space-y-1.5"><Label>Consume del stock</Label><Input type="number" min={1} step={1} value={formPres.factor_stock} onChange={e => setFormPres({ ...formPres, factor_stock: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} className="w-24" /><p className="text-xs text-neutral-400">Unidades del stock del producto que descuenta cada venta de esta presentación (Porción = 1, Caja x8 = 8). Los pedidos ya hechos conservan el valor con el que se vendieron.</p></div>
+          )}
           <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formPres.imagen_url} onChange={url => setFormPres({ ...formPres, imagen_url: url })} folder="presentaciones" /></div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.visible_kiosk} onChange={e => setFormPres({ ...formPres, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" />

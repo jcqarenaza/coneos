@@ -1,0 +1,1 @@
+ord+def    2.3s  deadlocks(40P01)=0  otros_errores=0  libro_cierra=True  [('Alfajor', 1040, Decimal('1040')), ('Bebida', 1022, Decimal('1022'))]

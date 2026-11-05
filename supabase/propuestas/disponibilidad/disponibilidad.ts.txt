@@ -1,0 +1,119 @@
+// PROPUESTA (no está en el repo): src/lib/stock/disponibilidad.ts
+// Regla única de disponibilidad por factor de stock. Funciones puras, sin I/O,
+// usables igual en el servidor (catalogo/route.ts) y en el cliente (kiosco,
+// mesa, caja). Solo sintaxis borrable de TS (corre con node --experimental-strip-types).
+//
+// Unidades: el stock físico es UN número por producto (producto_stock.cantidad).
+// Cada presentación consume `factor_stock` (entero >= 1) unidades por cada una vendida.
+
+export type StockProducto = number | null | undefined // null/undefined = el producto NO controla stock
+
+export interface PresInfo { id: string; producto_id: string; factor_stock?: number | string | null }
+export interface LineaCarrito { presentacion_id: string; cantidad: number }
+export type MotivoSinStock = 'AGOTADO' | 'INSUFICIENTE' | null
+
+export interface Disponibilidad {
+  controla: boolean
+  /** unidades físicas que quedan después de lo que ya está en el carrito/pantalla */
+  restante: number | null
+  /** cuántas de ESTA presentación se pueden agregar todavía (null = sin límite) */
+  maxUnidades: number | null
+  disponible: boolean
+  motivo: MotivoSinStock
+}
+
+/** Mismo criterio que la RPC v1.6: entero >= 1; cualquier otra cosa se trata como 1 (en el cliente nunca debería pasar: la base lo impide). */
+export function factorEntero(raw: unknown): number {
+  const n = Number(raw)
+  return Number.isInteger(n) && n >= 1 ? n : 1
+}
+
+/** Unidades físicas consumidas por producto: Σ cantidad × factor. Presentaciones desconocidas se ignoran. */
+export function consumoPorProducto(lineas: LineaCarrito[], pres: PresInfo[]): Map<string, number> {
+  const porId = new Map(pres.map(p => [p.id, p]))
+  const out = new Map<string, number>()
+  for (const l of lineas) {
+    const p = porId.get(l.presentacion_id)
+    if (!p) continue
+    out.set(p.producto_id, (out.get(p.producto_id) ?? 0) + Number(l.cantidad) * factorEntero(p.factor_stock))
+  }
+  return out
+}
+
+/**
+ * Disponibilidad de UNA presentación.
+ * @param stock       stock físico del producto en la sucursal (null/undefined = no controla)
+ * @param yaConsumido unidades físicas ya comprometidas por otras líneas del mismo producto
+ *                    (carrito + cantidades marcadas en pantalla, de TODAS las presentaciones del producto)
+ *                    EXCLUYENDO las de esta misma presentación si se quiere el tope de "+" para esta fila.
+ */
+export function disponibilidadPresentacion(pres: PresInfo, stock: StockProducto, yaConsumido = 0): Disponibilidad {
+  if (stock === null || stock === undefined) return { controla: false, restante: null, maxUnidades: null, disponible: true, motivo: null }
+  const f = factorEntero(pres.factor_stock)
+  const restante = Math.max(0, Math.floor(stock) - Math.max(0, yaConsumido))
+  const maxUnidades = Math.floor(restante / f)
+  const disponible = maxUnidades >= 1
+  const motivo: MotivoSinStock = disponible ? null : (Math.floor(stock) <= 0 ? 'AGOTADO' : 'INSUFICIENTE')
+  return { controla: true, restante, maxUnidades, disponible, motivo }
+}
+
+/** Revalidación del carrito contra stock fresco. Devuelve los productos que se pasan y las presentaciones afectadas. */
+export function validarCarrito(lineas: LineaCarrito[], pres: PresInfo[], stockPorProducto: Record<string, StockProducto>) {
+  const consumo = consumoPorProducto(lineas, pres)
+  const excesos: { producto_id: string; necesita: number; hay: number }[] = []
+  for (const [producto_id, necesita] of consumo) {
+    const s = stockPorProducto[producto_id]
+    if (s === null || s === undefined) continue
+    if (necesita > Math.max(0, Math.floor(s))) excesos.push({ producto_id, necesita, hay: Math.max(0, Math.floor(s)) })
+  }
+  const afectados = new Set(excesos.map(e => e.producto_id))
+  const presAfectadas = new Set(pres.filter(p => afectados.has(p.producto_id)).map(p => p.id))
+  const lineasAfectadas = lineas.filter(l => presAfectadas.has(l.presentacion_id)).map(l => l.presentacion_id)
+  return { ok: excesos.length === 0, excesos, lineasAfectadas: Array.from(new Set(lineasAfectadas)) }
+}
+
+export interface PromoSlot { cantidad?: number | null; presentaciones: string[] }
+export interface PromoInfo { slots: PromoSlot[] }
+
+/**
+ * ¿Se puede armar la promo? Cada unidad de cada slot elige UNA presentación permitida
+ * (así lo hace el kiosco: n elecciones por slot). Hay que encontrar una elección cuyo consumo
+ * agregado por producto entre en el stock (menos lo ya consumido). Búsqueda exacta con
+ * backtracking: los slots son pocos y las variedades por slot, acotadas.
+ */
+export function promoDisponible(promo: PromoInfo, pres: PresInfo[], stockPorProducto: Record<string, StockProducto>, yaConsumidoPorProducto: Map<string, number> = new Map()): boolean {
+  const porId = new Map(pres.map(p => [p.id, p]))
+  const unidades: string[][] = []
+  for (const s of promo.slots) {
+    const n = Math.max(1, Number(s.cantidad ?? 1))
+    const opciones = s.presentaciones.filter(id => porId.has(id))
+    if (opciones.length === 0) return false
+    for (let i = 0; i < n; i++) unidades.push(opciones)
+  }
+  const usado = new Map<string, number>(yaConsumidoPorProducto)
+  const cabe = (p: PresInfo) => {
+    const s = stockPorProducto[p.producto_id]
+    if (s === null || s === undefined) return true
+    return (usado.get(p.producto_id) ?? 0) + factorEntero(p.factor_stock) <= Math.max(0, Math.floor(s))
+  }
+  const dfs = (i: number): boolean => {
+    if (i === unidades.length) return true
+    for (const id of unidades[i]) {
+      const p = porId.get(id)!
+      if (!cabe(p)) continue
+      usado.set(p.producto_id, (usado.get(p.producto_id) ?? 0) + factorEntero(p.factor_stock))
+      if (dfs(i + 1)) return true
+      usado.set(p.producto_id, (usado.get(p.producto_id) ?? 0) - factorEntero(p.factor_stock))
+    }
+    return false
+  }
+  return dfs(0)
+}
+
+/** Leyenda para mostrar. null = no mostrar nada. `umbral` = a partir de cuántas se avisa "Quedan N". */
+export function etiquetaDisponibilidad(d: Disponibilidad, umbral = 3): string | null {
+  if (!d.controla) return null
+  if (!d.disponible) return d.motivo === 'AGOTADO' ? 'Agotado' : 'No disponible'
+  if (d.maxUnidades !== null && d.maxUnidades <= umbral) return d.maxUnidades === 1 ? 'Queda 1' : `Quedan ${d.maxUnidades}`
+  return null
+}
