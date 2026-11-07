@@ -1,0 +1,18 @@
+// HARNESS DE PRUEBA (no se entrega al repo). Copiar a src/app/harness-galeria/page.tsx SOLO para correr test-ui-galeria.js.
+'use client'
+import { useState } from 'react'
+import GaleriaImagenes from '@/components/admin/GaleriaImagenes'
+import GaleriaCarrusel from '@/components/kiosk/GaleriaCarrusel'
+export default function H() {
+  const [abrir, setAbrir] = useState(false)
+  const [cambios, setCambios] = useState(0)
+  const fotos = ['/f1.svg', '/f2.svg', '/f3.svg']   // 3 svg cualquiera en /public
+  return (
+    <div className="p-6 max-w-xl space-y-6">
+      <div id="admin"><GaleriaImagenes empresaId="e1" productoId="p1" onCambio={() => setCambios(c => c + 1)} fallback={<div id="fallback">FALLBACK</div>} /></div>
+      <div id="cambios">cambios:{cambios}</div>
+      <button id="abrir" onClick={() => setAbrir(true)}>abrir carrusel</button>
+      {abrir && <GaleriaCarrusel fotos={fotos} titulo="Producto X" onCerrar={() => setAbrir(false)} />}
+    </div>
+  )
+}

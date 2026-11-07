@@ -8,6 +8,7 @@ import { useEmpresa } from '@/lib/useEmpresa'
 import { ConePageHeader, ConeButton, ConeModal, ConeBadge } from '@/components/admin/ConeComponents'
 import { colorSucursal } from '@/components/admin/SucursalColor'
 import PromocionesTab from './tabs/PromocionesTab'
+import GaleriaImagenes, { useGaleriaDisponible } from '@/components/admin/GaleriaImagenes'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -64,6 +65,8 @@ function ImageUpload({ value, onChange, folder = 'productos' }: {
 
 export default function CatalogoPage() {
   const { ctx } = useEmpresa()
+  // MULTI-FOTOS: true = la galería (producto_imagenes) existe y mantiene imagen_url; null/false = modo clásico (una imagen)
+  const galeriaOk = useGaleriaDisponible() === true
   const [loading, setLoading] = useState(true)
 
   const [categorias, setCategorias] = useState<Categoria[]>([])
@@ -415,12 +418,15 @@ export default function CatalogoPage() {
     setSaving(true)
     const supabase = createClient()
     const payload = { nombre: formProd.nombre, descripcion: formProd.descripcion || null, imagen_url: formProd.imagen_url, categoria_id: formProd.categoria_id, codigo: formProd.codigo || null, orden: formProd.orden, activo: formProd.activo, visible_kiosk: formProd.visible_kiosk, visible_delivery: formProd.visible_delivery, visible_mesa: formProd.visible_mesa, visible_takeaway: formProd.visible_takeaway }
-    if (editId) await supabase.from('productos').update(payload).eq('id', editId)
+    // Con galería, imagen_url lo mantiene la base (espejo de la principal): NO se reescribe desde el formulario
+    const payloadSinImg: Partial<typeof payload> = { ...payload }; delete payloadSinImg.imagen_url
+    if (editId) await supabase.from('productos').update(galeriaOk ? payloadSinImg : payload).eq('id', editId)
     else {
       // Regla de oro: un producto SIN presentación no existe comercialmente
       // (sin precio, y la poda lo oculta del kiosk) → el alta ENCADENA
       // directo a su primera presentación, con el producto ya puesto.
       const { data: nuevo } = await supabase.from('productos').insert({ ...payload, empresa_id: ctx.empresaId }).select('id').single()
+      if (nuevo && galeriaOk && formProd.imagen_url) await supabase.from('producto_imagenes').insert({ empresa_id: ctx.empresaId, producto_id: nuevo.id, url: formProd.imagen_url })
       if (nuevo) { setExpandidos(prev => new Set(prev).add(nuevo.id)); setSaving(false); setModalProd(false); load(true); openNewPres(nuevo.id); return }
     }
     setSaving(false); setModalProd(false); load(true)
@@ -439,12 +445,14 @@ export default function CatalogoPage() {
     setSaving(true)
     const supabase = createClient()
     const payload = { nombre: formPres.nombre, precio: formPres.precio, permite_opciones: formPres.permite_opciones, opciones_min: formPres.opciones_min, opciones_max: formPres.opciones_max, orden: formPres.orden, activo: formPres.activo, producto_id: formPres.producto_id, imagen_url: formPres.imagen_url, visible_kiosk: formPres.visible_kiosk, es_novedad: formPres.es_novedad }
+    const payloadPresSinImg: Partial<typeof payload> = { ...payload }; delete payloadPresSinImg.imagen_url
     let presId = editId
     if (editId) {
-      await supabase.from('presentaciones').update(payload).eq('id', editId)
+      await supabase.from('presentaciones').update(galeriaOk ? payloadPresSinImg : payload).eq('id', editId)
     } else {
       const { data: nueva } = await supabase.from('presentaciones').insert({ ...payload, empresa_id: ctx.empresaId }).select('id').single()
       presId = nueva?.id ?? null
+      if (presId && galeriaOk && formPres.imagen_url) await supabase.from('producto_imagenes').insert({ empresa_id: ctx.empresaId, producto_id: formPres.producto_id, presentacion_id: presId, url: formPres.imagen_url })
     }
     // Persistir los grupos de opciones tildados (antes el checklist no se guardaba)
     if (presId) {
@@ -1002,7 +1010,14 @@ export default function CatalogoPage() {
           </div>
           <div className="space-y-1.5"><Label>Orden</Label><Input type="number" value={formProd.orden} onChange={e => setFormProd({ ...formProd, orden: Number(e.target.value) })} className="w-24" /><p className="text-xs text-neutral-400">1 = primero dentro de la categoría</p></div>
           <div className="space-y-1.5"><Label>Descripción</Label><Input value={formProd.descripcion} onChange={e => setFormProd({ ...formProd, descripcion: e.target.value })} /></div>
-          <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formProd.imagen_url} onChange={url => setFormProd({ ...formProd, imagen_url: url })} /></div>
+          <div className="space-y-1.5"><Label>{galeriaOk && editId ? 'Fotos' : 'Imagen'}</Label>
+            {galeriaOk && editId && ctx
+              ? <GaleriaImagenes empresaId={ctx.empresaId} productoId={editId} onCambio={() => load(true)} fallback={null} />
+              : <>
+                  <ImageUpload value={formProd.imagen_url} onChange={url => setFormProd({ ...formProd, imagen_url: url })} />
+                  {galeriaOk && <p className="text-xs text-neutral-400">Esta será la foto principal. Después de guardar podés agregar más fotos (hasta 10).</p>}
+                </>}
+          </div>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={formProd.activo} onChange={e => setFormProd({ ...formProd, activo: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-neutral-700">Activo</span></label>
             <div className="space-y-1">
@@ -1031,7 +1046,15 @@ export default function CatalogoPage() {
           <div className="space-y-1.5"><Label>Nombre *</Label><Input value={formPres.nombre} onChange={e => setFormPres({ ...formPres, nombre: e.target.value })} placeholder="Porción / x8 / x20" autoFocus /></div>
           <div className="space-y-1.5"><Label>Precio *</Label><Input type="number" value={formPres.precio} onChange={e => setFormPres({ ...formPres, precio: Number(e.target.value) })} /></div>
           <div className="space-y-1.5"><Label>Orden</Label><Input type="number" value={formPres.orden} onChange={e => setFormPres({ ...formPres, orden: Number(e.target.value) })} className="w-24" /><p className="text-xs text-neutral-400">1 = primero en el listado</p></div>
-          <div className="space-y-1.5"><Label>Imagen</Label><ImageUpload value={formPres.imagen_url} onChange={url => setFormPres({ ...formPres, imagen_url: url })} folder="presentaciones" /></div>
+          <div className="space-y-1.5"><Label>{galeriaOk && editId ? 'Fotos' : 'Imagen'}</Label>
+            {galeriaOk && editId && ctx
+              ? <><GaleriaImagenes empresaId={ctx.empresaId} productoId={formPres.producto_id} presentacionId={editId} onCambio={() => load(true)} fallback={null} />
+                  <p className="text-xs text-neutral-400">Si esta presentación no tiene fotos propias, se muestran las del producto.</p></>
+              : <>
+                  <ImageUpload value={formPres.imagen_url} onChange={url => setFormPres({ ...formPres, imagen_url: url })} folder="presentaciones" />
+                  {galeriaOk && <p className="text-xs text-neutral-400">Esta será la foto principal. Después de guardar podés agregar más fotos (hasta 10).</p>}
+                </>}
+          </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={formPres.visible_kiosk} onChange={e => setFormPres({ ...formPres, visible_kiosk: e.target.checked })} className="w-4 h-4 rounded" />
             <span className="text-sm text-neutral-700">Visible en catálogo</span>

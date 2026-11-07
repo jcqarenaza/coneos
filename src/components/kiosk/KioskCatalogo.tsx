@@ -4,11 +4,12 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 import { ShoppingCart, ArrowLeft, Check, Plus, Minus, X } from 'lucide-react'
+import GaleriaCarrusel from './GaleriaCarrusel'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
 
 interface Categoria { id: string; nombre: string; icono_url: string | null }
-interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; agotado?: boolean }
-interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null; es_novedad?: boolean }
+interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; imagenes?: string[]; categoria_id: string; agotado?: boolean }
+interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null; imagenes?: string[]; es_novedad?: boolean }
 interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string; precio_adicional?: number ; es_novedad?: boolean }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
@@ -72,6 +73,8 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   // Promo pedida desde el inicio (categoriaIdInicial = 'promo:<id>'): se arranca recién cuando el catálogo ya cargó
   const [promoInicialId, setPromoInicialId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // MULTI-FOTOS: visor con carrusel (producto o presentación con más de una foto)
+  const [galeria, setGaleria] = useState<{ fotos: string[]; titulo: string } | null>(null)
 
   const [paso, setPaso] = useState<Paso>('categorias')
   const [categoriaActiva, setCategoriaActiva] = useState<Categoria | null>(null)
@@ -597,10 +600,16 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                         // Si alguna presentación tiene foto, no mostrar imagen/emoji del producto
                         if (algunaTieneImagen) return null
                         return (
-                          <div className="w-20 h-20 rounded-xl bg-neutral-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                          <div className="relative w-20 h-20 rounded-xl bg-neutral-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
                             {prod.imagen_url
                               ? <img src={prod.imagen_url} alt={prod.nombre} width={80} height={80} className="object-contain w-full h-full bg-white" />
                               : null}
+                            {(prod.imagenes?.length ?? 0) > 1 && (
+                              <button type="button" onClick={() => setGaleria({ fotos: prod.imagenes!, titulo: prod.nombre })} aria-label={`Ver ${prod.imagenes!.length} fotos de ${prod.nombre}`}
+                                className="absolute inset-0 flex items-end justify-end p-1">
+                                <span className="text-[10px] font-bold bg-black/60 text-white rounded-full px-1.5 py-0.5">📷 {prod.imagenes!.length}</span>
+                              </button>
+                            )}
                           </div>
                         )
                       })()}
@@ -618,8 +627,14 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                           <div key={p.id} className={`flex items-center justify-between px-5 py-3.5 ${i < pres.length - 1 ? 'border-b border-neutral-50' : ''} ${cant > 0 ? 'bg-blue-50/50' : ''}`}>
                             <div className="flex items-center gap-3">
                             {p.imagen_url && (
-                              <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0">
+                              <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0">
                                 <img src={p.imagen_url} alt={p.nombre} width={56} height={56} className="object-contain w-full h-full bg-white" />
+                                {(p.imagenes?.length ?? 0) > 1 && (
+                                  <button type="button" onClick={() => setGaleria({ fotos: p.imagenes!, titulo: `${prod.nombre} · ${p.nombre}` })} aria-label={`Ver ${p.imagenes!.length} fotos de ${p.nombre}`}
+                                    className="absolute inset-0 flex items-end justify-end p-0.5">
+                                    <span className="text-[9px] font-bold bg-black/60 text-white rounded-full px-1 py-0.5">📷 {p.imagenes!.length}</span>
+                                  </button>
+                                )}
                               </div>
                             )}
                             <div>
@@ -871,6 +886,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           </div>
         )
       })()}
+      {galeria && <GaleriaCarrusel fotos={galeria.fotos} titulo={galeria.titulo} onCerrar={() => setGaleria(null)} />}
     </div>
   )
 }

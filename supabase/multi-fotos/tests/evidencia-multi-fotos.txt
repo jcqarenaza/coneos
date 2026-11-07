@@ -1,0 +1,153 @@
+# EVIDENCIA multi-fotos · actualizada 07/11/2026 (corrección final) · PostgreSQL 16.15 aislado
+
+## A. Integridad, seguridad y concurrencia (30 pruebas)
+OK    T01 primera foto del producto queda principal y sincroniza imagen_url
+OK    T02 segunda foto NO es principal; imagen_url no cambia
+OK    T03 insertar con es_principal=true reemplaza a la anterior (una sola)
+OK    T04 UPDATE es_principal=true mueve la principal atómicamente y sincroniza
+OK    T05 quitar es_principal sin asignar otra → IMAGEN_PRINCIPAL_REQUERIDA
+OK    T06 borrar la principal promueve la siguiente por orden y sincroniza
+OK    T07 borrar la última foto deja imagen_url en NULL
+OK    T08 límite 10 por producto (la 11ª falla LIMITE_IMAGENES)
+OK    T09 límite independiente: producto 10 + cada presentación 10
+OK    T10 presentación: principal propia sincroniza presentaciones.imagen_url (no toca la del producto)
+OK    T11 presentación sin fotos propias: imagen_url NULL (la herencia es de lectura)
+OK    T12 aislamiento: admin de B no puede insertar sobre producto de A (RLS)
+OK    T13 aislamiento: admin de B no ve, no edita y no borra fotos de A
+OK    T14 presentación de OTRO producto → PRESENTACION_INVALIDA
+OK    T15 presentación de otra EMPRESA → PRESENTACION_INVALIDA / FK
+OK    T16 propiedad inmutable: no se puede mover una foto de producto/presentación/empresa
+OK    T17 url inválida (no http/https, vacía, >2048) rechazada
+OK    T18 anon: sin acceso a la tabla ni a las RPC
+OK    T19 authenticated sin permiso de TRUNCATE
+OK    T20 funciones de trigger no ejecutables por anon/authenticated/public
+OK    T21 RPC set_imagen_principal: propia ok, ajena → IMAGEN_NO_ENCONTRADA
+OK    T22 RPC reordenar_imagenes: orden nuevo ok; ids incompletos/ajenos → ORDEN_INVALIDO
+OK    T23 borrar producto: cascada limpia sus fotos y las de sus presentaciones, sin error
+OK    T24 borrar presentación: cascada limpia solo sus fotos; el producto conserva las suyas
+OK    T25 catálogo se refresca (catalogo_version) al agregar/quitar/cambiar fotos
+OK    T26 agregar una foto extra NO toca productos (sin updates innecesarios)
+OK    T27 CONCURRENCIA: 12 altas simultáneas al mismo producto → exactamente 10 y una principal
+OK    T28 CONCURRENCIA: cambios de principal simultáneos → siempre exactamente una
+OK    T29 CONCURRENCIA/DEADLOCK: fotos + ediciones del producto + bumps en paralelo, sin deadlock
+OK    T30 service_role (bypassrls) opera igual: reglas y sync valen también desde la API
+30/30 OK
+
+## A2. Estrés: 15 corridas de la suite A (concurrencia/deadlock)
+corridas con falla: 0 / 15
+
+## B. Migración · reversión con respaldos acumulativos · reaplicación · mutaciones (59 pruebas)
+OK    M01 aplica 01 sin error
+OK    M02 migra 4 fotos de producto (con espacios y producto borrado; sin vacías/NULL)
+OK    M03 migra 2 fotos de presentación
+OK    M04 todas quedan como principal (una por ámbito)
+OK    M05 url migrada sin espacios
+OK    M06 la migración NO modifica imagen_url (compat 100%)
+OK    M07 producto sin foto / foto vacía no genera fila
+OK    M08 correr 01 por segunda vez aborta
+OK    M09 …y la tabla sigue intacta (6 filas)
+OK    M10 imagen_url del producto refleja la nueva principal
+OK    M11 base-aislada: 8 fotos antes de revertir
+OK    M12 revierte (#1) sin error
+OK    M13 tabla, funciones y triggers de multi-fotos eliminados
+OK    M14 respaldo #1: registrado en el log con 8 filas, 2 empresas (A y B) y fecha
+OK    M15 respaldo #1: 8 filas reales y contenido idéntico a la tabla original (md5)
+OK    M16 imagen_url conserva la principal vigente tras revertir #1 (producto y presentación)
+OK    M17 imagen_url idéntica a la de antes de revertir
+OK    M18 bump: empresas con fotos (A) refrescada
+OK    M19 bump: empresa sin fotos (C) NO refrescada
+OK    M20 respaldos: anon, authenticated y service_role SIN ningún privilegio (select/insert/update/delete)
+OK    M21 respaldos: lectura real como service_role rechazada
+OK    M22 respaldos: lectura real como authenticated rechazada
+OK    M23 respaldos: RLS activada
+OK    M24 bump_catalogo_empresa: firma y definición reales (uuid → void, SECURITY DEFINER)
+OK    M25 re-aplicar 01 tras revertir funciona
+OK    M26 …y migra la principal vigente (6 filas)
+OK    M27 …la principal migrada del producto es la que había quedado (extra1)
+OK    M28 revierte (#2) sin error
+OK    M29 log acumulado: 2 capturas con UUID distintos
+OK    M30 captura #1 CONSERVADA: mismas 8 filas y mismo contenido (md5)
+OK    M31 captura #2: 9 filas y contenido idéntico a la tabla antes de revertir
+OK    M32 cada captura contiene SUS fotos: #1 tiene extra1 y no extra2; #2 tiene extra2 y no extra1 como adicional
+OK    M33 total acumulado = suma de capturas (8 + 9)
+OK    M34 log: filas de cada captura coinciden con las reales
+OK    M35 imagen_url conserva la principal vigente tras revertir #2 (p3extra en P3, extra1 en P1)
+OK    M36 bump #2: A refrescada, C no
+OK    M37 respaldos siguen sin acceso para service_role tras la 2ª ejecución
+OK    M38 triggers bump_catalogo originales de productos/presentaciones siguen
+OK    M39 02 sin tabla: error claro y no crea respaldos nuevos
+OK    X01 presentaciones: url migrada distinta de imagen_url: aborta
+OK    X01 presentaciones: url migrada distinta de imagen_url: mensaje correcto
+OK    X01 presentaciones: url migrada distinta de imagen_url: no queda tabla ni funciones y imagen_url intacta
+OK    X02 productos: url migrada distinta de imagen_url: aborta
+OK    X02 productos: url migrada distinta de imagen_url: mensaje correcto
+OK    X02 productos: url migrada distinta de imagen_url: no queda tabla ni funciones y imagen_url intacta
+OK    X03 falta una foto de presentación (cantidades): aborta
+OK    X03 falta una foto de presentación (cantidades): mensaje correcto
+OK    X03 falta una foto de presentación (cantidades): no queda tabla ni funciones y imagen_url intacta
+OK    X04 falta una foto de producto (cantidades): aborta
+OK    X04 falta una foto de producto (cantidades): mensaje correcto
+OK    X04 falta una foto de producto (cantidades): no queda tabla ni funciones y imagen_url intacta
+OK    X05 respaldo incompleto: aborta
+OK    X05 respaldo incompleto: mensaje correcto
+OK    X05 respaldo incompleto: la tabla NO se borró y conserva todas sus filas
+OK    X05 respaldo incompleto: no queda respaldo a medias (rollback total) e imagen_url intacta
+OK    X06 respaldo con contenido distinto: aborta
+OK    X06 respaldo con contenido distinto: mensaje correcto
+OK    X06 respaldo con contenido distinto: la tabla NO se borró y conserva todas sus filas
+OK    X06 respaldo con contenido distinto: no queda respaldo a medias (rollback total) e imagen_url intacta
+
+59 OK / 0 FALLA
+
+## C. API /api/kiosk/catalogo
+OK    A01 producto con galería: imagenes = principal primero, luego por orden
+OK    A02 imagen_url del producto NO cambia (compat con los 17 usos)
+OK    A03 producto sin fila de galería usa imagen_url legacy
+OK    A04 producto sin fotos → []
+OK    A05 presentación con fotos propias: las suyas (principal primero)
+OK    A06 presentación sin fotos propias HEREDA las del producto
+OK    A07 presentación sin fotos hereda imagen_url legacy del producto
+OK    A08 presentación sin nada → []
+OK    A09 imagen_url de presentaciones NO cambia (la herencia es solo de lectura)
+OK    A10 la grilla puede seguir usando solo imagen_url (campos originales intactos)
+OK    A11 SIN la tabla (SQL no aplicado): catálogo responde igual, imagenes = [imagen_url]
+OK    A12 SIN la tabla: presentación hereda y no rompe
+OK    A13 paginación: 2500 filas → 3 consultas y las 2500 fotos
+OK    A14 paginación conserva la principal primero
+
+14/14 OK
+
+## D. Interfaz en navegador real (Chromium/Playwright, Supabase simulado con las mismas reglas del SQL) — 22/22 OK, 2 corridas
+U01 sin tabla (SQL sin aplicar): se muestra el cargador clásico (fallback)
+U02 galería vacía: solo el botón "Agregar fotos"
+U03 subir 3 fotos juntas: 3 filas, 3 uploads a Storage
+U04 la primera queda como principal (una sola)
+U05 orden 0,1,2 asignado
+U06 rutas de Storage: galeria/<producto>/<uuid>.png (sin sobrescribir nombres)
+U07 notifica al padre (onCambio) para refrescar miniaturas
+U08 marcar principal: RPC set_imagen_principal; sigue habiendo UNA
+U09 reordenar: RPC reordenar_imagenes con el nuevo orden
+U10 quitar la principal: queda otra como principal (promoción)
+U11 subir 12 con 2 existentes: entran solo 8 (tope 10) y avisa
+U12 con 10 fotos desaparece el botón "Agregar fotos"
+U13 contador visible 10/10
+U14 archivo no imagen: no sube nada y muestra el motivo
+U15 carrusel abre "1 / 3" con 3 puntos
+U16 flecha derecha → "2 / 3"
+U17 punto 3 → "3 / 3"
+U18 deslizar a la primera → "1 / 3"
+U19 Escape cierra
+U20 botón cerrar
+U21 sin errores de consola/JS
+U22 pantalla ancha: flecha "siguiente" visible
+
+## E. Calidad de código
+tsc --noEmit: 1085 errores en main → 1092 con multi-fotos. Los 7 nuevos son de la misma clase que los 1085 existentes
+  (database.types.ts desactualizado: "parameter of type 'never'"), todos por la tabla/RPC nueva que aún no está en los tipos.
+  0 errores nuevos en la API ni en el kiosk. (Hay que regenerar los tipos tras aplicar el SQL.)
+eslint: GaleriaImagenes.tsx, GaleriaCarrusel.tsx, imagenes.ts, api/kiosk/catalogo: 0 errores nuevos. catalogo/page.tsx: sin warnings nuevos.
+next build: no se pudo correr en el entorno de pruebas (no llega a Google Fonts). Pendiente: lo valida Vercel en el preview.
+
+## F. Huellas SHA-256 de los SQL entregados
+8f1daf2117049dbb68f0077e6e3680f1060ab2aef6799086d9f7da1a43a2bfb2  01-multi-fotos-correccion.sql
+669131ef37c8a671430d00fa3af7b2dc20b8106e6cfb00186cd47318ef802864  02-multi-fotos-reversion.sql

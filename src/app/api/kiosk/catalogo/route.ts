@@ -1,5 +1,22 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { ordenarImagenes, listaImagenes, type ImagenRow } from '@/lib/imagenes'
+
+// MULTI-FOTOS: galerías del catálogo (producto y presentación). Paginado porque
+// PostgREST corta en 1000 filas. Si la tabla aún no existe (SQL sin aplicar) o
+// falla, devuelve [] y el catálogo sigue exactamente como antes (solo imagen_url).
+async function cargarImagenes(supabase: ReturnType<typeof createAdminClient>, empresa_id: string): Promise<ImagenRow[]> {
+  const out: ImagenRow[] = []
+  for (let desde = 0; desde < 20000; desde += 1000) {
+    const { data, error } = await supabase.from('producto_imagenes')
+      .select('producto_id, presentacion_id, url, orden, es_principal, created_at')
+      .eq('empresa_id', empresa_id).order('id').range(desde, desde + 999)
+    if (error || !data) break
+    out.push(...(data as ImagenRow[]))
+    if (data.length < 1000) break
+  }
+  return out
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -25,6 +42,7 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient()
+  const imagenesP = cargarImagenes(supabase, empresa_id)
 
   const [{ data: categorias }, { data: productos }, { data: presentaciones }, { data: grupos }, { data: opciones }, { data: inventario }, { data: presGrupos }, { data: catalogoConfig }, { data: stockRows }] =
     await Promise.all([
@@ -126,5 +144,27 @@ export async function GET(request: Request) {
       return desdeOk && hastaOk && slotsOk
     })
 
-  return NextResponse.json({ categorias, productos: productosFinal, presentaciones: presentacionesFiltradas, grupos, opciones: opcionesFiltradas, presentacion_grupos: presGrupos ?? [], promociones })
+  // ══ MULTI-FOTOS: `imagenes` (campo nuevo, aditivo; los clientes viejos lo ignoran) ══
+  // Producto: su galería. Presentación: la suya; si no tiene fotos propias,
+  // hereda las del producto. `imagen_url` NO cambia (sigue siendo la principal).
+  const imgRows = await imagenesP
+  const porProd = new Map<string, ImagenRow[]>()
+  const porPres = new Map<string, ImagenRow[]>()
+  for (const r of imgRows) {
+    const m = r.presentacion_id ? porPres : porProd
+    const k = r.presentacion_id ?? r.producto_id
+    const l = m.get(k); if (l) l.push(r); else m.set(k, [r])
+  }
+  const urls = (m: Map<string, ImagenRow[]>, k: string) => (m.get(k) ? ordenarImagenes(m.get(k)!).map(r => r.url) : undefined)
+  const imgsProd = new Map<string, string[]>()
+  const productosConFotos = productosFinal.map((p: { id: string; imagen_url?: string | null }) => {
+    const l = listaImagenes(p.imagen_url ?? null, urls(porProd, p.id)); imgsProd.set(p.id, l)
+    return { ...p, imagenes: l }
+  })
+  const presentacionesConFotos = presentacionesFiltradas.map((p: { id: string; producto_id: string; imagen_url: string | null }) => {
+    const propias = listaImagenes(p.imagen_url, urls(porPres, p.id))
+    return { ...p, imagenes: propias.length > 0 ? propias : (imgsProd.get(p.producto_id) ?? []) }
+  })
+
+  return NextResponse.json({ categorias, productos: productosConFotos, presentaciones: presentacionesConFotos, grupos, opciones: opcionesFiltradas, presentacion_grupos: presGrupos ?? [], promociones })
 }
