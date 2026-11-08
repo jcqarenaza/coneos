@@ -80,7 +80,7 @@ export default function MapaCliente({ empresaId, pedidoId, nombreCadete, color }
   return (
     <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden mb-4">
       <div className="px-4 py-3 border-b border-neutral-50 flex items-center justify-between">
-        <p className="font-bold text-neutral-700 text-sm">🛵 {nombreCadete ? `${nombreCadete} va en camino` : 'En camino'}</p>
+        <p className="font-bold text-neutral-700 text-sm">{nombreCadete ? `${nombreCadete} va en camino` : '🛵 En camino'}</p>
         <span className="text-[10px] text-neutral-300">en vivo</span>
       </div>
       <div ref={divRef} style={{ height: 260, width: '100%' }} />

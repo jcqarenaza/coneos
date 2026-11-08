@@ -75,7 +75,8 @@ export default function MesaPage() {
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null)
   // GO CTO 8/11: id de operación por intento (reintento técnico = mismo pedido) + advertencia de repetido validada en el servidor
   const operacionRef = useRef<OperacionActual | null>(null)
-  const [repetidoMesa, setRepetidoMesa] = useState<{ id: string | null; numero_pedido: number | null } | null>(null)
+  // pagoMP se conserva: "Sí, continuar" reenvía EXACTAMENTE el método de pago original (nunca cambia MP por otro medio)
+  const [repetidoMesa, setRepetidoMesa] = useState<{ id: string | null; numero_pedido: number | null; pagoMP: boolean } | null>(null)
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number } | null>(null)
 
   useEffect(() => {
@@ -107,7 +108,7 @@ export default function MesaPage() {
 
   async function enviarPedido(pagoMP: boolean, confirmar = false) {
     if (!ctx || carrito.length === 0 || enviando) return
-    operacionRef.current = operacionPara(operacionRef.current, JSON.stringify({ c: carrito.map(i => [i.presentacion_id, i.cantidad, i.promo_id ?? null, i.combo_ref ?? null, i.promo_slot_id ?? null, i.opciones.map(o => o.opcion_id)]), mesa: Number(mesa), mp: pagoMP }))
+    operacionRef.current = operacionPara(operacionRef.current, JSON.stringify({ c: carrito.map(i => [i.presentacion_id, i.cantidad, i.promo_id ?? null, i.combo_ref ?? null, i.promo_slot_id ?? null, i.opciones.map(o => o.opcion_id)]), mesa: Number(mesa), mp: pagoMP, cliente: nombre.trim() }))
     setEnviando(true)
     setErrorEnvio(null)
     try {
@@ -136,7 +137,7 @@ export default function MesaPage() {
         }),
       })
       const d = await res.json()
-      if (res.status === 409 && d.duplicado) { setRepetidoMesa({ id: d.duplicado.id ?? null, numero_pedido: d.duplicado.numero_pedido ?? null }); setEnviando(false); return }
+      if (res.status === 409 && d.duplicado) { setRepetidoMesa({ id: d.duplicado.id ?? null, numero_pedido: d.duplicado.numero_pedido ?? null, pagoMP }); setEnviando(false); return }
       if (!res.ok || !d.pedido) { setErrorEnvio(d.error ?? 'No pudimos enviar tu pedido'); setEnviando(false); return }
       operacionRef.current = null
 
@@ -331,7 +332,7 @@ export default function MesaPage() {
             {repetidoMesa && (
               <AdvertenciaPedidoRepetido color={config.primary_color} numeroPedido={null}
                 onVolver={() => { setRepetidoMesa(null); operacionRef.current = null }}
-                onContinuar={() => { setRepetidoMesa(null); void enviarPedido(false, true) }} />
+                onContinuar={() => { const mp = repetidoMesa.pagoMP; setRepetidoMesa(null); void enviarPedido(mp, true) }} />
             )}
             {errorEnvio && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-6">

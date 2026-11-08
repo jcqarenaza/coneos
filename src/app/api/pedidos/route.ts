@@ -5,7 +5,7 @@ import { esSlotValido, type Franja, generarSlots } from '@/lib/takeaway/slots'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 import { estaAbierto, diaOperativo, diaHabilita, diaSemanaAR, horaMinutosAR, type Franja, type HorarioPorDia } from '@/lib/horarios'
 import { canalDePedido } from '@/lib/pagos/mp'
-import { calcularHuella, reclamarOperacion, soloDigitos, esUuid, MENSAJE_REPETIDO } from '@/lib/pedidos/repetidos'
+import { calcularHuella, reclamarOperacion, soloDigitos, esUuid, errorProbadoSinPedido, MENSAJE_REPETIDO } from '@/lib/pedidos/repetidos'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -344,11 +344,18 @@ export async function POST(request: Request) {
   //    "Sí, continuar" solo vale para ESA operación ya advertida (mismo contenido, identidad y sucursal);
   //  · pedidos cancelados/eliminados no cuentan; una ventana desactivada no advierte nunca.
   // La identidad sale del servidor (teléfono de datos_delivery, visitante, dispositivo). Alcance: canales de cliente
-  // (kiosco, delivery, take away, mesa); la venta de caja queda afuera. Si la base no responde, se sigue sin
-  // protección: jamás se frena una venta.
+  // (kiosco, delivery, take away, mesa); la venta de caja queda afuera. FAIL-CLOSED (CTO 8/11): si no se puede
+  // reclamar la operación NO se crea el pedido sin protección: se responde 503 recuperable y el cliente reintenta.
+  // La garantía "una operación = un pedido" la da la base: pedidos.operacion_id con índice único parcial dentro de
+  // crear_pedido_stock v1.7; pedido_operaciones es registro auxiliar y fuente de la advertencia.
   let operacionReclamada: string | null = null
   if (!venta_caja) {
-    const operacionId: string = esUuid(body.operacion_id) ? body.operacion_id : crypto.randomUUID()
+    // UUID OBLIGATORIO (revisión CTO 8/11): el servidor NO inventa la identidad de la operación. Si lo hiciera y se perdiera la respuesta, el
+    // cliente no conocería ese id y su reintento sería otra operación (otro pedido). Sin un uuid válido del cliente no se crea nada.
+    if (!esUuid(body.operacion_id)) {
+      return NextResponse.json({ error: 'Falta el identificador de la operación. Actualizá la página e intentá de nuevo.', codigo: 'OPERACION_ID_REQUERIDO' }, { status: 400 })
+    }
+    const operacionId: string = body.operacion_id
     const huella = calcularHuella({ sucursal_id, tipo_pedido: esMesa ? 'mesa' : tipo_pedido, origen, numero_mesa: esMesa ? numero_mesa : null, items: itemsRpc })
     const reclamo = await reclamarOperacion(supabase as unknown as Parameters<typeof reclamarOperacion>[0], {
       empresa_id, sucursal_id, operacion_id: operacionId, huella,
@@ -371,6 +378,7 @@ export async function POST(request: Request) {
     }
     if (reclamo.tipo === 'EN_PROCESO') return NextResponse.json({ error: 'Tu pedido se está procesando. Esperá un momento y no lo envíes de nuevo.', en_proceso: true }, { status: 409 })
     if (reclamo.tipo === 'OPERACION_INVALIDA') return NextResponse.json({ error: 'Tu pedido cambió. Revisalo y volvé a confirmar.' }, { status: 409 })
+    if (reclamo.tipo === 'SIN_PROTECCION') return NextResponse.json({ error: 'No pudimos verificar tu envío. Tu pedido NO fue creado: probá de nuevo en unos segundos.', reintentable: true }, { status: 503 })
     if (reclamo.tipo === 'NUEVA') operacionReclamada = operacionId
   }
 
@@ -399,11 +407,14 @@ export async function POST(request: Request) {
     p_nombre_cliente: esMesa
       ? (nombre_cliente || null)
       : (tipo_pedido === 'takeaway' && datos_delivery?.nombre ? datos_delivery.nombre : null),
+    // v1.7: la identidad de la operación viaja a la transacción de creación (búsqueda temprana + índice único)
+    p_operacion_id: operacionReclamada,
   })
 
   if (error || !pedido) {
-    // La operación no generó pedido: se libera para que el reintento arranque limpio (best-effort)
-    if (operacionReclamada) await Promise.resolve(supabase.rpc('liberar_operacion_pedido', { p_empresa_id: empresa_id, p_operacion_id: operacionReclamada })).then(() => {}, () => {})
+    // Se libera la operación SOLO si el error PRUEBA que no se creó pedido (SQLSTATE devuelto por la base). Ante timeout,
+    // error de transporte o respuesta ambigua NO se libera: el pedido pudo crearse y el reintento lo recupera por operacion_id.
+    if (operacionReclamada && error && errorProbadoSinPedido(error)) await Promise.resolve(supabase.rpc('liberar_operacion_pedido', { p_empresa_id: empresa_id, p_operacion_id: operacionReclamada })).then(() => {}, () => {})
     // Rechazo limpio por falta de stock (RAISE de la RPC): 409 con el producto
     const msg = error?.message ?? ''
     if (msg.includes('SIN_STOCK:')) {
@@ -418,13 +429,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Los precios se actualizaron. Revisá tu pedido.' }, { status: 409 })
     }
     console.error('[pedidos] Error creando pedido (RPC):', error)
+    // Resultado AMBIGUO (transporte, timeout, respuesta sin pedido ni error con SQLSTATE): el pedido puede existir.
+    // No se libera la operación; se pide reintentar con el MISMO operacion_id y la base devuelve el pedido si ya está.
+    if (!error || !errorProbadoSinPedido(error)) {
+      return NextResponse.json({ error: 'No pudimos confirmar si tu pedido se creó. Probá de nuevo: si ya estaba creado, te mostramos el mismo.', reintentable: true }, { status: 503 })
+    }
     return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
   }
 
-  // La operación queda COMPLETADA con su pedido: de acá en más un reintento recibe ESTE mismo pedido
+  // Registro auxiliar: la operación queda COMPLETADA con su pedido (si esto falla, la base igual impide el segundo pedido)
   if (operacionReclamada) {
     const pidOp = (pedido as { id?: string })?.id
     if (pidOp) await Promise.resolve(supabase.rpc('completar_operacion_pedido', { p_empresa_id: empresa_id, p_operacion_id: operacionReclamada, p_pedido_id: pidOp })).then(() => {}, e => console.error('[pedidos] completar_operacion_pedido falló:', e))
+    // Limpieza oportunista y barata (por lotes, SKIP LOCKED, fuera de la lógica de compra); un fallo no afecta al pedido
+    if (Math.random() < 0.02) await Promise.resolve(supabase.rpc('purgar_operaciones_pedido', { p_limite: 200 })).then(() => {}, () => {})
+  }
+
+  // v1.7: la base devolvió un pedido YA existente de esta operación (reintento tras un fallo/respuesta perdida):
+  // se responde igual que el reuso del reclamo y NO se repiten los efectos posteriores a la creación.
+  if ((pedido as { reutilizado?: boolean })?.reutilizado === true) {
+    const { data: ex } = await supabase.from('pedidos').select('id, numero_pedido, codigo_retiro, hora_retiro').eq('id', (pedido as { id: string }).id).maybeSingle()
+    if (ex) return NextResponse.json({ pedido: ex, reutilizado: true })
   }
 
   // ── V1.5 — HORA DE RETIRO (solo takeaway, ya validada) ──

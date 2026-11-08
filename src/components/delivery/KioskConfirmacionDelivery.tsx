@@ -6,7 +6,7 @@ import type { PedidoRetorno } from '@/lib/useRetornoMp'
 import { Loader2, CheckCircle, Copy, Check, Truck, Upload, X, ArrowLeft } from 'lucide-react'
 import { armarFilas } from '@/lib/agruparCarrito'
 import AdvertenciaPedidoRepetido from '@/components/pedidos/AdvertenciaPedidoRepetido'
-import { operacionPara, type OperacionActual } from '@/lib/pedidos/operacion-cliente'
+import { operacionPara, firmaDelivery, type OperacionActual } from '@/lib/pedidos/operacion-cliente'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface Props {
@@ -187,7 +187,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       promo_id: item.promo_id ?? null, combo_ref: item.combo_ref ?? null, promo_slot_id: item.promo_slot_id ?? null,
       opciones: item.opciones.map(op => ({ opcion_id: op.opcion_id, nombre_snap: op.nombre, emoji_snap: op.emoji, color_snap: op.color })),
     }))
-    operacionRef.current = operacionPara(operacionRef.current, JSON.stringify({ items, canal, tel: datos?.telefono ?? null }))
+    // La firma abarca TODO lo que el servidor recibe de la compra (ver firmaDelivery): si algo cambia, la operación es OTRA.
+    operacionRef.current = operacionPara(operacionRef.current, firmaDelivery({ items, canal, metodo, horaRetiro, costoEnvio, datos, esTakeaway, dispositivo: esTakeaway ? null : dispositivo.id }))
     const res = await fetch('/api/pedidos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ operacion_id: operacionRef.current.id, ...(confirmarRef.current ? { confirmar_advertencia: true } : {}), empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', visitante_id: (() => { try { return localStorage.getItem('coneos_visitante_id') } catch { return null } })(), tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(horaRetiro ? { hora_retiro: horaRetiro } : {}) /* programado: ambos canales; el server exige la llave en delivery */ }),

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { minutosEntrega } from '@/lib/reparto/salida'
 import { ShoppingBag, Store, Users, Layers, TrendingUp, Clock, Loader2, Bike, Package } from 'lucide-react'
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
@@ -27,7 +28,8 @@ export default function AdminDashboard() {
   const [pedidosActivos, setPedidosActivos] = useState<{ id: string; numero_pedido: number; estado: string; total: number; created_at: string }[]>([])
   const [empresaIdState, setEmpresaIdState] = useState<string | null>(null)
   const [periodoCadetes, setPeriodoCadetes] = useState<'hoy' | 'semana' | 'mes'>('hoy')
-  const [cadetes, setCadetes] = useState<{ nombre: string; envios: number; transportado: number; efectivo: number }[]>([])
+  const [cadetes, setCadetes] = useState<{ nombre: string; envios: number; transportado: number; efectivo: number; minProm: number | null; minN: number }[]>([])
+  const [promGeneral, setPromGeneral] = useState<{ min: number | null; n: number }>({ min: null, n: 0 })
   const [cadetesLoading, setCadetesLoading] = useState(false)
   // Alertas de stock: productos contables agotados o en/bajo el mínimo, por sucursal
   const [stockAlertas, setStockAlertas] = useState<{ producto: string; sucursal: string; cantidad: number; stock_minimo: number }[]>([])
@@ -103,7 +105,7 @@ export default function AdminDashboard() {
       if (periodoCadetes === 'semana') desde = new Date(ahora.getTime() - 6 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
       if (periodoCadetes === 'mes') desde = new Date(ahora.getTime() - 29 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
       const { data } = await supabase.from('pedidos')
-        .select('colaborador_id, colaborador_nombre, total, metodo_pago')
+        .select('colaborador_id, colaborador_nombre, total, metodo_pago, salio_at, entregado_at')
         .eq('empresa_id', empresaIdState).eq('tipo_pedido', 'delivery').eq('estado', 'DELIVERED')
         .not('colaborador_nombre', 'is', null)
         .gte('fecha_pedido', desde).lte('fecha_pedido', hoyStr)
@@ -116,17 +118,21 @@ export default function AdminDashboard() {
         const { data: cols } = await supabase.from('colaboradores').select('id, nombre').in('id', ids)
         for (const c of cols ?? []) nombreActual[c.id] = c.nombre
       }
-      const agg: Record<string, { nombre: string; envios: number; transportado: number; efectivo: number }> = {}
+      const agg: Record<string, { nombre: string; envios: number; transportado: number; efectivo: number; minSuma: number; minN: number }> = {}
+      let sumaGral = 0, nGral = 0
       for (const p of data ?? []) {
         const snap = (p.colaborador_nombre ?? '').trim()
         const k = p.colaborador_id ?? snap
         if (!k) continue
-        if (!agg[k]) agg[k] = { nombre: (p.colaborador_id && nombreActual[p.colaborador_id]) || snap, envios: 0, transportado: 0, efectivo: 0 }
+        if (!agg[k]) agg[k] = { nombre: (p.colaborador_id && nombreActual[p.colaborador_id]) || snap, envios: 0, transportado: 0, efectivo: 0, minSuma: 0, minN: 0 }
         agg[k].envios++
         agg[k].transportado += Number(p.total)
         if (p.metodo_pago === 'efectivo') agg[k].efectivo += Number(p.total)
+        const m = minutosEntrega(p.salio_at, p.entregado_at)
+        if (m !== null) { agg[k].minSuma += m; agg[k].minN++; sumaGral += m; nGral++ }
       }
-      setCadetes(Object.values(agg).map(v => ({ ...v })).sort((a, b) => b.envios - a.envios))
+      setPromGeneral({ min: nGral > 0 ? sumaGral / nGral : null, n: nGral })
+      setCadetes(Object.values(agg).map(v => ({ nombre: v.nombre, envios: v.envios, transportado: v.transportado, efectivo: v.efectivo, minProm: v.minN > 0 ? v.minSuma / v.minN : null, minN: v.minN })).sort((a, b) => b.envios - a.envios))
       setCadetesLoading(false)
     }
     loadCadetes()
@@ -274,15 +280,20 @@ export default function AdminDashboard() {
           </div>
         ) : (
           <div className="divide-y divide-neutral-50">
-            <div className="px-6 py-2.5 grid grid-cols-4 gap-2 text-xs text-neutral-400 font-semibold uppercase tracking-wide">
-              <span>Cadete</span><span className="text-right">Envíos</span><span className="text-right">Transportado</span><span className="text-right">En efectivo</span>
+            <div className="px-6 py-3 bg-neutral-50 flex items-center justify-between text-sm">
+              <span className="font-semibold text-neutral-600">⏱️ Tiempo promedio de entrega</span>
+              <span className="font-black text-neutral-800">{promGeneral.min !== null ? `${Math.round(promGeneral.min)} min` : 'Sin datos'}{promGeneral.n > 0 && <span className="text-xs text-neutral-400 font-semibold"> · {promGeneral.n} entregas</span>}</span>
+            </div>
+            <div className="px-6 py-2.5 grid grid-cols-5 gap-2 text-xs text-neutral-400 font-semibold uppercase tracking-wide">
+              <span>Cadete</span><span className="text-right">Envíos</span><span className="text-right">Transportado</span><span className="text-right">En efectivo</span><span className="text-right">Tiempo prom.</span>
             </div>
             {cadetes.map(c => (
-              <div key={c.nombre} className="px-6 py-3.5 grid grid-cols-4 gap-2 items-center">
+              <div key={c.nombre} className="px-6 py-3.5 grid grid-cols-5 gap-2 items-center">
                 <span className="font-bold text-neutral-800">{c.nombre}</span>
                 <span className="text-right font-black text-neutral-800 text-lg">{c.envios}</span>
                 <span className="text-right text-neutral-600 font-semibold text-sm">{formatPrecio(c.transportado)}</span>
                 <span className="text-right text-neutral-600 font-semibold text-sm">{formatPrecio(c.efectivo)}</span>
+                <span className="text-right text-neutral-800 font-bold text-sm">{c.minProm !== null ? `${Math.round(c.minProm)} min` : '—'}</span>
               </div>
             ))}
           </div>

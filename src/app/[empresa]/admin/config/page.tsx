@@ -8,6 +8,7 @@ import { ConePageHeader, ConeButton, ConeCard } from '@/components/admin/ConeCom
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Check, Upload, X } from 'lucide-react'
+import { validarMinutosRepetidos } from '@/lib/pedidos/repetidos-config'
 import Image from 'next/image'
 
 interface Config {
@@ -18,7 +19,7 @@ interface Config {
   mostrar_agotados: boolean
   entrada_unificada: boolean
   prevenir_pedidos_repetidos: boolean
-  pedidos_repetidos_minutos: number | ''   // '' = el usuario está escribiendo; se valida al guardar
+  pedidos_repetidos_minutos: string   // texto TAL CUAL lo escribe el usuario (no se trunca ni se corrige al tipear); se valida al guardar
 }
 interface Empresa { nombre: string; slug: string; plan: string }
 
@@ -50,7 +51,7 @@ export default function ConfigPage() {
         mostrar_agotados: cfg.mostrar_agotados ?? false,
         entrada_unificada: cfg.entrada_unificada ?? false,
         prevenir_pedidos_repetidos: cfg.prevenir_pedidos_repetidos ?? true,
-        pedidos_repetidos_minutos: cfg.pedidos_repetidos_minutos ?? 30,
+        pedidos_repetidos_minutos: String(cfg.pedidos_repetidos_minutos ?? 30),
       })
     })
   }, [ctx])
@@ -74,10 +75,10 @@ export default function ConfigPage() {
 
   async function handleSave() {
     if (!ctx || !config) return
-    // Pedidos repetidos: cualquier cantidad ENTERA positiva de minutos (sin máximo). Se valida ANTES de guardar.
-    const minRep = Number(config.pedidos_repetidos_minutos)
-    if (config.prevenir_pedidos_repetidos && (config.pedidos_repetidos_minutos === '' || !Number.isInteger(minRep) || minRep < 1)) {
-      avisar('Pedidos repetidos: ingresá un tiempo en minutos, entero y mayor a 0.'); return
+    // Pedidos repetidos: minutos ENTEROS entre 1 y 1440 (24 h) — mismo rango que el CHECK de la base. Se valida ANTES de guardar.
+    const vMin = validarMinutosRepetidos(config.pedidos_repetidos_minutos)
+    if (config.prevenir_pedidos_repetidos && !vMin.ok) {
+      avisar('Pedidos repetidos: ingresá un tiempo en minutos, entero, entre 1 y 1440 (24 horas).'); return
     }
     setSaving(true)
     const supabase = createClient()
@@ -97,7 +98,7 @@ export default function ConfigPage() {
       entrada_unificada: config.entrada_unificada === true,
       prevenir_pedidos_repetidos: config.prevenir_pedidos_repetidos === true,
       // desactivada: se conserva el último valor válido (la base exige > 0 siempre)
-      ...(Number.isInteger(minRep) && minRep >= 1 ? { pedidos_repetidos_minutos: minRep } : {}),
+      ...(vMin.ok ? { pedidos_repetidos_minutos: vMin.minutos } : {}),
     }).eq('empresa_id', ctx.empresaId)
     setSaving(false)
     if (upd.error) { avisar(`No se pudo guardar: ${upd.error.message}`); return }
@@ -204,10 +205,10 @@ export default function ConfigPage() {
               {config.prevenir_pedidos_repetidos && (
                 <div className="space-y-1">
                   <Label>Comparar pedidos de los últimos (minutos)</Label>
-                  <Input type="number" inputMode="numeric" min={1} step={1} value={config.pedidos_repetidos_minutos}
-                    onChange={e => tocar({ pedidos_repetidos_minutos: e.target.value === '' ? '' : Math.trunc(Number(e.target.value)) })}
-                    className="w-32" />
-                  <p className="text-xs text-neutral-400">Ejemplos: 2 para un kiosco ágil, 30 para una cocina con tiempos largos. Podés poner el valor que necesite tu negocio.</p>
+                  <Input type="text" inputMode="numeric" autoComplete="off" value={config.pedidos_repetidos_minutos}
+                    onChange={e => tocar({ pedidos_repetidos_minutos: e.target.value })}
+                    className="w-32" aria-invalid={!validarMinutosRepetidos(config.pedidos_repetidos_minutos).ok} />
+                  <p className="text-xs text-neutral-400">Entre 1 y 1440 minutos (24 horas). Ejemplos: 2 para un kiosco ágil, 30 para una cocina con tiempos largos.</p>
                 </div>
               )}
             </div>

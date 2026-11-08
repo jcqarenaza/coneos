@@ -34,7 +34,9 @@ export async function POST(request: Request) {
   // (cantidad × factor_stock_snap; NULL = factor 1), ajuste de stock con libro y
   // baja del flag stock_descontado. Todo o nada: si falla, el flag sigue en true,
   // no se devolvió nada y se puede reintentar. Reintento/doble click → no-op.
-  if (pedido.stock_descontado) {
+  // stock_descontado NULL (dato sin flag): se trata EXPLÍCITAMENTE como "no se descontó", igual que la RPC (motivo FLAG_NULL): solo `true` devuelve stock.
+  if (pedido.stock_descontado == null) console.warn('[pedidos/eliminar] stock_descontado NULL en el pedido', pedido_id, '— se trata como no descontado')
+  if (pedido.stock_descontado === true) {
     const { error: errDev } = await supabase.rpc('devolver_stock_pedido', {
       p_empresa_id: pedido.empresa_id, p_pedido_id: pedido_id,
     })

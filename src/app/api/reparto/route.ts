@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
+import { decidirSalida } from '@/lib/reparto/salida'
 
 // ============================================================
 // /api/reparto — REPARTO V1 (brief CTO 28/09)
@@ -51,7 +52,7 @@ async function validarSesion(supabase: ReturnType<typeof createAdminClient>, tok
 
 // Pedidos activos del cadete (definen "reparto activo"): delivery
 // asignados a él en PREPARING o READY.
-const CAMPOS_PEDIDO = 'id, numero_pedido, estado, total, metodo_pago, pagado, notas, datos_delivery, hora_retiro, created_at'
+const CAMPOS_PEDIDO = 'id, numero_pedido, estado, total, metodo_pago, pagado, notas, datos_delivery, hora_retiro, created_at, salio_at'
 async function pedidosActivos(supabase: ReturnType<typeof createAdminClient>, colaboradorId: string, empresaId: string) {
   const { data } = await supabase.from('pedidos')
     .select(CAMPOS_PEDIDO)
@@ -230,7 +231,7 @@ export async function POST(request: Request) {
     }
     // Throttle server-side ~10s (C2/C3)
     const { data: prev } = await supabase.from('reparto_posiciones')
-      .select('updated_at').eq('colaborador_id', col.id).maybeSingle()
+      .select('updated_at, base_lat, base_lng').eq('colaborador_id', col.id).maybeSingle()
     if (prev && Date.now() - new Date(prev.updated_at).getTime() < 8000) {
       return NextResponse.json({ ok: true, throttled: true })
     }
@@ -239,6 +240,18 @@ export async function POST(request: Request) {
       lat, lng, updated_at: new Date().toISOString(),
     }, { onConflict: 'colaborador_id' })
     if (e) return err('No se pudo guardar la posición', 500)
+    // TIEMPO DE ENTREGA (cierre CTO 08/11): sin botón. Con pedidos LISTOS sin
+    // salida, el primer ping fija el punto de partida; cuando la moto se aleja
+    // de ahí, salio_at = ahora (UPDATE guardado por salio_at null: no se pisa).
+    const pendientes = activos.filter(p => p.estado === 'READY' && !(p as { salio_at?: string | null }).salio_at).map(p => p.id as string)
+    const dec = decidirSalida(prev?.base_lat != null && prev?.base_lng != null ? { lat: Number(prev.base_lat), lng: Number(prev.base_lng) } : null, { lat, lng }, pendientes.length)
+    if (dec === 'fijar_base') await supabase.from('reparto_posiciones').update({ base_lat: lat, base_lng: lng }).eq('colaborador_id', col.id)
+    else if (dec === 'limpiar_base') await supabase.from('reparto_posiciones').update({ base_lat: null, base_lng: null }).eq('colaborador_id', col.id)
+    else if (dec === 'salio') {
+      await supabase.from('pedidos').update({ salio_at: new Date().toISOString() })
+        .in('id', pendientes).eq('empresa_id', col.empresa_id).eq('colaborador_id', col.id).eq('estado', 'READY').is('salio_at', null)
+      await supabase.from('reparto_posiciones').update({ base_lat: null, base_lng: null }).eq('colaborador_id', col.id)
+    }
     return NextResponse.json({ ok: true })
   }
 

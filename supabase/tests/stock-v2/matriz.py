@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Matriz de aceptación — Stock V2 factor (GO CTO 4/11/2026).
 Corre contra un Postgres LOCAL aislado (socket unix, sin red). Nunca contra Supabase.
-Uso: matriz.py base|v2     base = función viva actual (control: debe FALLAR lo de V2)
+Uso: matriz.py base|v2|v17 base = función viva actual (control: debe FALLAR lo de V2)
                            v2   = migración + rpc-crear-pedido-stock-v2-factor.sql
+                           v17  = migración + crear-pedido-stock-v1.7-operacion.sql (misma matriz sobre la RPC con operacion_id)
 """
 import sys, json, uuid, threading, time, os
 import psycopg2, psycopg2.extras, psycopg2.errors
@@ -22,9 +23,11 @@ admin = connect('postgres'); cur = admin.cursor()
 cur.execute(f'drop database if exists {DB} with (force)'); cur.execute(f'create database {DB}'); admin.close()
 db = connect(); c = db.cursor()
 c.execute(open(os.path.join(HERE, '00-schema-reducido.sql'), encoding='utf-8').read())
-if MODE == 'v2':
+if MODE in ('v2', 'v17'):
     c.execute(open(os.path.join(SUP, 'stock-v2-factor-migracion.sql'), encoding='utf-8').read())
-    c.execute(open(os.path.join(SUP, 'rpc-crear-pedido-stock-v2-factor.sql'), encoding='utf-8').read())
+    if MODE == 'v17':   # v1.7 exige (precheck) la función viva previa: se parte de la v1.6 y se migra a la v1.7, como en producción
+        c.execute(open(os.path.join(SUP, 'rpc-crear-pedido-stock-v2-factor.sql'), encoding='utf-8').read())
+    c.execute(open(os.path.join(SUP, 'rpc-crear-pedido-stock-v2-factor.sql' if MODE == 'v2' else 'crear-pedido-stock-v1.7-operacion.sql'), encoding='utf-8').read())
 else:
     c.execute(open(os.path.join(SUP, 'versionado', 'crear_pedido_stock.vivo-2026-11-04.sql'), encoding='utf-8').read())
 
@@ -128,7 +131,7 @@ def eliminar(w, pedido_id, usar_factor_vigente=False):
     cu.execute("delete from pedido_items where pedido_id=%s", (pedido_id,)); cu.execute("delete from pedidos where id=%s", (pedido_id,))
     return 'devuelto'
 
-V2 = MODE == 'v2'
+V2 = MODE in ('v2', 'v17')
 print(f'=== MATRIZ modo={MODE} — Postgres local aislado ({DB}) ===', flush=True)
 
 # 1. Presentación x8 y porción x1

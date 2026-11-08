@@ -245,6 +245,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ posiciones })
   }
 
+  // Tiempo promedio de entrega (cierre CTO 08/11): general y por cadete, de la
+  // sucursal del dispositivo. Empresa y sucursal salen del dispositivo, nunca del cliente.
+  if (accion === 'tiempos_entrega') {
+    const dias = Math.min(Math.max(Math.floor(Number(body.dias) || 30), 1), 365)
+    const { data, error } = await supabase.rpc('tiempo_promedio_entrega', {
+      p_empresa_id: disp.empresa_id, p_sucursal_id: disp.sucursal_id,
+      p_desde: new Date(Date.now() - dias * 86400000).toISOString(), p_hasta: new Date().toISOString(),
+    })
+    if (error) return NextResponse.json({ error: 'No se pudo calcular el tiempo de entrega' }, { status: 500 })
+    return NextResponse.json({ dias, ...(data as object) })
+  }
+
   if (accion === 'asignar_cadete') {
     const { pedido_ids, colaborador_id } = body
     if (!Array.isArray(pedido_ids) || !colaborador_id) return NextResponse.json({ error: 'Datos requeridos' }, { status: 400 })
@@ -266,6 +278,11 @@ export async function POST(request: Request) {
         pedido_id: pa.id, operador_id: null, estado_anterior: 'PENDING_PAYMENT', estado_nuevo: 'READY',
       })
     }
+    // Tiempo de entrega: si el pedido cambia de cadete, la salida registrada era
+    // del anterior — se borra para que el tiempo del nuevo cadete no quede inflado.
+    await supabase.from('pedidos').update({ salio_at: null })
+      .in('id', pedido_ids).eq('empresa_id', disp.empresa_id)
+      .not('salio_at', 'is', null).or(`colaborador_id.is.null,colaborador_id.neq.${col.id}`)
     // El cinturón de siempre: asignar solo pedidos EN CURSO (los recién
     // aceptados arriba ya son PREPARING y entran acá)
     await supabase.from('pedidos')
