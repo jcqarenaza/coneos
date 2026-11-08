@@ -1,10 +1,10 @@
 // Stock Etapa 1 — helpers puros del ajuste general (sin acceso a base).
 // La regla vive en SQL (aplicar_ajuste_stock); acá solo: validación de forma, texto del estado y traducción de errores.
 
-export const MOTIVOS_AJUSTE = ['conteo', 'merma', 'rotura', 'vencimiento', 'conciliacion', 'otro'] as const
+export const MOTIVOS_AJUSTE = ['conteo', 'merma', 'rotura', 'vencimiento', 'otro'] as const
 export type MotivoAjuste = (typeof MOTIVOS_AJUSTE)[number]
 export const MOTIVO_LABEL: Record<MotivoAjuste, string> = {
-  conteo: 'Conteo', merma: 'Merma', rotura: 'Rotura', vencimiento: 'Vencimiento', conciliacion: 'Conciliación', otro: 'Otro',
+  conteo: 'Conteo', merma: 'Merma', rotura: 'Rotura', vencimiento: 'Vencimiento', otro: 'Otro',
 }
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

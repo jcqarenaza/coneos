@@ -5,6 +5,7 @@ import { UUID_RE, validarItems, validarMotivo, estadoStock, traducirErrorAjuste 
 // ============================================================
 // /api/stock — STOCK ETAPA 1 (GO CTO 08/11)
 // Inventario · Ajuste general (previsualizar / aplicar) · Movimientos.
+// REGLA DE NEGOCIO: ADMIN_EMPRESA y ADMIN_SUCURSAL pueden ajustar stock, ver inventario y movimientos; ADMIN_SUCURSAL solo en su sucursal.
 // Identidad: Bearer del administrador → se valida la sesión, el rol y la
 // sucursal ACÁ, en el servidor. Solo ADMIN_EMPRESA (todas las sucursales de
 // su empresa) y ADMIN_SUCURSAL (solo la suya). Operadores de caja: fuera.

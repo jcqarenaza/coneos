@@ -130,9 +130,10 @@ e = err(lambda: aplicar(items((p1, 10, 11)), motivo='otro')); check('T8g motivo 
 e = err(lambda: aplicar(items((p1, 10, 11)), motivo='regalo')); check('T8h motivo fuera de la lista se rechaza', e and 'MOTIVO_INVALIDO' in e, str(e))
 aplicar(items((p1, 10, 11)), motivo='otro', desc='Se rompió el freezer'); check('T8i motivo «otro» con descripción aplica y la guarda', stk(p1) == 11)
 c.execute("select count(*) from stock_ajustes where descripcion='Se rompió el freezer'"); check('T8j la descripción queda en el lote', c.fetchone()[0] == 1)
-for mo in ('conteo', 'merma', 'rotura', 'vencimiento', 'conciliacion'):
+for mo in ('conteo', 'merma', 'rotura', 'vencimiento'):
     pm = prod('M' + mo, stock=5); aplicar(items((pm, 5, 6)), motivo=mo)
-check('T8k los 5 motivos de la lista aplican', True)
+check('T8k los 4 motivos de la lista (+otro con descripción) aplican', True)
+e = err(lambda: aplicar(items((p1, 11, 12)), motivo='conciliacion')); check('T8l «conciliacion» ya no es un motivo válido', e and 'MOTIVO_INVALIDO' in e, str(e))
 
 # T9 concurrencia con ventas y entre ajustes
 p = prod('Vta', stock=100); its = items((p, 100, 90)); L = uuid.uuid4()

@@ -27,7 +27,7 @@ create table if not exists public.stock_ajustes (
   sucursal_id       uuid not null references public.sucursales(id),
   usuario_id        uuid not null,                                     -- auth.uid() del administrador
   usuario_nombre    text,
-  motivo_tipo       text not null check (motivo_tipo in ('conteo','merma','rotura','vencimiento','conciliacion','otro')),
+  motivo_tipo       text not null check (motivo_tipo in ('conteo','merma','rotura','vencimiento','otro')),
   descripcion       text,
   iniciado_at       timestamptz not null,
   aplicado_at       timestamptz not null default now(),
@@ -149,7 +149,7 @@ language plpgsql stable
 set search_path = public, pg_temp
 as $f$
 begin
-  if p_motivo_tipo is null or p_motivo_tipo not in ('conteo','merma','rotura','vencimiento','conciliacion','otro') then
+  if p_motivo_tipo is null or p_motivo_tipo not in ('conteo','merma','rotura','vencimiento','otro') then
     raise exception 'MOTIVO_INVALIDO' using errcode = 'P0001';
   end if;
   if p_motivo_tipo = 'otro' and length(btrim(coalesce(p_descripcion, ''))) < 3 then
@@ -175,7 +175,7 @@ begin
   if p_usuario_id is null then raise exception 'USUARIO_REQUERIDO' using errcode = 'P0001'; end if;
   if p_lote_id is null then raise exception 'LOTE_REQUERIDO' using errcode = 'P0001'; end if;
   if p_iniciado_at is null then raise exception 'INICIO_REQUERIDO' using errcode = 'P0001'; end if;
-  if p_motivo_tipo is null or p_motivo_tipo not in ('conteo','merma','rotura','vencimiento','conciliacion','otro') then
+  if p_motivo_tipo is null or p_motivo_tipo not in ('conteo','merma','rotura','vencimiento','otro') then
     raise exception 'MOTIVO_INVALIDO' using errcode = 'P0001';
   end if;
   if p_motivo_tipo = 'otro' and length(btrim(coalesce(p_descripcion, ''))) < 3 then

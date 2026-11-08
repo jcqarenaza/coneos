@@ -128,7 +128,7 @@ describe('/api/stock: ajuste', () => {
   })
   test('J3 validaciones de forma → 400 y no llega a la base', async () => {
     const malos = [
-      { ...AJ, motivo_tipo: undefined }, { ...AJ, motivo_tipo: 'robo' }, { ...AJ, motivo_tipo: 'otro' }, { ...AJ, motivo_tipo: 'otro', descripcion: ' a ' },
+      { ...AJ, motivo_tipo: undefined }, { ...AJ, motivo_tipo: 'robo' }, { ...AJ, motivo_tipo: 'conciliacion' }, { ...AJ, motivo_tipo: 'otro' }, { ...AJ, motivo_tipo: 'otro', descripcion: ' a ' },
       { ...AJ, items: [] }, { ...AJ, items: [{ producto_id: P1, base: 4, contado: -1 }] }, { ...AJ, items: [{ producto_id: P1, base: 4, contado: 1.5 }] },
       { ...AJ, items: [...ITEMS, ...ITEMS] }, { ...AJ, items: [{ producto_id: 'x', base: 1, contado: 1 }] }, { ...AJ, lote_id: 'no-uuid' },
       { ...AJ, iniciado_at: undefined }, { ...AJ, iniciado_at: new Date(Date.now() + 3_600_000).toISOString() },
