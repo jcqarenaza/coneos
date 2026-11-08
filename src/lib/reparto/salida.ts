@@ -1,7 +1,7 @@
 // Salida automática del cadete (tiempo de entrega, cierre CTO 08/11): sin botón.
 // Con pedidos LISTOS sin salida, el primer ping fija el punto de partida; cuando la moto
 // se aleja UMBRAL_SALIDA_M de ahí, el pedido "salió". Sin pedidos pendientes se limpia el punto.
-export const UMBRAL_SALIDA_M = 5    // TEMPORAL SOLO PARA PRUEBA EN PREVIEW — VOLVER A 75 ANTES DE PRODUCCIÓN
+export const UMBRAL_SALIDA_M = 75   // por encima del ruido típico del GPS parado
 
 export function distanciaMetros(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371000, rad = (x: number) => x * Math.PI / 180
