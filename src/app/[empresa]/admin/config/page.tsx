@@ -17,6 +17,8 @@ interface Config {
   pwa_nombre: string | null; pwa_icono_url: string | null
   mostrar_agotados: boolean
   entrada_unificada: boolean
+  prevenir_pedidos_repetidos: boolean
+  pedidos_repetidos_minutos: number | ''   // '' = el usuario está escribiendo; se valida al guardar
 }
 interface Empresa { nombre: string; slug: string; plan: string }
 
@@ -36,7 +38,7 @@ export default function ConfigPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('empresas').select('nombre, slug, plan').eq('id', ctx.empresaId).single(),
-      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta, pwa_nombre, pwa_icono_url, mostrar_agotados, entrada_unificada').eq('empresa_id', ctx.empresaId).single(),
+      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta, pwa_nombre, pwa_icono_url, mostrar_agotados, entrada_unificada, prevenir_pedidos_repetidos, pedidos_repetidos_minutos').eq('empresa_id', ctx.empresaId).single(),
     ]).then(([{ data: emp }, { data: cfg }]) => {
       if (emp) setEmpresa(emp)
       if (cfg) setConfig({
@@ -47,6 +49,8 @@ export default function ConfigPage() {
         punto_venta: cfg.punto_venta ?? 1,
         mostrar_agotados: cfg.mostrar_agotados ?? false,
         entrada_unificada: cfg.entrada_unificada ?? false,
+        prevenir_pedidos_repetidos: cfg.prevenir_pedidos_repetidos ?? true,
+        pedidos_repetidos_minutos: cfg.pedidos_repetidos_minutos ?? 30,
       })
     })
   }, [ctx])
@@ -70,6 +74,11 @@ export default function ConfigPage() {
 
   async function handleSave() {
     if (!ctx || !config) return
+    // Pedidos repetidos: cualquier cantidad ENTERA positiva de minutos (sin máximo). Se valida ANTES de guardar.
+    const minRep = Number(config.pedidos_repetidos_minutos)
+    if (config.prevenir_pedidos_repetidos && (config.pedidos_repetidos_minutos === '' || !Number.isInteger(minRep) || minRep < 1)) {
+      avisar('Pedidos repetidos: ingresá un tiempo en minutos, entero y mayor a 0.'); return
+    }
     setSaving(true)
     const supabase = createClient()
     const upd = await supabase.from('empresa_config').update({
@@ -86,6 +95,9 @@ export default function ConfigPage() {
       pwa_icono_url: config.pwa_icono_url || null,
       mostrar_agotados: config.mostrar_agotados === true,
       entrada_unificada: config.entrada_unificada === true,
+      prevenir_pedidos_repetidos: config.prevenir_pedidos_repetidos === true,
+      // desactivada: se conserva el último valor válido (la base exige > 0 siempre)
+      ...(Number.isInteger(minRep) && minRep >= 1 ? { pedidos_repetidos_minutos: minRep } : {}),
     }).eq('empresa_id', ctx.empresaId)
     setSaving(false)
     if (upd.error) { avisar(`No se pudo guardar: ${upd.error.message}`); return }
@@ -177,6 +189,28 @@ export default function ConfigPage() {
                 <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.entrada_unificada ? 'left-[22px]' : 'left-0.5'}`} />
               </span>
             </button>
+            {/* Prevención de pedidos repetidos (GO CTO 8/11): el negocio define si se avisa y durante cuántos minutos */}
+            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100 space-y-3">
+              <button type="button" onClick={() => tocar({ prevenir_pedidos_repetidos: !config.prevenir_pedidos_repetidos })}
+                className="w-full flex items-center justify-between gap-3 text-left">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-700">Avisar si el cliente repite un pedido</p>
+                  <p className="text-xs text-neutral-400 mt-1">Si el mismo cliente carga un pedido idéntico dentro del tiempo que elijas, le preguntamos si quiere generar otro. Nunca se bloquea la venta: puede continuar.</p>
+                </div>
+                <span className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.prevenir_pedidos_repetidos ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.prevenir_pedidos_repetidos ? 'left-[22px]' : 'left-0.5'}`} />
+                </span>
+              </button>
+              {config.prevenir_pedidos_repetidos && (
+                <div className="space-y-1">
+                  <Label>Comparar pedidos de los últimos (minutos)</Label>
+                  <Input type="number" inputMode="numeric" min={1} step={1} value={config.pedidos_repetidos_minutos}
+                    onChange={e => tocar({ pedidos_repetidos_minutos: e.target.value === '' ? '' : Math.trunc(Number(e.target.value)) })}
+                    className="w-32" />
+                  <p className="text-xs text-neutral-400">Ejemplos: 2 para un kiosco ágil, 30 para una cocina con tiempos largos. Podés poner el valor que necesite tu negocio.</p>
+                </div>
+              )}
+            </div>
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
               <p className="text-sm font-semibold text-neutral-700">Numeración de pedidos</p>
               <p className="text-xs text-neutral-400 mt-1">Numeración correlativa por empresa. El número nunca se reinicia.</p>

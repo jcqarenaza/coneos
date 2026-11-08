@@ -3,7 +3,7 @@
 import os, json, uuid, threading, time
 import psycopg2, psycopg2.extras
 psycopg2.extras.register_uuid()
-HERE = os.path.dirname(os.path.abspath(__file__)); SUP = os.path.abspath(os.path.join(HERE, '..'))
+HERE = os.path.dirname(os.path.abspath(__file__)); SUP = os.environ.get('SUP_DIR') or os.path.abspath(os.path.join(HERE, '..'))
 CONN = dict(host='/tmp/pgsock', port=54329, user='postgres')
 def connect(db, ac=True):
     c = psycopg2.connect(dbname=db, **CONN); c.autocommit = ac; return c

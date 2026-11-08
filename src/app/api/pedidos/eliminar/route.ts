@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { unidadesADevolverPorProducto, type ItemParaDevolucion } from '@/lib/stock/devolucion'
 
 // Elimina un pedido SOLO si no está cobrado (PAID/DELIVERED) ni facturado.
 // La regla vive acá (server-side): el cliente no puede saltearla.
@@ -30,37 +29,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'El pedido tiene factura emitida — corresponde Nota de Crédito, no eliminación' }, { status: 409 })
   }
 
-  // ── STOCK V1: devolución IDEMPOTENTE ──
-  // Flip atómico del flag ANTES de devolver: solo la llamada que logra pasar
-  // stock_descontado true→false devuelve cantidades. Reintentos del endpoint
-  // (o doble click) no afectan fila → no devuelven nada. Jamás doble devolución.
+  // ── STOCK: devolución TRANSACCIONAL E IDEMPOTENTE ──
+  // Una sola RPC hace, en UNA transacción: lock del pedido, cálculo por snapshot
+  // (cantidad × factor_stock_snap; NULL = factor 1), ajuste de stock con libro y
+  // baja del flag stock_descontado. Todo o nada: si falla, el flag sigue en true,
+  // no se devolvió nada y se puede reintentar. Reintento/doble click → no-op.
   if (pedido.stock_descontado) {
-    const { data: flip } = await supabase.from('pedidos')
-      .update({ stock_descontado: false })
-      .eq('id', pedido_id).eq('stock_descontado', true)
-      .select('id')
-    if (flip && flip.length > 0) {
-      // Cantidades a devolver: items del pedido → presentación → producto contable
-      const { data: itemsStock } = await supabase.from('pedido_items')
-        .select('cantidad, factor_stock_snap, presentacion_id, presentaciones(producto_id, productos(id, controla_stock))')
-        .eq('pedido_id', pedido_id)
-        .not('presentacion_id', 'is', null)
-      // STOCK V2: unidades = cantidad × factor_stock_snap (el factor que el pedido
-      // guardó al venderse; NULL = pedido anterior a V2 = factor 1). Jamás se
-      // consulta el factor vigente de la presentación.
-      const porProducto = unidadesADevolverPorProducto((itemsStock ?? []) as unknown as ItemParaDevolucion[])
-      // Devolución ATÓMICA y TRAZADA por la única puerta (Stock V1 Real):
-      // adiós al read-modify-write — el lock de ajustar_stock elimina la
-      // ventana de carrera contra ventas simultáneas, y el movimiento queda
-      // escrito en el mismo acto.
-      for (const [productoId, q] of porProducto) {
-        await supabase.rpc('ajustar_stock', {
-          p_empresa_id: pedido.empresa_id, p_sucursal_id: pedido.sucursal_id,
-          p_producto_id: productoId, p_valor: q, p_modo: 'delta',
-          p_motivo: 'devolucion', p_pedido_id: pedido_id,
-          p_detalle: `Devolución por eliminación del pedido #${pedido.numero_pedido} · ${pedido.numero_mesa != null ? `Mesa ${pedido.numero_mesa}` : pedido.tipo_pedido === 'takeaway' ? 'Take Away' : pedido.tipo_pedido === 'delivery' ? 'Delivery' : 'Kiosco/Caja'}`,
-        })
-      }
+    const { error: errDev } = await supabase.rpc('devolver_stock_pedido', {
+      p_empresa_id: pedido.empresa_id, p_pedido_id: pedido_id,
+    })
+    if (errDev) {
+      console.error('[pedidos/eliminar] devolver_stock_pedido', errDev.message)
+      return NextResponse.json({ error: 'No se pudo devolver el stock. El pedido NO se eliminó: reintentá.' }, { status: 500 })
     }
   }
 

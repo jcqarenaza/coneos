@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import KioskCatalogo from '@/components/kiosk/KioskCatalogo'
 import RegistroVisita from '@/components/RegistroVisita'
 import { useRetornoMp } from '@/lib/useRetornoMp'
+import AdvertenciaPedidoRepetido from '@/components/pedidos/AdvertenciaPedidoRepetido'
+import { operacionPara, type OperacionActual } from '@/lib/pedidos/operacion-cliente'
 
 // ═══════════════════════════════════════════════════════════════════
 // MODO MESA — F1 (núcleo)
@@ -71,6 +73,9 @@ export default function MesaPage() {
   }, [carrito, nombre, mesa, claveMesa, restaurado])
   const [enviando, setEnviando] = useState(false)
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null)
+  // GO CTO 8/11: id de operación por intento (reintento técnico = mismo pedido) + advertencia de repetido validada en el servidor
+  const operacionRef = useRef<OperacionActual | null>(null)
+  const [repetidoMesa, setRepetidoMesa] = useState<{ id: string | null; numero_pedido: number | null } | null>(null)
   const [pedidoCreado, setPedidoCreado] = useState<{ numero: number } | null>(null)
 
   useEffect(() => {
@@ -100,8 +105,9 @@ export default function MesaPage() {
 
   const total = carrito.reduce((a, i) => a + i.precio * i.cantidad, 0)
 
-  async function enviarPedido(pagoMP: boolean) {
+  async function enviarPedido(pagoMP: boolean, confirmar = false) {
     if (!ctx || carrito.length === 0 || enviando) return
+    operacionRef.current = operacionPara(operacionRef.current, JSON.stringify({ c: carrito.map(i => [i.presentacion_id, i.cantidad, i.promo_id ?? null, i.combo_ref ?? null, i.promo_slot_id ?? null, i.opciones.map(o => o.opcion_id)]), mesa: Number(mesa), mp: pagoMP }))
     setEnviando(true)
     setErrorEnvio(null)
     try {
@@ -109,6 +115,8 @@ export default function MesaPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          operacion_id: operacionRef.current.id,
+          ...(confirmar ? { confirmar_advertencia: true } : {}),
           empresa_id: ctx.empresa_id,
           sucursal_id: ctx.sucursal_id,
           items: carrito.map(i => ({
@@ -128,7 +136,9 @@ export default function MesaPage() {
         }),
       })
       const d = await res.json()
+      if (res.status === 409 && d.duplicado) { setRepetidoMesa({ id: d.duplicado.id ?? null, numero_pedido: d.duplicado.numero_pedido ?? null }); setEnviando(false); return }
       if (!res.ok || !d.pedido) { setErrorEnvio(d.error ?? 'No pudimos enviar tu pedido'); setEnviando(false); return }
+      operacionRef.current = null
 
       if (pagoMP) {
         const rp = await fetch('/api/mp/preferencia', {
@@ -318,6 +328,11 @@ export default function MesaPage() {
               <span className="font-black text-lg text-neutral-800">Total</span>
               <span className="font-black text-lg" style={{ color: config.primary_color }}>{fmt(total)}</span>
             </div>
+            {repetidoMesa && (
+              <AdvertenciaPedidoRepetido color={config.primary_color} numeroPedido={null}
+                onVolver={() => { setRepetidoMesa(null); operacionRef.current = null }}
+                onContinuar={() => { setRepetidoMesa(null); void enviarPedido(false, true) }} />
+            )}
             {errorEnvio && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
                           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setErrorEnvio(null)} />

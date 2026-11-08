@@ -5,6 +5,8 @@ import type { PedidoRetorno } from '@/lib/useRetornoMp'
 
 import { Loader2, CheckCircle, Copy, Check, Truck, Upload, X, ArrowLeft } from 'lucide-react'
 import { armarFilas } from '@/lib/agruparCarrito'
+import AdvertenciaPedidoRepetido from '@/components/pedidos/AdvertenciaPedidoRepetido'
+import { operacionPara, type OperacionActual } from '@/lib/pedidos/operacion-cliente'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface Props {
@@ -121,8 +123,10 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const pedidoRef = useRef<{ id: string; numero: number; codigo: string } | null>(null)
   // Anti-duplicado (01/11): el server avisa si ya hay un pedido igual en marcha
   // (409 + duplicado) o devuelve el pendiente que ya existía (reutilizado).
-  const forzarDupRef = useRef(false)
-  const [duplicado, setDuplicado] = useState<{ id: string; numero_pedido: number; estado: string } | null>(null)
+  // GO CTO 8/11: un id de operación por intento (reintentos técnicos = mismo pedido) y confirmación validada en el servidor.
+  const operacionRef = useRef<OperacionActual | null>(null)
+  const confirmarRef = useRef(false)
+  const [duplicado, setDuplicado] = useState<{ id: string | null; numero_pedido: number | null; estado: string | null } | null>(null)
   const [reutilizado, setReutilizado] = useState(false)
   const [copiado, setCopiado] = useState(false)
   const [captura, setCaptura] = useState<File | null>(null)
@@ -183,13 +187,14 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       promo_id: item.promo_id ?? null, combo_ref: item.combo_ref ?? null, promo_slot_id: item.promo_slot_id ?? null,
       opciones: item.opciones.map(op => ({ opcion_id: op.opcion_id, nombre_snap: op.nombre, emoji_snap: op.emoji, color_snap: op.color })),
     }))
+    operacionRef.current = operacionPara(operacionRef.current, JSON.stringify({ items, canal, tel: datos?.telefono ?? null }))
     const res = await fetch('/api/pedidos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', visitante_id: (() => { try { return localStorage.getItem('coneos_visitante_id') } catch { return null } })(), tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(horaRetiro ? { hora_retiro: horaRetiro } : {}) /* programado: ambos canales; el server exige la llave en delivery */, ...(forzarDupRef.current ? { confirmar_duplicado: true } : {}) }),
+      body: JSON.stringify({ operacion_id: operacionRef.current.id, ...(confirmarRef.current ? { confirmar_advertencia: true } : {}), empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', visitante_id: (() => { try { return localStorage.getItem('coneos_visitante_id') } catch { return null } })(), tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(horaRetiro ? { hora_retiro: horaRetiro } : {}) /* programado: ambos canales; el server exige la llave en delivery */ }),
     })
     const data = await res.json().catch(() => null)
     setCreando(false)
-    forzarDupRef.current = false
+    confirmarRef.current = false
     if (!res.ok || !data?.pedido) {
       // Ya hay un pedido igual cobrado/en marcha: el cliente decide (ver pedido / pedir otro igual)
       if (res.status === 409 && data?.duplicado) { setDuplicado(data.duplicado); return null }
@@ -203,6 +208,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       return null
     }
     setErrorPedido(null)
+    operacionRef.current = null
     setReutilizado(!!data.reutilizado)
     setPedidoId(data.pedido.id)
     setPedidoNum(data.pedido.numero_pedido)
@@ -294,27 +300,15 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     setPaso('exito')
   }
 
-  // ── Anti-duplicado: ya existe un pedido igual en marcha ──
-  const estadoDup: Record<string, string> = { PAID: 'con el pago confirmado', PREPARING: 'en preparación', READY: 'listo', DELIVERED: 'entregado' }
+  // ── Advertencia de pedido repetido (GO CTO 8/11) ──
   const modalDuplicado = duplicado ? (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDuplicado(null)} />
-      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 text-center">
-        <div className="text-5xl mb-3">🛵</div>
-        <h3 className="font-black text-neutral-900 text-xl mb-2">Ya tenés este pedido</h3>
-        <p className="text-neutral-500 text-sm mb-6">Tu pedido #{duplicado.numero_pedido} con lo mismo ya está {estadoDup[duplicado.estado] ?? 'en marcha'}. ¿Querés pedir otro igual de todos modos?</p>
-        <a href={`/${window.location.pathname.split('/').filter(Boolean)[0]}/pedido/${duplicado.id}`}
-          className="block w-full py-3.5 rounded-2xl text-white font-bold text-base mb-2 active:scale-98 transition-all"
-          style={{ backgroundColor: config.primary_color }}>
-          Ver mi pedido #{duplicado.numero_pedido}
-        </a>
-        <button onClick={() => { forzarDupRef.current = true; setDuplicado(null); if (paso === 'transferencia') confirmarTransferencia(); else confirmarPago() }}
-          className="w-full py-3.5 rounded-2xl border-2 border-neutral-200 text-neutral-700 font-bold text-base mb-2 active:bg-neutral-50 transition-colors">
-          Sí, pedir otro igual
-        </button>
-        <button onClick={() => setDuplicado(null)} className="w-full py-2 text-neutral-400 font-semibold text-sm">Cancelar</button>
-      </div>
-    </div>
+    <AdvertenciaPedidoRepetido
+      color={config.primary_color}
+      numeroPedido={duplicado.numero_pedido}
+      verPedidoHref={duplicado.id ? `/${window.location.pathname.split('/').filter(Boolean)[0]}/pedido/${duplicado.id}` : null}
+      onVolver={() => { setDuplicado(null); operacionRef.current = null; confirmarRef.current = false }}
+      onContinuar={() => { confirmarRef.current = true; setDuplicado(null); if (paso === 'transferencia') confirmarTransferencia(); else confirmarPago() }}
+    />
   ) : null
 
   // ── DATOS ──

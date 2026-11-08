@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
 import { Loader2, CheckCircle, RefreshCw, ArrowRight, Copy, Check } from 'lucide-react'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/kiosk/[sucursal]/page'
 import { armarFilas } from '@/lib/agruparCarrito'
+import AdvertenciaPedidoRepetido from '@/components/pedidos/AdvertenciaPedidoRepetido'
+import { operacionPara, type OperacionActual } from '@/lib/pedidos/operacion-cliente'
 
 interface Props {
   config: EmpresaConfig
@@ -140,7 +142,11 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     return () => clearTimeout(timeout)
   }, [estadoMP, pedidoIdPendiente, pollingCount, verificarPagoMP])
 
-  async function crearPedido(metodo: string) {
+  // GO CTO 8/11: id de operación por intento + advertencia de repetido validada en el servidor
+  const operacionRef = useRef<OperacionActual | null>(null)
+  const [repetido, setRepetido] = useState<{ metodo: string; numero: number | null } | null>(null)
+
+  async function crearPedido(metodo: string, confirmar = false) {
     setCreando(true)
     const items = carrito.map(item => ({
       presentacion_id: item.presentacion_id,
@@ -153,10 +159,13 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
       opciones: item.opciones.map(op => ({ opcion_id: op.opcion_id, nombre_snap: op.nombre, emoji_snap: op.emoji, color_snap: op.color })),
     }))
 
+    operacionRef.current = operacionPara(operacionRef.current, JSON.stringify({ items, metodo }))
     const res = await fetch('/api/pedidos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        operacion_id: operacionRef.current.id,
+        ...(confirmar ? { confirmar_advertencia: true } : {}),
         empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id,
         dispositivo_id: dispositivo.id, items, metodo_pago: metodo, origen: 'KIOSK',
       }),
@@ -165,11 +174,13 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
     const data = await res.json().catch(() => null)
     setCreando(false)
 
+    if (res.status === 409 && data?.duplicado) { setRepetido({ metodo, numero: data.duplicado.numero_pedido ?? null }); return }
     if (!res.ok || !data?.pedido) {
       setErrorPedido(data?.error ?? 'No pudimos crear tu pedido. Probá de nuevo.')
       return
     }
     setErrorPedido(null)
+    operacionRef.current = null
 
     if (data?.pedido?.id) { setUltimoPedidoId(data.pedido.id); setBenefBase(carrito.reduce((sm, i) => sm + (i.precio > 0 ? i.precio * i.cantidad : 0), 0)) }
       // Canje de puntos elegido en el carrito: descontar server-side y limpiar
@@ -437,6 +448,11 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   // ─── Pantalla principal — selección método de pago ───
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
+      {repetido && (
+        <AdvertenciaPedidoRepetido color={config.primary_color}
+          onVolver={() => { setRepetido(null); operacionRef.current = null }}
+          onContinuar={() => { const m = repetido.metodo; setRepetido(null); void crearPedido(m, true) }} />
+      )}
       <div className="flex items-center justify-center px-6 py-5 bg-white border-b border-neutral-100">
         {config.logo_url
           ? <img src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain" style={{ maxHeight: 52 }} />

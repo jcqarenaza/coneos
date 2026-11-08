@@ -5,6 +5,7 @@ import { esSlotValido, type Franja, generarSlots } from '@/lib/takeaway/slots'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 import { estaAbierto, diaOperativo, diaHabilita, diaSemanaAR, horaMinutosAR, type Franja, type HorarioPorDia } from '@/lib/horarios'
 import { canalDePedido } from '@/lib/pagos/mp'
+import { calcularHuella, reclamarOperacion, soloDigitos, esUuid, MENSAJE_REPETIDO } from '@/lib/pedidos/repetidos'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -335,58 +336,42 @@ export async function POST(request: Request) {
     promo_slot_id: item.promo_slot_id || null,
   }))
 
-  // ══ ANTI-DUPLICADO (delivery / take away) — JC 01/11 ══
-  // Caso real (#36 y #38 de Federal): el cliente transfiere en su banco, vuelve,
-  // la página restaura el carrito SIN saber que el pedido ya existe y lo confirma
-  // de nuevo → dos pedidos y dos facturas. Se corta ACÁ, antes de la RPC (no
-  // consume numeración, stock ni efecto alguno):
-  //  · mismo cliente (visitante o teléfono) + mismos ítems + mismo total + mismo
-  //    medio, en los últimos 30 min
-  //  · el existente sigue PENDING_PAYMENT → se DEVUELVE ese mismo (idempotente)
-  //  · el existente ya está cobrado/en marcha → 409 { duplicado } y el cliente
-  //    decide; "pedir otro igual" reenvía con confirmar_duplicado:true
-  // Solo efectivo/transferencia: el circuito MP tiene su propio retorno.
-  // Si el chequeo falla por lo que sea, se sigue SIN él: jamás frena una venta.
-  if (!venta_caja && !esMesa && (tipo_pedido === 'delivery' || tipo_pedido === 'takeaway')
-      && (metodo_pago === 'efectivo' || metodo_pago === 'transferencia')) {
-    try {
-      const soloDigitos = (v: unknown) => String(v ?? '').replace(/\D/g, '')
-      const telNuevo = soloDigitos((datos_delivery as { telefono?: string } | null)?.telefono)
-      const visNuevo = typeof visitante_id === 'string' ? visitante_id : ''
-      if (telNuevo.length >= 6 || visNuevo) {
-        const totalNuevo = Math.round((itemsRpc.reduce((s: number, i) => s + Number(i.precio_snap) * Number(i.cantidad), 0) + Number(costo_envio || 0)) * 100) / 100
-        const firma = (arr: { clave: string; cantidad: number }[]) => arr.map(x => `${x.clave}x${x.cantidad}`).sort().join('|')
-        const firmaNueva = firma(itemsRpc.map(i => ({ clave: String(i.presentacion_id || i.nombre_presentacion_snap || i.nombre_producto_snap), cantidad: Number(i.cantidad) })))
-        const desde = new Date(Date.now() - 30 * 60 * 1000).toISOString()
-        const { data: cand } = await supabase.from('pedidos')
-          .select('id, numero_pedido, codigo_retiro, estado, hora_retiro, visitante_id, datos_delivery, pedido_items(presentacion_id, nombre_presentacion_snap, nombre_producto_snap, cantidad)')
-          .eq('empresa_id', empresa_id).eq('sucursal_id', sucursal_id).eq('tipo_pedido', tipo_pedido)
-          .eq('metodo_pago', metodo_pago).eq('total', totalNuevo)
-          .neq('estado', 'CANCELLED').gte('created_at', desde)
-          .order('created_at', { ascending: false }).limit(10)
-        type ItemDb = { presentacion_id: string | null; nombre_presentacion_snap: string | null; nombre_producto_snap: string | null; cantidad: number }
-        const igual = (cand ?? []).find(c => {
-          const mismoCliente = (visNuevo !== '' && c.visitante_id === visNuevo)
-            || (telNuevo.length >= 6 && soloDigitos((c.datos_delivery as { telefono?: string } | null)?.telefono) === telNuevo)
-          if (!mismoCliente) return false
-          const its = (c.pedido_items ?? []) as ItemDb[]
-          return firma(its.map(x => ({ clave: String(x.presentacion_id || x.nombre_presentacion_snap || x.nombre_producto_snap), cantidad: Number(x.cantidad) }))) === firmaNueva
-        })
-        if (igual) {
-          if (igual.estado === 'PENDING_PAYMENT') {
-            // Retoma: si corrigió datos de entrega, el pedido pendiente los toma
-            if (datos_delivery) await supabase.from('pedidos').update({ datos_delivery }).eq('id', igual.id).then(() => {}, () => {})
-            return NextResponse.json({ pedido: { id: igual.id, numero_pedido: igual.numero_pedido, codigo_retiro: igual.codigo_retiro, hora_retiro: igual.hora_retiro ?? null }, reutilizado: true })
-          }
-          if (body.confirmar_duplicado !== true) {
-            return NextResponse.json({
-              error: `Ya tenés el pedido #${igual.numero_pedido} en marcha con lo mismo.`,
-              duplicado: { id: igual.id, numero_pedido: igual.numero_pedido, estado: igual.estado },
-            }, { status: 409 })
-          }
-        }
-      }
-    } catch (e) { console.error('[pedidos] anti-duplicado falló (se sigue sin el chequeo):', e) }
+  // ══ PEDIDOS REPETIDOS + IDEMPOTENCIA POR OPERACIÓN (GO CTO 8/11) ══
+  // Reemplaza el anti-duplicado fijo de 30 min (01/11). Todo se decide en la base, de forma atómica
+  // (reclamar_operacion_pedido, lock por empresa+sucursal+contenido), ANTES de la RPC de stock:
+  //  · mismo envío reintentado (doble clic, timeout, refresh, solicitudes simultáneas) → devuelve el MISMO pedido;
+  //  · mismo contenido, misma persona, dentro de la ventana que configuró el negocio → 409 con advertencia;
+  //    "Sí, continuar" solo vale para ESA operación ya advertida (mismo contenido, identidad y sucursal);
+  //  · pedidos cancelados/eliminados no cuentan; una ventana desactivada no advierte nunca.
+  // La identidad sale del servidor (teléfono de datos_delivery, visitante, dispositivo). Alcance: canales de cliente
+  // (kiosco, delivery, take away, mesa); la venta de caja queda afuera. Si la base no responde, se sigue sin
+  // protección: jamás se frena una venta.
+  let operacionReclamada: string | null = null
+  if (!venta_caja) {
+    const operacionId: string = esUuid(body.operacion_id) ? body.operacion_id : crypto.randomUUID()
+    const huella = calcularHuella({ sucursal_id, tipo_pedido: esMesa ? 'mesa' : tipo_pedido, origen, numero_mesa: esMesa ? numero_mesa : null, items: itemsRpc })
+    const reclamo = await reclamarOperacion(supabase as unknown as Parameters<typeof reclamarOperacion>[0], {
+      empresa_id, sucursal_id, operacion_id: operacionId, huella,
+      telefono: soloDigitos((datos_delivery as { telefono?: string } | null)?.telefono),
+      visitante: typeof visitante_id === 'string' && visitante_id ? visitante_id.slice(0, 80) : null,
+      dispositivo_id: dispositivoIdSano, confirmar: body.confirmar_advertencia === true,
+    })
+    if (reclamo.tipo === 'EXISTENTE') {
+      const { data: ex } = reclamo.pedido_id
+        ? await supabase.from('pedidos').select('id, numero_pedido, codigo_retiro, hora_retiro').eq('id', reclamo.pedido_id).maybeSingle()
+        : { data: null }
+      if (!ex) return NextResponse.json({ error: 'Ese pedido ya no existe. Hacé uno nuevo.' }, { status: 409 })
+      return NextResponse.json({ pedido: ex, reutilizado: true })
+    }
+    if (reclamo.tipo === 'DUPLICADO') {
+      return NextResponse.json({
+        error: MENSAJE_REPETIDO,
+        duplicado: { operacion_id: operacionId, ventana_minutos: reclamo.ventana_minutos, id: reclamo.existente.pedido_id, numero_pedido: reclamo.existente.numero_pedido, estado: reclamo.existente.estado },
+      }, { status: 409 })
+    }
+    if (reclamo.tipo === 'EN_PROCESO') return NextResponse.json({ error: 'Tu pedido se está procesando. Esperá un momento y no lo envíes de nuevo.', en_proceso: true }, { status: 409 })
+    if (reclamo.tipo === 'OPERACION_INVALIDA') return NextResponse.json({ error: 'Tu pedido cambió. Revisalo y volvé a confirmar.' }, { status: 409 })
+    if (reclamo.tipo === 'NUEVA') operacionReclamada = operacionId
   }
 
   const { data: pedido, error } = await supabase.rpc('crear_pedido_stock', {
@@ -417,6 +402,8 @@ export async function POST(request: Request) {
   })
 
   if (error || !pedido) {
+    // La operación no generó pedido: se libera para que el reintento arranque limpio (best-effort)
+    if (operacionReclamada) await Promise.resolve(supabase.rpc('liberar_operacion_pedido', { p_empresa_id: empresa_id, p_operacion_id: operacionReclamada })).then(() => {}, () => {})
     // Rechazo limpio por falta de stock (RAISE de la RPC): 409 con el producto
     const msg = error?.message ?? ''
     if (msg.includes('SIN_STOCK:')) {
@@ -432,6 +419,12 @@ export async function POST(request: Request) {
     }
     console.error('[pedidos] Error creando pedido (RPC):', error)
     return NextResponse.json({ error: error?.message ?? 'Error al crear pedido' }, { status: 500 })
+  }
+
+  // La operación queda COMPLETADA con su pedido: de acá en más un reintento recibe ESTE mismo pedido
+  if (operacionReclamada) {
+    const pidOp = (pedido as { id?: string })?.id
+    if (pidOp) await Promise.resolve(supabase.rpc('completar_operacion_pedido', { p_empresa_id: empresa_id, p_operacion_id: operacionReclamada, p_pedido_id: pidOp })).then(() => {}, e => console.error('[pedidos] completar_operacion_pedido falló:', e))
   }
 
   // ── V1.5 — HORA DE RETIRO (solo takeaway, ya validada) ──
