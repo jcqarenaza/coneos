@@ -245,7 +245,7 @@ set search_path = public, pg_temp
 as $f$
 declare
   v_cont record; v_calc jsonb; v_it jsonb; v_ids uuid[]; v_nuevas uuid[]; v_tx timestamptz := transaction_timestamp();
-  v_delta integer; v_det text; v_det_it text;
+  v_delta integer; v_det text; v_det_it text; v_n integer;
 begin
   if p_usuario_id is null then raise exception 'USUARIO_REQUERIDO' using errcode = 'P0001'; end if;
   if p_lote_id is null then raise exception 'LOTE_REQUERIDO' using errcode = 'P0001'; end if;
@@ -317,14 +317,19 @@ begin
     if v_delta <> 0 then
       v_det_it := v_det || case when (v_it ->> 'recortado')::boolean then ' [recortado a 0: se pidió ' || (v_it ->> 'diff_pedida') || ']' else '' end;
       perform public.ajustar_stock(p_empresa_id, p_sucursal_id, (v_it ->> 'producto_id')::uuid, v_delta, 'delta', 'ajuste', null, v_det_it);
-      -- Etiqueta SU movimiento (lote + usuario). La fila de stock está bloqueada por esta transacción, así que
-      -- nadie más puede haber escrito un movimiento de este producto/sucursal desde entonces; además se exige
-      -- el mismo texto de detalle y created_at de esta transacción.
+      -- Etiqueta SU movimiento (lote + usuario). ajustar_stock inserta EXACTAMENTE UN movimiento cuando el stock cambia
+      -- (verificado en su definición viva: un solo INSERT, created_at = now() = hora de esta transacción, sin triggers).
+      -- Se exige encontrar EXACTAMENTE UNO (mismo producto, sucursal, motivo, detalle y hora de esta transacción) y
+      -- actualizar EXACTAMENTE UNO. Si hay cero o más de uno: excepción y se revierte TODO (stock, lote e ítems).
+      select count(*) into v_n from stock_movimientos
+       where empresa_id = p_empresa_id and sucursal_id = p_sucursal_id and producto_id = (v_it ->> 'producto_id')::uuid
+         and motivo = 'ajuste' and ajuste_id is null and detalle = v_det_it and created_at = v_tx;
+      if v_n <> 1 then raise exception 'MOVIMIENTO_NO_ASOCIADO' using errcode = 'P0001'; end if;
       update stock_movimientos set ajuste_id = p_lote_id, usuario_id = p_usuario_id
-       where id = (select id from stock_movimientos
-                    where empresa_id = p_empresa_id and sucursal_id = p_sucursal_id and producto_id = (v_it ->> 'producto_id')::uuid
-                      and motivo = 'ajuste' and ajuste_id is null and detalle = v_det_it and created_at = v_tx
-                    order by id limit 1);
+       where empresa_id = p_empresa_id and sucursal_id = p_sucursal_id and producto_id = (v_it ->> 'producto_id')::uuid
+         and motivo = 'ajuste' and ajuste_id is null and detalle = v_det_it and created_at = v_tx;
+      get diagnostics v_n = row_count;
+      if v_n <> 1 then raise exception 'MOVIMIENTO_NO_ASOCIADO' using errcode = 'P0001'; end if;
     end if;
     insert into stock_ajuste_items (ajuste_id, producto_id, base, contado, actual_antes, diff_pedida, diff_aplicada, stock_final, recortado, fila_creada)
     values (p_lote_id, (v_it ->> 'producto_id')::uuid, (v_it ->> 'base')::int, (v_it ->> 'contado')::int, (v_it ->> 'actual')::int,

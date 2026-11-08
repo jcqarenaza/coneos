@@ -66,6 +66,7 @@ export function traducirErrorAjuste(e: { message?: string; code?: string } | nul
     ['CONTEO_YA_APLICADO', 409, 'Este conteo ya se aplicó. Iniciá un conteo nuevo.'],
     ['CONTEO_DE_OTRO_USUARIO', 403, 'Este conteo lo inició otro administrador.'],
     ['PRODUCTO_FUERA_DEL_CONTEO', 400, 'Hay productos que no estaban en el conteo al iniciarlo. Iniciá un conteo nuevo.'],
+    ['MOVIMIENTO_NO_ASOCIADO', 500, 'No se pudo registrar el ajuste con su responsable. No se modificó el stock. Reintentá.'],
     ['USUARIO_REQUERIDO', 401, 'No autorizado'],
   ]
   for (const [cod, status, msg] of tabla) if (m.includes(cod)) return { status, codigo: cod, error: msg }

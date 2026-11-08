@@ -270,6 +270,32 @@ for _ in range(15):
     ths = [threading.Thread(target=vv) for _ in range(2)]; [t.start() for t in ths]; [t.join() for t in ths]; choques += r2.count('23505')
 print(f"INFO ajustar_stock sin ON CONFLICT: {choques} choques 23505 en 15 intentos de doble alta simultánea (comportamiento previo, NO modificado)")
 
+
+# P4 — el movimiento SIEMPRE se asocia al lote; si no se puede, no queda NADA aplicado (stock, lote, ítems ni conteo cerrado)
+c.execute("""create or replace function trg_t_sin_mov() returns trigger language plpgsql as $$ begin
+  if new.detalle like 'Ajuste general%' and exists (select 1 from productos where id = new.producto_id and nombre = 'P4_CERO') then return null; end if; return new; end $$;
+  create or replace function trg_t_doble_mov() returns trigger language plpgsql as $$ begin
+  if new.detalle like 'Ajuste general%' and exists (select 1 from productos where id = new.producto_id and nombre = 'P4_DOBLE') then
+    insert into stock_movimientos(empresa_id,sucursal_id,producto_id,delta,motivo,detalle,created_at) values (new.empresa_id,new.sucursal_id,new.producto_id,new.delta,new.motivo,new.detalle,new.created_at); end if; return null; end $$;""")
+def estado_lote(L, p):
+    c.execute("select estado from stock_conteos where id=%s", (L,)); e = c.fetchone()[0]
+    c.execute("select count(*) from stock_ajustes where id=%s", (L,)); a = c.fetchone()[0]
+    c.execute("select count(*) from stock_ajuste_items where ajuste_id=%s", (L,)); i = c.fetchone()[0]
+    c.execute("select count(*) from stock_movimientos where producto_id=%s", (p,)); m = c.fetchone()[0]
+    return e, a, i, m
+for nombre, trg_fn, cod in (('P4_CERO', 'trg_t_sin_mov', 'cero'), ('P4_DOBLE', 'trg_t_doble_mov', 'más de uno')):
+    pz = prod(nombre, stock=50); pw = prod('P4_OK_' + cod, stock=50)
+    ini = iniciar(); LZ = uuid.UUID(ini['lote_id'])
+    c.execute(f"create trigger t_p4 before insert on stock_movimientos for each row execute function {trg_fn}()")
+    e = err(lambda: apl(ci((pw, 49), (pz, 49)), LZ)); c.execute("drop trigger t_p4 on stock_movimientos")
+    est = estado_lote(LZ, pz); estw = estado_lote(LZ, pw)
+    check(f"P4 si el movimiento no se puede asociar ({cod} encontrado): MOVIMIENTO_NO_ASOCIADO", e and 'MOVIMIENTO_NO_ASOCIADO' in e, str(e))
+    check(f"P4 ({cod}) no queda aplicado NADA: stock intacto en los DOS productos (incluido el que sí se había ajustado antes)", stk(pz) == 50 and stk(pw) == 50, f"{stk(pz)} {stk(pw)}")
+    check(f"P4 ({cod}) sin lote, sin ítems, sin movimientos del lote y el conteo sigue «abierto»", est[0] == 'abierto' and est[1] == 0 and est[2] == 0 and est[3] == 0 and estw[3] == 0, f"{est} {estw}")
+    r = apl(ci((pw, 49), (pz, 49)), LZ); est2 = estado_lote(LZ, pz)
+    check(f"P4 ({cod}) sin el problema, el MISMO conteo se reintenta y aplica entero, cada movimiento con lote y usuario", r['estado'] == 'aplicado' and stk(pz) == 49 and stk(pw) == 49 and est2[0] == 'aplicado', f"{est2}")
+c.execute("select count(*) from stock_movimientos where motivo='ajuste' and detalle like 'Ajuste general%' and (ajuste_id is null or usuario_id is null)"); check('P4 todo movimiento de ajuste general quedó con lote y usuario (ninguno huérfano)', c.fetchone()[0] == 0)
+
 # T10 seguridad / no tocar lo existente
 c.execute("select md5(pg_get_functiondef('public.ajustar_stock(uuid,uuid,uuid,integer,text,text,uuid,text)'::regprocedure))"); check('T10a ajustar_stock NO fue modificada', c.fetchone()[0] == AJ_ANTES)
 fs = ['public.aplicar_ajuste_stock(uuid,uuid,uuid,uuid,text,text,text,jsonb,text,numeric,integer,integer,integer)', 'public.previsualizar_ajuste_stock(uuid,uuid,uuid,text,text,jsonb,numeric,integer,integer,integer)', 'public._calcular_ajuste_stock(uuid,uuid,uuid,text,text,jsonb,numeric,integer,integer,integer,uuid[])', 'public.iniciar_conteo_stock(uuid,uuid,uuid,text)']
