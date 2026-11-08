@@ -76,8 +76,8 @@ beforeEach(() => {
 })
 const llamar = (b: unknown, tok: string | null = TOKENS.adminEmp) => STOCK(new Request('http://x/api/stock', { method: 'POST',
   headers: { 'content-type': 'application/json', ...(tok ? { authorization: `Bearer ${tok}` } : {}) }, body: JSON.stringify(b) }))
-const ITEMS = [{ producto_id: P1, base: 4, contado: 3 }]
-const AJ = { accion: 'aplicar', sucursal_id: S1, lote_id: LOTE, iniciado_at: new Date(Date.now() - 60_000).toISOString(), motivo_tipo: 'conteo', items: ITEMS }
+const ITEMS = [{ producto_id: P1, contado: 3 }]
+const AJ = { accion: 'aplicar', sucursal_id: S1, lote_id: LOTE, motivo_tipo: 'conteo', items: ITEMS }
 
 describe('/api/stock: acceso', () => {
   test('A1 sin sesión → 401', async () => { assert.equal((await llamar({ accion: 'sucursales' }, null)).status, 401) })
@@ -130,12 +130,16 @@ describe('/api/stock: ajuste', () => {
     const malos = [
       { ...AJ, motivo_tipo: undefined }, { ...AJ, motivo_tipo: 'robo' }, { ...AJ, motivo_tipo: 'conciliacion' }, { ...AJ, motivo_tipo: 'otro' }, { ...AJ, motivo_tipo: 'otro', descripcion: ' a ' },
       { ...AJ, items: [] }, { ...AJ, items: [{ producto_id: P1, base: 4, contado: -1 }] }, { ...AJ, items: [{ producto_id: P1, base: 4, contado: 1.5 }] },
-      { ...AJ, items: [...ITEMS, ...ITEMS] }, { ...AJ, items: [{ producto_id: 'x', base: 1, contado: 1 }] }, { ...AJ, lote_id: 'no-uuid' },
-      { ...AJ, iniciado_at: undefined }, { ...AJ, iniciado_at: new Date(Date.now() + 3_600_000).toISOString() },
+      { ...AJ, items: [...ITEMS, ...ITEMS] }, { ...AJ, items: [{ producto_id: 'x', contado: 1 }] }, { ...AJ, lote_id: 'no-uuid' },
       { ...AJ, sucursal_id: undefined },
     ]
     for (const b of malos) assert.equal((await llamar(b)).status, 400, JSON.stringify(b).slice(0, 80))
     assert.equal(rpc.length, 0)
+  })
+  test('J3b la base NUNCA viaja del navegador a la base: una base inventada se descarta (solo producto_id y contado)', async () => {
+    await llamar({ ...AJ, items: [{ producto_id: P1, contado: 3, base: 9999 }] }); await llamar({ ...AJ, accion: 'previsualizar', items: [{ producto_id: P1, contado: 3, base: 9999, x: 1 }] })
+    for (const c of rpc) assert.deepEqual(c.args.p_items, [{ producto_id: P1, contado: 3 }])
+    assert.equal(rpc.length, 2); assert.ok(!('p_iniciado_at' in rpc[0].args))
   })
   test('J4 motivo «otro» con descripción es válido', async () => { assert.equal((await llamar({ ...AJ, motivo_tipo: 'otro', descripcion: 'Regalo a cliente' })).status, 200) })
   test('J5 huella de confirmación solo si es sha256 hex; basura se descarta', async () => {
@@ -151,6 +155,25 @@ describe('/api/stock: ajuste', () => {
     r = await llamar(AJ); assert.equal(r.status, 500); assert.ok(!JSON.stringify(await r.json()).includes('secreta'))
     rpcRespuesta = { status: 409, body: { code: '40P01', message: 'deadlock detected' } }
     r = await llamar(AJ); assert.equal(r.status, 503)
+  })
+})
+
+describe('/api/stock: iniciar conteo (el servidor congela la base)', () => {
+  test('C1 inicia con usuario, nombre y empresa de la sucursal validada; devuelve lo que responde la función', async () => {
+    rpcRespuesta = { status: 200, body: { lote_id: LOTE, iniciado_at: '2026-11-08T20:00:00Z', items: [] } }
+    const r = await llamar({ accion: 'iniciar', sucursal_id: S1, empresa_id: EMP2 }); assert.equal(r.status, 200); assert.equal((await r.json()).lote_id, LOTE)
+    assert.equal(rpc[0].fn, 'iniciar_conteo_stock'); assert.equal(rpc[0].args.p_empresa_id, EMP); assert.equal(rpc[0].args.p_usuario_id, TOKENS.adminEmp); assert.equal(rpc[0].args.p_usuario_nombre, 'Luci')
+  })
+  test('C2 sin sesión 401; caja/SUPER_ADMIN/otra sucursal/otra empresa 403; no llega a la base', async () => {
+    assert.equal((await llamar({ accion: 'iniciar', sucursal_id: S1 }, null)).status, 401)
+    for (const t of [TOKENS.caja, TOKENS.superAdmin]) assert.equal((await llamar({ accion: 'iniciar', sucursal_id: S1 }, t)).status, 403)
+    assert.equal((await llamar({ accion: 'iniciar', sucursal_id: S2 }, TOKENS.adminSuc)).status, 403)
+    assert.equal((await llamar({ accion: 'iniciar', sucursal_id: S3 })).status, 403); assert.equal(rpc.length, 0)
+  })
+  test('C3 errores del conteo se traducen (no existe / ya aplicado / de otro usuario / fuera del conteo)', async () => {
+    for (const [cod, st] of [['CONTEO_NO_ENCONTRADO', 409], ['CONTEO_YA_APLICADO', 409], ['CONTEO_DE_OTRO_USUARIO', 403], ['PRODUCTO_FUERA_DEL_CONTEO', 400]] as const) {
+      rpcRespuesta = { status: 400, body: { code: 'P0001', message: cod } }; const r = await llamar(AJ); assert.equal(r.status, st, cod); assert.equal((await r.json()).codigo, cod)
+    }
   })
 })
 

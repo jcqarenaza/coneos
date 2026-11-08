@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { UUID_RE, validarItems, validarMotivo, estadoStock, traducirErrorAjuste } from '@/lib/stock/ajuste'
+import { UUID_RE, validarItems, validarMotivo, soloContados, estadoStock, traducirErrorAjuste } from '@/lib/stock/ajuste'
 
 // ============================================================
 // /api/stock — STOCK ETAPA 1 (GO CTO 08/11)
@@ -84,7 +84,14 @@ export async function POST(request: Request) {
       categorias: (cats ?? []).map(c => ({ id: c.id, nombre: c.nombre })) })
   }
 
-  // ── Ajuste general: previsualizar y aplicar ──
+  // ── Iniciar el conteo: el SERVIDOR congela y guarda la base (snapshot) ──
+  if (accion === 'iniciar') {
+    const { data, error } = await supabase.rpc('iniciar_conteo_stock', { p_empresa_id: empresaId, p_sucursal_id: sucursalId, p_usuario_id: userId, p_usuario_nombre: nombre })
+    if (error) { const t = traducirErrorAjuste(error); if (t.status === 500) console.error('[stock] iniciar', error.message); return err(t.error, t.status, { codigo: t.codigo }) }
+    return NextResponse.json(data)
+  }
+
+  // ── Ajuste general: previsualizar y aplicar (la base sale del snapshot del servidor, no del navegador) ──
   if (accion === 'previsualizar' || accion === 'aplicar') {
     const loteId = body.lote_id
     if (typeof loteId !== 'string' || !UUID_RE.test(loteId)) return err('Falta iniciar el conteo.')
@@ -95,18 +102,16 @@ export async function POST(request: Request) {
 
     if (accion === 'previsualizar') {
       const { data, error } = await supabase.rpc('previsualizar_ajuste_stock', {
-        p_empresa_id: empresaId, p_sucursal_id: sucursalId, p_lote_id: loteId, p_motivo_tipo: motivo, p_descripcion: descripcion, p_items: body.items,
+        p_empresa_id: empresaId, p_sucursal_id: sucursalId, p_lote_id: loteId, p_motivo_tipo: motivo, p_descripcion: descripcion, p_items: soloContados(body.items),
       })
       if (error) { const t = traducirErrorAjuste(error); if (t.status === 500) console.error('[stock] previsualizar', error.message); return err(t.error, t.status, { codigo: t.codigo }) }
       return NextResponse.json(data)
     }
 
-    const inicio = typeof body.iniciado_at === 'string' ? new Date(body.iniciado_at) : null
-    if (!inicio || isNaN(inicio.getTime()) || inicio.getTime() > Date.now() + 5 * 60_000) return err('Falta iniciar el conteo.')
     const huella = typeof body.huella_confirmada === 'string' && /^[0-9a-f]{64}$/.test(body.huella_confirmada) ? body.huella_confirmada : null
     const { data, error } = await supabase.rpc('aplicar_ajuste_stock', {
       p_empresa_id: empresaId, p_sucursal_id: sucursalId, p_lote_id: loteId, p_usuario_id: userId, p_usuario_nombre: nombre,
-      p_motivo_tipo: motivo, p_descripcion: descripcion, p_iniciado_at: inicio.toISOString(), p_items: body.items, p_huella_confirmada: huella,
+      p_motivo_tipo: motivo, p_descripcion: descripcion, p_items: soloContados(body.items), p_huella_confirmada: huella,
     })
     if (error) { const t = traducirErrorAjuste(error); if (t.status === 500) console.error('[stock] aplicar', error.message); return err(t.error, t.status, { codigo: t.codigo }) }
     return NextResponse.json(data)

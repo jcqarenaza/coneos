@@ -21,7 +21,8 @@ interface Cat { id: string; nombre: string }
 interface PrevItem { producto_id: string; nombre: string; base: number; contado: number; actual: number; fila_nueva: boolean; diff_pedida: number; diff_aplicada: number; final: number; recortado: boolean; importante: boolean }
 interface Prev { lote_id: string; items: PrevItem[]; huella: string; resumen: { items_n: number; total_abs: number; recortes_n: number; importantes_n: number; requiere_confirmacion: boolean; motivos_confirmacion: string[] } }
 interface Mov { id: string; fecha: string; tipo: string; delta: number; detalle: string | null; producto: string | null; es_articulo: boolean; responsable: string; lote_id: string | null; motivo_tipo: string | null; descripcion: string | null }
-interface Conteo { lote_id: string; iniciado_at: string; base: Record<string, number>; nombres: Record<string, string> }
+interface ConteoItem { producto_id: string; nombre: string; base: number; sin_alta: boolean }
+interface Conteo { lote_id: string; iniciado_at: string; items: ConteoItem[] }   // snapshot guardado por el SERVIDOR al iniciar
 
 const ESTADO: Record<EstadoStock, { t: string; c: string }> = {
   sin_alta: { t: 'Sin alta', c: 'bg-neutral-100 text-neutral-600' },
@@ -87,11 +88,8 @@ export default function StockPage() {
   async function iniciarConteo() {
     setMsg(null); setTrabajando(true)
     try {
-      const j = await api({ accion: 'inventario', sucursal_id: sucId })
-      setInv(j.items); setCats(j.categorias)
-      const base: Record<string, number> = {}, nombres: Record<string, string> = {}
-      for (const i of j.items as InvItem[]) { base[i.producto_id] = i.cantidad ?? 0; nombres[i.producto_id] = i.nombre }
-      setConteo({ lote_id: crypto.randomUUID(), iniciado_at: j.ahora, base, nombres }); setContado({}); setMotivo(''); setDesc(''); invalidar()
+      const j = await api({ accion: 'iniciar', sucursal_id: sucId })   // el servidor congela y guarda la base
+      setConteo({ lote_id: j.lote_id, iniciado_at: j.iniciado_at, items: j.items }); setContado({}); setMotivo(''); setDesc(''); invalidar()
     } catch (e) { setMsg({ ok: false, t: (e as Error).message }) } finally { setTrabajando(false) }
   }
   function cancelarConteo() { setConteo(null); setContado({}); invalidar(); setMsg(null) }
@@ -99,10 +97,10 @@ export default function StockPage() {
   const itemsConteo = useMemo(() => {
     if (!conteo) return []
     return Object.entries(contado).filter(([, v]) => v.trim() !== '' && /^\d+$/.test(v.trim()))
-      .map(([producto_id, v]) => ({ producto_id, base: conteo.base[producto_id] ?? 0, contado: parseInt(v, 10) }))
+      .map(([producto_id, v]) => ({ producto_id, contado: parseInt(v, 10) }))   // solo producto y contado: la base la tiene el servidor
   }, [contado, conteo])
   const hayInvalidos = Object.values(contado).some(v => v.trim() !== '' && !/^\d+$/.test(v.trim()))
-  const cuerpoAjuste = () => ({ sucursal_id: sucId, lote_id: conteo!.lote_id, iniciado_at: conteo!.iniciado_at, motivo_tipo: motivo, descripcion: desc.trim() || null, items: itemsConteo })
+  const cuerpoAjuste = () => ({ sucursal_id: sucId, lote_id: conteo!.lote_id, motivo_tipo: motivo, descripcion: desc.trim() || null, items: itemsConteo })
   const motivoOk = !!motivo && (motivo !== 'otro' || desc.trim().length >= 3)
 
   async function revisar() {
@@ -201,9 +199,9 @@ export default function StockPage() {
               <div className="p-3 rounded-lg bg-blue-50 text-blue-900 text-sm">Conteo iniciado a las {fmt(conteo.iniciado_at)}. Cargá solo los productos que contaste; los que dejes vacíos no se tocan.</div>
               <div className="bg-white border border-neutral-200 rounded-xl overflow-x-auto">
                 <table className="w-full text-sm"><thead className="bg-neutral-50 text-neutral-500 text-left"><tr><th className="px-4 py-2">Producto</th><th className="px-4 py-2 text-right">Stock al iniciar</th><th className="px-4 py-2 text-right w-36">Contado</th><th className="px-4 py-2 text-right">Diferencia</th></tr></thead>
-                  <tbody>{inv.map(i => {
-                    const v = contado[i.producto_id] ?? ''; const ok = /^\d+$/.test(v.trim()); const base = conteo.base[i.producto_id] ?? 0
-                    return (<tr key={i.producto_id} className="border-t border-neutral-100"><td className="px-4 py-2 font-medium">{i.nombre}{i.cantidad === null && <span className="ml-2 text-xs text-neutral-400">sin alta</span>}</td>
+                  <tbody>{conteo.items.map(i => {
+                    const v = contado[i.producto_id] ?? ''; const ok = /^\d+$/.test(v.trim()); const base = i.base
+                    return (<tr key={i.producto_id} className="border-t border-neutral-100"><td className="px-4 py-2 font-medium">{i.nombre}{i.sin_alta && <span className="ml-2 text-xs text-neutral-400">sin alta</span>}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{base}</td>
                       <td className="px-4 py-2 text-right"><input inputMode="numeric" value={v} onChange={e => { setContado(c => ({ ...c, [i.producto_id]: e.target.value })); invalidar() }} className={`${inputCls} w-24 text-right ${v && !ok ? 'border-red-400' : ''}`} /></td>
                       <td className={`px-4 py-2 text-right tabular-nums ${ok && parseInt(v, 10) - base < 0 ? 'text-red-600' : 'text-green-700'}`}>{ok ? sg(parseInt(v, 10) - base) : ''}</td></tr>)

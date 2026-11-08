@@ -9,7 +9,13 @@ export const MOTIVO_LABEL: Record<MotivoAjuste, string> = {
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export interface ItemAjuste { producto_id: string; base: number; contado: number }
+// El navegador manda SOLO producto_id y contado. La base la congela y guarda el SERVIDOR al iniciar el conteo.
+export interface ItemAjuste { producto_id: string; contado: number }
+
+/** Deja solo lo que el cliente puede decidir (producto y contado): cualquier otra clave (p. ej. una base inventada) se descarta. */
+export function soloContados(items: unknown): ItemAjuste[] {
+  return (items as Record<string, unknown>[]).map(i => ({ producto_id: i.producto_id as string, contado: i.contado as number }))
+}
 
 /** Forma del lote. Devuelve el mensaje de error humano o null si está bien. */
 export function validarItems(items: unknown): string | null {
@@ -20,10 +26,8 @@ export function validarItems(items: unknown): string | null {
     if (!it || typeof it.producto_id !== 'string' || !UUID_RE.test(it.producto_id)) return 'Producto inválido en el ajuste.'
     if (vistos.has(it.producto_id)) return 'Hay un producto repetido en el ajuste.'
     vistos.add(it.producto_id)
-    for (const k of ['base', 'contado'] as const) {
-      const v = it[k]
-      if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 1_000_000) return 'Las cantidades deben ser números enteros de 0 en adelante.'
-    }
+    const v = it.contado
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 1_000_000) return 'Las cantidades deben ser números enteros de 0 en adelante.'
   }
   return null
 }
@@ -58,6 +62,10 @@ export function traducirErrorAjuste(e: { message?: string; code?: string } | nul
     ['MOTIVO_OTRO_SIN_DESCRIPCION', 400, 'Con el motivo «Otro» hay que escribir una descripción.'],
     ['MOTIVO_INVALIDO', 400, 'Elegí un motivo del ajuste.'],
     ['LOTE_DE_OTRO_ALCANCE', 409, 'Este ajuste ya fue usado en otra sucursal. Iniciá un conteo nuevo.'],
+    ['CONTEO_NO_ENCONTRADO', 409, 'El conteo no existe o venció. Iniciá un conteo nuevo.'],
+    ['CONTEO_YA_APLICADO', 409, 'Este conteo ya se aplicó. Iniciá un conteo nuevo.'],
+    ['CONTEO_DE_OTRO_USUARIO', 403, 'Este conteo lo inició otro administrador.'],
+    ['PRODUCTO_FUERA_DEL_CONTEO', 400, 'Hay productos que no estaban en el conteo al iniciarlo. Iniciá un conteo nuevo.'],
     ['USUARIO_REQUERIDO', 401, 'No autorizado'],
   ]
   for (const [cod, status, msg] of tabla) if (m.includes(cod)) return { status, codigo: cod, error: msg }
