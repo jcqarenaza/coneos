@@ -4,14 +4,28 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // Elimina un pedido SOLO si no está cobrado (PAID/DELIVERED) ni facturado.
 // La regla vive acá (server-side): el cliente no puede saltearla.
 export async function POST(request: Request) {
-  const { pedido_id } = await request.json()
+  const { pedido_id, dispositivo_id } = await request.json().catch(() => ({}))
   if (!pedido_id) return NextResponse.json({ error: 'pedido_id requerido' }, { status: 400 })
 
   const supabase = createAdminClient()
 
+  // ── SEGURIDAD: solo una CAJA activa de la misma empresa y sucursal puede eliminar ──
+  // Misma validación de dispositivo que /api/operacion/consulta. Sin dispositivo válido
+  // no se lee ni se toca nada del pedido (403 antes de cualquier consulta de datos).
+  if (!dispositivo_id) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+  const { data: disp } = await supabase.from('dispositivos')
+    .select('id, empresa_id, sucursal_id, tipo, activo').eq('id', dispositivo_id).maybeSingle()
+  if (!disp || !disp.activo || disp.tipo !== 'CAJA') {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+  }
+
   const { data: pedido } = await supabase.from('pedidos')
     .select('id, estado, numero_pedido, empresa_id, sucursal_id, stock_descontado, numero_mesa, pagado, tipo_pedido').eq('id', pedido_id).single()
   if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
+  // Pedido de otra empresa/sucursal: misma respuesta que "no existe" (no revela datos ajenos).
+  if (pedido.empresa_id !== disp.empresa_id || pedido.sucursal_id !== disp.sucursal_id) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+  }
 
   // ── STOCK V1 REAL: regla de borrado post-9c ──
   // 9c volvió transitorio a PAID: los COBRADOS viven en PREPARING. La verdad

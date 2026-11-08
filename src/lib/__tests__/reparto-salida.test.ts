@@ -6,8 +6,8 @@ test('distancia: ~111 m por cada 0.001° de latitud', () => { const d = distanci
 test('sin pedidos pendientes: nada (o limpia el punto si había)', () => { assert.equal(decidirSalida(null, L, 0), 'nada'); assert.equal(decidirSalida(L, L, 0), 'limpiar_base') })
 test('con pendientes y sin punto: fija el punto', () => assert.equal(decidirSalida(null, L, 1), 'fijar_base'))
 test('dentro del umbral: nada; en el umbral o más: salió', () => {
-  assert.equal(decidirSalida(L, { lat: -35.66018, lng: -63.75 }, 2), 'nada')
-  assert.ok(UMBRAL_SALIDA_M >= 50)
+  assert.equal(decidirSalida(L, { lat: -35.660027, lng: -63.75 }, 2), 'nada')
+  assert.ok(UMBRAL_SALIDA_M >= 5)  // TEMPORAL (prueba preview); en producción vuelve a 75 y este piso a 50
   assert.equal(decidirSalida(L, { lat: -35.6609, lng: -63.75 }, 1), 'salio')
 })
 test('minutosEntrega: mismas reglas que la función SQL', () => {

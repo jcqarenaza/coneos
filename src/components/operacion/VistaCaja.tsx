@@ -450,7 +450,7 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
     setEliminando(true)
     const res = await fetch('/api/pedidos/eliminar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pedido_id: p.id }),
+      body: JSON.stringify({ pedido_id: p.id, dispositivo_id: dispositivo.id }),
     })
     setEliminando(false)
     if (res.ok) {

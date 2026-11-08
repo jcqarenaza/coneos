@@ -105,7 +105,7 @@ const pedir = async (extra: J = {}, cant = 1) => POST(new Request('http://x/api/
 const cli = (tel: string): J => ({ tipo_pedido: 'delivery', origen: 'DELIVERY', datos_delivery: { telefono: tel, nombre: 'X' } })
 type Resp = { pedido?: { id: string; numero_pedido: number }; reutilizado?: boolean; error?: string; duplicado?: { operacion_id: string; ventana_minutos: number } }
 const j = async (r: Response) => (await r.json()) as Resp
-const eliminar = (id: string) => ELIMINAR(new Request('http://x', { method: 'POST', body: JSON.stringify({ pedido_id: id }) }))
+const eliminar = (id: string) => { FIXTURES.dispositivos = [{ id: 'd0000000-0000-4000-8000-0000000000c1', empresa_id: w.emp, sucursal_id: w.suc, tipo: 'CAJA', activo: true }]; return ELIMINAR(new Request('http://x', { method: 'POST', body: JSON.stringify({ pedido_id: id, dispositivo_id: 'd0000000-0000-4000-8000-0000000000c1' }) })) }
 
 describe('Stock V2 por la ruta real (demo del CTO: 19 → 17 → 19)', () => {
   beforeEach(() => mundo(19, 1))
