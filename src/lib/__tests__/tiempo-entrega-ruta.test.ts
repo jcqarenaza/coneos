@@ -68,7 +68,7 @@ beforeEach(() => {
 const rep = async (accion: string, extra: Row = {}, token = 'tok1') => { const r = await REPARTO(new Request('http://x', { method: 'POST', body: JSON.stringify({ accion, token, ...extra }) })); return { st: r.status, j: await r.json() as Row } }
 const ped = () => T.pedidos[0]
 
-const LOCAL = { lat: -35.6600, lng: -63.7500 }, A_100M = { lat: -35.6609, lng: -63.7500 }, A_20M = { lat: -35.660027, lng: -63.7500 }
+const LOCAL = { lat: -35.6600, lng: -63.7500 }, A_100M = { lat: -35.6609, lng: -63.7500 }, A_20M = { lat: -35.66018, lng: -63.7500 }
 const ping = async (pos: { lat: number; lng: number }, token = 'tok1') => {
   if (T.reparto_posiciones?.[0]) T.reparto_posiciones[0].updated_at = new Date(Date.now() - 60e3).toISOString()   // salta el throttle de 8 s
   return rep('posicion', pos, token)
@@ -80,7 +80,7 @@ describe('Tiempo de entrega por las rutas reales (sin botón: arranca al mover l
     const r = await ping(LOCAL); assert.equal(r.st, 200)
     assert.equal(base().base_lat, LOCAL.lat); assert.equal(ped().salio_at, null)
   })
-  test('G2 ruido de GPS parado (3 m): sigue sin salida', async () => {
+  test('G2 ruido de GPS parado (20 m): sigue sin salida', async () => {
     await ping(LOCAL); await ping(A_20M); assert.equal(ped().salio_at, null); assert.equal(base().base_lat, LOCAL.lat)
   })
   test('G3 la moto se aleja 100 m del punto de partida: salio_at se marca y el punto se limpia', async () => {
