@@ -53,7 +53,7 @@ export default function GaleriaCarrusel({ fotos, titulo, inicial = 0, onCerrar }
           {fotos.map((src, i) => (
             <div key={src + i} className="w-full h-full flex-shrink-0 snap-center flex items-center justify-center p-4" onClick={onCerrar}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt={`${titulo} (${i + 1} de ${fotos.length})`} className="max-w-full max-h-full object-contain rounded-xl bg-white"
+              <img src={src} alt={`${titulo} (${i + 1} de ${fotos.length})`} className="w-auto h-auto max-w-[min(100%,360px)] max-h-[min(100%,360px)] sm:max-w-[min(100%,420px)] sm:max-h-[min(100%,420px)] object-contain rounded-2xl bg-white shadow-lg"
                 onClick={e => e.stopPropagation()} loading={i === inicial ? 'eager' : 'lazy'} />
             </div>
           ))}
