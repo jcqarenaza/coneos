@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { esUuid, firmarCaptura, resumirCaptura, TTL_URL_FIRMADA_SEG } from '@/lib/storage'
 
 // Datos de las pantallas de OPERACIÓN (caja/preparación/display), server-side.
 // Estas pantallas no tienen sesión de auth propia: sus consultas directas a la
@@ -19,6 +20,8 @@ export async function POST(request: Request) {
     .select('id, empresa_id, sucursal_id, activo')
     .eq('id', dispositivo_id).maybeSingle()
   if (!disp?.activo) return NextResponse.json({ error: 'Dispositivo no válido' }, { status: 403 })
+  // El tipo generado de `dispositivos` está desactualizado (el cliente infiere `never`): se tipa acá lo único que usa el código nuevo.
+  const { empresa_id: empresaId, sucursal_id: sucursalId } = disp as unknown as { empresa_id: string; sucursal_id: string }
 
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
   // FIX MEDIANOCHE (JC 11/10 00:13, en vivo con Federal): un pedido ACTIVO
@@ -61,7 +64,7 @@ export async function POST(request: Request) {
     const { data: empCfg } = await supabase.from('empresa_config')
       .select('modulos').eq('empresa_id', disp.empresa_id).maybeSingle()
     const repartoOn = (empCfg?.modulos as Record<string, unknown> | null)?.reparto === true
-    return NextResponse.json({ reparto_on: repartoOn, pedidos: pedidos ?? [], colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta }, comanda_auto: sucCfg?.comanda_auto ?? false, ticket_auto: sucCfg?.ticket_auto ?? false })
+    return NextResponse.json({ reparto_on: repartoOn, pedidos: (pedidos ?? []).map(p => resumirCaptura(p, empresaId)), colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta }, comanda_auto: sucCfg?.comanda_auto ?? false, ticket_auto: sucCfg?.ticket_auto ?? false })
   }
 
   if (accion === 'historial') {
@@ -73,7 +76,23 @@ export async function POST(request: Request) {
       .order('created_at', { ascending: false })
     if (!body.verTodas) query = query.eq('sucursal_id', disp.sucursal_id)
     const { data } = await query
-    return NextResponse.json({ pedidos: data ?? [] })
+    return NextResponse.json({ pedidos: (data ?? []).map(p => resumirCaptura(p, empresaId)) })
+  }
+
+  // COMPROBANTE de transferencia: URL FIRMADA de corta duración (10 min), pedida al abrir el pedido en caja.
+  // La empresa sale del dispositivo (servidor); el pedido debe ser de esa empresa y la ruta guardada debe ser de ESE pedido.
+  // ALCANCE: empresa Y sucursal del dispositivo. NO se usa body.verTodas (lo manda el cliente: no es una autorización); un acceso a
+  // varias sucursales para comprobantes necesitaría validar la sesión del operador en el servidor, y eso hoy no existe.
+  // La respuesta no distingue "no existe" de "no es tuyo" (no permite enumerar pedidos).
+  if (accion === 'captura_url') {
+    const pid = body.pedido_id
+    if (!esUuid(pid)) return NextResponse.json({ error: 'Comprobante no disponible' }, { status: 404 })
+    const { data: ped } = await supabase.from('pedidos')
+      .select('id, empresa_id, captura_transferencia_url')
+      .eq('id', pid).eq('empresa_id', empresaId).eq('sucursal_id', sucursalId).maybeSingle()
+    const url = ped ? await firmarCaptura(supabase, ped, empresaId) : null
+    if (!url) return NextResponse.json({ error: 'Comprobante no disponible' }, { status: 404 })
+    return NextResponse.json({ url, expira_en_seg: TTL_URL_FIRMADA_SEG })
   }
 
   if (accion === 'preparacion') {

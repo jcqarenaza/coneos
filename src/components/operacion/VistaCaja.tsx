@@ -13,7 +13,7 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; combo_ref?: string | null; promo_nombre_snap?: string | null; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string; emoji_reparto?: string | null }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; descuento_cobro?: number | null; descuento_cobro_detalle?: string | null; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; captura_transferencia_url?: string | null; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; ticket_impreso_at?: string | null; updated_at?: string; facturas?: { estado: string }[]; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; descuento_cobro?: number | null; descuento_cobro_detalle?: string | null; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; tiene_captura?: boolean; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; ticket_impreso_at?: string | null; updated_at?: string; facturas?: { estado: string }[]; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -35,6 +35,51 @@ function cuentaDe(p: Pedido): string | null {
 }
 function tiempoRelativo(ts: string) {
   return new Date(ts).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + ' hs'
+}
+
+// Comprobante de transferencia. La URL es FIRMADA y vence (10 min): se pide al abrir el pedido y se vuelve a pedir si falla o vence.
+function ComprobanteCaptura({ dispositivoId, pedidoId, variante }: { dispositivoId: string; pedidoId: string; variante: 'panel' | 'tarjeta' }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [estado, setEstado] = useState<'cargando' | 'ok' | 'error'>('cargando')
+  const [motivo, setMotivo] = useState('')
+  const [intento, setIntento] = useState(0)
+  useEffect(() => {
+    let vigente = true
+    ;(async () => {
+      try {
+        const r = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivoId, accion: 'captura_url', pedido_id: pedidoId }) })
+        const d = await r.json().catch(() => null)
+        if (!vigente) return
+        if (!r.ok || !d?.url) { setMotivo(r.status === 404 ? 'El comprobante no está disponible desde este dispositivo (puede ser de otra sucursal).' : 'No se pudo cargar el comprobante.'); setEstado('error'); return }
+        setUrl(d.url as string); setEstado('ok')
+      } catch {
+        if (!vigente) return
+        setMotivo('Sin conexión: no se pudo cargar el comprobante.'); setEstado('error')
+      }
+    })()
+    return () => { vigente = false }
+  }, [dispositivoId, pedidoId, intento])
+  const reintentar = () => { setEstado('cargando'); setUrl(null); setIntento(n => n + 1) }
+  const caja = variante === 'panel' ? 'mb-3 bg-blue-50 rounded-2xl border border-blue-100 p-4' : 'mb-4 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3'
+  return (
+    <div className={caja}>
+      <p className="text-xs text-blue-500 font-semibold mb-1">📎 Comprobante de transferencia</p>
+      {estado === 'cargando' && <p className="text-xs text-neutral-400 py-6 text-center">Cargando comprobante…</p>}
+      {estado === 'ok' && url && (
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          <img src={url} alt="Comprobante"
+            onError={() => { setMotivo('La imagen no se pudo mostrar (el enlace dura 10 minutos).'); setEstado('error') }}
+            className="w-full max-h-64 object-contain rounded-xl border border-blue-100 bg-white cursor-zoom-in" />
+        </a>
+      )}
+      {estado === 'error' && (
+        <div className="text-center py-3">
+          <p className="text-xs text-neutral-500 mb-2">{motivo}</p>
+          <button type="button" onClick={reintentar} className="text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-100">Reintentar</button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispositivo; sesion: SesionOperador }) {
@@ -1042,14 +1087,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                         </button>
                       )}
                     </div>
-                    {historialSeleccionado.captura_transferencia_url && (
-                      <div className="mb-3 bg-blue-50 rounded-2xl border border-blue-100 p-4">
-                        <p className="text-xs text-blue-500 font-semibold mb-1">📎 Comprobante de transferencia</p>
-                        <a href={historialSeleccionado.captura_transferencia_url} target="_blank" rel="noopener noreferrer">
-                          <img src={historialSeleccionado.captura_transferencia_url} alt="Comprobante"
-                            className="w-full max-h-64 object-contain rounded-xl border border-blue-100 bg-white cursor-zoom-in" />
-                        </a>
-                      </div>
+                    {historialSeleccionado.tiene_captura && (
+                      <ComprobanteCaptura key={historialSeleccionado.id} dispositivoId={dispositivo.id} pedidoId={historialSeleccionado.id} variante="panel" />
                     )}
                     {historialSeleccionado.datos_delivery && (() => {
                       const d = historialSeleccionado.datos_delivery as DatosDelivery
@@ -1397,14 +1436,8 @@ export default function VistaCaja({ dispositivo, sesion }: { dispositivo: Dispos
                     {seleccionado.costo_envio ? <p className="text-purple-600 text-sm"><span className="font-semibold">Envío:</span> ${Number(seleccionado.costo_envio).toLocaleString('es-AR')}</p> : null}
                   </div>
                 )}
-                {seleccionado.captura_transferencia_url && (
-                  <div className="mb-4 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                    <p className="text-xs text-blue-500 font-semibold mb-1">📎 Comprobante de transferencia</p>
-                    <a href={seleccionado.captura_transferencia_url} target="_blank" rel="noopener noreferrer">
-                      <img src={seleccionado.captura_transferencia_url} alt="Comprobante"
-                        className="w-full max-h-64 object-contain rounded-xl border border-blue-100 bg-white cursor-zoom-in" />
-                    </a>
-                  </div>
+                {seleccionado.tiene_captura && (
+                  <ComprobanteCaptura key={seleccionado.id} dispositivoId={dispositivo.id} pedidoId={seleccionado.id} variante="tarjeta" />
                 )}
 
                 <div className="space-y-2">
