@@ -2,6 +2,7 @@
 
 import { avisar, confirmar } from '@/components/admin/ConeDialog'
 import { useEffect, useState, useRef } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { PRESETS_RUBRO } from '@/lib/presets-rubro'
 import { useEmpresa } from '@/lib/useEmpresa'
@@ -152,9 +153,6 @@ export default function CatalogoPage() {
   const [savingDispo, setSavingDispo] = useState<string | null>(null)
   // STOCK V1: cantidades por producto de la sucursal seleccionada
   const [stockSuc, setStockSuc] = useState<Record<string, { cantidad: number; stock_minimo: number }>>({})
-  const [modalStock, setModalStock] = useState<Producto | null>(null)
-  const [stockForm, setStockForm] = useState({ controla: false, cantidad: '', minimo: '0' })
-  const [savingStock, setSavingStock] = useState(false)
   const [busquedaDispo, setBusquedaDispo] = useState('')
   const [saboresCatExpandidas, setSaboresCatExpandidas] = useState<Set<string>>(new Set())
   const [busquedaSabor, setBusquedaSabor] = useState('')
@@ -278,53 +276,8 @@ export default function CatalogoPage() {
     setSavingDispo(null)
   }
 
-  // STOCK V1: abrir editor y guardar (toggle a nivel producto, cantidad por sucursal)
-  function abrirStock(prod: Producto) {
-    const st = stockSuc[prod.id]
-    setStockForm({
-      controla: prod.controla_stock === true,
-      cantidad: st ? String(st.cantidad) : '',
-      minimo: st ? String(st.stock_minimo) : '0',
-    })
-    setModalStock(prod)
-  }
-
-  async function guardarStock() {
-    if (!ctx || !modalStock || !sucursalDispo) return
-    const activando = stockForm.controla
-    const cant = parseInt(stockForm.cantidad, 10)
-    const min = parseInt(stockForm.minimo, 10)
-    // Regla CTO: activar EXIGE cargar el stock actual (jamás asumir 0)
-    if (activando && (stockForm.cantidad.trim() === '' || isNaN(cant) || cant < 0)) {
-      avisar('Para activar el control de stock cargá la cantidad actual (0 o más).')
-      return
-    }
-    setSavingStock(true)
-    const supabase = createClient()
-    if (activando) {
-      // ── STOCK V1 REAL: el ajuste entra por LA ÚNICA PUERTA ──
-      // ajustar_stock (modo 'set') fija la cantidad con lock de fila (una
-      // venta simultánea no se pisa) y deja el movimiento escrito. El mínimo
-      // es configuración, no movimiento: se guarda aparte.
-      const { error: e1 } = await supabase.rpc('ajustar_stock', {
-        p_empresa_id: ctx.empresaId, p_sucursal_id: sucursalDispo, p_producto_id: modalStock.id,
-        p_valor: cant, p_modo: 'set', p_motivo: 'ajuste',
-        p_detalle: 'Ajuste desde Catálogo',
-      })
-      if (e1) { avisar('No se pudo guardar el stock: ' + e1.message); setSavingStock(false); return }
-      const { error: eMin } = await supabase.from('producto_stock')
-        .update({ stock_minimo: isNaN(min) || min < 0 ? 0 : min })
-        .eq('producto_id', modalStock.id).eq('sucursal_id', sucursalDispo)
-      if (eMin) { avisar('Stock guardado, pero no se pudo guardar el mínimo: ' + eMin.message) }
-    }
-    const { error: e2 } = await supabase.from('productos')
-      .update({ controla_stock: activando }).eq('id', modalStock.id).eq('empresa_id', ctx.empresaId)
-    if (e2) { avisar('No se pudo guardar: ' + e2.message); setSavingStock(false); return }
-    setProductos(prev => prev.map(p => p.id === modalStock.id ? { ...p, controla_stock: activando } : p))
-    if (activando) setStockSuc(prev => ({ ...prev, [modalStock.id]: { cantidad: cant, stock_minimo: isNaN(min) || min < 0 ? 0 : min } }))
-    setSavingStock(false)
-    setModalStock(null)
-  }
+  // STOCK ETAPA 1.1 (GO CTO 08/11): el Catálogo YA NO escribe stock. Habilitar, existencias y mínimo se gestionan en Stock;
+  // acá solo se muestra una etiqueta informativa con link (más abajo). stockSuc (solo lectura) alimenta esa etiqueta.
 
   function isDisponible(id: string): boolean {
     return disponibilidad[id] !== false // undefined = disponible por defecto
@@ -814,22 +767,22 @@ export default function CatalogoPage() {
                                   )
                                 })}
                               </div>
-                              {prod.controla_stock === true ? (() => {
+                              {(() => {
+                                // Etiqueta SOLO informativa: lleva a Stock, donde se habilita, se carga y se ajusta
+                                const href = `/${ctx?.empresaSlug ?? ''}/admin/stock`
+                                if (prod.controla_stock !== true) return (
+                                  <Link href={href} title="Sin control de stock. Se habilita en Stock."
+                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-neutral-300 hover:text-neutral-500 hover:bg-neutral-100 transition-colors">📦 Sin control</Link>)
                                 const st = stockSuc[prod.id]
                                 const cant = st?.cantidad ?? 0
                                 const alerta = !st || cant <= (st?.stock_minimo ?? 0)
                                 return (
-                                  <button onClick={() => abrirStock(prod)}
+                                  <Link href={href} title="Ver y gestionar en Stock"
                                     className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${alerta ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'}`}>
                                     📦 {st ? cant : 'sin stock acá'}{alerta && st ? ' ⚠️' : ''}
-                                  </button>
+                                  </Link>
                                 )
-                              })() : (
-                                <button onClick={() => abrirStock(prod)}
-                                  className="px-2.5 py-1 rounded-lg text-xs font-semibold text-neutral-300 hover:text-neutral-500 hover:bg-neutral-100 transition-colors">
-                                  📦 Stock
-                                </button>
-                              )}
+                              })()}
                               <button
                                 onClick={() => toggleDisponibilidad(prod.id, 'producto', isDisponible(prod.id))}
                                 disabled={savingDispo === prod.id}
@@ -937,43 +890,6 @@ export default function CatalogoPage() {
       )}
 
       {/* Modal Categoría */}
-      {/* STOCK V1: editor de stock por producto y sucursal */}
-      {modalStock && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setModalStock(null)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <button onClick={() => setModalStock(null)} className="absolute top-4 right-4 p-1 text-neutral-400 hover:text-neutral-600"><X className="h-5 w-5" /></button>
-            <h3 className="font-black text-neutral-900 text-lg mb-1">📦 Stock — {modalStock.nombre}</h3>
-            <p className="text-xs text-neutral-400 mb-4">Cantidad para la sucursal <b>{sucursales.find(s => s.id === sucursalDispo)?.nombre ?? ''}</b>. El interruptor aplica al producto en todas las sucursales.</p>
-            <label className="flex items-center justify-between mb-4">
-              <span className="text-sm font-semibold text-neutral-700">Controlar stock de este producto</span>
-              <button onClick={() => setStockForm(f => ({ ...f, controla: !f.controla }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${stockForm.controla ? 'bg-green-500' : 'bg-neutral-200'}`}>
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${stockForm.controla ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </label>
-            {stockForm.controla && (
-              <div className="grid grid-cols-2 gap-3 mb-2">
-                <div>
-                  <Label className="text-xs">Cantidad actual *</Label>
-                  <Input type="number" min="0" value={stockForm.cantidad}
-                    onChange={e => setStockForm(f => ({ ...f, cantidad: e.target.value }))} placeholder="Ej: 24" />
-                </div>
-                <div>
-                  <Label className="text-xs">Avisar cuando quede</Label>
-                  <Input type="number" min="0" value={stockForm.minimo}
-                    onChange={e => setStockForm(f => ({ ...f, minimo: e.target.value }))} placeholder="0" />
-                </div>
-              </div>
-            )}
-            {stockForm.controla && <p className="text-xs text-neutral-400 mb-4">Con cantidad 0 el producto se oculta solo en los canales de venta. Al vender descuenta, al eliminar un pedido devuelve.</p>}
-            <ConeButton onClick={guardarStock} disabled={savingStock} className="w-full">
-              {savingStock ? 'Guardando…' : 'Guardar'}
-            </ConeButton>
-          </div>
-        </div>
-      )}
-
       <ConeModal open={modalCat} onClose={() => setModalCat(false)} title={editId ? 'Editar categoría' : 'Nueva categoría'}
         footer={<><ConeButton variant="outline" onClick={() => setModalCat(false)}>Cancelar</ConeButton><ConeButton onClick={saveCat} loading={saving}>Guardar</ConeButton></>}>
         <div className="space-y-4">

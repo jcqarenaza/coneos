@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, TrendingUp, CreditCard, Clock, Package } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Store, Users, BarChart3, Settings, LogOut, Truck, Lock, X, Cherry, Gift, FileText, TrendingUp, CreditCard, Clock, Package, Boxes } from 'lucide-react'
 import { marcaDe } from '@/lib/brand'
 
 interface Props { usuarioNombre: string; empresaNombre: string; slug: string; modulos: Record<string, boolean>; logoUrl?: string | null }
@@ -40,6 +40,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
     // COMPRAS T2 (29/09): módulo OFF = NADA visible (guardia 6 del CTO).
     // Sin candado comercial hasta el lanzamiento — el producto está en obra.
     ...(modulos.compras === true ? [{ href: `/${slug}/admin/compras`, label: 'Compras', icon: Package }] : []),
+    { href: `/${slug}/admin/stock`, label: 'Stock', icon: Boxes },
     { href: `/${slug}/admin/ventas`, label: 'Ventas', icon: BarChart3, seccion: 'Informes' },
     { href: `/${slug}/admin/trafico`, label: 'Tráfico', icon: TrendingUp },
     { href: `/${slug}/admin/config`, label: 'Configuración', icon: Settings, seccion: 'Empresa' },
