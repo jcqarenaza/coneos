@@ -21,13 +21,20 @@ const ESTADO_LABEL: Record<string, string> = {
   PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo',
 }
 
+// Suma/resta días a una fecha 'YYYY-MM-DD' sin depender de la zona horaria del navegador
+function moverDia(ymd: string, delta: number): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + delta)).toISOString().slice(0, 10)
+}
+
 export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [nombre, setNombre] = useState('')
   const [stats, setStats] = useState({ totalHoy: 0, totalAyer: 0, cantidadHoy: 0, sucursales: 0, productos: 0, operadores: 0 })
   const [pedidosActivos, setPedidosActivos] = useState<{ id: string; numero_pedido: number; estado: string; total: number; created_at: string }[]>([])
   const [empresaIdState, setEmpresaIdState] = useState<string | null>(null)
-  const [periodoCadetes, setPeriodoCadetes] = useState<'hoy' | 'semana' | 'mes'>('hoy')
+  const [periodoCadetes, setPeriodoCadetes] = useState<'hoy' | 'semana' | 'mes' | 'dia'>('hoy')
+  const [diaCadetes, setDiaCadetes] = useState<string>(() => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }))
   const [cadetes, setCadetes] = useState<{ nombre: string; envios: number; transportado: number; efectivo: number; minProm: number | null; minN: number }[]>([])
   const [promGeneral, setPromGeneral] = useState<{ min: number | null; n: number }>({ min: null, n: 0 })
   const [cadetesLoading, setCadetesLoading] = useState(false)
@@ -104,11 +111,14 @@ export default function AdminDashboard() {
       let desde = hoyStr
       if (periodoCadetes === 'semana') desde = new Date(ahora.getTime() - 6 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
       if (periodoCadetes === 'mes') desde = new Date(ahora.getTime() - 29 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+      // Un día puntual (selector con flechas): desde = hasta = ese día
+      const hasta = periodoCadetes === 'dia' ? diaCadetes : hoyStr
+      if (periodoCadetes === 'dia') desde = diaCadetes
       const { data } = await supabase.from('pedidos')
         .select('colaborador_id, colaborador_nombre, total, metodo_pago, salio_at, entregado_at')
         .eq('empresa_id', empresaIdState).eq('tipo_pedido', 'delivery').eq('estado', 'DELIVERED')
         .not('colaborador_nombre', 'is', null)
-        .gte('fecha_pedido', desde).lte('fecha_pedido', hoyStr)
+        .gte('fecha_pedido', desde).lte('fecha_pedido', hasta)
       // Agrupar por PERSONA (colaborador_id), no por el nombre guardado en el
       // pedido: si renombran a un cadete, sus envíos viejos conservan el nombre
       // de entonces y salían como filas separadas (fix 18/10). Nombre = el actual.
@@ -136,7 +146,7 @@ export default function AdminDashboard() {
       setCadetesLoading(false)
     }
     loadCadetes()
-  }, [empresaIdState, periodoCadetes])
+  }, [empresaIdState, periodoCadetes, diaCadetes])
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -147,6 +157,7 @@ export default function AdminDashboard() {
 
   const ticketPromedio = stats.cantidadHoy > 0 ? stats.totalHoy / stats.cantidadHoy : 0
 
+  const hoyAR = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
   return (
     <div>
       <div className="mb-8">
@@ -262,13 +273,26 @@ export default function AdminDashboard() {
             <Bike className="h-4 w-4 text-neutral-400" />
             <h2 className="font-bold text-neutral-700">Envíos por cadete</h2>
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-1">
             {(['hoy', 'semana', 'mes'] as const).map(p => (
-              <button key={p} onClick={() => setPeriodoCadetes(p)}
+              <button key={p} onClick={() => { setPeriodoCadetes(p); if (p === 'hoy') setDiaCadetes(hoyAR) }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${periodoCadetes === p ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
                 {p === 'hoy' ? 'Hoy' : p === 'semana' ? '7 días' : '30 días'}
               </button>
             ))}
+            {/* Navegar día por día */}
+            <div className={`flex items-center rounded-lg ${periodoCadetes === 'dia' ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+              <button type="button" aria-label="Día anterior"
+                onClick={() => { setDiaCadetes(moverDia(periodoCadetes === 'dia' ? diaCadetes : hoyAR, -1)); setPeriodoCadetes('dia') }}
+                className={`px-2 py-1.5 text-xs font-bold ${periodoCadetes === 'dia' ? 'text-white' : 'text-neutral-500 hover:text-neutral-800'}`}>‹</button>
+              <input type="date" value={periodoCadetes === 'dia' ? diaCadetes : hoyAR} max={hoyAR}
+                onChange={e => { if (e.target.value) { setDiaCadetes(e.target.value > hoyAR ? hoyAR : e.target.value); setPeriodoCadetes('dia') } }}
+                className={`bg-transparent text-xs font-semibold outline-none ${periodoCadetes === 'dia' ? 'text-white [color-scheme:dark]' : 'text-neutral-500'}`} />
+              <button type="button" aria-label="Día siguiente"
+                disabled={periodoCadetes !== 'dia' || diaCadetes >= hoyAR}
+                onClick={() => { const n = moverDia(diaCadetes, 1); setDiaCadetes(n > hoyAR ? hoyAR : n) }}
+                className={`px-2 py-1.5 text-xs font-bold disabled:opacity-30 ${periodoCadetes === 'dia' ? 'text-white' : 'text-neutral-500'}`}>›</button>
+            </div>
           </div>
         </div>
         {cadetesLoading ? (
