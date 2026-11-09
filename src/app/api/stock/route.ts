@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { UUID_RE, validarItems, validarMotivo, soloContados, estadoStock, traducirErrorAjuste } from '@/lib/stock/ajuste'
+import { validarMinimo, unidadesVendibles } from '@/lib/stock/habilitar'
 
 // ============================================================
 // /api/stock — STOCK ETAPA 1 (GO CTO 08/11)
@@ -14,7 +15,11 @@ import { UUID_RE, validarItems, validarMotivo, soloContados, estadoStock, traduc
 // Identidad: Bearer del administrador → la sesión, el usuario y la sucursal se validan ACÁ, en el servidor.
 // La empresa sale SIEMPRE de la sucursal validada, jamás del body.
 // Todo movimiento de stock lo hace la función SQL aplicar_ajuste_stock
-// (que usa ajustar_stock): esta ruta no escribe stock por su cuenta.
+// (que usa ajustar_stock): esta ruta no escribe cantidades por su cuenta.
+// ETAPA 1.1 (GO CTO 08/11): ESTA ES LA ÚNICA PUERTA para habilitar/quitar el control de stock (productos.controla_stock)
+// y para editar el mínimo (producto_stock.stock_minimo). El Catálogo ya no escribe stock.
+//   · habilitar / quitar control es del PRODUCTO (todas las sucursales): solo administradores con alcance de toda la empresa.
+//   · el mínimo es por sucursal: cualquier administrador con acceso a esa sucursal.
 // ============================================================
 
 const err = (error: string, status = 400, extra: Record<string, unknown> = {}) => NextResponse.json({ error, ...extra }, { status })
@@ -46,19 +51,20 @@ async function autorizar(request: Request) {
   const sucursales = (sucs ?? []) as Sucursal[]
   if (sucursales.length === 0) return { fail: err('No tenés sucursales asignadas.', 403) }
 
-  return { supabase, userId, nombre: (ua.nombre as string | undefined) ?? null, sucursales }
+  const empresaCompleta = conEmpresa || filas.length === 0   // sin fila de rol = administrador de toda su empresa
+  return { supabase, userId, nombre: (ua.nombre as string | undefined) ?? null, sucursales, empresaCompleta }
 }
 
 export async function POST(request: Request) {
   const a = await autorizar(request)
   if ('fail' in a && a.fail) return a.fail
-  const { supabase, userId, nombre, sucursales } = a as Exclude<typeof a, { fail: NextResponse }>
+  const { supabase, userId, nombre, sucursales, empresaCompleta } = a as Exclude<typeof a, { fail: NextResponse }>
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>
   const accion = body.accion
 
   if (accion === 'sucursales') {
-    return NextResponse.json({ sucursales: sucursales.map(s => ({ id: s.id, nombre: s.nombre })) })
+    return NextResponse.json({ sucursales: sucursales.map(s => ({ id: s.id, nombre: s.nombre })), puede_habilitar: empresaCompleta })
   }
 
   const sucursalId = body.sucursal_id
@@ -67,24 +73,74 @@ export async function POST(request: Request) {
   if (!suc) return err('No tenés acceso a esa sucursal.', 403)
   const empresaId = suc.empresa_id
 
-  // ── Inventario: existencias, mínimo y estado por sucursal ──
+  // ── Inventario: existencias, mínimo y estado por sucursal. todos=true suma los productos SIN control de stock (para habilitarlos) ──
   if (accion === 'inventario') {
-    const [{ data: prods }, { data: cats }, { data: filas }] = await Promise.all([
-      supabase.from('productos').select('id, nombre, categoria_id').eq('empresa_id', empresaId).eq('controla_stock', true).eq('activo', true).is('deleted_at', null).order('nombre'),
+    const todos = body.todos === true
+    let qp = supabase.from('productos').select('id, nombre, categoria_id, codigo, controla_stock, orden').eq('empresa_id', empresaId).eq('activo', true).is('deleted_at', null)
+    if (!todos) qp = qp.eq('controla_stock', true)
+    const [{ data: prods }, { data: cats }, { data: filas }, { data: pres }] = await Promise.all([
+      qp.order('nombre'),
       supabase.from('categorias').select('id, nombre, orden').eq('empresa_id', empresaId).order('orden'),
       supabase.from('producto_stock').select('producto_id, cantidad, stock_minimo, updated_at').eq('empresa_id', empresaId).eq('sucursal_id', sucursalId),
+      supabase.from('presentaciones').select('id, producto_id, nombre, factor_stock, orden').eq('empresa_id', empresaId).eq('activo', true).order('orden'),
     ])
     const porProducto = new Map((filas ?? []).map(f => [f.producto_id as string, f]))
     const catNombre = new Map((cats ?? []).map(c => [c.id as string, c.nombre as string]))
+    const presDe = new Map<string, { id: string; nombre: string; factor: number }[]>()
+    for (const r of pres ?? []) { const l = presDe.get(r.producto_id as string) ?? []; l.push({ id: r.id as string, nombre: r.nombre as string, factor: Math.max(1, Math.floor(Number(r.factor_stock) || 1)) }); presDe.set(r.producto_id as string, l) }
     const items = (prods ?? []).map(p => {
+      const controla = p.controla_stock === true
       const f = porProducto.get(p.id as string)
-      const cantidad = f ? Number(f.cantidad) : null
-      const minimo = f ? Number(f.stock_minimo) : null
-      return { producto_id: p.id, nombre: p.nombre, categoria_id: p.categoria_id, categoria: catNombre.get(p.categoria_id as string) ?? null,
-        cantidad, minimo, estado: estadoStock(cantidad, minimo), actualizado: f?.updated_at ?? null }
+      const cantidad = controla && f ? Number(f.cantidad) : null
+      const minimo = controla && f ? Number(f.stock_minimo) : null
+      return { producto_id: p.id, nombre: p.nombre, codigo: p.codigo ?? null, categoria_id: p.categoria_id, categoria: catNombre.get(p.categoria_id as string) ?? null,
+        controla, cantidad, minimo, estado: controla ? estadoStock(cantidad, minimo) : 'sin_control', actualizado: f?.updated_at ?? null,
+        presentaciones: (presDe.get(p.id as string) ?? []).map(x => ({ ...x, vendibles: unidadesVendibles(cantidad, x.factor) })) }
     })
     return NextResponse.json({ sucursal: { id: suc.id, nombre: suc.nombre }, ahora: new Date().toISOString(), items,
-      categorias: (cats ?? []).map(c => ({ id: c.id, nombre: c.nombre })) })
+      categorias: (cats ?? []).map(c => ({ id: c.id, nombre: c.nombre })), puede_habilitar: empresaCompleta })
+  }
+
+  // ── Etapa 1.1: habilitar / quitar el control de stock de un PRODUCTO (todas las sucursales de la empresa) ──
+  if (accion === 'habilitar' || accion === 'deshabilitar') {
+    if (!empresaCompleta) return err('Solo un administrador de toda la empresa puede habilitar o quitar el control de stock.', 403)
+    const productoId = body.producto_id
+    if (typeof productoId !== 'string' || !UUID_RE.test(productoId)) return err('Producto inválido.')
+    // La empresa del producto se valida contra la sucursal autorizada: un producto de otra empresa no existe para este administrador
+    const { data: prod } = await supabase.from('productos').select('id, nombre, controla_stock').eq('id', productoId).eq('empresa_id', empresaId).is('deleted_at', null).maybeSingle()
+    if (!prod) return err('Producto no encontrado.', 404)
+    if (accion === 'habilitar') {
+      if (prod.controla_stock !== true) {
+        const { error } = await supabase.from('productos').update({ controla_stock: true }).eq('id', productoId).eq('empresa_id', empresaId)
+        if (error) { console.error('[stock] habilitar', error.message); return err('No se pudo habilitar el control de stock.', 500) }
+      }
+      return NextResponse.json({ ok: true, producto_id: productoId, controla: true })
+    }
+    // Quitar el control con existencias: el servidor pide una confirmación explícita (no se ocultan existencias por un clic)
+    const { data: ex } = await supabase.from('producto_stock').select('cantidad').eq('empresa_id', empresaId).eq('producto_id', productoId)
+    const existencias = (ex ?? []).reduce((t, r) => t + Math.max(0, Number(r.cantidad) || 0), 0)
+    if (existencias > 0 && body.confirmar !== true) {
+      return err(`«${prod.nombre}» tiene ${existencias} unidades en stock. Si le quitás el control, las ventas dejan de descontar y las existencias dejan de verse. Si lo volvés a habilitar, contalo de nuevo.`, 409, { codigo: 'CONFIRMAR_QUITAR', existencias })
+    }
+    if (prod.controla_stock === true) {
+      const { error } = await supabase.from('productos').update({ controla_stock: false }).eq('id', productoId).eq('empresa_id', empresaId)
+      if (error) { console.error('[stock] deshabilitar', error.message); return err('No se pudo quitar el control de stock.', 500) }
+    }
+    return NextResponse.json({ ok: true, producto_id: productoId, controla: false })
+  }
+
+  // ── Etapa 1.1: mínimo de aviso (configuración por sucursal; no es un movimiento de stock) ──
+  if (accion === 'minimo') {
+    const productoId = body.producto_id
+    if (typeof productoId !== 'string' || !UUID_RE.test(productoId)) return err('Producto inválido.')
+    const eMin = validarMinimo(body.minimo); if (eMin) return err(eMin)
+    const { data: prod } = await supabase.from('productos').select('id, controla_stock').eq('id', productoId).eq('empresa_id', empresaId).is('deleted_at', null).maybeSingle()
+    if (!prod) return err('Producto no encontrado.', 404)
+    const { data: fila } = await supabase.from('producto_stock').select('producto_id').eq('empresa_id', empresaId).eq('sucursal_id', sucursalId).eq('producto_id', productoId).maybeSingle()
+    if (prod.controla_stock !== true || !fila) return err('Este producto todavía no tiene stock cargado en esta sucursal. Cargalo primero con un Ajuste general.', 409, { codigo: 'SIN_ALTA' })
+    const { error } = await supabase.from('producto_stock').update({ stock_minimo: body.minimo }).eq('empresa_id', empresaId).eq('sucursal_id', sucursalId).eq('producto_id', productoId)
+    if (error) { console.error('[stock] minimo', error.message); return err('No se pudo guardar el mínimo.', 500) }
+    return NextResponse.json({ ok: true, producto_id: productoId, minimo: body.minimo })
   }
 
   // ── Iniciar el conteo: el SERVIDOR congela y guarda la base (snapshot) ──
