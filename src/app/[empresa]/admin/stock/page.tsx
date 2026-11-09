@@ -245,7 +245,7 @@ export default function StockPage() {
             <select value={catF} onChange={e => setCatF(e.target.value)} className={inputCls}><option value="">Todas las categorías</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
             <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer"><input type="checkbox" checked={todos} onChange={e => setTodos(e.target.checked)} />Mostrar todos los productos</label>
             {puedeHab && todos && sinControlVisibles > 0 && !loteConfirmar && (
-              <button onClick={() => setLoteConfirmar(true)} className="px-3 py-2 rounded-lg border border-neutral-300 text-sm bg-white hover:bg-neutral-50">Habilitar control a los {sinControlVisibles} visibles</button>)}
+              <button onClick={() => setLoteConfirmar(true)} className="px-3 py-2 rounded-lg border border-neutral-300 text-sm bg-white hover:bg-neutral-50">Habilitar control a {sinControlVisibles === 1 ? 'el' : 'los'} {sinControlVisibles} visible{sinControlVisibles === 1 ? '' : 's'}</button>)}
           </div>
           {loteConfirmar && (
             <div className="mb-3 p-3 rounded-lg bg-neutral-50 border border-neutral-200 text-sm text-neutral-800">
