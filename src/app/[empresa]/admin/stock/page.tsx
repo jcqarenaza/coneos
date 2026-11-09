@@ -59,6 +59,9 @@ export default function StockPage() {
   const [puedeHab, setPuedeHab] = useState(false)    // habilitar/quitar control = administrador de toda la empresa
   const [quitar, setQuitar] = useState<{ producto_id: string; texto: string } | null>(null)
   const [accionando, setAccionando] = useState('')
+  const [pendientes, setPendientes] = useState<Set<string>>(new Set())   // checkboxes en vuelo (no bloquean a los demás)
+  const [loteConfirmar, setLoteConfirmar] = useState(false)
+  const [loteTrabajando, setLoteTrabajando] = useState(false)
   const [minEdit, setMinEdit] = useState<Record<string, string>>({})
   const [avisoInv, setAvisoInv] = useState<{ ok: boolean; t: string } | null>(null)
 
@@ -86,17 +89,45 @@ export default function StockPage() {
 
   // Etapa 1.1: habilitar / quitar control (todo pasa por /api/stock; el servidor decide y pide confirmación si hay existencias)
   async function cambiarControl(i: InvItem, confirmar = false) {
-    setAvisoInv(null); setAccionando(i.producto_id)
+    setAvisoInv(null)
+    // HABILITAR: actualización inmediata en pantalla (sin recargar todo el inventario). El servidor sigue decidiendo: si falla, se revierte.
+    if (!i.controla) {
+      setPendientes(s => new Set(s).add(i.producto_id))
+      setInv(l => l.map(x => x.producto_id === i.producto_id ? { ...x, controla: true, estado: 'sin_alta' } : x))
+      try {
+        await api({ accion: 'habilitar', sucursal_id: sucId, producto_id: i.producto_id })
+      } catch (e) {
+        setInv(l => l.map(x => x.producto_id === i.producto_id ? i : x))
+        setAvisoInv({ ok: false, t: (e as Error).message })
+      } finally { setPendientes(s => { const n = new Set(s); n.delete(i.producto_id); return n }) }
+      return
+    }
+    // QUITAR: con confirmación si hay existencias (flujo de siempre)
+    setAccionando(i.producto_id)
     try {
-      await api({ accion: i.controla ? 'deshabilitar' : 'habilitar', sucursal_id: sucId, producto_id: i.producto_id, confirmar })
+      await api({ accion: 'deshabilitar', sucursal_id: sucId, producto_id: i.producto_id, confirmar })
       setQuitar(null)
-      setAvisoInv({ ok: true, t: i.controla ? `«${i.nombre}» ya no controla stock.` : `«${i.nombre}» ahora controla stock. Cargale las existencias con un Ajuste general.` })
+      setAvisoInv({ ok: true, t: `«${i.nombre}» ya no controla stock.` })
       await cargarInv()
     } catch (e) {
       const er = e as Error & { codigo?: string }
       if (er.codigo === 'CONFIRMAR_QUITAR') setQuitar({ producto_id: i.producto_id, texto: er.message })
       else setAvisoInv({ ok: false, t: er.message })
     } finally { setAccionando('') }
+  }
+  // Alta inicial: habilita de una vez todos los productos visibles (respeta búsqueda y categoría) que todavía no controlan stock
+  async function habilitarLote() {
+    const ids = filtrados.filter(i => !i.controla).map(i => i.producto_id)
+    if (ids.length === 0) return
+    setLoteTrabajando(true); setAvisoInv(null)
+    try {
+      const j = await api({ accion: 'habilitar_lote', sucursal_id: sucId, producto_ids: ids })
+      const set = new Set(ids)
+      setInv(l => l.map(x => set.has(x.producto_id) ? { ...x, controla: true, estado: 'sin_alta' } : x))
+      setAvisoInv({ ok: true, t: `${j.habilitados} producto${j.habilitados === 1 ? '' : 's'} con control de stock. Cargales las existencias con un Ajuste general.` })
+      setLoteConfirmar(false)
+    } catch (e) { setAvisoInv({ ok: false, t: (e as Error).message }); setLoteConfirmar(false) }
+    finally { setLoteTrabajando(false) }
   }
   async function guardarMinimo(i: InvItem) {
     const v = (minEdit[i.producto_id] ?? '').trim()
@@ -176,6 +207,7 @@ export default function StockPage() {
   useEffect(() => { setConteo(null); setContado({}); invalidar(); setMsg(null) }, [sucId])
 
   const filtrados = useMemo(() => inv.filter(i => (!catF || i.categoria_id === catF) && (!busca || i.nombre.toLowerCase().includes(busca.toLowerCase()) || (i.codigo ?? '').toLowerCase().includes(busca.toLowerCase()))), [inv, busca, catF])
+  const sinControlVisibles = useMemo(() => filtrados.filter(i => !i.controla).length, [filtrados])
   // Árbol: categoría → producto → presentaciones (en el orden de las categorías del catálogo)
   const arbol = useMemo(() => {
     const orden = new Map(cats.map((c, k) => [c.id, k]))
@@ -212,7 +244,17 @@ export default function StockPage() {
             <div className="relative"><Search size={14} className="absolute left-3 top-3 text-neutral-400" /><input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar producto o código" className={`${inputCls} pl-8`} /></div>
             <select value={catF} onChange={e => setCatF(e.target.value)} className={inputCls}><option value="">Todas las categorías</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
             <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer"><input type="checkbox" checked={todos} onChange={e => setTodos(e.target.checked)} />Mostrar todos los productos</label>
+            {puedeHab && todos && sinControlVisibles > 0 && !loteConfirmar && (
+              <button onClick={() => setLoteConfirmar(true)} className="px-3 py-2 rounded-lg border border-neutral-300 text-sm bg-white hover:bg-neutral-50">Habilitar control a los {sinControlVisibles} visibles</button>)}
           </div>
+          {loteConfirmar && (
+            <div className="mb-3 p-3 rounded-lg bg-neutral-50 border border-neutral-200 text-sm text-neutral-800">
+              <p className="mb-2">Vas a habilitar el control de stock de <b>{sinControlVisibles}</b> producto{sinControlVisibles === 1 ? '' : 's'}{catF || busca ? ' (los que ves con el filtro actual)' : ''}. Aplica a todas las sucursales y no carga existencias: después se dan de alta con un Ajuste general.</p>
+              <div className="flex gap-2">
+                <button onClick={habilitarLote} disabled={loteTrabajando} className="px-3 py-1.5 rounded-lg bg-neutral-900 text-white text-sm font-medium disabled:opacity-50">{loteTrabajando ? 'Habilitando…' : 'Sí, habilitar'}</button>
+                <button onClick={() => setLoteConfirmar(false)} disabled={loteTrabajando} className="px-3 py-1.5 rounded-lg border border-neutral-300 text-sm bg-white">Cancelar</button>
+              </div>
+            </div>)}
           {avisoInv && <div className={`mb-3 p-3 rounded-lg text-sm flex gap-2 ${avisoInv.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{avisoInv.ok ? <CheckCircle2 size={16} className="mt-0.5" /> : <AlertTriangle size={16} className="mt-0.5" />}{avisoInv.t}</div>}
           {quitar && (
             <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
@@ -232,7 +274,7 @@ export default function StockPage() {
                     {g.items.map(i => (
                       <Fragment key={i.producto_id}>
                         <tr className={`border-t border-neutral-100 ${i.controla ? '' : 'text-neutral-400'}`}>
-                          <td className="px-4 py-2"><input type="checkbox" checked={i.controla} disabled={!puedeHab || accionando === i.producto_id} onChange={() => cambiarControl(i)} aria-label={`Controlar stock de ${i.nombre}`} title={puedeHab ? (i.controla ? 'Quitar el control de stock' : 'Habilitar el control de stock') : 'Solo un administrador de toda la empresa puede cambiarlo'} /></td>
+                          <td className="px-4 py-2"><input type="checkbox" checked={i.controla} disabled={!puedeHab || accionando === i.producto_id || pendientes.has(i.producto_id)} onChange={() => cambiarControl(i)} aria-label={`Controlar stock de ${i.nombre}`} title={puedeHab ? (i.controla ? 'Quitar el control de stock' : 'Habilitar el control de stock') : 'Solo un administrador de toda la empresa puede cambiarlo'} /></td>
                           <td className="px-4 py-2 font-medium">{i.nombre}{i.codigo && <span className="ml-2 text-xs font-normal text-neutral-400">{i.codigo}</span>}</td>
                           <td className="px-4 py-2 text-right tabular-nums">{i.cantidad ?? '—'}</td>
                           <td className="px-4 py-2 text-right tabular-nums text-neutral-500">{i.controla && i.cantidad !== null

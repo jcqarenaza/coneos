@@ -129,6 +129,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, producto_id: productoId, controla: false })
   }
 
+  // ── Alta inicial en LOTE: habilitar el control de varios productos de una sola vez (solo HABILITAR; quitar sigue siendo uno a uno, con confirmación) ──
+  // Mismas reglas que 'habilitar': solo administrador de toda la empresa, productos de SU empresa y no borrados. No toca existencias.
+  if (accion === 'habilitar_lote') {
+    if (!empresaCompleta) return err('Solo un administrador de toda la empresa puede habilitar o quitar el control de stock.', 403)
+    const ids = body.producto_ids
+    if (!Array.isArray(ids) || ids.length === 0) return err('No hay productos para habilitar.')
+    if (ids.length > 500) return err('Demasiados productos de una vez (máximo 500). Filtrá por categoría y repetí.')
+    if (!ids.every(x => typeof x === 'string' && UUID_RE.test(x))) return err('Producto inválido.')
+    const unicos = [...new Set(ids as string[])]
+    const { data: hechos, error } = await supabase.from('productos').update({ controla_stock: true })
+      .in('id', unicos).eq('empresa_id', empresaId).is('deleted_at', null).neq('controla_stock', true).select('id')
+    if (error) { console.error('[stock] habilitar_lote', error.message); return err('No se pudo habilitar el control de stock.', 500) }
+    return NextResponse.json({ ok: true, habilitados: (hechos ?? []).length, pedidos: unicos.length })
+  }
+
   // ── Etapa 1.1: mínimo de aviso (configuración por sucursal; no es un movimiento de stock) ──
   if (accion === 'minimo') {
     const productoId = body.producto_id
