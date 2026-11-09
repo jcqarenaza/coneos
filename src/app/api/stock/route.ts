@@ -5,10 +5,13 @@ import { UUID_RE, validarItems, validarMotivo, soloContados, estadoStock, traduc
 // ============================================================
 // /api/stock — STOCK ETAPA 1 (GO CTO 08/11)
 // Inventario · Ajuste general (previsualizar / aplicar) · Movimientos.
-// REGLA DE NEGOCIO: ADMIN_EMPRESA y ADMIN_SUCURSAL pueden ajustar stock, ver inventario y movimientos; ADMIN_SUCURSAL solo en su sucursal.
-// Identidad: Bearer del administrador → se valida la sesión, el rol y la
-// sucursal ACÁ, en el servidor. Solo ADMIN_EMPRESA (todas las sucursales de
-// su empresa) y ADMIN_SUCURSAL (solo la suya). Operadores de caja: fuera.
+// QUIÉN PUEDE (corregido 08/11 según cómo funciona hoy el panel):
+//   El acceso al panel lo da usuarios_admin (empresa + activo); la tabla de roles casi no se usa
+//   (los administradores reales NO tienen fila de rol). Entonces:
+//   · usuario ACTIVO de usuarios_admin sin rol, o con ADMIN_EMPRESA → ve y ajusta TODAS las sucursales de SU empresa;
+//   · con ADMIN_SUCURSAL (y sin ADMIN_EMPRESA) → SOLO su sucursal;
+//   · SUPER_ADMIN solo, operadores de caja/colaboradores (no son usuarios_admin) y gente sin sesión: fuera.
+// Identidad: Bearer del administrador → la sesión, el usuario y la sucursal se validan ACÁ, en el servidor.
 // La empresa sale SIEMPRE de la sucursal validada, jamás del body.
 // Todo movimiento de stock lo hace la función SQL aplicar_ajuste_stock
 // (que usa ajustar_stock): esta ruta no escribe stock por su cuenta.
@@ -26,24 +29,24 @@ async function autorizar(request: Request) {
   if (eu || !u?.user?.id) return { fail: err('No autorizado', 401) }
   const userId = u.user.id
 
-  const { data: roles } = await supabase.from('usuario_admin_roles').select('empresa_id, sucursal_id, rol').eq('usuario_id', userId)
-  const validos = (roles ?? []).filter(r => r.rol === 'ADMIN_EMPRESA' || r.rol === 'ADMIN_SUCURSAL')
-  if (validos.length === 0) return { fail: err('Solo los administradores pueden gestionar el stock.', 403) }
+  // 1) El usuario tiene que ser un administrador ACTIVO del panel
+  const { data: ua } = await supabase.from('usuarios_admin').select('nombre, empresa_id, activo').eq('id', userId).maybeSingle()
+  if (!ua || ua.activo !== true || !ua.empresa_id) return { fail: err('Solo los administradores pueden gestionar el stock.', 403) }
 
-  const sucursales: Sucursal[] = []
-  for (const r of validos) {
-    let q = supabase.from('sucursales').select('id, nombre, empresa_id').eq('empresa_id', r.empresa_id)
-    if (r.rol === 'ADMIN_SUCURSAL') {
-      if (!r.sucursal_id) continue
-      q = q.eq('id', r.sucursal_id)
-    }
-    const { data } = await q
-    for (const s of (data ?? []) as Sucursal[]) if (!sucursales.some(x => x.id === s.id)) sucursales.push(s)
-  }
+  // 2) Alcance: sin fila de rol (o ADMIN_EMPRESA) = toda su empresa; solo ADMIN_SUCURSAL = su sucursal; SUPER_ADMIN solo = fuera
+  const { data: roles } = await supabase.from('usuario_admin_roles').select('empresa_id, sucursal_id, rol').eq('usuario_id', userId)
+  const filas = (roles ?? []) as { empresa_id: string; sucursal_id: string | null; rol: string }[]
+  const conEmpresa = filas.some(r => r.rol === 'ADMIN_EMPRESA' && r.empresa_id === ua.empresa_id)
+  const deSucursal = filas.filter(r => r.rol === 'ADMIN_SUCURSAL' && r.empresa_id === ua.empresa_id && r.sucursal_id)
+  if (filas.length > 0 && !conEmpresa && deSucursal.length === 0) return { fail: err('Solo los administradores pueden gestionar el stock.', 403) }   // p. ej. SUPER_ADMIN solo
+
+  let q = supabase.from('sucursales').select('id, nombre, empresa_id').eq('empresa_id', ua.empresa_id)
+  if (!conEmpresa && deSucursal.length > 0) q = q.in('id', deSucursal.map(r => r.sucursal_id as string))
+  const { data: sucs } = await q
+  const sucursales = (sucs ?? []) as Sucursal[]
   if (sucursales.length === 0) return { fail: err('No tenés sucursales asignadas.', 403) }
 
-  const { data: ua } = await supabase.from('usuarios_admin').select('nombre').eq('id', userId).maybeSingle()
-  return { supabase, userId, nombre: (ua?.nombre as string | undefined) ?? null, sucursales }
+  return { supabase, userId, nombre: (ua.nombre as string | undefined) ?? null, sucursales }
 }
 
 export async function POST(request: Request) {

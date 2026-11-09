@@ -14,7 +14,7 @@ const U = (n: number) => `u0000000-0000-4000-8000-00000000000${n}`
 const EMP = 'e0000000-0000-4000-8000-000000000001', EMP2 = 'e0000000-0000-4000-8000-000000000002'
 const S1 = '50000000-0000-4000-8000-000000000001', S2 = '50000000-0000-4000-8000-000000000002', S3 = '50000000-0000-4000-8000-000000000003'
 const P1 = 'a0000000-0000-4000-8000-000000000001', P2 = 'a0000000-0000-4000-8000-000000000002', LOTE = 'b0000000-0000-4000-8000-000000000001'
-const TOKENS: Record<string, string> = { adminEmp: U(1), adminSuc: U(2), caja: U(3), sinRol: U(4), adminEmp2: U(5), superAdmin: U(6) }
+const TOKENS: Record<string, string> = { adminEmp: U(1), adminSuc: U(2), caja: U(3), sinRol: U(4), adminEmp2: U(5), superAdmin: U(6), sinFila: U(7), inactivo: U(8), sinFila2: U(9) }
 
 function match(row: Row, url: URL) {
   for (const [k, v] of url.searchParams.entries()) {
@@ -64,7 +64,12 @@ beforeEach(() => {
     { usuario_id: TOKENS.superAdmin, empresa_id: EMP, sucursal_id: null, rol: 'SUPER_ADMIN' },
   ]
   T.sucursales = [{ id: S1, nombre: 'Centro', empresa_id: EMP }, { id: S2, nombre: 'Norte', empresa_id: EMP }, { id: S3, nombre: 'Otra', empresa_id: EMP2 }]
-  T.usuarios_admin = [{ id: TOKENS.adminEmp, nombre: 'Luci', empresa_id: EMP }, { id: TOKENS.adminSuc, nombre: 'Encargado Centro', empresa_id: EMP }]
+  T.usuarios_admin = [
+    { id: TOKENS.adminEmp, nombre: 'Luci', empresa_id: EMP, activo: true }, { id: TOKENS.adminSuc, nombre: 'Encargado Centro', empresa_id: EMP, activo: true },
+    { id: TOKENS.adminEmp2, nombre: 'Otra', empresa_id: EMP2, activo: true }, { id: TOKENS.superAdmin, nombre: 'Super', empresa_id: EMP, activo: true },
+    { id: TOKENS.sinFila, nombre: 'Marina', empresa_id: EMP, activo: true }, { id: TOKENS.sinFila2, nombre: 'Otra sin fila', empresa_id: EMP2, activo: true },
+    { id: TOKENS.inactivo, nombre: 'Baja', empresa_id: EMP, activo: false },
+  ]
   T.productos = [
     { id: P1, empresa_id: EMP, nombre: 'Alfajor', categoria_id: 'c1', controla_stock: true, activo: true, deleted_at: null },
     { id: P2, empresa_id: EMP, nombre: 'Bomba', categoria_id: 'c1', controla_stock: true, activo: true, deleted_at: null },
@@ -87,6 +92,13 @@ describe('/api/stock: acceso', () => {
     assert.equal(rpc.length, 0)
   })
   test('A4 SUPER_ADMIN no entra por esta ruta (fuera del alcance del CTO) → 403', async () => { assert.equal((await llamar(AJ, TOKENS.superAdmin)).status, 403); assert.equal(rpc.length, 0) })
+  test('A4b administrador del panel SIN fila de rol (como Marina/Lucía hoy): ve y ajusta TODAS las sucursales de SU empresa, y solo de la suya', async () => {
+    const j = await (await llamar({ accion: 'sucursales' }, TOKENS.sinFila)).json(); assert.deepEqual(j.sucursales.map((s: Row) => s.id).sort(), [S1, S2])
+    assert.equal((await llamar(AJ, TOKENS.sinFila)).status, 200); assert.equal(rpc[0].args.p_usuario_id, TOKENS.sinFila); assert.equal(rpc[0].args.p_usuario_nombre, 'Marina')
+    assert.equal((await llamar({ ...AJ, sucursal_id: S3 }, TOKENS.sinFila)).status, 403)       // sucursal de otra empresa
+    const j2 = await (await llamar({ accion: 'sucursales' }, TOKENS.sinFila2)).json(); assert.deepEqual(j2.sucursales.map((s: Row) => s.id), [S3])
+  })
+  test('A4c administrador INACTIVO → 403 aunque tenga sesión válida', async () => { assert.equal((await llamar({ accion: 'sucursales' }, TOKENS.inactivo)).status, 403); assert.equal((await llamar(AJ, TOKENS.inactivo)).status, 403); assert.equal(rpc.length, 0) })
   test('A5 ADMIN_EMPRESA ve todas las sucursales de SU empresa y no las de otra', async () => {
     const j = await (await llamar({ accion: 'sucursales' })).json(); assert.deepEqual(j.sucursales.map((s: Row) => s.id).sort(), [S1, S2])
   })
