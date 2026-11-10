@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   rutaSubida, rutaCaptura, extensionSegura, esUuid, rutaDesdeValorCaptura, rutaCapturaDelPedido, firmarCaptura, firmarCapturasDePedidos,
   subirImagen, validarArchivoImagen, StorageRutaError, resumirCaptura,
+  detectarTipoComprobante, validarArchivoComprobante, MAX_BYTES_COMPROBANTE,
 } from '../storage'
 
 const E = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -191,4 +192,32 @@ test('resumirCaptura: saca el valor guardado y deja solo tiene_captura (true ún
   assert.equal(resumirCaptura({ id: P }, E).tiene_captura, false)
   assert.equal(resumirCaptura({ id: P, captura_transferencia_url: `${base}/pedidos/${U}.jpg` }, E).tiene_captura, false)          // comprobante de otro pedido
   assert.equal(resumirCaptura({ id: P, captura_transferencia_url: `${base}/${U}/pedidos/${P}.jpg` }, E).tiene_captura, false)      // empresa distinta
+})
+
+test('detectarTipoComprobante: reconoce JPEG, PNG y WebP por contenido; rechaza el resto (PDF incluido)', () => {
+  const b = (...n: number[]) => new Uint8Array(n)
+  assert.equal(detectarTipoComprobante(b(0xff, 0xd8, 0xff, 0xe1, 0)), 'image/jpeg')
+  assert.equal(detectarTipoComprobante(b(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0)), 'image/png')
+  assert.equal(detectarTipoComprobante(new Uint8Array([...Buffer.from('RIFF'), 9, 9, 9, 9, ...Buffer.from('WEBPVP8 ')])), 'image/webp')
+  assert.equal(detectarTipoComprobante(new Uint8Array(Buffer.from('%PDF-1.4'))), null)   // PDF no admitido: la caja no tiene visor
+  assert.equal(detectarTipoComprobante(new Uint8Array([...Buffer.from('RIFF'), 9, 9, 9, 9, ...Buffer.from('WAVEfmt ')])), null)   // RIFF que no es WebP
+  assert.equal(detectarTipoComprobante(new Uint8Array(Buffer.from('GIF89a'))), null)
+  assert.equal(detectarTipoComprobante(new Uint8Array(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'))), null)
+  assert.equal(detectarTipoComprobante(b(0x4d, 0x5a, 0x90)), null)           // ejecutable de Windows
+  assert.equal(detectarTipoComprobante(b()), null); assert.equal(detectarTipoComprobante(b(0xff, 0xd8)), null)   // vacío / truncado
+})
+test('validarArchivoComprobante: tamaño, tipo declarado y extensión del nombre', () => {
+  const jpg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+  const ok = (name: string, type: string) => validarArchivoComprobante({ name, type, size: jpg.length }, jpg)
+  assert.deepEqual(ok('a.jpg', 'image/jpeg'), { ok: true, tipo: 'image/jpeg' })
+  assert.deepEqual(ok('a.jpeg', 'image/jpg'), { ok: true, tipo: 'image/jpeg' })     // alias frecuente
+  assert.deepEqual(ok('IMG_9.HEIC', 'image/heic'), { ok: true, tipo: 'image/jpeg' }) // iOS: conserva el nombre, convierte el contenido
+  assert.equal((ok('sin-extension', '') as { codigo: string }).codigo, 'EXTENSION')   // sin extensión: se rechaza a propósito
+  assert.equal((ok('termina-en-punto.', '') as { codigo: string }).codigo, 'EXTENSION')
+  assert.equal((ok('a.png', 'image/png') as { codigo: string }).codigo, 'TIPO_NO_COINCIDE')
+  assert.equal((ok('a.svg', 'image/jpeg') as { codigo: string }).codigo, 'EXTENSION')
+  assert.equal((ok('a.html', '') as { codigo: string }).codigo, 'EXTENSION')
+  assert.equal((validarArchivoComprobante({ name: 'a.jpg', type: 'image/jpeg', size: MAX_BYTES_COMPROBANTE + 1 }, jpg) as { codigo: string }).codigo, 'GRANDE')
+  assert.equal((validarArchivoComprobante({ name: 'a.jpg', type: 'image/jpeg', size: 0 }, new Uint8Array()) as { codigo: string }).codigo, 'VACIO')
+  assert.equal((validarArchivoComprobante({ name: 'a.jpg', type: 'image/jpeg', size: 3 }, new Uint8Array([1, 2, 3])) as { codigo: string }).codigo, 'FORMATO')
 })

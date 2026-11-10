@@ -187,3 +187,39 @@ export function resumirCaptura<T extends { id: string; captura_transferencia_url
   const ok = rutaCapturaDelPedido({ id: p.id, empresa_id: empresaId, captura_transferencia_url }, empresaId) !== null
   return { ...resto, tiene_captura: ok }
 }
+
+// ── Comprobantes: escritor (A2) ──
+export const MAX_BYTES_COMPROBANTE = 10 * 1024 * 1024
+/** Únicos formatos admitidos y la extensión que se guarda para cada uno. PDF queda fuera hasta que la caja tenga visor (decisión CTO 09/11). */
+export const TIPOS_COMPROBANTE = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' } as const
+export type TipoComprobante = keyof typeof TIPOS_COMPROBANTE
+
+/** Tipo REAL del archivo según sus primeros bytes (no confía en el nombre ni en el tipo que declara el navegador). null = no admitido. */
+export function detectarTipoComprobante(b: Uint8Array): TipoComprobante | null {
+  const es = (off: number, ...bytes: number[]) => b.length >= off + bytes.length && bytes.every((v, i) => b[off + i] === v)
+  if (es(0, 0xff, 0xd8, 0xff)) return 'image/jpeg'
+  if (es(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'image/png'
+  if (es(0, 0x52, 0x49, 0x46, 0x46) && es(8, 0x57, 0x45, 0x42, 0x50)) return 'image/webp'   // RIFF....WEBP
+  return null
+}
+
+/**
+ * ¿Se acepta el archivo? Devuelve el tipo real o el motivo del rechazo. El tipo declarado, si viene, debe coincidir con el real
+ * (los celulares a veces lo mandan vacío: se acepta); la extensión del nombre es OBLIGATORIA y debe ser conocida (iOS conserva
+ * ".HEIC" aunque convierte a JPEG). La extensión que se GUARDA sale siempre del contenido, nunca del nombre.
+ */
+export function validarArchivoComprobante(f: { name: string; type: string; size: number }, bytes: Uint8Array):
+  { ok: true; tipo: TipoComprobante } | { ok: false; codigo: 'VACIO' | 'GRANDE' | 'FORMATO' | 'TIPO_NO_COINCIDE' | 'EXTENSION'; mensaje: string } {
+  if (f.size === 0 || bytes.length === 0) return { ok: false, codigo: 'VACIO', mensaje: 'El archivo está vacío' }
+  if (f.size > MAX_BYTES_COMPROBANTE || bytes.length > MAX_BYTES_COMPROBANTE) return { ok: false, codigo: 'GRANDE', mensaje: 'Archivo demasiado grande (máx 10 MB)' }
+  const tipo = detectarTipoComprobante(bytes)
+  if (!tipo) return { ok: false, codigo: 'FORMATO', mensaje: 'Formato no permitido (solo JPG, PNG o WebP)' }
+  const declarado = f.type.trim().toLowerCase()
+  const alias = declarado === 'image/jpg' || declarado === 'image/pjpeg' ? 'image/jpeg' : declarado
+  if (alias && alias !== 'application/octet-stream' && alias !== tipo && !((alias === 'image/heic' || alias === 'image/heif') && tipo === 'image/jpeg'))
+    return { ok: false, codigo: 'TIPO_NO_COINCIDE', mensaje: 'El tipo del archivo no coincide con su contenido' }
+  const ext = f.name.includes('.') ? f.name.split('.').pop()!.toLowerCase() : ''
+  if (!ext || !['jpg', 'jpeg', 'jfif', 'png', 'webp', 'heic', 'heif'].includes(ext))   // la extensión es obligatoria y reconocida
+    return { ok: false, codigo: 'EXTENSION', mensaje: 'El archivo debe tener una extensión válida (jpg, png o webp)' }
+  return { ok: true, tipo }
+}

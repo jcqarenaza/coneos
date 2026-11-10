@@ -168,12 +168,15 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     setSubiendoCaptura(true)
     const form = new FormData()
     form.append('pedido_id', pid)
-    form.append('archivo', captura)
+    // Algunos celulares entregan el archivo sin extensión (ej. "image"): el servidor exige una reconocida, así que se completa acá.
+    const extOk = /\.(jpe?g|jfif|png|webp|heic|heif)$/i.test(captura.name)
+    const extPorTipo = captura.type === 'image/png' ? 'png' : captura.type === 'image/webp' ? 'webp' : 'jpg'
+    form.append('archivo', captura, extOk ? captura.name : `${captura.name.replace(/\.[^.]*$/, '') || 'comprobante'}.${extPorTipo}`)
     const res = await fetch('/api/pedidos/comprobante', { method: 'POST', body: form })
     const data = await res.json().catch(() => null)
     setSubiendoCaptura(false)
-    if (!res.ok || !data?.url) { console.error('[comprobante]', data?.error ?? res.status); return null }
-    return data.url as string
+    if (!res.ok || !data?.ok) { console.error('[comprobante]', data?.error ?? res.status); return null }
+    return 'ok'   // el servidor guarda la ruta en el pedido; no devuelve URL
   }
 
   async function crearPedido(metodo: string) {
