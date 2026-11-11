@@ -51,12 +51,36 @@ export async function POST(request: Request) {
   // stock_descontado NULL (dato sin flag): se trata EXPLÍCITAMENTE como "no se descontó", igual que la RPC (motivo FLAG_NULL): solo `true` devuelve stock.
   if (pedido.stock_descontado == null) console.warn('[pedidos/eliminar] stock_descontado NULL en el pedido', pedido_id, '— se trata como no descontado')
   if (pedido.stock_descontado === true) {
-    const { error: errDev } = await supabase.rpc('devolver_stock_pedido', {
-      p_empresa_id: pedido.empresa_id, p_pedido_id: pedido_id,
-    })
-    if (errDev) {
-      console.error('[pedidos/eliminar] devolver_stock_pedido', errDev.message)
+    // E2-b: si la venta descontó de hojas por rama (movimientos con rama_id), la devolución la hace devolver_stock_pedido_caja
+    // (valida la caja, devuelve desde el libro original, idempotente). Productos en modelo 'producto': camino de siempre, sin cambios.
+    // Si no se puede saber cómo se descontó, FAIL-CLOSED: no se elimina nada.
+    const { count: movsRama, error: errRama } = await supabase.from('stock_movimientos')
+      .select('id', { count: 'exact', head: true }).eq('pedido_id', pedido_id).not('rama_id', 'is', null)
+    if (errRama) {
+      console.error('[pedidos/eliminar] no se pudo leer el libro de stock', errRama.message)
       return NextResponse.json({ error: 'No se pudo devolver el stock. El pedido NO se eliminó: reintentá.' }, { status: 500 })
+    }
+    if ((movsRama ?? 0) > 0) {
+      const { data: dev, error: errCaja } = await supabase.rpc('devolver_stock_pedido_caja', {
+        p_empresa: pedido.empresa_id, p_pedido: pedido_id, p_dispositivo: dispositivo_id,
+      })
+      if (errCaja) {
+        console.error('[pedidos/eliminar] devolver_stock_pedido_caja', errCaja.message)
+        return NextResponse.json({ error: 'No se pudo devolver el stock. El pedido NO se eliminó: reintentá.' }, { status: 500 })
+      }
+      const estadoDev = (dev as { estado?: string } | null)?.estado
+      if (estadoDev !== 'devuelto' && estadoDev !== 'sin_efecto') {
+        // incidencia / inconsistente: la base registró el caso y NO movió stock; no se elimina hasta revisarlo
+        return NextResponse.json({ error: 'El stock de este pedido requiere revisión. El pedido NO se eliminó.' }, { status: 409 })
+      }
+    } else {
+      const { error: errDev } = await supabase.rpc('devolver_stock_pedido', {
+        p_empresa_id: pedido.empresa_id, p_pedido_id: pedido_id,
+      })
+      if (errDev) {
+        console.error('[pedidos/eliminar] devolver_stock_pedido', errDev.message)
+        return NextResponse.json({ error: 'No se pudo devolver el stock. El pedido NO se eliminó: reintentá.' }, { status: 500 })
+      }
     }
   }
 
