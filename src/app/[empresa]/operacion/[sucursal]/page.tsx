@@ -142,7 +142,7 @@ export default function OperacionPage() {
       </header>
 
       <main className="flex-1 overflow-hidden">
-        {vistaActiva === 'caja' && puede_cobrar && <VistaCaja dispositivo={dispositivo} sesion={sesion} />}
+        {vistaActiva === 'caja' && puede_cobrar && <VistaCaja dispositivo={dispositivo} sesion={sesion} deviceToken={token ?? ''} />}
         {vistaActiva === 'preparacion' && puede_preparar && <VistaPreparacion dispositivo={dispositivo} sesion={sesion} />}
       </main>
     </div>
