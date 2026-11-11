@@ -17,10 +17,10 @@ import { MOTIVOS_AJUSTE, MOTIVO_LABEL, type EstadoStock } from '@/lib/stock/ajus
 import { Loader2, Search, ClipboardList, AlertTriangle, CheckCircle2, Package } from 'lucide-react'
 
 type Est = EstadoStock | 'sin_control'
-interface PresInv { id: string; nombre: string; factor: number; vendibles: number | null }
+interface PresInv { id: string; nombre: string; factor: number; vendibles: number | null; saldo?: number | null }
 
 interface Suc { id: string; nombre: string }
-interface InvItem { producto_id: string; nombre: string; codigo: string | null; categoria_id: string | null; categoria: string | null; controla: boolean; cantidad: number | null; minimo: number | null; estado: Est; actualizado: string | null; presentaciones: PresInv[] }
+interface InvItem { producto_id: string; nombre: string; codigo: string | null; categoria_id: string | null; categoria: string | null; controla: boolean; modelo?: string; cantidad: number | null; minimo: number | null; estado: Est; actualizado: string | null; presentaciones: PresInv[] }
 interface Cat { id: string; nombre: string }
 interface PrevItem { producto_id: string; nombre: string; base: number; contado: number; actual: number; fila_nueva: boolean; diff_pedida: number; diff_aplicada: number; final: number; recortado: boolean; importante: boolean }
 interface Prev { lote_id: string; items: PrevItem[]; huella: string; resumen: { items_n: number; total_abs: number; recortes_n: number; importantes_n: number; requiere_confirmacion: boolean; motivos_confirmacion: string[] } }
@@ -64,6 +64,21 @@ export default function StockPage() {
   const [loteTrabajando, setLoteTrabajando] = useState(false)
   const [minEdit, setMinEdit] = useState<Record<string, string>>({})
   const [avisoInv, setAvisoInv] = useState<{ ok: boolean; t: string } | null>(null)
+  // E2-b: ajuste directo de la hoja de una presentación (productos con stock por rama)
+  const [ajR, setAjR] = useState<Record<string, { valor: string; motivo: string }>>({})
+  const [ajRTrab, setAjRTrab] = useState('')
+  async function ajustarHoja(p: PresInv) {
+    const f = ajR[p.id]; const nuevo = Number(f?.valor)
+    if (!f || f.valor.trim() === '' || !Number.isInteger(nuevo) || nuevo < 0) { setAvisoInv({ ok: false, t: 'El nuevo saldo debe ser un entero de 0 en adelante.' }); return }
+    if ((f.motivo ?? '').trim().length < 3) { setAvisoInv({ ok: false, t: 'Indicá el motivo del ajuste.' }); return }
+    setAjRTrab(p.id); setAvisoInv(null)
+    try {
+      await api({ accion: 'ajustar_rama', sucursal_id: sucId, presentacion_id: p.id, modo: 'set', cantidad: nuevo, motivo: f.motivo.trim(), operacion_id: crypto.randomUUID() })
+      setAjR(a => { const n = { ...a }; delete n[p.id]; return n })
+      setAvisoInv({ ok: true, t: `Saldo de ${p.nombre} ajustado a ${nuevo}.` }); await cargarInvRef.current()
+    } catch (e) { setAvisoInv({ ok: false, t: (e as Error).message }) } finally { setAjRTrab('') }
+  }
+  const cargarInvRef = { current: async () => {} } as { current: () => Promise<void> }
 
   const api = useCallback(async (body: Record<string, unknown>) => {
     const { data: { session } } = await createClient().auth.getSession()
@@ -86,6 +101,7 @@ export default function StockPage() {
     catch (e) { setError((e as Error).message) } finally { setCargando(false) }
   }, [sucId, todos, api])
   useEffect(() => { cargarInv() }, [cargarInv])
+  cargarInvRef.current = cargarInv
 
   // Etapa 1.1: habilitar / quitar control (todo pasa por /api/stock; el servidor decide y pide confirmación si hay existencias)
   async function cambiarControl(i: InvItem, confirmar = false) {
@@ -283,7 +299,15 @@ export default function StockPage() {
                           <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO[i.estado].c}`}>{ESTADO[i.estado].t}</span>
                             {i.controla && i.estado === 'sin_alta' && <button onClick={() => setTab('ajuste')} className="ml-2 text-xs underline text-neutral-600">Cargar stock</button>}</td></tr>
                         {i.presentaciones.map(p => (
-                          <tr key={p.id} className="text-xs text-neutral-500"><td></td><td className="px-4 py-0.5 pl-10" colSpan={2}>↳ {p.nombre}{p.factor > 1 && <span className="text-neutral-400"> · descuenta {p.factor}</span>}</td><td className="px-4 py-0.5 text-right tabular-nums" colSpan={2}>{p.vendibles !== null ? `${p.vendibles} vendibles` : ''}</td></tr>))}
+                          i.modelo === 'rama'
+                            ? <tr key={p.id} className="text-xs text-neutral-600"><td></td><td className="px-4 py-1 pl-10">↳ {p.nombre}</td><td className="px-4 py-1 text-right tabular-nums font-medium">{p.saldo ?? '—'}</td>
+                                <td className="px-4 py-1" colSpan={2}>{p.saldo !== null && p.saldo !== undefined && (
+                                  <span className="flex gap-1 items-center">
+                                    <input inputMode="numeric" placeholder="nuevo saldo" value={ajR[p.id]?.valor ?? ''} onChange={e => setAjR(a => ({ ...a, [p.id]: { valor: e.target.value, motivo: a[p.id]?.motivo ?? '' } }))} aria-label={`Nuevo saldo de ${p.nombre}`} className="w-20 text-right border border-neutral-200 rounded px-1.5 py-0.5 bg-white" />
+                                    <input placeholder="motivo" value={ajR[p.id]?.motivo ?? ''} onChange={e => setAjR(a => ({ ...a, [p.id]: { valor: a[p.id]?.valor ?? '', motivo: e.target.value } }))} aria-label={`Motivo del ajuste de ${p.nombre}`} className="w-32 border border-neutral-200 rounded px-1.5 py-0.5 bg-white" />
+                                    <button onClick={() => ajustarHoja(p)} disabled={ajRTrab === p.id} className="underline text-neutral-700 disabled:opacity-40">Ajustar</button>
+                                  </span>)}</td></tr>
+                            : <tr key={p.id} className="text-xs text-neutral-500"><td></td><td className="px-4 py-0.5 pl-10" colSpan={2}>↳ {p.nombre}{p.factor > 1 && <span className="text-neutral-400"> · descuenta {p.factor}</span>}</td><td className="px-4 py-0.5 text-right tabular-nums" colSpan={2}>{p.vendibles !== null ? `${p.vendibles} vendibles` : ''}</td></tr>))}
                       </Fragment>))}
                   </Fragment>))}
                   {arbol.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-neutral-400">{todos ? 'No hay productos.' : 'No hay productos con control de stock. Marcá «Mostrar todos los productos» para habilitar alguno.'}</td></tr>}</tbody></table>

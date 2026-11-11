@@ -165,10 +165,11 @@ export default function VentasPage() {
   }
 
   // ══ 9b — pendientes de arqueo + confirmación (DELTA por ajustar_stock) ══
-  interface ArqItem { id: string; producto_id: string; teorico: number; fisico: number; diferencia: number; descartado: boolean }
+  interface ArqItem { id: string; producto_id: string; presentacion_id?: string | null; teorico: number; fisico: number; diferencia: number; descartado: boolean }
   interface ArqueoStock { id: string; sucursal_id: string; alcance: string; contado_por: string | null; observaciones: string | null; created_at: string; estado: string; confirmado_por: string | null; arqueo_items: ArqItem[] }
   const [arqueosStock, setArqueosStock] = useState<ArqueoStock[]>([])
   const [prodNombres, setProdNombres] = useState<Record<string, string>>({})
+  const [presNombres, setPresNombres] = useState<Record<string, string>>({})
   const [confirmadoPor, setConfirmadoPor] = useState('')
   const [confirmando, setConfirmando] = useState<string | null>(null)
   async function cargarArqueosStock() {
@@ -182,6 +183,11 @@ export default function VentasPage() {
     if (ids.length) {
       const { data: prods } = await sb.from('productos').select('id, nombre').in('id', ids)
       setProdNombres(Object.fromEntries((prods ?? []).map((p: { id: string; nombre: string }) => [p.id, p.nombre])))
+    }
+    const presIds = [...new Set(arr.flatMap(a => a.arqueo_items.map(i => i.presentacion_id).filter((x): x is string => !!x)))]
+    if (presIds.length) {
+      const { data: pr } = await sb.from('presentaciones').select('id, nombre').in('id', presIds)
+      setPresNombres(Object.fromEntries((pr ?? []).map((p: { id: string; nombre: string }) => [p.id, p.nombre])))
     }
   }
   async function toggleDescartar(item: ArqItem) {
@@ -642,7 +648,7 @@ export default function VentasPage() {
                     <div className="space-y-1">
                       {a.arqueo_items.map(it => (
                         <div key={it.id} className={`flex items-center gap-3 text-sm ${it.descartado ? 'opacity-40 line-through' : ''}`}>
-                          <span className="flex-1 truncate text-neutral-600">{prodNombres[it.producto_id] ?? '…'}</span>
+                          <span className="flex-1 truncate text-neutral-600">{(prodNombres[it.producto_id] ?? '…') + (it.presentacion_id ? ' · ' + (presNombres[it.presentacion_id] ?? '…') : '')}</span>
                           <span className="text-xs text-neutral-400 w-24 text-right">sist. {it.teorico}</span>
                           <span className="text-xs font-bold text-neutral-700 w-20 text-right">físico {it.fisico}</span>
                           <span className={`text-xs font-black w-14 text-right ${Number(it.diferencia) === 0 ? 'text-green-600' : 'text-red-500'}`}>{Number(it.diferencia) > 0 ? '+' : ''}{it.diferencia}</span>

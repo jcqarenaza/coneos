@@ -68,6 +68,19 @@ export function traducirErrorAjuste(e: { message?: string; code?: string } | nul
     ['PRODUCTO_FUERA_DEL_CONTEO', 400, 'Hay productos que no estaban en el conteo al iniciarlo. Iniciá un conteo nuevo.'],
     ['MOVIMIENTO_NO_ASOCIADO', 500, 'No se pudo registrar el ajuste con su responsable. No se modificó el stock. Reintentá.'],
     ['USUARIO_REQUERIDO', 401, 'No autorizado'],
+    ['PRODUCTO_MODELO_RAMA', 409, 'Este producto maneja el stock por rama (por presentación): se ajusta desde Inventario, en cada presentación.'],
+    ['USUARIO_SIN_PERMISO_STOCK', 403, 'No tenés permiso de stock sobre esta sucursal.'],
+    ['USUARIO_NO_AUTORIZADO', 403, 'No tenés permiso de stock en esta empresa.'],
+    ['SALDO_NEGATIVO', 409, 'El ajuste dejaría el saldo negativo. No se modificó nada.'],
+    ['CANTIDAD_INVALIDA', 400, 'La cantidad debe ser un número entero (el saldo no puede ser negativo y el delta no puede ser 0).'],
+    ['MOTIVO_REQUERIDO', 400, 'Indicá el motivo del ajuste.'],
+    ['MODO_INVALIDO', 400, 'Modo de ajuste inválido.'],
+    ['PRODUCTO_NO_RAMA', 409, 'Esta presentación no pertenece a un producto con stock por rama.'],
+    ['PRESENTACION_NO_ENCONTRADA', 404, 'No se encontró la presentación.'],
+    ['HOJA_SUCURSAL_NO_INICIALIZADA', 409, 'Este producto todavía no está activado por rama en esta sucursal.'],
+    ['HOJA_NO_INICIALIZADA', 409, 'Falta la hoja de stock de esta presentación.'],
+    ['IDEMPOTENCIA_CONFLICTO', 409, 'Esta operación ya se usó con otros datos. Reintentá desde cero.'],
+    ['OPERACION_REQUERIDA', 400, 'Falta el identificador de la operación.'],
   ]
   for (const [cod, status, msg] of tabla) if (m.includes(cod)) return { status, codigo: cod, error: msg }
   // Deadlock / timeout de bloqueo / serialización: no se aplicó nada y se puede reintentar (el lote es idempotente)
