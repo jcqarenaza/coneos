@@ -9,7 +9,7 @@ import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empres
 interface Categoria { id: string; nombre: string; icono_url: string | null }
 interface Producto { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; categoria_id: string; agotado?: boolean }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null; es_novedad?: boolean }
-interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string; precio_adicional?: number ; es_novedad?: boolean }
+interface Opcion { id: string; nombre: string; descripcion: string | null; emoji: string | null; imagen_url: string | null; color: string | null; grupo_id: string; precio_adicional?: number ; es_novedad?: boolean; agotado?: boolean }
 interface GrupoOpciones { id: string; nombre: string; orden: number }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 // PROMOS V1 (E1-C): shapes del catálogo (misma forma que devuelve /api/kiosk/catalogo)
@@ -336,6 +336,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
     const ya = opcionesSeleccionadas.find(o => o.id === op.id)
     if (ya) { setOpcionesSeleccionadas(prev => prev.filter(o => o.id !== op.id)) }
     else {
+      if (op.agotado) return
       // Accesorios no cuentan para el límite de sabores
       if (!esAccesorio(op)) {
         const saboresSeleccionados = opcionesSeleccionadas.filter(o => !esAccesorio(o))
@@ -724,7 +725,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                 const tieneImagen = !!op.imagen_url
 
                 return (
-                  <button key={op.id} onClick={() => toggleOpcion(op)} disabled={!sel && maxAlcanzado}
+                  <button key={op.id} onClick={() => toggleOpcion(op)} disabled={(!sel && maxAlcanzado) || (op.agotado === true && !sel)}
                     className={`relative flex flex-col rounded-2xl border-2 bg-white transition-all active:scale-95 overflow-hidden ${sel ? 'shadow-md' : 'border-neutral-100 hover:border-neutral-200'} disabled:opacity-30`}
                     style={sel ? { borderColor: config.primary_color } : {}}>
 
@@ -744,6 +745,9 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                     {/* ✨ Badge de sabor nuevo (JC 03/10): también acá, al elegir */}
                     {op.es_novedad === true && (
                       <span className="absolute top-2 left-2 text-[10px] font-black text-white px-2 py-0.5 rounded-full shadow-md" style={{ backgroundColor: config.primary_color }}>NUEVO</span>
+                    )}
+                    {op.agotado === true && (
+                      <span className="absolute top-2 left-2 text-[10px] font-black text-white bg-neutral-700 px-2 py-0.5 rounded-full shadow-md">AGOTADO</span>
                     )}
                     {/* Check overlay */}
                     {sel && (

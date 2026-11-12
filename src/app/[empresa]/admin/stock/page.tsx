@@ -403,6 +403,15 @@ export default function StockPage() {
                     <p className="font-semibold mb-1">Este producto todavía no se puede pasar a stock por presentación:</p>
                     <ul className="list-disc pl-5 space-y-1">{ramaInfo.bloqueos.map(t => <li key={t}>{t}</li>)}</ul>
                   </div>)}
+                {ramaInfo && ramaInfo.bloqueos.length > 0 && (() => {
+                  const it = inv.find(x => x.producto_id === ramaP.id)
+                  if (!it || !puedeHab) return null
+                  return (
+                    <div className="mb-3 p-3 rounded-lg bg-neutral-50 border border-neutral-200 text-sm">
+                      <p className="mb-2 text-neutral-700">Para baldes y productos que se venden por unidad: controlá el stock del producto y cargalo en el Ajuste general.</p>
+                      <button onClick={async () => { setRamaP(null); if (!it.controla) await cambiarControl(it); setTab('ajuste') }} className="px-3 py-2 rounded-lg bg-neutral-900 text-white text-sm font-medium">{it.controla ? 'Ir a cargar stock' : 'Controlar stock y cargarlo'}</button>
+                    </div>)
+                })()}
                 {ramaInfo && ramaInfo.bloqueos.length === 0 && (
                   <>
                     <p className="text-sm text-neutral-600 mb-3">Cargá cuántas unidades hay de cada presentación en cada sucursal. Cada presentación lleva su propio stock y se descuenta sola cuando se vende.</p>

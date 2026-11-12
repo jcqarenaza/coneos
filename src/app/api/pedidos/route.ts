@@ -321,6 +321,24 @@ export async function POST(request: Request) {
     }
   }
 
+  // SABORES POR KILO — AGOTADO bloquea: un sabor con fila de stock en esta
+  // sucursal y 0 kg no se puede pedir (si quedan 200 g, la venta pasa y deja 0;
+  // la siguiente ya rebota). Sin fila = no se controla. Falla abierta: si la
+  // tabla no existe o la consulta falla, no se bloquea (no tumba ventas).
+  {
+    const opIdsKg = [...new Set(itemsIn.flatMap(i => (i.opciones ?? []).map(o => String(o.opcion_id))))]
+    if (opIdsKg.length > 0) {
+      const { data: kgRows, error: kgErr } = await supabase.from('stock_sabor').select('opcion_id, kg').eq('empresa_id', empresa_id).eq('sucursal_id', sucursal_id).in('opcion_id', opIdsKg)
+      if (!kgErr) {
+        const agot = (kgRows ?? []).filter((r: { kg: number | string }) => Number(r.kg) <= 0).map((r: { opcion_id: string }) => r.opcion_id)
+        if (agot.length > 0) {
+          const nom = itemsIn.flatMap(i => i.opciones ?? []).find(o => agot.includes(String(o.opcion_id)))?.nombre_snap ?? 'un sabor'
+          return NextResponse.json({ error: `Sabor agotado: ${nom}. Elegí otro.`, codigo: 'SABOR_AGOTADO' }, { status: 409 })
+        }
+      }
+    }
+  }
+
   const itemsRpc = itemsIn.map((item: ItemIn) => ({
     presentacion_id: item.presentacion_id || null,
     nombre_producto_snap: item.nombre_producto_snap,
