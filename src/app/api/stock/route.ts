@@ -175,6 +175,74 @@ export async function POST(request: Request) {
 
   // ── E2-b: ajuste directo de UNA hoja (sucursal x presentación) de un producto en modelo 'rama' ──
   // La autorización de rol se re-valida en la base (_validar_usuario_stock); el saldo nunca queda negativo; idempotente por operacion_id.
+  // ── STOCK POR SABOR EN KILOS (helado por kilo) ──
+  // sabores: lista los sabores (opciones) de los grupos ligados a presentaciones con kilos, con los kg de ESTA sucursal.
+  // kg_presentacion: cuántos kg representa una presentación (producto → toda la empresa: solo admin de empresa).
+  // ajustar_sabor: fija o suma kilos de un sabor en esta sucursal (todo lo hace ajustar_stock_sabor).
+  if (accion === 'sabores') {
+    const { data: presKg, error: eP } = await supabase.from('presentaciones').select('id, nombre, producto_id, kg_por_unidad, activo, orden').eq('empresa_id', empresaId).eq('activo', true)
+    if (eP) {
+      if (eP.code === '42703') return err('El stock por sabor todavía no está habilitado en la base.', 503, { codigo: 'SIN_SQL' })
+      console.error('[stock] sabores', eP.message); return err('No se pudieron leer los sabores.', 500)
+    }
+    const { data: pg } = await supabase.from('presentacion_grupos').select('presentacion_id, grupo_id').in('presentacion_id', (presKg ?? []).map(x => x.id as string))
+    const conGrupos = new Set((pg ?? []).map(x => x.presentacion_id as string))
+    const presSab = (presKg ?? []).filter(x => conGrupos.has(x.id as string))
+    const prodIds = [...new Set(presSab.map(x => x.producto_id as string))]
+    const { data: prods } = prodIds.length ? await supabase.from('productos').select('id, nombre').in('id', prodIds).is('deleted_at', null) : { data: [] }
+    const nomProd = new Map((prods ?? []).map(x => [x.id as string, x.nombre as string]))
+    const grupoIds = [...new Set((pg ?? []).filter(x => presSab.some(p => p.id === x.presentacion_id && p.kg_por_unidad != null)).map(x => x.grupo_id as string))]
+    const [{ data: grs }, { data: ops }, { data: stk }] = await Promise.all([
+      grupoIds.length ? supabase.from('grupos_opciones').select('id, nombre, orden').in('id', grupoIds) : Promise.resolve({ data: [] }),
+      grupoIds.length ? supabase.from('opciones').select('id, grupo_id, nombre, orden').eq('empresa_id', empresaId).in('grupo_id', grupoIds).eq('activo', true).is('deleted_at', null) : Promise.resolve({ data: [] }),
+      supabase.from('stock_sabor').select('opcion_id, kg').eq('empresa_id', empresaId).eq('sucursal_id', sucursalId),
+    ])
+    const kgDe = new Map((stk ?? []).map(x => [x.opcion_id as string, Number(x.kg)]))
+    const nomGrupo = new Map((grs ?? []).map(x => [x.id as string, x.nombre as string]))
+    return NextResponse.json({
+      puede_configurar: empresaCompleta,
+      presentaciones: presSab.sort((a, b) => (nomProd.get(a.producto_id as string) ?? '').localeCompare(nomProd.get(b.producto_id as string) ?? '') || Number(a.orden ?? 0) - Number(b.orden ?? 0))
+        .map(x => ({ id: x.id as string, producto: nomProd.get(x.producto_id as string) ?? '', nombre: x.nombre as string, kg: x.kg_por_unidad == null ? null : Number(x.kg_por_unidad) })),
+      sabores: (ops ?? []).map(o => ({ id: o.id as string, nombre: o.nombre as string, grupo: nomGrupo.get(o.grupo_id as string) ?? '', orden: Number(o.orden ?? 0), kg: kgDe.has(o.id as string) ? kgDe.get(o.id as string)! : null }))
+        .sort((a, b) => a.grupo.localeCompare(b.grupo) || a.orden - b.orden || a.nombre.localeCompare(b.nombre)),
+    })
+  }
+  if (accion === 'kg_presentacion') {
+    if (!empresaCompleta) return err('Solo un administrador de toda la empresa puede cambiar los kilos de una presentación.', 403)
+    const presId = body.presentacion_id
+    if (typeof presId !== 'string' || !UUID_RE.test(presId)) return err('Presentación inválida.')
+    const kg = body.kg === null ? null : body.kg
+    if (kg !== null && (typeof kg !== 'number' || !isFinite(kg) || kg <= 0 || kg > 1000)) return err('Los kilos deben ser un número mayor a 0.')
+    const { data: upd, error } = await supabase.from('presentaciones').update({ kg_por_unidad: kg === null ? null : Math.round(kg * 1000) / 1000 }).eq('id', presId).eq('empresa_id', empresaId).select('id').maybeSingle()
+    if (error) { console.error('[stock] kg_presentacion', error.message); return err('No se pudo guardar.', 500) }
+    if (!upd) return err('Presentación no encontrada.', 404)
+    return NextResponse.json({ ok: true })
+  }
+  if (accion === 'ajustar_sabor') {
+    const opId = body.opcion_id, operacionId = body.operacion_id
+    if (typeof opId !== 'string' || !UUID_RE.test(opId)) return err('Sabor inválido.')
+    if (typeof operacionId !== 'string' || !UUID_RE.test(operacionId)) return err('Falta el identificador de la operación.')
+    if (body.modo !== 'set' && body.modo !== 'delta') return err('Modo de ajuste inválido.')
+    if (typeof body.kg !== 'number' || !isFinite(body.kg) || Math.abs(body.kg) > 1_000_000) return err('Los kilos deben ser un número.')
+    if (body.modo === 'set' && body.kg < 0) return err('Los kilos no pueden ser negativos.')
+    const motivoS = typeof body.motivo === 'string' ? body.motivo.trim() : ''
+    if (motivoS.length < 3 || motivoS.length > 200) return err('Indicá el motivo (3 a 200 caracteres).')
+    const { data, error } = await supabase.rpc('ajustar_stock_sabor', {
+      p_empresa_id: empresaId, p_sucursal_id: sucursalId, p_opcion_id: opId, p_modo: body.modo, p_kg: body.kg,
+      p_motivo: motivoS, p_usuario_id: userId, p_usuario_nombre: nombre, p_operacion_id: operacionId,
+    })
+    if (error) {
+      const m = error.message ?? ''
+      if (error.code === 'PGRST202' || error.code === '42883') return err('El stock por sabor todavía no está habilitado en la base.', 503)
+      if (m.includes('SALDO_NEGATIVO')) return err('No puede quedar en negativo.', 409)
+      if (m.includes('SABOR_INVALIDO')) return err('Sabor no encontrado.', 404)
+      if (m.includes('CANTIDAD_INVALIDA')) return err('Los kilos deben ser un número válido.')
+      if (m.includes('USUARIO') || m.includes('PERMISO') || m.includes('NO_AUTORIZADO')) return err('No tenés permiso para ajustar el stock de esta sucursal.', 403)
+      console.error('[stock] ajustar_sabor', m); return err('No se pudo guardar. Reintentá.', 500)
+    }
+    return NextResponse.json(data)
+  }
+
   // ── Alta del modelo "stock por presentación" (rama): info previa + habilitación. Es del PRODUCTO (todas las sucursales): solo admin de toda la empresa ──
   if (accion === 'rama_info' || accion === 'habilitar_rama') {
     if (!empresaCompleta) return err('Solo un administrador de toda la empresa puede pasar un producto a stock por presentación.', 403)
@@ -203,7 +271,7 @@ export async function POST(request: Request) {
       const raros = (pres ?? []).filter(x => Number(x.factor_stock) !== 1)
       if (raros.length) bloqueos.push(`Estas presentaciones descuentan más de 1 unidad del producto (${raros.map(x => x.nombre).join(', ')}). Para stock por presentación tienen que descontar 1.`)
       if ((grupos ?? []).some(g => Array.isArray((g as { presentacion_grupos?: unknown[] }).presentacion_grupos) && ((g as { presentacion_grupos: unknown[] }).presentacion_grupos).length > 0))
-        bloqueos.push('El producto tiene opciones (por ejemplo sabores). Todavía no se puede llevar stock por presentación en productos con opciones.')
+        bloqueos.push('El producto tiene opciones (por ejemplo sabores). Si se vende por unidad (por ejemplo baldes), activá el tilde «Ctrl.» y cargalo en Ajuste general. Si es helado por kilo, usá la pestaña «Sabores (kg)».')
       if ((arts ?? []).length) bloqueos.push('El producto está vinculado a un artículo de compras.')
       const saldoDe = new Map((saldos ?? []).map(x => [x.sucursal_id as string, Number(x.cantidad)]))
       return NextResponse.json({
