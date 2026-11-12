@@ -86,7 +86,16 @@ export async function GET(request: Request) {
   // Filtrar opciones por inventario_opciones (sabores sin stock)
   const inventarioMap: Record<string, boolean> = {}
   ;(inventario ?? []).forEach((i: { opcion_id: string; disponible: boolean }) => { inventarioMap[i.opcion_id] = i.disponible })
-  const opcionesFiltradas = (opciones ?? []).filter((op: { id: string }) => inventarioMap[op.id] !== false)
+  // SABORES POR KILO: sabor con fila de stock en esta sucursal y 0 kg = AGOTADO.
+  // Viaja con flag (el cliente lo muestra y bloquea). Sin fila = no se controla.
+  const sinKg = new Set<string>()
+  {
+    const { data: kgRows, error: kgErr } = await supabase.from('stock_sabor').select('opcion_id, kg').eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id)
+    if (!kgErr) (kgRows ?? []).forEach((r: { opcion_id: string; kg: number | string }) => { if (Number(r.kg) <= 0) sinKg.add(r.opcion_id) })
+  }
+  const opcionesFiltradas = (opciones ?? [])
+    .filter((op: { id: string }) => inventarioMap[op.id] !== false)
+    .map((op: { id: string }) => (sinKg.has(op.id) ? { ...op, agotado: true } : op))
 
   // ══ PROMOCIONES V1 — E1-C (GO CTO 11/10): promos VIGENTES del canal ══
   // Vigencia por fecha de SERVER (hora argentina, la misma del RPC). Solo

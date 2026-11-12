@@ -118,6 +118,8 @@ export async function POST(request: Request) {
     const { data: prod } = await supabase.from('productos').select('id, nombre, controla_stock').eq('id', productoId).eq('empresa_id', empresaId).is('deleted_at', null).maybeSingle()
     if (!prod) return err('Producto no encontrado.', 404)
     if (accion === 'habilitar') {
+      const { data: act } = await supabase.from('productos').select('activo').eq('id', productoId).eq('empresa_id', empresaId).maybeSingle()
+      if (act?.activo !== true) return err('El producto no está activo: activalo antes de cargarle stock.', 409, { codigo: 'PRODUCTO_INACTIVO' })
       if (prod.controla_stock !== true) {
         const { error } = await supabase.from('productos').update({ controla_stock: true }).eq('id', productoId).eq('empresa_id', empresaId)
         if (error) { console.error('[stock] habilitar', error.message); return err('No se pudo habilitar el control de stock.', 500) }
@@ -147,7 +149,7 @@ export async function POST(request: Request) {
     if (!ids.every(x => typeof x === 'string' && UUID_RE.test(x))) return err('Producto inválido.')
     const unicos = [...new Set(ids as string[])]
     const { data: hechos, error } = await supabase.from('productos').update({ controla_stock: true })
-      .in('id', unicos).eq('empresa_id', empresaId).is('deleted_at', null).neq('controla_stock', true).select('id')
+      .in('id', unicos).eq('empresa_id', empresaId).eq('activo', true).is('deleted_at', null).neq('controla_stock', true).select('id')
     if (error) { console.error('[stock] habilitar_lote', error.message); return err('No se pudo habilitar el control de stock.', 500) }
     return NextResponse.json({ ok: true, habilitados: (hechos ?? []).length, pedidos: unicos.length })
   }
@@ -227,6 +229,10 @@ export async function POST(request: Request) {
     if (body.modo === 'set' && body.kg < 0) return err('Los kilos no pueden ser negativos.')
     const motivoS = typeof body.motivo === 'string' ? body.motivo.trim() : ''
     if (motivoS.length < 3 || motivoS.length > 200) return err('Indicá el motivo (3 a 200 caracteres).')
+    {
+      const { data: op } = await supabase.from('opciones').select('activo, deleted_at').eq('id', opId).eq('empresa_id', empresaId).maybeSingle()
+      if (!op || op.activo !== true || op.deleted_at) return err('El sabor no está activo: activalo antes de cargarle kilos.', 409, { codigo: 'PRODUCTO_INACTIVO' })
+    }
     const { data, error } = await supabase.rpc('ajustar_stock_sabor', {
       p_empresa_id: empresaId, p_sucursal_id: sucursalId, p_opcion_id: opId, p_modo: body.modo, p_kg: body.kg,
       p_motivo: motivoS, p_usuario_id: userId, p_usuario_nombre: nombre, p_operacion_id: operacionId,
@@ -248,8 +254,9 @@ export async function POST(request: Request) {
     if (!empresaCompleta) return err('Solo un administrador de toda la empresa puede pasar un producto a stock por presentación.', 403)
     const productoId = body.producto_id
     if (typeof productoId !== 'string' || !UUID_RE.test(productoId)) return err('Producto inválido.')
-    const { data: prod } = await supabase.from('productos').select('id, nombre, modelo_stock, deleted_at').eq('id', productoId).eq('empresa_id', empresaId).maybeSingle()
+    const { data: prod } = await supabase.from('productos').select('id, nombre, modelo_stock, deleted_at, activo').eq('id', productoId).eq('empresa_id', empresaId).maybeSingle()
     if (!prod || prod.deleted_at) return err('Producto no encontrado.', 404)
+    if (prod.activo !== true) return err('El producto no está activo: activalo antes de cargarle stock.', 409, { codigo: 'PRODUCTO_INACTIVO' })
     if (prod.modelo_stock === 'rama') return err('Este producto ya tiene stock por presentación.', 409, { codigo: 'PRODUCTO_YA_RAMA' })
     const [rS, rP] = await Promise.all([
       supabase.rpc('_rama_conjunto_s', { p_empresa: empresaId, p_producto: productoId }),
@@ -327,6 +334,11 @@ export async function POST(request: Request) {
     const motivoR = typeof body.motivo === 'string' ? body.motivo.trim() : ''
     if (motivoR.length < 3 || motivoR.length > 200) return err('Indicá el motivo del ajuste (3 a 200 caracteres).')
     const obs = typeof body.observacion === 'string' && body.observacion.trim() ? body.observacion.trim().slice(0, 300) : null
+    {
+      const { data: pr } = await supabase.from('presentaciones').select('activo, productos(activo)').eq('id', presId).eq('empresa_id', empresaId).maybeSingle()
+      const prodAct = (pr as { productos?: { activo?: boolean } | null } | null)?.productos?.activo
+      if (!pr || pr.activo !== true || prodAct !== true) return err('El producto o la presentación no está activo: no se le puede cargar stock.', 409, { codigo: 'PRODUCTO_INACTIVO' })
+    }
     const { data, error } = await supabase.rpc('ajustar_stock_rama', {
       p_empresa_id: empresaId, p_sucursal_id: sucursalId, p_presentacion_id: presId, p_modo: body.modo, p_cantidad: body.cantidad,
       p_motivo: motivoR, p_observacion: obs, p_usuario_id: userId, p_usuario_nombre: nombre, p_operacion_id: operacionId,
@@ -348,6 +360,9 @@ export async function POST(request: Request) {
       const idsAj = (body.items as { producto_id: string }[]).map(i => i.producto_id)
       const { data: ramas, error: eRamas } = await supabase.from('productos').select('id').eq('empresa_id', empresaId).eq('modelo_stock', 'rama').in('id', idsAj)
       if (eRamas) { console.error('[stock] modelo', eRamas.message); return err('No se pudo validar el ajuste. No se modificó el stock. Reintentá.', 500) }
+      const { data: inact, error: eInact } = await supabase.from('productos').select('id').eq('empresa_id', empresaId).eq('activo', false).in('id', idsAj)
+      if (eInact) { console.error('[stock] activo', eInact.message); return err('No se pudo validar el ajuste. No se modificó el stock. Reintentá.', 500) }
+      if ((inact ?? []).length > 0) return err('Hay productos inactivos en el ajuste: activalos o sacalos antes de cargar stock.', 409, { codigo: 'PRODUCTO_INACTIVO' })
       if ((ramas ?? []).length > 0) return err('Hay productos con stock por rama: se ajustan desde Inventario, en cada presentación.', 409, { codigo: 'PRODUCTO_MODELO_RAMA' })
     }
 
