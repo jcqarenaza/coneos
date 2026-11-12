@@ -108,7 +108,7 @@ export default function EntradaPedidosPage() {
         {ctx.empresa_id && <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id ?? null} canal="APP" />}
         {ctx.config.logo_url && <img src={ctx.config.logo_url} alt="Logo" className="w-28 h-28 object-contain" />}
         {!ctx.config.logo_url && <h1 className="text-2xl font-black text-neutral-800">{ctx.nombre}</h1>}
-        <p className="text-sm text-neutral-400 -mt-2">{ctx.sucursal_nombre}</p>
+        {!ctx.config.logo_url && <p className="text-sm text-neutral-400 -mt-2">{ctx.sucursal_nombre}</p>}
         {ctx.negocio?.direccion && <p className="text-sm font-semibold text-neutral-600">📍 {ctx.negocio.direccion}</p>}
         {horariosNegocio && <p className="text-neutral-700 text-sm font-semibold bg-white border border-neutral-100 rounded-2xl px-5 py-3 shadow-sm">🕗 Nuestro horario: {horariosNegocio}</p>}
         <p className="text-neutral-500 text-sm max-w-xs">{ctx.negocio?.mensaje ?? 'En este momento no estamos tomando pedidos online. ¡Te esperamos en el local!'}</p>
@@ -135,7 +135,7 @@ export default function EntradaPedidosPage() {
           ? <img src={ctx.config.logo_url} alt="Logo" className="w-28 h-28 object-contain mx-auto mb-4" />
           : null}
         {!ctx.config.logo_url && <h1 className="text-2xl font-black text-neutral-800">{ctx.nombre}</h1>}
-        <p className="text-sm text-neutral-400 mb-2">{ctx.sucursal_nombre}</p>
+        {!ctx.config.logo_url && <p className="text-sm text-neutral-400 mb-2">{ctx.sucursal_nombre}</p>}
         <h2 className="text-lg font-bold text-neutral-700 mt-6 mb-1">
           {estado === 'selector' ? '¿Cómo querés recibir tu pedido?' : 'Ahora estamos cerrados'}
         </h2>
