@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --font-heading: var(--font-outfit), var(--font-figtree), system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,39 +48,63 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── REDISEÑO PASTEL (solo visual) ──────────────────────────────────────────
+   Paleta de tinta/grises, sombras suaves y radios más redondeados. Pisa los
+   valores por defecto de Tailwind para que TODAS las pantallas (admin, caja,
+   kiosk, delivery, mesa, takeaway…) cambien sin tocar su lógica ni su layout.
+   El color de marca de cada empresa sigue viniendo de su configuración
+   (--brand-primary / --brand-secondary / config.primary_color). */
+@theme {
+  --color-neutral-50: #F7F9FC;
+  --color-neutral-100: #E8ECF3;
+  --color-neutral-200: #D9DFEA;
+  --color-neutral-300: #B4BDCD;
+  --color-neutral-400: #6A7488;
+  --color-neutral-500: #5A6478;
+  --color-neutral-600: #46506A;
+  --color-neutral-700: #34405A;
+  --color-neutral-800: #1F2A44;
+  --color-neutral-900: #141C30;
+  --color-neutral-950: #0C1220;
+  --shadow-sm: 0 8px 30px rgba(31, 42, 68, 0.05);
+  --shadow-md: 0 10px 34px rgba(31, 42, 68, 0.07);
+  --shadow-lg: 0 14px 44px rgba(31, 42, 68, 0.09);
+  --shadow-xl: 0 20px 56px rgba(31, 42, 68, 0.12);
+}
+
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --background: #ffffff;
+  --foreground: #1F2A44;
+  --card: #ffffff;
+  --card-foreground: #1F2A44;
+  --popover: #ffffff;
+  --popover-foreground: #1F2A44;
+  --primary: #3F6FD8;
+  --primary-foreground: #ffffff;
+  --secondary: #F7F9FC;
+  --secondary-foreground: #1F2A44;
+  --muted: #F7F9FC;
+  --muted-foreground: #5A6478;
+  --accent: #E8F0FF;
+  --accent-foreground: #2d55b0;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: #E8ECF3;
+  --input: #E8ECF3;
+  --ring: #3F6FD8;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.875rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1F2A44;
+  --sidebar-primary: #3F6FD8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #E8F0FF;
+  --sidebar-accent-foreground: #2d55b0;
+  --sidebar-border: #E8ECF3;
+  --sidebar-ring: #3F6FD8;
 }
 
 .dark {
@@ -127,4 +151,26 @@
   html {
     @apply font-sans;
   }
+  h1, h2, h3 {
+    font-family: var(--font-heading);
+  }
+  body {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Fuera de @layer a propósito: tiene que ganarle a las utilidades de Tailwind. */
+
+/* Botones de acción principal (texto blanco + peso de fuente) → píldora */
+:is(button, a)[class*="rounded-"][class*="text-white"][class*="font-"] {
+  border-radius: 9999px;
+}
+
+/* Foco de inputs con el color de marca de la empresa (o el celeste por defecto) */
+input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--brand-primary, var(--primary));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary, var(--primary)) 18%, white);
 }

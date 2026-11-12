@@ -84,7 +84,7 @@ export default function EntradaPedidosPage() {
   }, [])
 
   if (estado === 'cargando' || estado === 'redirigiendo') return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
       {/* 2.1a: con contexto en mano, la espera muestra la marca (pulso suave);
           antes del contexto no hay logo — spinner neutro. Cero delay agregado. */}
       {ctx?.config.logo_url
@@ -98,13 +98,13 @@ export default function EntradaPedidosPage() {
     // NEGOCIO — nombre, dirección y horarios del local (datos de sucursales).
     // Sin contexto (toggle OFF / slugs inválidos): mensaje neutro, sin rubro.
     if (!ctx) return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3 text-center" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3 text-center" style={{ backgroundColor: '#ffffff' }}>
         <p className="text-neutral-500">Esta página no está disponible.</p>
       </div>
     )
     const horariosNegocio = [...(ctx.negocio?.horarios ?? [])].sort((a, b) => a.desde.localeCompare(b.desde)).map(h => `${h.desde} a ${h.hasta}`).join(' y ')
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3 text-center" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3 text-center" style={{ backgroundColor: '#ffffff' }}>
         {ctx.empresa_id && <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id ?? null} canal="APP" />}
         {ctx.config.logo_url && <img src={ctx.config.logo_url} alt="Logo" className="w-28 h-28 object-contain" />}
         <h1 className="text-2xl font-black text-neutral-800">{ctx.nombre}</h1>
@@ -128,7 +128,7 @@ export default function EntradaPedidosPage() {
   const volvemosA = proximos[0] ?? null
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-5 py-10" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-5 py-10" style={{ backgroundColor: '#ffffff' }}>
       {visita}
       <div className="w-full max-w-md text-center">
         {ctx.config.logo_url

@@ -429,13 +429,13 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
   const opcionesFiltradas = grupoActivo ? opcionesDeActual.filter(op => op.grupo_id === grupoActivo) : opcionesDeActual
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="text-center"><span className="text-6xl block mb-4 animate-bounce">🛍️</span><p className="text-neutral-400">Cargando catálogo...</p></div>
     </div>
   )
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#ffffff' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-neutral-100 shadow-sm">
         <button onClick={volverPaso} className="flex items-center gap-2 px-4 py-2 rounded-xl text-neutral-500 hover:bg-neutral-50 active:bg-neutral-100 transition-colors">
@@ -664,7 +664,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
               </div>
             )}
             <div className="text-center mb-5">
-              <p className="text-sm font-semibold tracking-wide uppercase mb-1" style={{ color: config.secondary_color }}>
+              <p className="text-sm font-semibold tracking-wide uppercase mb-1 text-neutral-500">
                 {cola.length > 1 ? `${colaIndex + 1} de ${cola.length}` : actualCola.presentacion.nombre}
               </p>
               <h2 className="text-2xl font-bold mb-1" style={{ color: config.primary_color }}>

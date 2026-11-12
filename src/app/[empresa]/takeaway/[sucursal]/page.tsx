@@ -169,13 +169,13 @@ export default function TakeawayPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
     </div>
   )
 
   if (verificandoMp && !pedidoCreado) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-10 h-10 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
       <p className="text-lg font-black text-neutral-800">Verificando tu pago…</p>
       <p className="text-sm text-neutral-400 max-w-xs">Estamos confirmando con Mercado Pago. Esto tarda unos segundos.</p>
@@ -184,7 +184,7 @@ export default function TakeawayPage() {
 
 
   if (error || !ctx) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="text-5xl">🥡</div>
       <p className="text-neutral-500">{error ?? 'No se pudo cargar el take away'}</p>
     </div>
@@ -198,7 +198,7 @@ export default function TakeawayPage() {
       .map(h => `${h.desde} a ${h.hasta}`)
       .join(' y ')
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center gap-3" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center gap-3" style={{ backgroundColor: '#ffffff' }}>
         {ctx.config.logo_url
           ? <img src={ctx.config.logo_url} alt="Logo" className="w-32 h-32 object-contain mb-3" />
           : <div className="text-6xl mb-3">🥡</div>

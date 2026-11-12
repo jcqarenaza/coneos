@@ -47,14 +47,14 @@ export default function DeliveryShortLink() {
   }, [])
 
   if (error) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center" style={{ backgroundColor: '#ffffff' }}>
       <p className="text-neutral-600 text-sm font-semibold mb-2">No pudimos abrir el delivery</p>
       <p className="text-neutral-400 text-xs break-all max-w-xs">{error}</p>
     </div>
   )
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
     </div>
   )

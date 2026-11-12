@@ -1,9 +1,12 @@
 import type { Metadata } from 'next'
-import { Geist } from 'next/font/google'
+import { Figtree, Outfit, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { MARCA_DEFAULT } from '@/lib/brand'
 
-const geist = Geist({ subsets: ['latin'] })
+// Rediseño pastel: Outfit (títulos), Figtree (texto), JetBrains Mono (números/códigos)
+const figtree = Figtree({ subsets: ['latin'], variable: '--font-figtree', display: 'swap' })
+const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit', display: 'swap' })
+const jetbrains = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', display: 'swap' })
 
 export const metadata: Metadata = {
   title: MARCA_DEFAULT,
@@ -17,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="theme-color" content="#faf8f5" />
+        <meta name="theme-color" content="#ffffff" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
@@ -93,7 +96,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           })();
         `}} />
       </head>
-      <body className={geist.className}>{children}</body>
+      <body className={`${figtree.variable} ${outfit.variable} ${jetbrains.variable} font-sans`}>{children}</body>
     </html>
   )
 }

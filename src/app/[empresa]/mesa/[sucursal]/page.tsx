@@ -170,13 +170,13 @@ export default function MesaPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="text-center"><span className="text-6xl block mb-4 animate-bounce">🪑</span><p className="text-neutral-400">Cargando...</p></div>
     </div>
   )
 
   if (error || !ctx) return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: '#ffffff' }}>
       <div className="text-center max-w-sm">
         <span className="text-5xl block mb-4">😕</span>
         <p className="text-neutral-600 font-semibold">{error ?? 'No disponible'}</p>
@@ -187,7 +187,7 @@ export default function MesaPage() {
   const config = ctx.config
 
   if (verificandoMp && !pagoMp && !searchParams.get('pago')) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-10 h-10 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
       <p className="text-lg font-black text-neutral-800">Verificando tu pago…</p>
       <p className="text-sm text-neutral-400 max-w-xs">Estamos confirmando con Mercado Pago. Esto tarda unos segundos.</p>
@@ -196,7 +196,7 @@ export default function MesaPage() {
 
   // ── Paso 1: nombre (+ mesa si el QR es general) ──
   if (paso === 'datos') return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#ffffff' }}>
       <RegistroVisita empresaId={ctx.empresa_id} sucursalId={ctx.sucursal_id} canal="MESA" />
       <div className="w-full max-w-sm text-center">
         {config.logo_url
@@ -252,7 +252,7 @@ export default function MesaPage() {
     setPagoMp(null); setPedidoCreado(null); setPaso(nombre.trim() && mesa ? 'catalogo' : 'datos')
   }
   if (pagoParam && paso !== 'carrito') return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-full max-w-sm text-center">
         <span className="text-6xl block mb-4">{pagoParam === 'ok' ? '✅' : '😕'}</span>
         <h1 className="text-2xl font-black mb-2" style={{ color: config.primary_color }}>{pagoParam === 'ok' ? '¡Pago recibido!' : 'El pago no se completó'}</h1>
@@ -271,7 +271,7 @@ export default function MesaPage() {
   )
 
   if (paso === 'exito' && pedidoCreado) return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-full max-w-sm text-center">
         <span className="text-6xl block mb-4">✅</span>
         <h1 className="text-2xl font-black mb-2" style={{ color: config.primary_color }}>¡Pedido enviado!</h1>
@@ -292,7 +292,7 @@ export default function MesaPage() {
 
   // ── Paso carrito ──
   if (paso === 'carrito') return (
-    <div className="min-h-screen flex flex-col p-5" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col p-5" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-full max-w-md mx-auto flex-1">
         <div className="flex items-center justify-between mb-5 pt-2">
           <button onClick={() => setPaso('catalogo')} className="text-neutral-400 font-semibold text-sm">← Seguir pidiendo</button>
