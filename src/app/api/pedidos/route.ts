@@ -452,6 +452,22 @@ export async function POST(request: Request) {
     if (ex) return NextResponse.json({ pedido: ex, reutilizado: true })
   }
 
+  // ── STOCK POR SABOR EN KILOS (helado por kilo) ──
+  // Post-RPC adrede: crear_pedido_stock NO se toca. Descuenta los kilos de cada sabor elegido (partes iguales) solo de los
+  // sabores que tienen kilos cargados. Idempotente por pedido. Si el sabor no alcanza, la venta sale igual y se avisa.
+  // Un fallo acá (o la función todavía no creada) jamás voltea el pedido.
+  let avisoSabores: unknown[] = []
+  try {
+    const pidSab = (pedido as { id?: string })?.id
+    if (pidSab) {
+      const { data: rs, error: eSab } = await supabase.rpc('descontar_sabores_pedido', { p_empresa: empresa_id, p_pedido: pidSab })
+      if (eSab) { if (eSab.code !== 'PGRST202' && eSab.code !== '42883') console.error('[pedidos] stock de sabores no descontado (pedido intacto):', eSab.message) }
+      else if (Array.isArray((rs as { faltantes?: unknown[] } | null)?.faltantes)) avisoSabores = (rs as { faltantes: unknown[] }).faltantes
+    }
+  } catch (e) {
+    console.error('[pedidos] stock de sabores no descontado (pedido intacto):', e)
+  }
+
   // ── V1.5 — HORA DE RETIRO (solo takeaway, ya validada) ──
   // Post-RPC adrede: la RPC de stock no se toca (regla STOP del CTO). Un fallo
   // acá degrada a "lo antes posible" — jamás voltea el pedido.
@@ -543,5 +559,5 @@ export async function POST(request: Request) {
       .update({ visitante_id: String(visitante_id).slice(0, 80) })
       .eq('id', pedidoId).then(() => {}, () => {})
   }
-  return NextResponse.json({ pedido: { ...(pedido as object), hora_retiro: horaRetiroConfirmada } })
+  return NextResponse.json({ pedido: { ...(pedido as object), hora_retiro: horaRetiroConfirmada }, ...(avisoSabores.length ? { aviso_sabores: avisoSabores } : {}) })
 }

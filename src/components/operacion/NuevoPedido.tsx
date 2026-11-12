@@ -88,6 +88,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [exito, setExito] = useState(false)
+  const [avisoSabores, setAvisoSabores] = useState<string | null>(null)   // sabores que no alcanzaron (la venta salió igual)
   const [error, setError] = useState<string | null>(null)
 
   // Refetch del catálogo: el endpoint es la ÚNICA verdad (condición CTO —
@@ -387,10 +388,13 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     })
     setGuardando(false)
     if (res.ok) {
+      const ok = await res.json().catch(() => null) as { aviso_sabores?: { sabor?: string; pedido_kg?: number; descontado_kg?: number }[] } | null
+      const faltan = (ok?.aviso_sabores ?? []).map(f => `${f.sabor ?? 'Un sabor'} (faltaban ${Math.max(0, Number(f.pedido_kg ?? 0) - Number(f.descontado_kg ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 3 })} kg)`)
+      setAvisoSabores(faltan.length ? `Se quedó sin kilos: ${faltan.join(', ')}. Revisá el stock de sabores.` : null)
       setExito(true); setCarrito([]); setNotas(''); setEsDelivery(false)
       setDatosDelivery({ nombre: '', telefono: '', direccion: '', entre_calles: '' })
       setCostoEnvio(costoEnvioConfig)
-      setTimeout(() => { setExito(false); onPedidoCreado() }, 1500)
+      setTimeout(() => { setExito(false); setAvisoSabores(null); onPedidoCreado() }, faltan.length ? 6000 : 1500)
     } else {
       const d = await res.json().catch(() => null)
       setError(d?.error ?? 'Error al crear el pedido')
@@ -410,6 +414,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     <div className="flex flex-col items-center justify-center h-64 gap-3">
       <CheckCircle className="h-12 w-12 text-green-500" />
       <p className="text-neutral-700 text-lg font-bold">¡Pedido creado!</p>
+      {avisoSabores && <p className="max-w-md text-center text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">{avisoSabores}</p>}
     </div>
   )
 

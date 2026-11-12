@@ -84,6 +84,15 @@ export async function POST(request: Request) {
     }
   }
 
+  // Stock por sabor en kilos: devuelve lo descontado (idempotente). Si la función todavía no existe, no hay nada que devolver.
+  {
+    const { error: errSab } = await supabase.rpc('devolver_sabores_pedido', { p_empresa: pedido.empresa_id, p_pedido: pedido_id })
+    if (errSab && errSab.code !== 'PGRST202' && errSab.code !== '42883') {
+      console.error('[pedidos/eliminar] devolver_sabores_pedido', errSab.message)
+      return NextResponse.json({ error: 'No se pudo devolver el stock de sabores. El pedido NO se eliminó: reintentá.' }, { status: 500 })
+    }
+  }
+
   // Beneficios: revertir puntos del pedido (ganados se restan, canjes se devuelven)
   const { data: movs } = await supabase.from('beneficios_movimientos')
     .select('id, cliente_id, puntos, tipo').eq('pedido_id', pedido_id)
