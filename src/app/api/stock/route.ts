@@ -191,10 +191,14 @@ export async function POST(request: Request) {
     const conGrupos = new Set((pg ?? []).map(x => x.presentacion_id as string))
     const presSab0 = (presKg ?? []).filter(x => conGrupos.has(x.id as string))
     const prodIds = [...new Set(presSab0.map(x => x.producto_id as string))]
-    const { data: prods } = prodIds.length ? await supabase.from('productos').select('id, nombre').in('id', prodIds).is('deleted_at', null) : { data: [] }
+    const { data: prods } = prodIds.length ? await supabase.from('productos').select('id, nombre, categoria_id').in('id', prodIds).is('deleted_at', null) : { data: [] }
     const nomProd = new Map((prods ?? []).map(x => [x.id as string, x.nombre as string]))
-    // Los baldes se venden cerrados: llevan stock por unidad, no kilos de sabor (salvo que ya tengan kilos cargados). Conos y helado por kilo sí descuentan kilos.
-    const presSab = presSab0.filter(x => x.kg_por_unidad != null || !/balde/i.test(`${nomProd.get(x.producto_id as string) ?? ''} ${x.nombre}`))
+    // Solo categorías que descuentan kilos (helado por kilo, conos y bochas), o presentaciones que ya tienen kilos cargados. Baldes y demás cerrados llevan stock por unidad.
+    const catIds = [...new Set((prods ?? []).map(x => x.categoria_id as string | null).filter((x): x is string => !!x))]
+    const { data: cats } = catIds.length ? await supabase.from('categorias').select('id, nombre').in('id', catIds) : { data: [] }
+    const catOk = new Set((cats ?? []).filter(c => /helados?\s+por\s+kilo|\bconos?\b/i.test(String(c.nombre))).map(c => c.id as string))
+    const prodOk = new Set((prods ?? []).filter(x => x.categoria_id && catOk.has(x.categoria_id as string)).map(x => x.id as string))
+    const presSab = presSab0.filter(x => x.kg_por_unidad != null || prodOk.has(x.producto_id as string))
     const grupoIds = [...new Set((pg ?? []).filter(x => presSab.some(p => p.id === x.presentacion_id && p.kg_por_unidad != null)).map(x => x.grupo_id as string))]
     const [{ data: grs }, { data: ops }, { data: stk }] = await Promise.all([
       grupoIds.length ? supabase.from('grupos_opciones').select('id, nombre, orden').in('id', grupoIds) : Promise.resolve({ data: [] }),
