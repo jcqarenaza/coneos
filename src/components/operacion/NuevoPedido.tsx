@@ -3,19 +3,19 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, Trash2, CheckCircle, Plus, Minus, Bike } from 'lucide-react'
-import { armarFilas } from '@/lib/agruparCarrito'
+import { armarFilas, sumarAlCarrito } from '@/lib/agruparCarrito'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string } }
 interface Categoria { id: string; nombre: string }
-interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string }
+interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string; visible_delivery?: boolean }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null }
 interface Grupo { id: string; nombre: string }
 interface Opcion { id: string; nombre: string; emoji: string | null; color: string | null; imagen_url: string | null; grupo_id: string; precio_adicional: number; es_novedad?: boolean }
 interface PresGrupo { presentacion_id: string; grupo_id: string }
 // PROMOS V1 (E1-C caja): misma forma que devuelve /api/kiosk/catalogo
 interface PromoSlotAPI { id: string; orden: number; titulo: string | null; cantidad?: number; presentaciones: string[] }
-interface Promo { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; precio: number; precio_regular: number | null; es_novedad?: boolean; slots: PromoSlotAPI[] }
+interface Promo { id: string; nombre: string; descripcion: string | null; imagen_url: string | null; precio: number; precio_regular: number | null; es_novedad?: boolean; visible_delivery?: boolean; slots: PromoSlotAPI[] }
 interface PromoCtx { promo_id: string; combo_ref: string; promo_slot_id: string; promo_nombre: string; slot_titulo: string | null; precio_asignado: number }
 interface ItemCarrito {
   uid: string
@@ -397,7 +397,13 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     }
   }
 
-  const productosFiltrados = productos.filter(p => p.categoria_id === categoriaActiva)
+  // Canal DELIVERY (JC 12/11): si el pedido es de delivery, la caja ofrece solo lo
+  // que está habilitado para delivery (el mostrador sigue viendo todo, como siempre).
+  const productosDelCanal = esDelivery ? productos.filter(p => p.visible_delivery !== false) : productos
+  const categoriasVisibles = esDelivery ? categorias.filter(c => productosDelCanal.some(p => p.categoria_id === c.id)) : categorias
+  const promosVisibles = esDelivery ? promos.filter(pr => pr.visible_delivery !== false) : promos
+  const categoriaMostrada = categoriasVisibles.some(c => c.id === categoriaActiva) ? categoriaActiva : (categoriasVisibles[0]?.id ?? null)
+  const productosFiltrados = productosDelCanal.filter(p => p.categoria_id === categoriaMostrada)
 
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-neutral-200" /></div>
   if (exito) return (
@@ -413,9 +419,9 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
     <div className="flex h-full overflow-hidden">
       {/* Catálogo */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {promos.length > 0 && (
+        {promosVisibles.length > 0 && (
           <div className="flex gap-2 px-3 pt-3 bg-white overflow-x-auto">
-            {promos.map(promo => (
+            {promosVisibles.map(promo => (
               <button key={promo.id} onClick={() => iniciarPromo(promo)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-800 text-sm font-semibold whitespace-nowrap bg-white hover:bg-neutral-50 transition-colors active:scale-98">
                 🎁 {promo.nombre}
@@ -428,9 +434,9 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
           </div>
         )}
         <div className="flex gap-2 p-3 border-b border-neutral-100 bg-white overflow-x-auto">
-          {categorias.map(cat => (
+          {categoriasVisibles.map(cat => (
             <button key={cat.id} onClick={() => { setCategoriaActiva(cat.id); setPresentacionActiva(null) }}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-colors ${categoriaActiva === cat.id ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
+              className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-colors ${categoriaMostrada === cat.id ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}>
               {cat.nombre}
             </button>
           ))}
