@@ -139,8 +139,8 @@ export default function StockPage() {
   cargarInvRef.current = cargarInv
 
   // ── Sabores (helado por kilo): kilos de cada sabor por sucursal ──
-  type PresKg = { id: string; producto: string; nombre: string; kg: number | null; unidad?: 'kg' | 'u' }
-  type SabItem = { id: string; nombre: string; grupo: string; kg: number | null; unidad?: 'kg' | 'u' }
+  type PresKg = { id: string; producto_id?: string; producto: string; nombre: string; kg: number | null; unidad?: 'kg' | 'u' }
+  type SabItem = { id: string; nombre: string; grupo: string; kg: number | null; unidad?: 'kg' | 'u'; presentaciones?: string[] }
   const [sab, setSab] = useState<{ puede: boolean; pres: PresKg[]; sabores: SabItem[] } | null>(null)
   const [sabIn, setSabIn] = useState<Record<string, string>>({})
   const [kgPresIn, setKgPresIn] = useState<Record<string, string>>({})
@@ -155,7 +155,7 @@ export default function StockPage() {
       setSab({ puede: j.puede_configurar === true, pres: j.presentaciones, sabores: j.sabores }); setSabIn({}); setKgPresIn({})
     } catch (e) { setSab(null); setSabMsg({ ok: false, t: (e as Error).message }) }
   }, [sucId, api])
-  useEffect(() => { if (tab === 'sabores') cargarSab() }, [tab, cargarSab])
+  useEffect(() => { if (tab === 'inventario') cargarSab() }, [tab, cargarSab])
   const kgOk = (v: string) => /^\d+([.,]\d{1,3})?$/.test(v.trim())
   const kgNum = (v: string) => Number(v.trim().replace(',', '.'))
   const fmtKg = (n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 3 })
@@ -331,7 +331,7 @@ export default function StockPage() {
             : <span className="text-sm font-medium text-neutral-700">{sucs[0]?.nombre}</span>}
         </div>
       </div>
-      <div className="flex gap-1 border-b border-neutral-200 mb-5"><Tab id="inventario">Inventario</Tab><Tab id="sabores">Sabores y variedades</Tab><Tab id="ajuste">Ajuste general</Tab><Tab id="movimientos">Movimientos</Tab></div>
+      <div className="flex gap-1 border-b border-neutral-200 mb-5"><Tab id="inventario">Inventario</Tab><Tab id="ajuste">Ajuste general</Tab><Tab id="movimientos">Movimientos</Tab></div>
       {error && <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">{error}</div>}
 
       {tab === 'inventario' && (
@@ -351,6 +351,7 @@ export default function StockPage() {
                 <button onClick={() => setLoteConfirmar(false)} disabled={loteTrabajando} className="px-3 py-1.5 rounded-lg border border-neutral-300 text-sm bg-white">Cancelar</button>
               </div>
             </div>)}
+          {sabMsg && <div className={`mb-3 p-3 rounded-lg text-sm flex gap-2 ${sabMsg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{sabMsg.ok ? <CheckCircle2 size={16} className="mt-0.5" /> : <AlertTriangle size={16} className="mt-0.5" />}{sabMsg.t}</div>}
           {avisoInv && <div className={`mb-3 p-3 rounded-lg text-sm flex gap-2 ${avisoInv.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{avisoInv.ok ? <CheckCircle2 size={16} className="mt-0.5" /> : <AlertTriangle size={16} className="mt-0.5" />}{avisoInv.t}</div>}
           {quitar && (
             <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
@@ -390,7 +391,23 @@ export default function StockPage() {
                                     <input placeholder="motivo" value={ajR[p.id]?.motivo ?? ''} onChange={e => setAjR(a => ({ ...a, [p.id]: { valor: a[p.id]?.valor ?? '', motivo: e.target.value } }))} aria-label={`Motivo del ajuste de ${p.nombre}`} className="w-32 border border-neutral-200 rounded px-1.5 py-0.5 bg-white" />
                                     <button onClick={() => ajustarHoja(p)} disabled={ajRTrab === p.id} className="underline text-neutral-700 disabled:opacity-40">Ajustar</button>
                                   </span>)}</td></tr>
-                            : <tr key={p.id} className="text-xs text-neutral-500"><td></td><td className="px-4 py-0.5 pl-10" colSpan={2}>↳ {p.nombre}{p.factor > 1 && <span className="text-neutral-400"> · descuenta {p.factor}</span>}</td><td className="px-4 py-0.5 text-right tabular-nums" colSpan={2}>{p.vendibles !== null ? `${p.vendibles} vendibles` : ''}</td></tr>))}
+                            : <Fragment key={p.id}><tr className="text-xs text-neutral-500"><td></td><td className="px-4 py-0.5 pl-10" colSpan={2}>↳ {p.nombre}{p.factor > 1 && <span className="text-neutral-400"> · descuenta {p.factor}</span>}</td><td className="px-4 py-0.5 text-right tabular-nums" colSpan={2}>{p.vendibles !== null ? `${p.vendibles} vendibles` : ''}</td></tr>
+                              {(() => {
+                                const pk = sab?.pres.find(x => x.id === p.id)
+                                if (!sab || !pk) return null
+                                const ops = sab.sabores.filter(o => o.presentaciones?.includes(p.id))
+                                const uni = pk.unidad === 'u'
+                                return <>
+                                  {!uni && <tr className="text-xs text-neutral-500"><td></td><td className="px-4 py-1 pl-16" colSpan={4}>Descuenta
+                                    <input inputMode="decimal" disabled={!sab.puede || sabTrab} placeholder="sin kilos" value={kgPresIn[p.id] ?? (pk.kg === null ? '' : String(pk.kg).replace('.', ','))} onChange={e => setKgPresIn(k => ({ ...k, [p.id]: e.target.value }))} aria-label={`Kilos que descuenta ${p.nombre}`} className="mx-1.5 w-16 text-right border border-neutral-200 rounded px-1.5 py-0.5 bg-white" />kg por venta
+                                    {sab.puede && <button onClick={() => guardarKgPres(pk)} disabled={sabTrab || kgPresIn[p.id] === undefined} className="ml-2 underline text-neutral-700 disabled:opacity-40">Guardar</button>}</td></tr>}
+                                  {ops.map(o => (
+                                    <tr key={o.id} className="text-xs text-neutral-500"><td></td><td className="px-4 py-0.5 pl-16">↳ {o.nombre}</td>
+                                      <td className={`px-4 py-0.5 text-right tabular-nums ${o.kg === 0 ? 'text-red-600 font-medium' : ''}`}>{o.kg === null ? 'Sin cargar' : o.kg === 0 ? 'Agotado' : `${fmtKg(o.kg)} ${uni ? 'u.' : 'kg'}`}</td>
+                                      <td className="px-4 py-0.5" colSpan={2}><input inputMode="decimal" placeholder={uni ? 'unidades' : 'kilos'} value={sabIn[o.id] ?? ''} onChange={e => setSabIn(m => ({ ...m, [o.id]: e.target.value }))} aria-label={`${uni ? 'Unidades' : 'Kilos'} de ${o.nombre}`} className="w-20 text-right border border-neutral-200 rounded px-1.5 py-0.5 bg-white" /></td></tr>))}
+                                  {ops.length > 0 && <tr className="text-xs"><td></td><td className="px-4 py-1 pl-16" colSpan={4}><button onClick={guardarSabores} disabled={sabTrab || ops.every(o => (sabIn[o.id] ?? '').trim() === '')} className="px-3 py-1 rounded-lg bg-neutral-900 text-white font-medium disabled:opacity-40">{sabTrab ? 'Guardando…' : uni ? 'Guardar unidades' : 'Guardar kilos'}</button></td></tr>}
+                                </>
+                              })()}</Fragment>))}
                       </Fragment>))}
                   </Fragment>))}
                   {arbol.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-neutral-400">{todos ? 'No hay productos.' : 'No hay productos con control de stock. Marcá «Mostrar todos los productos» para habilitar alguno.'}</td></tr>}</tbody></table>
@@ -436,44 +453,6 @@ export default function StockPage() {
               </div>
             </div>)}
           <p className="text-xs text-neutral-400 mt-3">Tildá un producto para que controle stock (aplica a todas las sucursales). Un producto «Sin alta» todavía no tiene stock cargado en esta sucursal: se da de alta contándolo en un Ajuste general. Las presentaciones descuentan del stock del producto según su factor.</p>
-        </div>
-      )}
-
-      {tab === 'sabores' && (
-        <div className="space-y-5">
-          <div className="p-3 rounded-lg bg-blue-50 text-blue-900 text-sm">Para el <b>helado por kilo</b>: cargá los <b>kilos que hay de cada sabor</b>. Al vender 1/4, 1/2 o 1 kg se descuentan de los sabores elegidos, en partes iguales. Los <b>baldes</b> se cuentan en <b>unidades</b> por variedad (cargá en la presentación «1 por venta»). Lo que dejes sin cargar no se controla. Si un sabor no alcanza, la venta sale igual y la caja avisa.</div>
-          {sabMsg && <div className={`p-3 rounded-lg text-sm flex gap-2 ${sabMsg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{sabMsg.ok ? <CheckCircle2 size={16} className="mt-0.5" /> : <AlertTriangle size={16} className="mt-0.5" />}{sabMsg.t}</div>}
-          {sab && (
-            <>
-              <div className="bg-white border border-neutral-200 rounded-xl p-4">
-                <h2 className="font-semibold mb-1">Kilos de cada presentación</h2>
-                <p className="text-sm text-neutral-500 mb-3">Cuántos kilos descuenta cada presentación al venderse (1 Kg = 1, 1/2 Kg = 0,5, 1/4 Kg = 0,25). Dejala vacía para que no descuente.</p>
-                {sab.pres.length === 0 ? <p className="text-sm text-neutral-400">No hay presentaciones con sabores.</p> : (
-                  <div className="divide-y divide-neutral-100">{sab.pres.map(p => (
-                    <div key={p.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-                      <span className="flex-1 min-w-40 font-medium">{p.producto} <span className="font-normal text-neutral-500">· {p.nombre}</span></span>
-                      <input inputMode="decimal" disabled={!sab.puede || sabTrab} placeholder="sin kilos" value={kgPresIn[p.id] ?? (p.kg === null ? '' : String(p.kg).replace('.', ','))} onChange={e => setKgPresIn(k => ({ ...k, [p.id]: e.target.value }))} aria-label={`Kilos de ${p.producto} ${p.nombre}`} className={`${inputCls} w-24 text-right`} />
-                      <span className="text-neutral-500">{p.unidad === 'u' ? 'por venta' : 'kg'}</span>
-                      {sab.puede && <button onClick={() => guardarKgPres(p)} disabled={sabTrab || kgPresIn[p.id] === undefined} className="underline text-neutral-700 disabled:opacity-40">Guardar</button>}
-                      {sab.puede && p.unidad === 'u' && p.kg === null && <button onClick={async () => { setSabTrab(true); try { await api({ accion: 'kg_presentacion', sucursal_id: sucId, presentacion_id: p.id, kg: 1 }); await cargarSab(); setSabMsg({ ok: true, t: `${p.producto}: descuenta 1 por venta.` }) } catch (e) { setSabMsg({ ok: false, t: (e as Error).message }) } finally { setSabTrab(false) } }} disabled={sabTrab} className="px-2 py-1 rounded-lg bg-neutral-900 text-white text-xs font-medium">Descontar 1 por venta</button>}
-                    </div>))}</div>)}
-              </div>
-              <div className="bg-white border border-neutral-200 rounded-xl overflow-x-auto">
-                <table className="w-full text-sm"><thead className="bg-neutral-50 text-neutral-500 text-left"><tr><th className="px-4 py-2">Sabor</th><th className="px-4 py-2 text-right">Kilos hoy</th><th className="px-4 py-2 text-right w-40">Kilos contados</th></tr></thead>
-                  <tbody>{sab.sabores.length === 0 && <tr><td colSpan={3} className="px-4 py-8 text-center text-neutral-400">Todavía no hay sabores: configurá los kilos de al menos una presentación arriba.</td></tr>}
-                    {sab.sabores.map((x, idx) => (
-                      <Fragment key={x.id}>
-                        {(idx === 0 || sab.sabores[idx - 1].grupo !== x.grupo) && <tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={3} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">{x.grupo}</td></tr>}
-                        <tr className="border-t border-neutral-100"><td className="px-4 py-2 font-medium">{x.nombre}</td>
-                          <td className={`px-4 py-2 text-right tabular-nums ${x.kg === null ? 'text-neutral-400' : x.kg === 0 ? 'text-red-600 font-medium' : ''}`}>{x.kg === null ? 'Sin cargar' : x.kg === 0 ? (x.unidad === 'u' ? 'Agotado' : 'Sin kilos') : `${fmtKg(x.kg)} ${x.unidad === 'u' ? 'u.' : 'kg'}`}</td>
-                          <td className="px-4 py-2 text-right"><input inputMode="decimal" value={sabIn[x.id] ?? ''} onChange={e => setSabIn(k => ({ ...k, [x.id]: e.target.value }))} aria-label={`Kilos contados de ${x.nombre}`} className={`${inputCls} w-28 text-right ${sabIn[x.id] && !kgOk(sabIn[x.id]) ? 'border-red-400' : ''}`} /></td></tr>
-                      </Fragment>))}</tbody></table>
-              </div>
-              <div className="bg-white border border-neutral-200 rounded-xl p-4 flex flex-wrap items-end gap-3">
-                <div className="flex-1 min-w-48"><label className="text-sm font-medium block mb-1">Motivo</label><input value={sabMotivo} onChange={e => setSabMotivo(e.target.value)} className={`${inputCls} w-full`} /></div>
-                <button onClick={guardarSabores} disabled={sabTrab || Object.values(sabIn).every(v => v.trim() === '')} className="px-4 py-2 rounded-lg bg-neutral-900 text-white text-sm font-medium disabled:opacity-50">{sabTrab ? 'Guardando…' : 'Guardar kilos'}</button>
-              </div>
-            </>)}
         </div>
       )}
 

@@ -202,6 +202,14 @@ export async function POST(request: Request) {
     const prodUni = new Set((prods ?? []).filter(x => x.categoria_id && catUni.has(x.categoria_id as string)).map(x => x.id as string))
     const prodOk = new Set((prods ?? []).filter(x => x.categoria_id && catOk.has(x.categoria_id as string)).map(x => x.id as string))
     const presSab = presSab0.filter(x => x.kg_por_unidad != null || prodOk.has(x.producto_id as string))
+    // Baldes (unidades): descuentan 1 por venta sin configurar nada. Se inicializa solo, una vez.
+    if (empresaCompleta) {
+      const sinInit = presSab.filter(x => x.kg_por_unidad == null && prodUni.has(x.producto_id as string))
+      if (sinInit.length > 0) {
+        const { error: eIni } = await supabase.from('presentaciones').update({ kg_por_unidad: 1 }).in('id', sinInit.map(x => x.id as string)).eq('empresa_id', empresaId)
+        if (!eIni) sinInit.forEach(x => { (x as { kg_por_unidad: number | null }).kg_por_unidad = 1 })
+      }
+    }
     const grupoIds = [...new Set((pg ?? []).filter(x => presSab.some(p => p.id === x.presentacion_id && p.kg_por_unidad != null)).map(x => x.grupo_id as string))]
     const [{ data: grs }, { data: ops }, { data: stk }] = await Promise.all([
       grupoIds.length ? supabase.from('grupos_opciones').select('id, nombre, orden').in('id', grupoIds) : Promise.resolve({ data: [] }),
@@ -213,8 +221,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       puede_configurar: empresaCompleta,
       presentaciones: presSab.sort((a, b) => (nomProd.get(a.producto_id as string) ?? '').localeCompare(nomProd.get(b.producto_id as string) ?? '') || Number(a.orden ?? 0) - Number(b.orden ?? 0))
-        .map(x => ({ id: x.id as string, producto: nomProd.get(x.producto_id as string) ?? '', nombre: x.nombre as string, kg: x.kg_por_unidad == null ? null : Number(x.kg_por_unidad), unidad: prodUni.has(x.producto_id as string) ? 'u' : 'kg' })),
-      sabores: (ops ?? []).map(o => ({ id: o.id as string, nombre: o.nombre as string, grupo: nomGrupo.get(o.grupo_id as string) ?? '', orden: Number(o.orden ?? 0), kg: kgDe.has(o.id as string) ? kgDe.get(o.id as string)! : null, unidad: (pg ?? []).some(g => g.grupo_id === o.grupo_id && presSab.some(p => p.id === g.presentacion_id && prodUni.has(p.producto_id as string))) ? 'u' : 'kg' }))
+        .map(x => ({ id: x.id as string, producto_id: x.producto_id as string, producto: nomProd.get(x.producto_id as string) ?? '', nombre: x.nombre as string, kg: x.kg_por_unidad == null ? null : Number(x.kg_por_unidad), unidad: prodUni.has(x.producto_id as string) ? 'u' : 'kg' })),
+      sabores: (ops ?? []).map(o => ({ id: o.id as string, nombre: o.nombre as string, grupo: nomGrupo.get(o.grupo_id as string) ?? '', orden: Number(o.orden ?? 0), kg: kgDe.has(o.id as string) ? kgDe.get(o.id as string)! : null, presentaciones: (pg ?? []).filter(g => g.grupo_id === o.grupo_id && presSab.some(p => p.id === g.presentacion_id)).map(g => g.presentacion_id as string), unidad: (pg ?? []).some(g => g.grupo_id === o.grupo_id && presSab.some(p => p.id === g.presentacion_id && prodUni.has(p.producto_id as string))) ? 'u' : 'kg' }))
         .sort((a, b) => a.grupo.localeCompare(b.grupo) || a.orden - b.orden || a.nombre.localeCompare(b.nombre)),
     })
   }
