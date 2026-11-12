@@ -189,7 +189,8 @@ export async function POST(request: Request) {
     }
     const { data: pg } = await supabase.from('presentacion_grupos').select('presentacion_id, grupo_id').in('presentacion_id', (presKg ?? []).map(x => x.id as string))
     const conGrupos = new Set((pg ?? []).map(x => x.presentacion_id as string))
-    const presSab = (presKg ?? []).filter(x => conGrupos.has(x.id as string))
+    // Solo helado por kilo: presentaciones con kilos ya cargados o cuyo nombre es de peso (1 Kg, 1/2 Kg…). Baldes, conos y demás unidades NO van acá: llevan stock por unidad.
+    const presSab = (presKg ?? []).filter(x => conGrupos.has(x.id as string) && (x.kg_por_unidad != null || /\b(kg|kgs|kilo|kilos)\b/i.test(String(x.nombre))))
     const prodIds = [...new Set(presSab.map(x => x.producto_id as string))]
     const { data: prods } = prodIds.length ? await supabase.from('productos').select('id, nombre').in('id', prodIds).is('deleted_at', null) : { data: [] }
     const nomProd = new Map((prods ?? []).map(x => [x.id as string, x.nombre as string]))
