@@ -21,7 +21,15 @@ declare
   v_n int := 0;
 begin
   for r in
-    select pr.id as pres_vieja, pr.producto_id, pr.precio, o.nombre, o.imagen_url, o.orden
+    select pr.id as pres_vieja, pr.producto_id, pr.precio, o.nombre, o.orden,
+           -- foto: la propia; si no tiene (Balde 2L), la de la misma mezcla en el balde de 3L o 5L
+           coalesce(o.imagen_url, (
+             select o2.imagen_url from opciones o2 join grupos_opciones g2 on g2.id = o2.grupo_id
+              where g2.empresa_id = v_empresa and g2.nombre in ('Variedades Balde 3L', 'Variedades Balde 5L')
+                and o2.deleted_at is null and o2.imagen_url is not null
+                and (select string_agg(trim(k.w), ',' order by trim(k.w)) from unnest(regexp_split_to_array(lower(regexp_replace(o2.nombre, '\s+y\s+', ',', 'gi')), ',')) as k(w) where trim(k.w) <> '')
+                  = (select string_agg(trim(k.w), ',' order by trim(k.w)) from unnest(regexp_split_to_array(lower(regexp_replace(o.nombre, '\s+y\s+', ',', 'gi')), ',')) as k(w) where trim(k.w) <> '')
+              limit 1)) as imagen_url
     from presentaciones pr
     join productos p on p.id = pr.producto_id
     join presentacion_grupos pg on pg.presentacion_id = pr.id
