@@ -71,13 +71,13 @@ export default function EntradaEmpresaPage() {
   }, [])
 
   if (estado === 'cargando' || estado === 'redirigiendo') return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-400 rounded-full animate-spin" />
     </div>
   )
 
   if (estado === 'no-disponible' || !marca) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3" style={{ backgroundColor: '#ffffff' }}>
       <p className="text-3xl">🍦</p>
       <p className="text-neutral-700 font-bold text-lg">Pedidos online no disponible</p>
       <p className="text-neutral-400 text-sm text-center">Este local todavía no tiene activados los pedidos por acá.</p>
@@ -115,7 +115,7 @@ export default function EntradaEmpresaPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center px-5 py-10" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center px-5 py-10" style={{ backgroundColor: '#ffffff' }}>
       {marca.config.logo_url
         ? <img src={marca.config.logo_url} alt={marca.nombre} className="h-16 object-contain mb-5" />
         : <p className="text-2xl font-black mb-5" style={{ color }}>{marca.nombre}</p>}

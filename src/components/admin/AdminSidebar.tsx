@@ -78,9 +78,9 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
             const active = item.exact ? pathname === item.href : pathname.startsWith(item.href)
             return (
               <div key={item.href}>
-                {cap && <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-neutral-300">{cap}</p>}
+                {cap && <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-neutral-400">{cap}</p>}
               <Link href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${active ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-50'}`}>
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-semibold transition-all ${active ? 'bg-[#E8F0FF] text-[#2d55b0]' : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50'}`}>
                 <item.icon className="h-4 w-4 flex-shrink-0" />
                 {item.label}
               </Link>
@@ -91,7 +91,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
           {/* Módulo Delivery — bloqueado si no está activo */}
           {!deliveryActivo && (
             <button onClick={() => setModalDelivery(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-neutral-300 hover:bg-neutral-50 transition-all">
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-semibold text-neutral-300 hover:bg-neutral-50 transition-all">
               <Truck className="h-4 w-4 flex-shrink-0" />
               Delivery
               <Lock className="h-3 w-3 ml-auto" />
@@ -101,7 +101,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
           {/* Módulo Facturación — bloqueado si no está contratado */}
           {modulos.facturacion !== true && (
             <button onClick={() => setModalFacturacion(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-neutral-300 hover:bg-neutral-50 transition-all">
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-semibold text-neutral-300 hover:bg-neutral-50 transition-all">
               <FileText className="h-4 w-4 flex-shrink-0" />
               Facturación
               <Lock className="h-3 w-3 ml-auto" />
@@ -113,7 +113,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
           {/* Módulo Beneficios — bloqueado si no está contratado */}
           {modulos.beneficios !== true && (
             <button onClick={() => setModalBeneficios(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-neutral-300 hover:bg-neutral-50 transition-all">
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-semibold text-neutral-300 hover:bg-neutral-50 transition-all">
               <Gift className="h-4 w-4 flex-shrink-0" />
               Beneficios
               <Lock className="h-3 w-3 ml-auto" />
@@ -123,7 +123,7 @@ export default function AdminSidebar({ usuarioNombre, empresaNombre, slug, modul
 
         <div className="px-4 py-4 border-t border-neutral-100">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-neutral-800 flex items-center justify-center text-white text-xs font-bold">
+            <div className="w-8 h-8 rounded-xl bg-[#E8F0FF] flex items-center justify-center text-[#2d55b0] text-xs font-bold">
               {usuarioNombre?.[0]?.toUpperCase() ?? 'A'}
             </div>
             <div className="flex-1 min-w-0">

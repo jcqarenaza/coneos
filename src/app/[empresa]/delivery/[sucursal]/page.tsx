@@ -359,13 +359,13 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   }
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
     </div>
   )
 
   if (verificandoMp && !pedidoCreado) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4 text-center" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-10 h-10 border-2 border-neutral-200 border-t-neutral-500 rounded-full animate-spin" />
       <p className="text-lg font-black text-neutral-800">Verificando tu pago…</p>
       <p className="text-sm text-neutral-400 max-w-xs">Estamos confirmando con Mercado Pago. Esto tarda unos segundos.</p>
@@ -374,7 +374,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
 
 
   if (pausado) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center" style={{ backgroundColor: '#ffffff' }}>
       {config.logo_url
         ? <img src={config.logo_url} alt="Logo" className="w-32 h-32 object-contain mb-6" />
         : <div className="text-6xl mb-6">🌧️</div>
@@ -385,7 +385,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   )
 
   if (!horarioActivo) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center" style={{ backgroundColor: '#ffffff' }}>
       {config.logo_url
         ? <img src={config.logo_url} alt="Logo" className="w-32 h-32 object-contain mb-6" />
         : <div className="text-6xl mb-6">🍦</div>
@@ -399,7 +399,7 @@ export default function DeliveryPage({ params }: { params: { empresa: string; su
   )
 
   if (error || !dispositivo) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4" style={{ backgroundColor: '#ffffff' }}>
       <p className="text-neutral-400 text-center">{error ?? 'Error al cargar el delivery'}</p>
     </div>
   )

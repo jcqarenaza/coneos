@@ -111,7 +111,7 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
   }
 
   if (carrito.length === 0) return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6" style={{ backgroundColor: '#ffffff' }}>
       <ShoppingBag className="h-14 w-14 text-neutral-200" />
       <p className="text-neutral-400 text-base">Tu carrito está vacío</p>
       <button onClick={onSeguirComprando}
@@ -123,7 +123,7 @@ export default function KioskCarritoDelivery({ config, dispositivo, carrito, set
   )
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#ffffff' }}>
       <div className="sticky top-0 z-10 bg-white border-b border-neutral-100 px-4 py-3 flex items-center gap-3">
         <button onClick={onSeguirComprando} className="p-2 -ml-2 text-neutral-400">
           <ArrowLeft className="h-5 w-5" />

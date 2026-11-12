@@ -166,12 +166,12 @@ export default function RepartoPage() {
   }
 
   if (fase === 'cargando') return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
       <Loader2 className="h-8 w-8 animate-spin text-neutral-300" />
     </div>
   )
   if (fase === 'apagado') return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-3" style={{ backgroundColor: '#ffffff' }}>
       <p className="text-5xl">🛵</p>
       <p className="font-bold text-neutral-700">Reparto no disponible</p>
       <p className="text-neutral-400 text-sm text-center">Este link no está habilitado. Consultá con el local.</p>
@@ -181,7 +181,7 @@ export default function RepartoPage() {
   )
 
   if (fase === 'login') return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-full max-w-xs">
         <div className="text-center mb-8">
           <p className="text-5xl mb-2">🛵</p>
@@ -223,7 +223,7 @@ export default function RepartoPage() {
   )
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen" style={{ backgroundColor: '#ffffff' }}>
       <div className="bg-white border-b border-neutral-100 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
         <div>
           <p className="font-black text-neutral-800">🛵 Mis entregas</p>

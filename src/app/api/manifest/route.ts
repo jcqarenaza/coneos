@@ -73,7 +73,7 @@ export async function GET(request: Request) {
     description: `Hacé tu pedido en ${nombre}`,
     start_url: startUrl,
     display: 'standalone',
-    background_color: '#faf8f5',
+    background_color: '#ffffff',
     theme_color: themeColor,
     icons: iconoFinal
       ? [

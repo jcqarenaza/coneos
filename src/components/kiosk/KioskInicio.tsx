@@ -139,7 +139,7 @@ export default function KioskInicio({ config, dispositivo, onComenzar, canal = '
   const novedades = [...novedadesPres, ...novedadesSabor]
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#ffffff' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-8 py-5">
         <div className="w-20 text-left">
@@ -158,9 +158,9 @@ export default function KioskInicio({ config, dispositivo, onComenzar, canal = '
       {/* Hero */}
       <div className="text-center px-8 pt-2 pb-10">
         <div className="flex items-center justify-center gap-2 mb-3">
-          <div className="h-px w-8 rounded" style={{ backgroundColor: config.secondary_color }} />
-          <span className="text-sm font-medium tracking-widest uppercase" style={{ color: config.secondary_color }}>Bienvenido</span>
-          <div className="h-px w-8 rounded" style={{ backgroundColor: config.secondary_color }} />
+          <div className="h-px w-8 rounded bg-neutral-200" />
+          <span className="text-sm font-medium tracking-widest uppercase text-neutral-500">Bienvenido</span>
+          <div className="h-px w-8 rounded bg-neutral-200" />
         </div>
         <h1 className="text-4xl font-bold mb-3" style={{ color: config.primary_color }}>
           {config.texto_bienvenida?.trim() ? config.texto_bienvenida : <>¿Qué querés<br />disfrutar hoy?</>}

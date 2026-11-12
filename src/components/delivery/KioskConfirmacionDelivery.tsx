@@ -317,7 +317,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   // ── DATOS ──
   if (paso === 'datos') return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#ffffff' }}>
       <Header onBack={onVolver} title={esTakeaway ? 'Tu pedido para retirar' : 'Datos de entrega'} />
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-48">
         {!esTakeaway && (
@@ -404,7 +404,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     // config no deja ningún medio, se dice de frente (y el server igual manda).
 
     return (
-      <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#ffffff' }}>
         <Header onBack={() => setPaso('datos')} title="Método de pago" />
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
           <div className="bg-white rounded-2xl border border-neutral-100 p-4 mb-4">
@@ -476,7 +476,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   // ── TRANSFERENCIA ──
   if (paso === 'transferencia') return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#ffffff' }}>
       <Header title="Transferencia bancaria" />
       {modalDuplicado}
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
@@ -665,7 +665,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
 
   // ── ÉXITO ──
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-5" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-5" style={{ backgroundColor: '#ffffff' }}>
       <div className="w-full max-w-sm">
         {config.logo_url && <img src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
         <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-md" style={{ backgroundColor: config.primary_color }}>

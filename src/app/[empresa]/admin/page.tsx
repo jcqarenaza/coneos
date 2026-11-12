@@ -161,8 +161,8 @@ export default function AdminDashboard() {
   return (
     <div>
       <div className="mb-8">
-        <p className="text-neutral-400 text-sm">Buen día{nombre ? `, ${nombre}` : ''}</p>
-        <h1 className="text-2xl font-bold text-neutral-900 mt-0.5">Dashboard</h1>
+        <p className="text-neutral-500 text-base">Buen día{nombre ? <>, <span className="font-semibold text-[#3F6FD8]">{nombre}</span></> : ''}</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 mt-0.5">Dashboard</h1>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

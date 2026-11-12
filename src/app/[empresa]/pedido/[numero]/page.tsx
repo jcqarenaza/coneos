@@ -96,13 +96,13 @@ export default function PedidoPage() {
   }, [])
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
       <Loader2 className="h-8 w-8 animate-spin text-neutral-300" />
     </div>
   )
 
   if (notFound || !pedido || !config) return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4" style={{ backgroundColor: '#ffffff' }}>
       <p className="text-5xl">🍦</p>
       <p className="font-bold text-neutral-700 text-lg text-center">Pedido no encontrado</p>
       <p className="text-neutral-400 text-sm text-center">Verificá el número de pedido e intentá de nuevo.</p>
@@ -122,7 +122,7 @@ export default function PedidoPage() {
   const idxActual = pasosTimeline.indexOf(pedido.estado)
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen" style={{ backgroundColor: '#ffffff' }}>
       {/* Header */}
       <div className="bg-white border-b border-neutral-100 px-4 py-3 flex items-center justify-between">
         {config.logo_url

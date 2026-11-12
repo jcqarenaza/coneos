@@ -252,7 +252,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   // ─── Pantalla éxito ───
   if (pedidoCreado) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#ffffff' }}>
         <div className="text-center max-w-sm w-full">
           {config.logo_url && <img src={config.logo_url} alt="Logo" width={160} height={64} className="object-contain mx-auto mb-8" />}
           <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg" style={{ backgroundColor: config.primary_color }}>
@@ -311,7 +311,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   if (pedidoTransferencia) {
     const alias = pagosSucursal?.cbu_transferencia ?? ''
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#ffffff' }}>
         <div className="text-center max-w-sm w-full">
           {config.logo_url && <img src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
 
@@ -389,7 +389,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   // ─── MP esperando ───
   if (estadoMP === 'esperando' && mpInitPoint) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#ffffff' }}>
         <div className="text-center max-w-sm w-full">
           {config.logo_url && <img src={config.logo_url} alt="Logo" width={140} height={56} className="object-contain mx-auto mb-6" />}
           <div className="bg-white rounded-3xl p-8 shadow-md border border-neutral-100 mb-6">
@@ -424,7 +424,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
   // ─── MP rechazado ───
   if (estadoMP === 'rechazado') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ backgroundColor: '#ffffff' }}>
         <div className="text-center max-w-sm w-full">
           <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-6"><span className="text-4xl">❌</span></div>
           <h2 className="text-2xl font-black text-neutral-800 mb-2">No pudimos completar el pago</h2>
@@ -447,7 +447,7 @@ export default function KioskConfirmacion({ config, dispositivo, carrito, pedido
 
   // ─── Pantalla principal — selección método de pago ───
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#ffffff' }}>
       {repetido && (
         <AdvertenciaPedidoRepetido color={config.primary_color}
           onVolver={() => { setRepetido(null); operacionRef.current = null }}

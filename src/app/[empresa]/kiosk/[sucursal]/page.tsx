@@ -183,7 +183,7 @@ export default function KioskPage() {
   if (horarioNegocio && !horarioNegocio.abierto) {
     const horariosTexto = [...horarioNegocio.horarios].sort((a, b) => a.desde.localeCompare(b.desde)).map(h => `${h.desde} a ${h.hasta}`).join(' y ')
     return (
-      <div className="min-h-screen select-none flex flex-col items-center justify-center px-8 text-center gap-4" style={{ backgroundColor: '#faf8f5' }}>
+      <div className="min-h-screen select-none flex flex-col items-center justify-center px-8 text-center gap-4" style={{ backgroundColor: '#ffffff' }}>
         <LatidoDispositivo empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} dispositivoId={dispositivo.id} tipo="KIOSK" />
         {config.logo_url
           ? <img src={config.logo_url} alt="Logo" className="w-36 h-36 object-contain" />
@@ -198,7 +198,7 @@ export default function KioskPage() {
   }
 
   return (
-    <div className="min-h-screen select-none" style={{ backgroundColor: '#faf8f5' }}>
+    <div className="min-h-screen select-none" style={{ backgroundColor: '#ffffff' }}>
       <LatidoDispositivo empresaId={dispositivo.empresa_id} sucursalId={dispositivo.sucursal_id} dispositivoId={dispositivo.id} tipo="KIOSK" />
       {paso === 'inicio' && (
         <KioskInicio canal="kiosk" config={config} dispositivo={dispositivo} onComenzar={handleComenzar} />
