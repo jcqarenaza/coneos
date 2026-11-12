@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   const [{ data: categorias }, { data: productos }, { data: presentaciones }, { data: grupos }, { data: opciones }, { data: inventario }, { data: presGrupos }, { data: catalogoConfig }, { data: stockRows }] =
     await Promise.all([
       supabase.from('categorias').select('id, nombre, icono_url, orden').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null).order('orden'),
-      (() => { let q = supabase.from('productos').select('id, nombre, descripcion, imagen_url, categoria_id, orden, controla_stock').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null); const col = colCanal[canal]; if (col) q = q.eq(col, true); return q.order('orden') })(),
+      (() => { let q = supabase.from('productos').select('id, nombre, descripcion, imagen_url, categoria_id, orden, controla_stock, visible_delivery').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null); const col = colCanal[canal]; if (col) q = q.eq(col, true); return q.order('orden') })(),
       supabase.from('presentaciones').select('id, nombre, precio, permite_opciones, opciones_min, opciones_max, orden, producto_id, imagen_url, es_novedad').eq('empresa_id', empresa_id).eq('activo', true).eq('visible_kiosk', true).order('orden'),
       supabase.from('grupos_opciones').select('id, nombre, orden').eq('empresa_id', empresa_id).eq('activo', true).order('orden'),
       supabase.from('opciones').select('id, nombre, descripcion, emoji, color, imagen_url, grupo_id, orden, precio_adicional, es_novedad').eq('empresa_id', empresa_id).eq('activo', true).eq('visible_kiosk', true).is('deleted_at', null).order('orden'),
@@ -99,7 +99,7 @@ export async function GET(request: Request) {
     takeaway: 'visible_takeaway', operacion: null,
   }
   let qPromo = supabase.from('promociones')
-    .select('id, nombre, descripcion, imagen_url, precio, precio_regular, es_novedad, vigencia_desde, vigencia_hasta, promo_slots(id, orden, titulo, cantidad, promo_slot_presentaciones(presentacion_id))')
+    .select('id, nombre, descripcion, imagen_url, precio, precio_regular, es_novedad, visible_delivery, vigencia_desde, vigencia_hasta, promo_slots(id, orden, titulo, cantidad, promo_slot_presentaciones(presentacion_id))')
     .eq('empresa_id', empresa_id).eq('activo', true)
   const colP = colPromo[canal]
   if (colP) qPromo = qPromo.eq(colP, true)
@@ -112,6 +112,7 @@ export async function GET(request: Request) {
       id: pr.id, nombre: pr.nombre, descripcion: pr.descripcion, imagen_url: pr.imagen_url,
       precio: Number(pr.precio), precio_regular: pr.precio_regular != null ? Number(pr.precio_regular) : null,
       es_novedad: pr.es_novedad === true,
+      visible_delivery: pr.visible_delivery !== false,
       vigencia_desde: (pr as { vigencia_desde?: string | null }).vigencia_desde ?? null,
       vigencia_hasta: (pr as { vigencia_hasta?: string | null }).vigencia_hasta ?? null,
       slots: ((pr.promo_slots ?? []) as SlotRaw[])
@@ -126,5 +127,12 @@ export async function GET(request: Request) {
       return desdeOk && hastaOk && slotsOk
     })
 
-  return NextResponse.json({ categorias, productos: productosFinal, presentaciones: presentacionesFiltradas, grupos, opciones: opcionesFiltradas, presentacion_grupos: presGrupos ?? [], promociones })
+  // Categorías vacías en la vidriera (JC 12/11): si en este canal/sucursal no queda
+  // ningún producto visible en una categoría, la categoría tampoco se muestra.
+  // La caja ('operacion') conserva la lista completa.
+  const categoriasFinal = canal === 'operacion'
+    ? categorias
+    : (categorias ?? []).filter((c: { id: string }) => (productosFinal as unknown as { categoria_id: string }[]).some(p => p.categoria_id === c.id))
+
+  return NextResponse.json({ categorias: categoriasFinal, productos: productosFinal, presentaciones: presentacionesFiltradas, grupos, opciones: opcionesFiltradas, presentacion_grupos: presGrupos ?? [], promociones })
 }
