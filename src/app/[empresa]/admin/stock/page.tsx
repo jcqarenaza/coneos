@@ -82,6 +82,7 @@ export default function StockPage() {
 
   // Alta de "stock por presentación": el administrador carga cuántas unidades hay de cada presentación, en cada sucursal
   type RamaInfo = { producto: { id: string; nombre: string }; sucursales: { id: string; nombre: string; saldo: number }[]; presentaciones: { id: string; nombre: string }[]; bloqueos: string[] }
+  const [abiertos, setAbiertos] = useState<Record<string, boolean>>({})
   const [ramaP, setRamaP] = useState<{ id: string; nombre: string } | null>(null)
   const [ramaInfo, setRamaInfo] = useState<RamaInfo | null>(null)
   const [ramaCant, setRamaCant] = useState<Record<string, string>>({})
@@ -370,7 +371,9 @@ export default function StockPage() {
                       <Fragment key={i.producto_id}>
                         <tr className={`border-t border-neutral-100 ${i.controla ? '' : 'text-neutral-400'}`}>
                           <td className="px-4 py-2"><input type="checkbox" checked={i.controla} disabled={!puedeHab || accionando === i.producto_id || pendientes.has(i.producto_id)} onChange={() => cambiarControl(i)} aria-label={`Controlar stock de ${i.nombre}`} title={puedeHab ? (i.controla ? 'Quitar el control de stock' : 'Habilitar el control de stock') : 'Solo un administrador de toda la empresa puede cambiarlo'} /></td>
-                          <td className="px-4 py-2 font-medium">{i.nombre}{i.codigo && <span className="ml-2 text-xs font-normal text-neutral-400">{i.codigo}</span>}</td>
+                          <td className="px-4 py-2 font-medium">{i.presentaciones.length > 0
+                            ? <button type="button" onClick={() => setAbiertos(a => ({ ...a, [i.producto_id]: !(a[i.producto_id] ?? i.modelo === 'rama') }))} aria-expanded={abiertos[i.producto_id] ?? i.modelo === 'rama'} className="mr-1.5 inline-flex items-center justify-center w-5 h-5 rounded text-neutral-500 hover:bg-neutral-100 align-middle" title="Ver presentaciones">{(abiertos[i.producto_id] ?? i.modelo === 'rama') ? '▾' : '▸'}</button>
+                            : <span className="inline-block w-5 mr-1.5" />}{i.nombre}{i.codigo && <span className="ml-2 text-xs font-normal text-neutral-400">{i.codigo}</span>}{i.presentaciones.length > 0 && !(abiertos[i.producto_id] ?? i.modelo === 'rama') && <span className="ml-2 text-xs font-normal text-neutral-400">{i.presentaciones.length} presentaciones</span>}</td>
                           <td className="px-4 py-2 text-right tabular-nums">{i.cantidad ?? '—'}</td>
                           <td className="px-4 py-2 text-right tabular-nums text-neutral-500">{i.controla && i.cantidad !== null
                             ? <input inputMode="numeric" value={minEdit[i.producto_id] ?? String(i.minimo ?? 0)} onChange={e => setMinEdit(m => ({ ...m, [i.producto_id]: e.target.value }))} onBlur={() => guardarMinimo(i)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} disabled={accionando === i.producto_id} aria-label={`Mínimo de ${i.nombre}`} className="w-16 text-right border border-neutral-200 rounded px-1.5 py-0.5 text-sm bg-white" />
@@ -378,7 +381,7 @@ export default function StockPage() {
                           <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO[i.estado].c}`}>{ESTADO[i.estado].t}</span>
                             {i.controla && i.estado === 'sin_alta' && i.modelo !== 'rama' && <button onClick={() => setTab('ajuste')} className="ml-2 text-xs underline text-neutral-600">Cargar stock</button>}
                             {puedeHab && i.modelo !== 'rama' && i.presentaciones.length > 0 && <button onClick={() => abrirRama(i)} className="ml-2 text-xs font-medium underline text-blue-700">Stock por presentación</button>}</td></tr>
-                        {i.presentaciones.map(p => (
+                        {(abiertos[i.producto_id] ?? i.modelo === 'rama') && i.presentaciones.map(p => (
                           i.modelo === 'rama'
                             ? <tr key={p.id} className="text-xs text-neutral-600"><td></td><td className="px-4 py-1 pl-10">↳ {p.nombre}</td><td className="px-4 py-1 text-right tabular-nums font-medium">{p.saldo ?? '—'}</td>
                                 <td className="px-4 py-1" colSpan={2}>{p.saldo !== null && p.saldo !== undefined && (
