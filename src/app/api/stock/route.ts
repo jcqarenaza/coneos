@@ -175,6 +175,81 @@ export async function POST(request: Request) {
 
   // ── E2-b: ajuste directo de UNA hoja (sucursal x presentación) de un producto en modelo 'rama' ──
   // La autorización de rol se re-valida en la base (_validar_usuario_stock); el saldo nunca queda negativo; idempotente por operacion_id.
+  // ── Alta del modelo "stock por presentación" (rama): info previa + habilitación. Es del PRODUCTO (todas las sucursales): solo admin de toda la empresa ──
+  if (accion === 'rama_info' || accion === 'habilitar_rama') {
+    if (!empresaCompleta) return err('Solo un administrador de toda la empresa puede pasar un producto a stock por presentación.', 403)
+    const productoId = body.producto_id
+    if (typeof productoId !== 'string' || !UUID_RE.test(productoId)) return err('Producto inválido.')
+    const { data: prod } = await supabase.from('productos').select('id, nombre, modelo_stock, deleted_at').eq('id', productoId).eq('empresa_id', empresaId).maybeSingle()
+    if (!prod || prod.deleted_at) return err('Producto no encontrado.', 404)
+    if (prod.modelo_stock === 'rama') return err('Este producto ya tiene stock por presentación.', 409, { codigo: 'PRODUCTO_YA_RAMA' })
+    const [rS, rP] = await Promise.all([
+      supabase.rpc('_rama_conjunto_s', { p_empresa: empresaId, p_producto: productoId }),
+      supabase.rpc('_rama_presentaciones_activas', { p_empresa: empresaId, p_producto: productoId }),
+    ])
+    if (rS.error || rP.error) { console.error('[stock] rama_info', rS.error?.message ?? rP.error?.message); return err('No se pudo leer el producto. Reintentá.', 500) }
+    const sIds = (rS.data ?? []) as string[], pIds = (rP.data ?? []) as string[]
+
+    if (accion === 'rama_info') {
+      const [{ data: sucs }, { data: pres }, { data: saldos }, { data: grupos }, { data: arts }] = await Promise.all([
+        sIds.length ? supabase.from('sucursales').select('id, nombre').in('id', sIds) : Promise.resolve({ data: [] }),
+        pIds.length ? supabase.from('presentaciones').select('id, nombre, factor_stock, orden').in('id', pIds).order('orden') : Promise.resolve({ data: [] }),
+        supabase.from('producto_stock').select('sucursal_id, cantidad').eq('producto_id', productoId),
+        supabase.from('presentaciones').select('id, presentacion_grupos(id)').eq('producto_id', productoId),
+        supabase.from('articulos').select('id').eq('producto_id', productoId).eq('activo', true).is('deleted_at', null).limit(1),
+      ])
+      const bloqueos: string[] = []
+      if (pIds.length === 0) bloqueos.push('El producto no tiene presentaciones activas.')
+      const raros = (pres ?? []).filter(x => Number(x.factor_stock) !== 1)
+      if (raros.length) bloqueos.push(`Estas presentaciones descuentan más de 1 unidad del producto (${raros.map(x => x.nombre).join(', ')}). Para stock por presentación tienen que descontar 1.`)
+      if ((grupos ?? []).some(g => Array.isArray((g as { presentacion_grupos?: unknown[] }).presentacion_grupos) && ((g as { presentacion_grupos: unknown[] }).presentacion_grupos).length > 0))
+        bloqueos.push('El producto tiene opciones (por ejemplo sabores). Todavía no se puede llevar stock por presentación en productos con opciones.')
+      if ((arts ?? []).length) bloqueos.push('El producto está vinculado a un artículo de compras.')
+      const saldoDe = new Map((saldos ?? []).map(x => [x.sucursal_id as string, Number(x.cantidad)]))
+      return NextResponse.json({
+        producto: { id: prod.id, nombre: prod.nombre },
+        sucursales: (sucs ?? []).map(x => ({ id: x.id as string, nombre: x.nombre as string, saldo: saldoDe.get(x.id as string) ?? 0 })).sort((a, b) => a.nombre.localeCompare(b.nombre)),
+        presentaciones: (pres ?? []).map(x => ({ id: x.id as string, nombre: x.nombre as string })),
+        bloqueos,
+      })
+    }
+
+    const operacionId = body.operacion_id
+    if (typeof operacionId !== 'string' || !UUID_RE.test(operacionId)) return err('Falta el identificador de la operación.')
+    const motivoH = typeof body.motivo === 'string' ? body.motivo.trim() : ''
+    if (motivoH.length < 3 || motivoH.length > 200) return err('Indicá el motivo del alta (3 a 200 caracteres).')
+    const conteos = body.conteos
+    if (!Array.isArray(conteos) || conteos.length === 0 || conteos.length > 500) return err('Faltan las cantidades.')
+    const conteosOk: { sucursal_id: string; presentacion_id: string; cantidad: number }[] = []
+    for (const c of conteos as Record<string, unknown>[]) {
+      if (typeof c?.sucursal_id !== 'string' || !UUID_RE.test(c.sucursal_id) || typeof c?.presentacion_id !== 'string' || !UUID_RE.test(c.presentacion_id)) return err('Conteo inválido.')
+      if (typeof c.cantidad !== 'number' || !Number.isInteger(c.cantidad) || c.cantidad < 0 || c.cantidad > 1_000_000) return err('Las cantidades deben ser números enteros de 0 en adelante.')
+      conteosOk.push({ sucursal_id: c.sucursal_id, presentacion_id: c.presentacion_id, cantidad: c.cantidad })
+    }
+    const decisiones = sIds.map(s => ({ sucursal_id: s, decision: 'contar', motivo: motivoH }))
+    const { data, error } = await supabase.rpc('habilitar_modelo_rama', {
+      p_empresa_id: empresaId, p_producto_id: productoId, p_usuario_id: userId, p_usuario_nombre: nombre,
+      p_operacion_id: operacionId, p_decisiones: decisiones, p_conteos: conteosOk,
+    })
+    if (error) {
+      const m = error.message ?? ''
+      const mapa: [string, string, number][] = [
+        ['HABILITACION_BLOQUEADA', 'El producto no se puede pasar a stock por presentación todavía (opciones, factor, artículo vinculado o una operación de stock pendiente). Abrí de nuevo el panel para ver el detalle.', 409],
+        ['PRODUCTO_YA_RAMA', 'Este producto ya tiene stock por presentación.', 409],
+        ['COBERTURA_', 'Cambiaron las sucursales o presentaciones. Cerrá el panel, abrilo de nuevo y reintentá.', 409],
+        ['CONJUNTO_CAMBIO', 'Cambiaron las sucursales o presentaciones. Reintentá.', 409],
+        ['OPERACION', 'Esta operación ya se usó con otros datos. Cerrá el panel y volvé a abrirlo.', 409],
+        ['CANTIDAD_INVALIDA', 'Las cantidades deben ser números enteros de 0 en adelante.', 400],
+        ['MOTIVO_REQUERIDO', 'Indicá el motivo del alta.', 400],
+      ]
+      const hit = mapa.find(([k]) => m.includes(k))
+      if (hit) return err(hit[1], hit[2], { codigo: hit[0].replace(/_$/, '') })
+      console.error('[stock] habilitar_rama', m)
+      return err('No se pudo habilitar. No se modificó el stock. Reintentá.', 500)
+    }
+    return NextResponse.json(data)
+  }
+
   if (accion === 'ajustar_rama') {
     const presId = body.presentacion_id, operacionId = body.operacion_id
     if (typeof presId !== 'string' || !UUID_RE.test(presId)) return err('Presentación inválida.')

@@ -80,6 +80,40 @@ export default function StockPage() {
   }
   const cargarInvRef = { current: async () => {} } as { current: () => Promise<void> }
 
+  // Alta de "stock por presentación": el administrador carga cuántas unidades hay de cada presentación, en cada sucursal
+  type RamaInfo = { producto: { id: string; nombre: string }; sucursales: { id: string; nombre: string; saldo: number }[]; presentaciones: { id: string; nombre: string }[]; bloqueos: string[] }
+  const [ramaP, setRamaP] = useState<{ id: string; nombre: string } | null>(null)
+  const [ramaInfo, setRamaInfo] = useState<RamaInfo | null>(null)
+  const [ramaCant, setRamaCant] = useState<Record<string, string>>({})
+  const [ramaMotivo, setRamaMotivo] = useState('Alta de stock por presentación')
+  const [ramaOp, setRamaOp] = useState('')
+  const [ramaTrab, setRamaTrab] = useState(false)
+  const [ramaErr, setRamaErr] = useState('')
+  async function abrirRama(i: InvItem) {
+    setRamaP({ id: i.producto_id, nombre: i.nombre }); setRamaInfo(null); setRamaErr(''); setRamaCant({}); setRamaMotivo('Alta de stock por presentación'); setRamaOp(crypto.randomUUID())
+    try {
+      const j = await api({ accion: 'rama_info', sucursal_id: sucId, producto_id: i.producto_id }) as RamaInfo
+      const c: Record<string, string> = {}
+      for (const s of j.sucursales) for (const x of j.presentaciones) c[`${s.id}:${x.id}`] = '0'
+      setRamaCant(c); setRamaInfo(j)
+    } catch (e) { setRamaErr((e as Error).message) }
+  }
+  async function confirmarRama() {
+    if (!ramaInfo || !ramaP) return
+    const conteos: { sucursal_id: string; presentacion_id: string; cantidad: number }[] = []
+    for (const s of ramaInfo.sucursales) for (const x of ramaInfo.presentaciones) {
+      const v = (ramaCant[`${s.id}:${x.id}`] ?? '').trim()
+      if (!/^\d+$/.test(v)) { setRamaErr('Las cantidades deben ser números enteros de 0 en adelante.'); return }
+      conteos.push({ sucursal_id: s.id, presentacion_id: x.id, cantidad: parseInt(v, 10) })
+    }
+    setRamaTrab(true); setRamaErr('')
+    try {
+      await api({ accion: 'habilitar_rama', sucursal_id: sucId, producto_id: ramaP.id, operacion_id: ramaOp, motivo: ramaMotivo, conteos })
+      setAvisoInv({ ok: true, t: `«${ramaP.nombre}» ahora lleva stock por presentación.` })
+      setRamaP(null); await cargarInvRef.current()
+    } catch (e) { setRamaErr((e as Error).message) } finally { setRamaTrab(false) }
+  }
+
   const api = useCallback(async (body: Record<string, unknown>) => {
     const { data: { session } } = await createClient().auth.getSession()
     if (!session) throw Object.assign(new Error('Sesión vencida. Volvé a ingresar.'), { status: 401 })
@@ -297,7 +331,8 @@ export default function StockPage() {
                             ? <input inputMode="numeric" value={minEdit[i.producto_id] ?? String(i.minimo ?? 0)} onChange={e => setMinEdit(m => ({ ...m, [i.producto_id]: e.target.value }))} onBlur={() => guardarMinimo(i)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} disabled={accionando === i.producto_id} aria-label={`Mínimo de ${i.nombre}`} className="w-16 text-right border border-neutral-200 rounded px-1.5 py-0.5 text-sm bg-white" />
                             : '—'}</td>
                           <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO[i.estado].c}`}>{ESTADO[i.estado].t}</span>
-                            {i.controla && i.estado === 'sin_alta' && <button onClick={() => setTab('ajuste')} className="ml-2 text-xs underline text-neutral-600">Cargar stock</button>}</td></tr>
+                            {i.controla && i.estado === 'sin_alta' && i.modelo !== 'rama' && <button onClick={() => setTab('ajuste')} className="ml-2 text-xs underline text-neutral-600">Cargar stock</button>}
+                            {puedeHab && i.modelo !== 'rama' && i.presentaciones.length > 0 && <button onClick={() => abrirRama(i)} className="ml-2 text-xs font-medium underline text-blue-700">Stock por presentación</button>}</td></tr>
                         {i.presentaciones.map(p => (
                           i.modelo === 'rama'
                             ? <tr key={p.id} className="text-xs text-neutral-600"><td></td><td className="px-4 py-1 pl-10">↳ {p.nombre}</td><td className="px-4 py-1 text-right tabular-nums font-medium">{p.saldo ?? '—'}</td>
@@ -313,6 +348,36 @@ export default function StockPage() {
                   {arbol.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-neutral-400">{todos ? 'No hay productos.' : 'No hay productos con control de stock. Marcá «Mostrar todos los productos» para habilitar alguno.'}</td></tr>}</tbody></table>
             </div>
           )}
+          {ramaP && (
+            <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto p-5">
+                <h2 className="text-lg font-semibold mb-1">Stock por presentación · {ramaP.nombre}</h2>
+                {!ramaInfo && !ramaErr && <div className="flex justify-center py-8"><Loader2 className="animate-spin" /></div>}
+                {ramaInfo && ramaInfo.bloqueos.length > 0 && (
+                  <div className="my-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
+                    <p className="font-semibold mb-1">Este producto todavía no se puede pasar a stock por presentación:</p>
+                    <ul className="list-disc pl-5 space-y-1">{ramaInfo.bloqueos.map(t => <li key={t}>{t}</li>)}</ul>
+                  </div>)}
+                {ramaInfo && ramaInfo.bloqueos.length === 0 && (
+                  <>
+                    <p className="text-sm text-neutral-600 mb-3">Cargá cuántas unidades hay de cada presentación en cada sucursal. Cada presentación lleva su propio stock y se descuenta sola cuando se vende.</p>
+                    <div className="overflow-x-auto border border-neutral-200 rounded-xl mb-3">
+                      <table className="w-full text-sm"><thead className="bg-neutral-50 text-neutral-500 text-left"><tr><th className="px-3 py-2">Sucursal</th>{ramaInfo.presentaciones.map(x => <th key={x.id} className="px-3 py-2 text-right">{x.nombre}</th>)}</tr></thead>
+                        <tbody>{ramaInfo.sucursales.map(sc => (
+                          <tr key={sc.id} className="border-t border-neutral-100"><td className="px-3 py-2 font-medium">{sc.nombre}{sc.saldo > 0 && <span className="block text-xs font-normal text-amber-700">Tenía {sc.saldo} en el stock anterior del producto</span>}</td>
+                            {ramaInfo.presentaciones.map(x => (
+                              <td key={x.id} className="px-3 py-2 text-right"><input inputMode="numeric" value={ramaCant[`${sc.id}:${x.id}`] ?? ''} onChange={e => setRamaCant(c => ({ ...c, [`${sc.id}:${x.id}`]: e.target.value }))} aria-label={`${x.nombre} en ${sc.nombre}`} className="w-20 text-right border border-neutral-200 rounded px-2 py-1 bg-white" /></td>))}</tr>))}</tbody></table>
+                    </div>
+                    <label className="text-sm font-medium block mb-1">Motivo</label>
+                    <input value={ramaMotivo} onChange={e => setRamaMotivo(e.target.value)} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm bg-white mb-3" />
+                  </>)}
+                {ramaErr && <div className="mb-3 p-3 rounded-lg bg-red-50 text-red-700 text-sm flex gap-2"><AlertTriangle size={16} className="mt-0.5" />{ramaErr}</div>}
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setRamaP(null)} disabled={ramaTrab} className="px-3 py-2 rounded-lg border border-neutral-300 text-sm bg-white">Cancelar</button>
+                  {ramaInfo && ramaInfo.bloqueos.length === 0 && <button onClick={confirmarRama} disabled={ramaTrab} className="px-4 py-2 rounded-lg bg-neutral-900 text-white text-sm font-medium disabled:opacity-50">{ramaTrab ? 'Guardando…' : 'Guardar stock'}</button>}
+                </div>
+              </div>
+            </div>)}
           <p className="text-xs text-neutral-400 mt-3">Tildá un producto para que controle stock (aplica a todas las sucursales). Un producto «Sin alta» todavía no tiene stock cargado en esta sucursal: se da de alta contándolo en un Ajuste general. Las presentaciones descuentan del stock del producto según su factor.</p>
         </div>
       )}
