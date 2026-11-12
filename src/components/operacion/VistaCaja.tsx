@@ -291,7 +291,7 @@ export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispos
   // al snapshot SOBREVIVEN — la semántica anti-bomba definida por el CTO. ══
   const [modalArqueo, setModalArqueo] = useState(false)
   const [arqCats, setArqCats] = useState<{ id: string; nombre: string }[]>([])
-  const [arqProds, setArqProds] = useState<{ id: string; nombre: string; categoria_id: string }[]>([])
+  const [arqProds, setArqProds] = useState<{ id: string; producto_id: string; presentacion_id: string | null; nombre: string; categoria_id: string }[]>([])
   const [arqAlcance, setArqAlcance] = useState<string>('completo')
   const [arqFisico, setArqFisico] = useState<Record<string, string>>({})
   const [arqObs, setArqObs] = useState('')
@@ -317,14 +317,14 @@ export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispos
     if (!r.ok) { avisar('No se pudo abrir el arqueo: ' + (typeof r.data?.error === 'string' ? r.data.error : 'error de conexión')); setModalArqueo(false); return }
     if (r.data.pendiente) { avisar('Ya hay un arqueo PENDIENTE de esta sucursal esperando confirmación del admin.'); setModalArqueo(false); return }
     setArqCats((r.data.categorias ?? []) as { id: string; nombre: string }[])
-    setArqProds((r.data.productos ?? []) as { id: string; nombre: string; categoria_id: string }[])
+    setArqProds((r.data.productos ?? []) as { id: string; producto_id: string; presentacion_id: string | null; nombre: string; categoria_id: string }[])
   }
   const arqLista = arqProds.filter(p => arqAlcance === 'completo' || p.categoria_id === arqAlcance)
   async function guardarArqueo9b() {
     const cargados = arqLista.filter(p => (arqFisico[p.id] ?? '') !== '')
     if (cargados.length === 0) return
     // Validación visual (el servidor la repite): stock entero, 0 o más
-    const items = cargados.map(p => ({ producto_id: p.id, fisico: Number(arqFisico[p.id]) }))
+    const items = cargados.map(p => ({ producto_id: p.producto_id, presentacion_id: p.presentacion_id, fisico: Number(arqFisico[p.id]) }))
     if (items.some(i => !Number.isInteger(i.fisico) || i.fisico < 0)) {
       avisar('Las cantidades deben ser números enteros, 0 o más.')
       return

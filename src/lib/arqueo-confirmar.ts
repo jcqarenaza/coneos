@@ -26,6 +26,11 @@ const MENSAJES: Record<string, string> = {
   ARQUEO_NO_PENDIENTE: 'Este arqueo ya no está pendiente (cambió de estado). Se actualizó la lista: revisá su estado.',
   DIFERENCIA_NO_ENTERA: 'Hay una diferencia que no es un número entero. Descartá ese ítem antes de confirmar.',
   FORBIDDEN: 'No tenés permiso para confirmar este arqueo.',
+  USUARIO_SIN_PERMISO_STOCK: 'No tenés permiso de stock sobre esta sucursal.',
+  USUARIO_NO_AUTORIZADO: 'No tenés permiso para confirmar este arqueo.',
+  SALDO_NEGATIVO: 'Un ajuste dejaría un saldo negativo (se vendió stock después del conteo). No se aplicó nada: descartá ese ítem o recontá.',
+  HOJA_SUCURSAL_NO_INICIALIZADA: 'La sucursal no tiene el stock por rama activado para un producto del arqueo. No se aplicó nada.',
+  HOJA_NO_INICIALIZADA: 'Falta la hoja de stock de un producto del arqueo. No se aplicó nada.',
 }
 
 export async function confirmarArqueoStock(

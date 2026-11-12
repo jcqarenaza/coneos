@@ -86,22 +86,30 @@ export async function POST(request: Request) {
 
     // ───────────────────────── PREPARAR ─────────────────────────
     if (accion === 'preparar') {
-      const [pend, cats, prods] = await Promise.all([
+      const [pend, cats, prods, pres] = await Promise.all([
         db.from('arqueos_stock').select('id')
           .eq('empresa_id', ctx.empresa_id).eq('sucursal_id', ctx.sucursal_id).eq('estado', 'pendiente').limit(1),
         db.from('categorias').select('id, nombre')
           .eq('empresa_id', ctx.empresa_id).eq('activo', true).order('orden'),
-        db.from('productos').select('id, nombre, categoria_id')
+        db.from('productos').select('id, nombre, categoria_id, modelo_stock')
           .eq('empresa_id', ctx.empresa_id).eq('activo', true).eq('controla_stock', true).is('deleted_at', null).order('nombre'),
+        db.from('presentaciones').select('id, producto_id, nombre')
+          .eq('empresa_id', ctx.empresa_id).eq('activo', true).order('orden'),
       ])
-      if (pend.error || cats.error || prods.error) {
-        console.error('[arqueo] preparar: error de lectura', { pend: !!pend.error, cats: !!cats.error, prods: !!prods.error })
+      if (pend.error || cats.error || prods.error || pres.error) {
+        console.error('[arqueo] preparar: error de lectura', { pend: !!pend.error, cats: !!cats.error, prods: !!prods.error, pres: !!pres.error })
         return ERR('No se pudo preparar el arqueo', 500)
       }
+      // E2-b: un producto en modelo 'rama' se cuenta por PRESENTACION (una fila por hoja). El resto, una fila por producto.
+      const presDe = new Map<string, { id: string; nombre: string }[]>()
+      for (const x of pres.data ?? []) { const l = presDe.get(x.producto_id as string) ?? []; l.push({ id: x.id as string, nombre: String(x.nombre ?? '') }); presDe.set(x.producto_id as string, l) }
+      const filas = (prods.data ?? []).flatMap(p => p.modelo_stock === 'rama'
+        ? (presDe.get(p.id as string) ?? []).map(x => ({ id: `${p.id}:${x.id}`, producto_id: p.id, presentacion_id: x.id, nombre: `${p.nombre} · ${x.nombre}`, categoria_id: p.categoria_id }))
+        : [{ id: p.id, producto_id: p.id, presentacion_id: null, nombre: p.nombre, categoria_id: p.categoria_id }])
       return NextResponse.json({
         pendiente: (pend.data ?? []).length > 0,
         categorias: cats.data ?? [],
-        productos: prods.data ?? [],
+        productos: filas,
       })
     }
 
@@ -123,19 +131,22 @@ export async function POST(request: Request) {
     if (!Array.isArray(itemsIn) || itemsIn.length === 0 || itemsIn.length > MAX_ITEMS) {
       return ERR('Cargá al menos un producto contado', 400, 'ITEMS_INVALIDOS')
     }
-    const items: { producto_id: string; fisico: number }[] = []
+    const items: { producto_id: string; presentacion_id: string | null; fisico: number }[] = []
     const vistos = new Set<string>()
     for (const it of itemsIn) {
       const r = (it && typeof it === 'object' ? it : {}) as Record<string, unknown>
       const pid = typeof r.producto_id === 'string' ? r.producto_id : ''
-      if (!UUID_RE.test(pid) || vistos.has(pid)) return ERR('Productos inválidos o repetidos', 400, 'ITEMS_INVALIDOS')
+      const presId = r.presentacion_id === undefined || r.presentacion_id === null ? null : (typeof r.presentacion_id === 'string' && UUID_RE.test(r.presentacion_id) ? r.presentacion_id : 'INVALIDA')
+      if (presId === 'INVALIDA') return ERR('Productos inválidos o repetidos', 400, 'ITEMS_INVALIDOS')
+      const clave = `${pid}:${presId ?? ''}`
+      if (!UUID_RE.test(pid) || vistos.has(clave)) return ERR('Productos inválidos o repetidos', 400, 'ITEMS_INVALIDOS')
       const f = r.fisico
       // Stock entero y ≥ 0: nada de decimales, negativos, NaN, infinitos ni strings
       if (typeof f !== 'number' || !Number.isInteger(f) || f < 0 || f > MAX_FISICO) {
         return ERR('Las cantidades deben ser números enteros, 0 o más', 400, 'CANTIDAD_INVALIDA')
       }
-      vistos.add(pid)
-      items.push({ producto_id: pid, fisico: f })
+      vistos.add(clave)
+      items.push({ producto_id: pid, presentacion_id: presId, fisico: f })
     }
 
     // 2) Alcance: la categoría (si hay) debe ser de la empresa autorizada
@@ -150,13 +161,18 @@ export async function POST(request: Request) {
 
     // 3) Productos: de la empresa, activos, sin baja y con control de stock
     //    (mismos criterios que usaba la caja); y dentro del alcance elegido.
-    const ids = items.map(i => i.producto_id)
-    const { data: prods, error: eProds } = await db.from('productos').select('id, categoria_id')
+    const ids = [...new Set(items.map(i => i.producto_id))]
+    const { data: prods, error: eProds } = await db.from('productos').select('id, categoria_id, modelo_stock')
       .eq('empresa_id', ctx.empresa_id).eq('activo', true).eq('controla_stock', true).is('deleted_at', null).in('id', ids)
     if (eProds) return ERR('No se pudo guardar el conteo', 500)
     if ((prods ?? []).length !== ids.length) return ERR('Hay productos que no corresponden al arqueo', 422, 'PRODUCTO_INVALIDO')
     if (categoriaId && (prods ?? []).some(p => p.categoria_id !== categoriaId)) {
       return ERR('Hay productos fuera del alcance elegido', 422, 'PRODUCTO_INVALIDO')
+    }
+    // E2-b: modelo 'rama' => cada ítem lleva su presentación; modelo 'producto' => sin presentación (la base lo re-verifica)
+    const modelo = new Map((prods ?? []).map(p => [p.id as string, p.modelo_stock as string]))
+    if (items.some(i => (modelo.get(i.producto_id) === 'rama') !== (i.presentacion_id !== null))) {
+      return ERR('Hay productos que se cuentan por presentación y no la indican (o al revés)', 422, 'PRESENTACION_INVALIDA')
     }
 
     // 4) Un solo pendiente por sucursal (chequeo; ver límite de concurrencia arriba)
@@ -172,6 +188,11 @@ export async function POST(request: Request) {
       .eq('empresa_id', ctx.empresa_id).eq('sucursal_id', ctx.sucursal_id).in('producto_id', ids)
     if (eStock) return ERR('No se pudo guardar el conteo', 500)
     const teorico = new Map<string, number>((stock ?? []).map(s => [s.producto_id as string, Number(s.cantidad)]))
+    // Hojas por rama: el teórico de cada presentación sale de stock_rama (la base lo vuelve a fijar al insertar el ítem)
+    const { data: hojas, error: eHojas } = await db.from('stock_rama').select('presentacion_id, cantidad')
+      .eq('empresa_id', ctx.empresa_id).eq('sucursal_id', ctx.sucursal_id).in('producto_id', ids)
+    if (eHojas) return ERR('No se pudo guardar el conteo', 500)
+    const teoricoHoja = new Map<string, number>((hojas ?? []).map(h => [h.presentacion_id as string, Number(h.cantidad)]))
 
     // 6) Persistencia: arqueo + ítems (sin tocar stock ni generar movimientos)
     const { data: arq, error: eArq } = await db.from('arqueos_stock').insert({
@@ -190,8 +211,8 @@ export async function POST(request: Request) {
     }
 
     const { error: eItems } = await db.from('arqueo_items').insert(items.map(i => ({
-      arqueo_id: arq.id, producto_id: i.producto_id,
-      teorico: teorico.get(i.producto_id) ?? 0, fisico: i.fisico,
+      arqueo_id: arq.id, producto_id: i.producto_id, presentacion_id: i.presentacion_id,
+      teorico: i.presentacion_id ? (teoricoHoja.get(i.presentacion_id) ?? 0) : (teorico.get(i.producto_id) ?? 0), fisico: i.fisico,
     })))
     if (eItems) {
       // Compensación: borrar SOLO el arqueo creado por esta operación (id propio + empresa).

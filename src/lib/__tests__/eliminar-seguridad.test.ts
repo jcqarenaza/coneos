@@ -8,6 +8,7 @@ import http from 'node:http'
 type Row = Record<string, unknown>
 const T: Record<string, Row[]> = {}
 let rpcLlamadas: { fn: string; args: Row }[] = []
+let rpcRespuesta: Record<string, { status: number; body: unknown }> = {}   // respuesta por función RPC (E2-b)
 let server: http.Server
 const EMP = 'e0000000-0000-4000-8000-000000000001', CAD = 'c0000000-0000-4000-8000-000000000001', CAD2 = 'c0000000-0000-4000-8000-000000000002'
 const SUC = 's0000000-0000-4000-8000-000000000001', DISP = 'd0000000-0000-4000-8000-000000000001', PED = 'p0000000-0000-4000-8000-000000000001'
@@ -33,11 +34,11 @@ function arrancar(): Promise<number> {
       const url = new URL(req.url!, 'http://x'); const body = raw ? JSON.parse(raw) : undefined
       const out = (st: number, d: unknown) => { res.writeHead(st, { 'content-type': 'application/json' }); res.end(d === undefined ? '' : JSON.stringify(d)) }
       const rpc = url.pathname.match(/^\/rest\/v1\/rpc\/(\w+)$/)
-      if (rpc) { rpcLlamadas.push({ fn: rpc[1], args: body }); return out(200, { general: { entregas: 2, promedio_min: 15, descartados_por_tope: 0 }, cadetes: [] }) }
+      if (rpc) { rpcLlamadas.push({ fn: rpc[1], args: body }); if (rpcRespuesta[rpc[1]]) return out(rpcRespuesta[rpc[1]].status, rpcRespuesta[rpc[1]].body); return out(200, { general: { entregas: 2, promedio_min: 15, descartados_por_tope: 0 }, cadetes: [] }) }
       const t = url.pathname.match(/^\/rest\/v1\/(\w+)$/)?.[1]; if (!t) return out(404, {})
       const filas = (T[t] ??= []); const obj = String(req.headers.accept ?? '').includes('vnd.pgrst.object')
       if (req.method === 'GET') { const m = filas.filter(r => match(r, url)); if (obj) return m[0] ? out(200, m[0]) : out(406, { code: 'PGRST116', message: 'no rows' }); return out(200, m) }
-      if (req.method === 'HEAD') return out(200, undefined)
+      if (req.method === 'HEAD') { const m = filas.filter(r => match(r, url)); res.writeHead(200, { 'content-range': `*/${m.length}` }); return res.end() }
       if (req.method === 'PATCH') { const m = filas.filter(r => match(r, url)); m.forEach(r => Object.assign(r, body)); return out(200, m) }
       if (req.method === 'POST' && url.searchParams.get('on_conflict')) { const k = url.searchParams.get('on_conflict')!; const e = filas.find(r => r[k] === body[k]); if (e) Object.assign(e, body); else filas.push({ ...body }); return out(201, [body]) }
       if (req.method === 'POST') { const nuevo = Array.isArray(body) ? body : [body]; filas.push(...nuevo); return out(201, nuevo) }
@@ -56,7 +57,7 @@ before(async () => {
 })
 after(() => server?.close())
 beforeEach(() => {
-  rpcLlamadas = []
+  rpcLlamadas = []; rpcRespuesta = {}
   for (const k of Object.keys(T)) delete T[k]
   T.pedidos = [{ id: PED, estado: 'PENDING_PAYMENT', numero_pedido: 7, empresa_id: EMP, sucursal_id: SUC, stock_descontado: true, numero_mesa: null, pagado: false, tipo_pedido: 'takeaway' }]
   T.dispositivos = [
@@ -82,5 +83,34 @@ describe('eliminar: seguridad', () => {
   })
   test('S8 caja correcta pero pedido ya cobrado → 409 (regla de negocio intacta)', async () => {
     T.pedidos[0].estado = 'PREPARING'; assert.equal((await llamar({ pedido_id: PED, dispositivo_id: DISP })).status, 409); intacto()
+  })
+  // ── E2-b: ventas que descontaron de hojas por rama ──
+  test('R1 venta con movimientos de rama → devolver_stock_pedido_caja con la caja validada; elimina', async () => {
+    T.stock_movimientos = [{ id: 'm1', pedido_id: PED, rama_id: 'r1', empresa_id: EMP }]
+    rpcRespuesta.devolver_stock_pedido_caja = { status: 200, body: { estado: 'devuelto', grupos: 1 } }
+    const r = await llamar({ pedido_id: PED, dispositivo_id: DISP }); assert.equal(r.status, 200)
+    const c = rpcLlamadas.filter(x => x.fn === 'devolver_stock_pedido_caja'); assert.equal(c.length, 1)
+    assert.equal(c[0].args.p_dispositivo, DISP); assert.equal(c[0].args.p_pedido, PED); assert.equal(c[0].args.p_empresa, EMP)
+    assert.equal(rpcLlamadas.filter(x => x.fn === 'devolver_stock_pedido').length, 0); assert.equal(T.pedidos.length, 0)
+  })
+  test('R2 repetido (sin_efecto) → elimina igual', async () => {
+    T.stock_movimientos = [{ id: 'm1', pedido_id: PED, rama_id: 'r1', empresa_id: EMP }]
+    rpcRespuesta.devolver_stock_pedido_caja = { status: 200, body: { estado: 'sin_efecto', repetida: true } }
+    assert.equal((await llamar({ pedido_id: PED, dispositivo_id: DISP })).status, 200); assert.equal(T.pedidos.length, 0)
+  })
+  test('R3 incidencia / inconsistente → 409 y el pedido NO se elimina', async () => {
+    T.stock_movimientos = [{ id: 'm1', pedido_id: PED, rama_id: 'r1', empresa_id: EMP }]
+    rpcRespuesta.devolver_stock_pedido_caja = { status: 200, body: { estado: 'incidencia', tipo: 'DEVOLUCION_PARCIAL' } }
+    assert.equal((await llamar({ pedido_id: PED, dispositivo_id: DISP })).status, 409); assert.equal(T.pedidos.length, 1)
+  })
+  test('R4 error de la RPC → 500 y el pedido NO se elimina', async () => {
+    T.stock_movimientos = [{ id: 'm1', pedido_id: PED, rama_id: 'r1', empresa_id: EMP }]
+    rpcRespuesta.devolver_stock_pedido_caja = { status: 400, body: { code: 'P0001', message: 'DISPOSITIVO_NO_AUTORIZADO' } }
+    assert.equal((await llamar({ pedido_id: PED, dispositivo_id: DISP })).status, 500); assert.equal(T.pedidos.length, 1)
+  })
+  test('R5 venta de producto legado (sin movimientos de rama) → camino de siempre', async () => {
+    T.stock_movimientos = [{ id: 'm1', pedido_id: PED, rama_id: null, empresa_id: EMP }]
+    assert.equal((await llamar({ pedido_id: PED, dispositivo_id: DISP })).status, 200)
+    assert.equal(rpcLlamadas.filter(x => x.fn === 'devolver_stock_pedido').length, 1); assert.equal(rpcLlamadas.filter(x => x.fn === 'devolver_stock_pedido_caja').length, 0)
   })
 })

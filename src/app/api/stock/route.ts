@@ -76,20 +76,28 @@ export async function POST(request: Request) {
   // ── Inventario: existencias, mínimo y estado por sucursal. todos=true suma los productos SIN control de stock (para habilitarlos) ──
   if (accion === 'inventario') {
     const todos = body.todos === true
-    let qp = supabase.from('productos').select('id, nombre, categoria_id, codigo, controla_stock, orden').eq('empresa_id', empresaId).eq('activo', true).is('deleted_at', null)
+    let qp = supabase.from('productos').select('id, nombre, categoria_id, codigo, controla_stock, orden, modelo_stock').eq('empresa_id', empresaId).eq('activo', true).is('deleted_at', null)
     if (!todos) qp = qp.eq('controla_stock', true)
-    const [{ data: prods }, { data: cats }, { data: filas }, { data: pres }] = await Promise.all([
+    const [{ data: prods }, { data: cats }, { data: filas }, { data: pres }, { data: hojas }] = await Promise.all([
       qp.order('nombre'),
       supabase.from('categorias').select('id, nombre, orden').eq('empresa_id', empresaId).order('orden'),
       supabase.from('producto_stock').select('producto_id, cantidad, stock_minimo, updated_at').eq('empresa_id', empresaId).eq('sucursal_id', sucursalId),
       supabase.from('presentaciones').select('id, producto_id, nombre, factor_stock, orden').eq('empresa_id', empresaId).eq('activo', true).order('orden'),
+      // E2-b: saldo de cada hoja (sucursal x presentación) de los productos en modelo 'rama'
+      supabase.from('stock_rama').select('presentacion_id, cantidad').eq('empresa_id', empresaId).eq('sucursal_id', sucursalId),
     ])
+    const saldoHoja = new Map((hojas ?? []).map(h => [h.presentacion_id as string, Number(h.cantidad)]))
     const porProducto = new Map((filas ?? []).map(f => [f.producto_id as string, f]))
     const catNombre = new Map((cats ?? []).map(c => [c.id as string, c.nombre as string]))
     const presDe = new Map<string, { id: string; nombre: string; factor: number }[]>()
     for (const r of pres ?? []) { const l = presDe.get(r.producto_id as string) ?? []; l.push({ id: r.id as string, nombre: r.nombre as string, factor: Math.max(1, Math.floor(Number(r.factor_stock) || 1)) }); presDe.set(r.producto_id as string, l) }
     const items = (prods ?? []).map(p => {
       const controla = p.controla_stock === true
+      if (p.modelo_stock === 'rama') {
+        const ps = (presDe.get(p.id as string) ?? []).map(x => ({ ...x, vendibles: null, saldo: saldoHoja.get(x.id) ?? null }))
+        return { producto_id: p.id, nombre: p.nombre, codigo: p.codigo ?? null, categoria_id: p.categoria_id, categoria: catNombre.get(p.categoria_id as string) ?? null,
+          controla, modelo: 'rama', cantidad: null, minimo: null, estado: controla ? (ps.some(x => x.saldo !== null) ? 'ok' : 'sin_alta') : 'sin_control', actualizado: null, presentaciones: ps }
+      }
       const f = porProducto.get(p.id as string)
       const cantidad = controla && f ? Number(f.cantidad) : null
       const minimo = controla && f ? Number(f.stock_minimo) : null
@@ -165,6 +173,25 @@ export async function POST(request: Request) {
     return NextResponse.json(data)
   }
 
+  // ── E2-b: ajuste directo de UNA hoja (sucursal x presentación) de un producto en modelo 'rama' ──
+  // La autorización de rol se re-valida en la base (_validar_usuario_stock); el saldo nunca queda negativo; idempotente por operacion_id.
+  if (accion === 'ajustar_rama') {
+    const presId = body.presentacion_id, operacionId = body.operacion_id
+    if (typeof presId !== 'string' || !UUID_RE.test(presId)) return err('Presentación inválida.')
+    if (typeof operacionId !== 'string' || !UUID_RE.test(operacionId)) return err('Falta el identificador de la operación.')
+    if (body.modo !== 'set' && body.modo !== 'delta') return err('Modo de ajuste inválido.')
+    if (typeof body.cantidad !== 'number' || !Number.isInteger(body.cantidad) || Math.abs(body.cantidad) > 1_000_000) return err('La cantidad debe ser un número entero.')
+    const motivoR = typeof body.motivo === 'string' ? body.motivo.trim() : ''
+    if (motivoR.length < 3 || motivoR.length > 200) return err('Indicá el motivo del ajuste (3 a 200 caracteres).')
+    const obs = typeof body.observacion === 'string' && body.observacion.trim() ? body.observacion.trim().slice(0, 300) : null
+    const { data, error } = await supabase.rpc('ajustar_stock_rama', {
+      p_empresa_id: empresaId, p_sucursal_id: sucursalId, p_presentacion_id: presId, p_modo: body.modo, p_cantidad: body.cantidad,
+      p_motivo: motivoR, p_observacion: obs, p_usuario_id: userId, p_usuario_nombre: nombre, p_operacion_id: operacionId,
+    })
+    if (error) { const t = traducirErrorAjuste(error); if (t.status === 500) console.error('[stock] ajustar_rama', error.message); return err(t.error, t.status, { codigo: t.codigo }) }
+    return NextResponse.json(data)
+  }
+
   // ── Ajuste general: previsualizar y aplicar (la base sale del snapshot del servidor, no del navegador) ──
   if (accion === 'previsualizar' || accion === 'aplicar') {
     const loteId = body.lote_id
@@ -173,6 +200,13 @@ export async function POST(request: Request) {
     const eMotivo = validarMotivo(body.motivo_tipo, body.descripcion); if (eMotivo) return err(eMotivo)
     const motivo = body.motivo_tipo as string
     const descripcion = typeof body.descripcion === 'string' ? body.descripcion : null
+    // E2-b: el ajuste general trabaja sobre producto_stock; los productos en modelo 'rama' se ajustan por hoja (acción ajustar_rama)
+    {
+      const idsAj = (body.items as { producto_id: string }[]).map(i => i.producto_id)
+      const { data: ramas, error: eRamas } = await supabase.from('productos').select('id').eq('empresa_id', empresaId).eq('modelo_stock', 'rama').in('id', idsAj)
+      if (eRamas) { console.error('[stock] modelo', eRamas.message); return err('No se pudo validar el ajuste. No se modificó el stock. Reintentá.', 500) }
+      if ((ramas ?? []).length > 0) return err('Hay productos con stock por rama: se ajustan desde Inventario, en cada presentación.', 409, { codigo: 'PRODUCTO_MODELO_RAMA' })
+    }
 
     if (accion === 'previsualizar') {
       const { data, error } = await supabase.rpc('previsualizar_ajuste_stock', {
@@ -199,7 +233,7 @@ export async function POST(request: Request) {
       .eq('empresa_id', empresaId).eq('sucursal_id', sucursalId).order('created_at', { ascending: false }).order('id', { ascending: false })
       .range(pagina * limite, pagina * limite + limite)
     if (typeof body.producto_id === 'string' && UUID_RE.test(body.producto_id)) q = q.eq('producto_id', body.producto_id)
-    if (typeof body.motivo === 'string' && ['venta', 'devolucion', 'compra', 'devolucion_compra', 'ajuste', 'arqueo'].includes(body.motivo)) q = q.eq('motivo', body.motivo)
+    if (typeof body.motivo === 'string' && ['venta', 'devolucion', 'compra', 'devolucion_compra', 'ajuste', 'arqueo', 'ingreso'].includes(body.motivo)) q = q.eq('motivo', body.motivo)
     const { data: movs, error } = await q
     if (error) { console.error('[stock] movimientos', error.message); return err('No se pudieron leer los movimientos.', 500) }
     const filas = movs ?? []
