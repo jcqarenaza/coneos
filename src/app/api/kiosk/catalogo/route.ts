@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   const [{ data: categorias }, { data: productos }, { data: presentaciones }, { data: grupos }, { data: opciones }, { data: inventario }, { data: presGrupos }, { data: catalogoConfig }, { data: stockRows }] =
     await Promise.all([
       supabase.from('categorias').select('id, nombre, icono_url, orden').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null).order('orden'),
-      (() => { let q = supabase.from('productos').select('id, nombre, descripcion, imagen_url, categoria_id, orden, controla_stock, visible_delivery').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null); const col = colCanal[canal]; if (col) q = q.eq(col, true); return q.order('orden') })(),
+      (() => { let q = supabase.from('productos').select('id, nombre, descripcion, imagen_url, categoria_id, orden, controla_stock, modelo_stock, visible_delivery').eq('empresa_id', empresa_id).eq('activo', true).is('deleted_at', null); const col = colCanal[canal]; if (col) q = q.eq(col, true); return q.order('orden') })(),
       supabase.from('presentaciones').select('id, nombre, precio, permite_opciones, opciones_min, opciones_max, orden, producto_id, imagen_url, es_novedad').eq('empresa_id', empresa_id).eq('activo', true).eq('visible_kiosk', true).order('orden'),
       supabase.from('grupos_opciones').select('id, nombre, orden').eq('empresa_id', empresa_id).eq('activo', true).order('orden'),
       supabase.from('opciones').select('id, nombre, descripcion, emoji, color, imagen_url, grupo_id, orden, precio_adicional, es_novedad').eq('empresa_id', empresa_id).eq('activo', true).eq('visible_kiosk', true).is('deleted_at', null).order('orden'),
@@ -53,8 +53,36 @@ export async function GET(request: Request) {
   // vender: sin fila = sin stock). Un solo punto para los 4 canales.
   const stockMap: Record<string, number> = {}
   ;(stockRows ?? []).forEach((s: { producto_id: string; cantidad: number }) => { stockMap[s.producto_id] = s.cantidad })
+
+  // ══ STOCK POR RAMA (GO CTO 13/11, defecto D1) ══
+  // Un producto en modelo 'rama' NO guarda su existencia en producto_stock sino en
+  // stock_rama (una hoja por sucursal × presentación). Misma regla que la RPC al vender
+  // (crear_pedido_stock v1.8): el producto debe tener habilitación 'activa' en la sucursal y
+  // cada presentación necesita su hoja con saldo (sin hoja o saldo 0 = no se puede vender).
+  //  · Producto rama con alguna presentación vendible → aparece, y solo con esas presentaciones.
+  //  · Producto rama sin ninguna presentación vendible → AGOTADO (respeta mostrar_agotados).
+  // Falla abierta: si no se pueden leer las hojas, el producto se trata como antes (la RPC protege la venta).
+  const ramaProdIds = ((productos ?? []) as { id: string; controla_stock?: boolean; modelo_stock?: string | null }[])
+    .filter(p => p.controla_stock === true && p.modelo_stock === 'rama').map(p => p.id)
+  const saldoRama: Record<string, number> = {}
+  const ramaConStock = new Set<string>()   // productos rama con al menos una presentación vendible
+  const ramaControlada = new Set<string>() // productos rama cuya existencia se pudo leer
+  if (ramaProdIds.length > 0) {
+    const [{ data: hojas, error: eHojas }, { data: habs, error: eHabs }] = await Promise.all([
+      supabase.from('stock_rama').select('presentacion_id, cantidad').eq('empresa_id', empresa_id).eq('sucursal_id', sucursal_id),
+      supabase.from('stock_rama_habilitacion').select('producto_id').eq('empresa_id', empresa_id).eq('sucursal_id', sucursal_id).eq('estado', 'activa').in('producto_id', ramaProdIds),
+    ])
+    if (!eHojas && !eHabs) {
+      ;(hojas ?? []).forEach((h: { presentacion_id: string; cantidad: number | string }) => { saldoRama[h.presentacion_id] = Number(h.cantidad) })
+      const habilitados = new Set((habs ?? []).map((h: { producto_id: string }) => h.producto_id))
+      ramaProdIds.forEach(id => {
+        ramaControlada.add(id)
+        if (habilitados.has(id) && (presentaciones ?? []).some((pr: { id: string; producto_id: string }) => pr.producto_id === id && saldoRama[pr.id] >= 1)) ramaConStock.add(id)
+      })
+    }
+  }
   const sinStock = (p: { id: string; controla_stock?: boolean }) =>
-    p.controla_stock === true && !(stockMap[p.id] > 0)
+    ramaControlada.has(p.id) ? !ramaConStock.has(p.id) : p.controla_stock === true && !(stockMap[p.id] > 0)
 
   // ── AGOTADO VISIBLE (orden CTO 19/09): el sin-stock ya NO se oculta ──
   // El producto sigue en el catálogo con flag `agotado: true`; el cliente lo
@@ -63,13 +91,15 @@ export async function GET(request: Request) {
   // viajar al cliente.
   const conFlag = (productos ?? [])
     .filter((p: { id: string }) => dispoMap[p.id] !== false)
-    .map(({ controla_stock: _cs, ...p }: { id: string; controla_stock?: boolean }) => ({ ...p, agotado: sinStock({ id: p.id, controla_stock: _cs }) }))
+    .map(({ controla_stock: _cs, modelo_stock: _ms, ...p }: { id: string; controla_stock?: boolean; modelo_stock?: string | null }) => ({ ...p, agotado: sinStock({ id: p.id, controla_stock: _cs }) }))
   // Toggle OFF → poda como siempre (producto y sus presentaciones fuera).
   // Toggle ON → viajan con el flag y el kiosk los muestra griseados.
   const agotadosSet = new Set(conFlag.filter((p: { id: string; agotado: boolean }) => p.agotado).map((p: { id: string }) => p.id))
   const productosFiltrados = mostrarAgotados ? conFlag : conFlag.filter((p: { id: string; agotado: boolean }) => !p.agotado)
+  // Producto rama con stock: la presentación sin saldo no se ofrece (el cliente no tiene flag por presentación).
   const presentacionesFiltradas = (presentaciones ?? []).filter((p: { id: string; producto_id: string }) =>
-    dispoMap[p.id] !== false && (mostrarAgotados || !agotadosSet.has(p.producto_id)))
+    dispoMap[p.id] !== false && (mostrarAgotados || !agotadosSet.has(p.producto_id))
+    && !(ramaConStock.has(p.producto_id) && !(saldoRama[p.id] >= 1)))
 
   // ── MICRO-FIX (orden CTO 18/09): PODA DE PADRES ──
   // Un producto sin NINGUNA presentación visible no se lista (antes quedaba
