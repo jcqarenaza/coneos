@@ -97,14 +97,27 @@ begin
   perform pg_advisory_xact_lock(hashtextextended('sabor:' || p_pedido::text, 0));
   if exists (select 1 from public.stock_sabor_movimientos where pedido_id = p_pedido and motivo = 'venta') then
     return jsonb_build_object('estado', 'ya_descontado'); end if;
+  -- REPARTO EN GRAMOS ENTEROS POR ÍTEM (GO CTO 13/11): total_g = round(cantidad × kg_por_unidad × 1000);
+  -- cada sabor recibe total_g div n y los primeros (total_g mod n) sabores, en orden fijo (opcion_id, id),
+  -- reciben 1 g más. La suma por ítem es EXACTAMENTE total_g (nunca se pierde ni se crea un gramo).
+  -- Después se acumula por sabor entre ítems. kg queda en gramos/1000 (exacto, 3 decimales).
   for r in
-    select o.opcion_id, sum(pi.cantidad * pr.kg_por_unidad / c.n) as kg
-      from public.pedido_items pi
-      join public.presentaciones pr on pr.id = pi.presentacion_id and pr.kg_por_unidad is not null
-      join public.pedido_item_opciones o on o.pedido_item_id = pi.id
-      join (select pedido_item_id, count(*) n from public.pedido_item_opciones group by 1) c on c.pedido_item_id = pi.id
-     where pi.pedido_id = p_pedido
-     group by o.opcion_id order by o.opcion_id
+    select x.opcion_id, sum(x.g) / 1000.0 as kg
+      from (
+        select o.opcion_id,
+               (it.total_g / o.n) + case when o.rn <= (it.total_g % o.n) then 1 else 0 end as g
+          from (select pi.id as item_id, round(pi.cantidad * pr.kg_por_unidad * 1000)::bigint as total_g
+                  from public.pedido_items pi
+                  join public.presentaciones pr on pr.id = pi.presentacion_id and pr.kg_por_unidad is not null
+                 where pi.pedido_id = p_pedido) it
+          join (select pio.pedido_item_id, pio.opcion_id,
+                       row_number() over (partition by pio.pedido_item_id order by pio.opcion_id, pio.id) as rn,
+                       count(*) over (partition by pio.pedido_item_id) as n
+                  from public.pedido_item_opciones pio
+                 where pio.pedido_item_id in (select id from public.pedido_items where pedido_id = p_pedido)) o
+            on o.pedido_item_id = it.item_id
+      ) x
+     group by x.opcion_id order by x.opcion_id
   loop
     select kg into v_saldo from public.stock_sabor where sucursal_id = v_suc and opcion_id = r.opcion_id for update;
     if not found then continue; end if;          -- sabor sin kilos cargados: no se controla
