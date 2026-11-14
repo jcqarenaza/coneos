@@ -25,6 +25,21 @@ interface Config {
 }
 interface Empresa { nombre: string; slug: string; plan: string }
 
+/** Título con la explicación oculta: se muestra con doble clic sobre el título (o con el botón «i», para teclado y celular). Solo presentación. */
+function TituloConAyuda({ titulo, ayuda }: { titulo: string; ayuda: string }) {
+  const [abierta, setAbierta] = useState(false)
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5">
+        <p className="text-sm font-semibold text-neutral-700 cursor-help select-none" title="Doble clic para ver qué hace" onDoubleClick={() => setAbierta(a => !a)}>{titulo}</p>
+        <button type="button" aria-label={`Qué hace: ${titulo}`} aria-expanded={abierta} onClick={() => setAbierta(a => !a)}
+          className="flex-shrink-0 w-4 h-4 rounded-full border border-neutral-300 text-[10px] leading-none font-bold text-neutral-400 hover:text-neutral-600 hover:border-neutral-400">i</button>
+      </div>
+      {abierta && <p className="text-xs text-neutral-400 mt-1">{ayuda}</p>}
+    </div>
+  )
+}
+
 export default function ConfigPage() {
   const { ctx, loading: ctxLoading } = useEmpresa()
   const [empresa, setEmpresa] = useState<Empresa | null>(null)
@@ -182,41 +197,38 @@ export default function ConfigPage() {
               <Input value={config.moneda} onChange={e => tocar({ moneda: e.target.value })} placeholder="ARS" className="w-32" />
             </div>
             {/* Toggle agotados (default OFF = ocultar, comportamiento histórico) */}
-            <button type="button" onClick={() => tocar({ mostrar_agotados: !config.mostrar_agotados })}
-              className="w-full flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100 hover:bg-neutral-100 transition-colors text-left">
-              <div>
-                <p className="text-sm font-semibold text-neutral-700">Mostrar productos agotados en el catálogo</p>
-                <p className="text-xs text-neutral-400 mt-1">Encendido: el producto sin stock se ve griseado como &quot;Agotado&quot; (no se puede comprar). Apagado: desaparece del catálogo hasta que vuelva el stock.</p>
-              </div>
-              <span className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.mostrar_agotados ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
+            <div className="w-full flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+              <TituloConAyuda titulo="Mostrar productos agotados en el catálogo"
+                ayuda={'Encendido: el producto sin stock se ve griseado como "Agotado" (no se puede comprar). Apagado: desaparece del catálogo hasta que vuelva el stock.'} />
+              <button type="button" role="switch" aria-checked={config.mostrar_agotados} aria-label="Mostrar productos agotados en el catálogo"
+                onClick={() => tocar({ mostrar_agotados: !config.mostrar_agotados })}
+                className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.mostrar_agotados ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
                 <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.mostrar_agotados ? 'left-[22px]' : 'left-0.5'}`} />
-              </span>
-            </button>
+              </button>
+            </div>
             {/* Ciclo 2 — Entrada unificada de pedidos (default OFF: la ruta
                 /pedidos/ es inalcanzable hasta encender esto; las URLs y QR
                 actuales de delivery/TA funcionan SIEMPRE, con esto ON u OFF) */}
-            <button type="button" onClick={() => tocar({ entrada_unificada: !config.entrada_unificada })}
-              className="w-full flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100 hover:bg-neutral-100 transition-colors text-left">
-              <div>
-                <p className="text-sm font-semibold text-neutral-700">App de pedidos de la marca</p>
-                <p className="text-xs text-neutral-400 mt-1">Encendida: la app y el QR ofrecen elegir entre Delivery y Take Away (según qué esté disponible). Apagada: todo sigue exactamente como hasta ahora. Los links y QR actuales funcionan siempre.</p>
-              </div>
-              <span className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.entrada_unificada ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
+            <div className="w-full flex items-center justify-between gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+              <TituloConAyuda titulo="App de pedidos de la marca"
+                ayuda="Encendida: la app y el QR ofrecen elegir entre Delivery y Take Away (según qué esté disponible). Apagada: todo sigue exactamente como hasta ahora. Los links y QR actuales funcionan siempre." />
+              <button type="button" role="switch" aria-checked={config.entrada_unificada} aria-label="App de pedidos de la marca"
+                onClick={() => tocar({ entrada_unificada: !config.entrada_unificada })}
+                className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.entrada_unificada ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
                 <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.entrada_unificada ? 'left-[22px]' : 'left-0.5'}`} />
-              </span>
-            </button>
+              </button>
+            </div>
             {/* Prevención de pedidos repetidos (GO CTO 8/11): el negocio define si se avisa y durante cuántos minutos */}
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100 space-y-3">
-              <button type="button" onClick={() => tocar({ prevenir_pedidos_repetidos: !config.prevenir_pedidos_repetidos })}
-                className="w-full flex items-center justify-between gap-3 text-left">
-                <div>
-                  <p className="text-sm font-semibold text-neutral-700">Avisar si el cliente repite un pedido</p>
-                  <p className="text-xs text-neutral-400 mt-1">Si el mismo cliente carga un pedido idéntico dentro del tiempo que elijas, le preguntamos si quiere generar otro. Nunca se bloquea la venta: puede continuar.</p>
-                </div>
-                <span className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.prevenir_pedidos_repetidos ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
+              <div className="w-full flex items-center justify-between gap-3">
+                <TituloConAyuda titulo="Avisar al cliente si envía un pedido idéntico"
+                  ayuda="Si el cliente vuelve a enviar el mismo pedido dentro del tiempo configurado, le preguntamos si realmente quiere generar otro. Puede continuar si se trata de una nueva compra. No requiere intervención de Caja." />
+                <button type="button" role="switch" aria-checked={config.prevenir_pedidos_repetidos} aria-label="Avisar al cliente si envía un pedido idéntico"
+                  onClick={() => tocar({ prevenir_pedidos_repetidos: !config.prevenir_pedidos_repetidos })}
+                  className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.prevenir_pedidos_repetidos ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
                   <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.prevenir_pedidos_repetidos ? 'left-[22px]' : 'left-0.5'}`} />
-                </span>
-              </button>
+                </button>
+              </div>
               {config.prevenir_pedidos_repetidos && (
                 <div className="space-y-1">
                   <Label>Comparar pedidos de los últimos (minutos)</Label>
@@ -229,29 +241,27 @@ export default function ConfigPage() {
               {/* Posibles pedidos duplicados por teléfono (CTO 14/11): misma ubicación que el aviso de repetidos. OFF por defecto; por negocio. */}
               {config.prevenir_pedidos_repetidos && (
                 <div className="pt-3 border-t border-neutral-200 space-y-3">
-                  <button type="button" onClick={() => tocar({ bloquear_pedidos_duplicados: !config.bloquear_pedidos_duplicados })}
-                    className="w-full flex items-center justify-between gap-3 text-left">
-                    <div>
-                      <p className="text-sm font-semibold text-neutral-700">Bloqueo de posibles pedidos duplicados</p>
-                      <p className="text-xs text-neutral-400 mt-1">Encendido: en delivery y take away online, si el mismo teléfono ya tiene un pedido en curso, se avisa al cliente y el pedido nuevo queda en revisión en Caja hasta que alguien decida si es legítimo o duplicado. Apagado: todo sigue como hasta ahora.</p>
-                    </div>
-                    <span className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.bloquear_pedidos_duplicados ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
+                  <div className="w-full flex items-center justify-between gap-3">
+                    <TituloConAyuda titulo="Revisar nuevos pedidos si el teléfono ya tiene uno activo"
+                      ayuda="Si un teléfono ya tiene un pedido en curso dentro del tiempo configurado, el nuevo pedido queda en revisión en Caja. El personal puede comparar ambos pedidos y decidir si es una compra legítima o un duplicado. No se cancela ni se rechaza automáticamente." />
+                    <button type="button" role="switch" aria-checked={config.bloquear_pedidos_duplicados} aria-label="Revisar nuevos pedidos si el teléfono ya tiene uno activo"
+                      onClick={() => tocar({ bloquear_pedidos_duplicados: !config.bloquear_pedidos_duplicados })}
+                      className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.bloquear_pedidos_duplicados ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
                       <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.bloquear_pedidos_duplicados ? 'left-[22px]' : 'left-0.5'}`} />
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                   <div className="space-y-1">
-                    <Label>Considerar &quot;en curso&quot; un pedido del mismo teléfono durante (horas)</Label>
+                    <Label>Considerar activo un pedido del mismo teléfono durante (horas)</Label>
                     <Input type="text" inputMode="numeric" autoComplete="off" value={config.pedido_activo_ventana_horas}
                       onChange={e => tocar({ pedido_activo_ventana_horas: e.target.value })}
                       className="w-32" aria-invalid={!validarHorasPedidoActivo(config.pedido_activo_ventana_horas).ok} />
-                    <p className="text-xs text-neutral-400">Entre 1 y 24 horas (por defecto 3). El teléfono es la señal de identidad: dos clientes con teléfonos distintos nunca se marcan como duplicados, aunque pidan lo mismo.</p>
+                    <p className="text-xs text-neutral-400">Entre 1 y 24 horas (por defecto 3). El teléfono es solo una señal para detectar posibles coincidencias: no confirma que sea la misma persona.</p>
                   </div>
                 </div>
               )}
             </div>
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
-              <p className="text-sm font-semibold text-neutral-700">Numeración de pedidos</p>
-              <p className="text-xs text-neutral-400 mt-1">Numeración correlativa por empresa. El número nunca se reinicia.</p>
+              <TituloConAyuda titulo="Numeración de pedidos" ayuda="Numeración correlativa por empresa. El número nunca se reinicia." />
             </div>
           </div>
         </ConeCard>
