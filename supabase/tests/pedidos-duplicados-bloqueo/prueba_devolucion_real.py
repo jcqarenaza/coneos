@@ -100,4 +100,21 @@ check('P2. el REINTENTO completa sin duplicar: stock no se devuelve de nuevo (id
 print('=== PRIVILEGIOS ===')
 c.execute("select has_function_privilege('anon','devolver_sabores_pedido(uuid,uuid)','execute'), has_function_privilege('authenticated','devolver_stock_pedido(uuid,uuid)','execute'), has_function_privilege('service_role','devolver_sabores_pedido(uuid,uuid)','execute')")
 check('G1. las funciones de devolución son SOLO de service_role', c.fetchone() == (False, False, True))
+
+print('=== PROPUESTA F7 (NO autorizada; se prueba sobre la base de prueba, el repo no cambia) ===')
+c.execute(open(os.path.join(SUP, 'propuestas', 'PROPUESTA-F7-devolver-sabores-pedido.sql'), encoding='utf-8').read())
+c.execute("delete from stock_sabor where opcion_id=%s and sucursal_id=%s", (opA, suc)); m2 = pedido(True) if False else None
+c.execute("insert into stock_sabor(empresa_id,sucursal_id,opcion_id,kg) values(%s,%s,%s,10)", (emp, suc, opA))
+m3 = pedido(True); sa3, sb3 = sabor(opA), sabor(opB)
+c.execute("delete from stock_sabor where opcion_id=%s and sucursal_id=%s", (opA, suc))
+try: dev_sab(m3); err = None
+except psycopg2.Error as e: err = e.pgerror
+c.execute("select count(*) from stock_sabor_movimientos where pedido_id=%s and motivo='devolucion'", (m3,)); n_mov = c.fetchone()[0]
+check('F7-fix-1. con la corrección, sin fila de stock → SABOR_SIN_STOCK, 0 movimientos de devolución y NINGÚN sabor se tocó (rollback total, incluso el que sí tenía fila)', err is not None and 'SABOR_SIN_STOCK' in err and n_mov == 0 and abs(sabor(opB) - sb3) < 1e-9, str(err)[:80])
+c.execute("insert into stock_sabor(empresa_id,sucursal_id,opcion_id,kg) values(%s,%s,%s,%s)", (emp, suc, opA, sa3))
+r5 = dev_sab(m3); r6 = dev_sab(m3)
+check('F7-fix-2. corregida la causa, el reintento devuelve UNA vez (y luego «ya_devuelto»)', r5['estado'] == 'devuelto' and r6['estado'] == 'ya_devuelto' and abs(sabor(opA) - (sa3 + 0.5)) < 1e-9, f'{r5} {r6}')
+c.execute("select has_function_privilege('anon','devolver_sabores_pedido(uuid,uuid)','execute'), has_function_privilege('service_role','devolver_sabores_pedido(uuid,uuid)','execute')")
+check('F7-fix-3. mismos permisos: solo service_role', c.fetchone() == (False, True))
+
 print(f'\n{sum(R)}/{len(R)} PASS'); raise SystemExit(0 if all(R) else 1)
