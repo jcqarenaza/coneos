@@ -25,8 +25,8 @@ describe('pantalla Admin → Configuración (misma ubicación, sin sección nuev
   test('los dos controles viven en el mismo bloque «repetidos», dentro de la tarjeta Configuración de pedidos', () => {
     assert.equal((page.match(/<ConeCard title="Configuración de pedidos">/g) ?? []).length, 1)
     const tarjeta = page.slice(page.indexOf('<ConeCard title="Configuración de pedidos">'), page.indexOf('<ConeCard title="App instalable (PWA)">'))
-    assert.ok(tarjeta.includes('Bloqueo de posibles pedidos duplicados') && tarjeta.includes('pedido_activo_ventana_horas') && tarjeta.includes('pedidos_repetidos_minutos'))
-    assert.equal((page.match(/Bloqueo de posibles pedidos duplicados/g) ?? []).length, 1, 'un solo interruptor, sin duplicar controles')
+    assert.ok(tarjeta.includes('Revisar nuevos pedidos si el teléfono ya tiene uno activo') && tarjeta.includes('pedido_activo_ventana_horas') && tarjeta.includes('pedidos_repetidos_minutos'))
+    assert.equal((page.match(/bloquear_pedidos_duplicados: !config\.bloquear_pedidos_duplicados/g) ?? []).length, 1, 'un solo interruptor, sin duplicar controles')
   })
   test('lee y guarda las dos columnas reales, siempre acotado a la empresa autenticada (ctx.empresaId)', () => {
     assert.ok(/select\('[^']*bloquear_pedidos_duplicados, pedido_activo_ventana_horas'\)\.eq\('empresa_id', ctx\.empresaId\)/.test(page))
@@ -53,6 +53,36 @@ describe('pantalla Admin → Configuración (misma ubicación, sin sección nuev
     assert.ok(page.includes('...(vHoras.ok ? { pedido_activo_ventana_horas: vHoras.horas } : {})'))
   })
   test('el seguimiento general y el resto de la pantalla no cambian (los controles anteriores siguen)', () => {
-    for (const s of ['Mostrar productos agotados en el catálogo', 'App de pedidos de la marca', 'Avisar si el cliente repite un pedido', 'Comparar pedidos de los últimos (minutos)', 'Numeración de pedidos']) assert.ok(page.includes(s), s)
+    for (const s of ['Mostrar productos agotados en el catálogo', 'App de pedidos de la marca', 'Avisar al cliente si envía un pedido idéntico', 'Comparar pedidos de los últimos (minutos)', 'Numeración de pedidos']) assert.ok(page.includes(s), s)
   })
 })
+
+describe('textos y presentación (CTO 14/11): dos mecanismos claramente diferenciados', () => {
+  const tarjeta = page.slice(page.indexOf('<ConeCard title="Configuración de pedidos">'), page.indexOf('<ConeCard title="App instalable (PWA)">'))
+  test('mecanismo 1: aviso al cliente por pedido idéntico (textos definitivos)', () => {
+    assert.ok(tarjeta.includes('titulo="Avisar al cliente si envía un pedido idéntico"'))
+    assert.ok(tarjeta.includes('Si el cliente vuelve a enviar el mismo pedido dentro del tiempo configurado, le preguntamos si realmente quiere generar otro. Puede continuar si se trata de una nueva compra. No requiere intervención de Caja.'))
+    assert.ok(tarjeta.includes('<Label>Comparar pedidos de los últimos (minutos)</Label>'))
+  })
+  test('mecanismo 2: revisión por teléfono (textos definitivos), sin la palabra «Bloqueo» como título', () => {
+    assert.ok(tarjeta.includes('titulo="Revisar nuevos pedidos si el teléfono ya tiene uno activo"'))
+    assert.ok(tarjeta.includes('Si un teléfono ya tiene un pedido en curso dentro del tiempo configurado, el nuevo pedido queda en revisión en Caja. El personal puede comparar ambos pedidos y decidir si es una compra legítima o un duplicado. No se cancela ni se rechaza automáticamente.'))
+    assert.ok(tarjeta.includes('<Label>Considerar activo un pedido del mismo teléfono durante (horas)</Label>'))
+    assert.ok(!/titulo="[^"]*[Bb]loqueo/.test(tarjeta) && !/aria-label="[^"]*[Bb]loqueo/.test(tarjeta))
+  })
+  test('el teléfono se presenta como señal de coincidencia, no como identidad autenticada', () => {
+    assert.ok(tarjeta.includes('El teléfono es solo una señal para detectar posibles coincidencias: no confirma que sea la misma persona.'))
+    assert.ok(!tarjeta.includes('señal de identidad'))
+  })
+  test('interruptores y parámetros siguen independientes, con las mismas claves y validaciones', () => {
+    assert.ok(tarjeta.includes('tocar({ prevenir_pedidos_repetidos: !config.prevenir_pedidos_repetidos })'))
+    assert.ok(tarjeta.includes('tocar({ bloquear_pedidos_duplicados: !config.bloquear_pedidos_duplicados })'))
+    assert.ok(tarjeta.includes('tocar({ pedidos_repetidos_minutos: e.target.value })') && tarjeta.includes('tocar({ pedido_activo_ventana_horas: e.target.value })'))
+    assert.ok(tarjeta.includes('validarMinutosRepetidos(config.pedidos_repetidos_minutos)') && tarjeta.includes('validarHorasPedidoActivo(config.pedido_activo_ventana_horas)'))
+  })
+  test('las explicaciones se muestran solo con doble clic (o con el botón «i»), no están siempre visibles', () => {
+    assert.ok(page.includes('onDoubleClick={() => setAbierta(a => !a)}') && page.includes('{abierta && <p'))
+    assert.equal((tarjeta.match(/<p className="text-xs text-neutral-400 mt-1">/g) ?? []).length, 0, 'ninguna descripción fija en la tarjeta')
+  })
+})
+
