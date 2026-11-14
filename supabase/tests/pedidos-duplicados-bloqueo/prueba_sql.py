@@ -435,6 +435,13 @@ check('D3. si ADEMÁS el pedido candidato se elimina, la revisión conserva la r
 w2 = world(db); opC, pC = comprar(w2, 'H-D3', tel=TEL, vis='vis-d3')[1:]; opD, pD = continuar(w2, 'H-D4', tel=TEL, vis='vis-d4')
 q.execute("select candidatos_snapshot from pedido_revisiones_duplicado where operacion_id=%s", (opD,)); sn2 = q.fetchone()[0]
 q.execute("select count(*) from pedido_revisiones_duplicado where operacion_id=%s and jsonb_typeof(candidatos_snapshot)='array'", (opC,)); sin_rev = q.fetchone()[0]
+# D5: si la foto fallara (esquema sin created_at), el pedido IGUAL se crea y la revisión se registra con foto vacía
+cx = connect(db).cursor(); cx.execute("alter table pedidos rename column created_at to created_at_x")
+try:
+    wx = world(db); comprar(wx, 'H-D5a', tel=TEL, vis='vis-d5a'); opX, pX = continuar(wx, 'H-D5b', tel=TEL, vis='vis-d5b')
+    cx.execute("select candidatos_snapshot, array_length(candidatos,1) from pedido_revisiones_duplicado where operacion_id=%s", (opX,)); fx = cx.fetchone()
+    check('D5. la foto es accesoria: si falla, el pedido se crea igual y la revisión queda registrada (foto vacía, candidato por uuid)', pX is not None and fx[0] == [] and fx[1] == 1, str(fx))
+finally: cx.execute("alter table pedidos rename column created_at_x to created_at")
 check('D4. la foto no agrega nada al pedido original (sin revisión) y la revisión sigue siendo UNA por pedido nuevo', sin_rev == 0 and len(sn2) == 1)
 
 print('=== REVERSIÓN ===')

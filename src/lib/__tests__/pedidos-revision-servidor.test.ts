@@ -92,6 +92,10 @@ function arrancarShim(): Promise<number> {
         if (!t) return out(200, [])
         llamadas[`tabla:${t}`] = contador(`tabla:${t}`) + 1
         const sel = String(url.searchParams.get('select') ?? '*')
+        if (t === 'empresas' && req.method === 'GET') {   // imita la RLS del admin: con Bearer ve SOLO su empresa; sin él, nada (la RLS real queda PENDIENTE de probar en Supabase)
+          const fs = String(req.headers.authorization ?? '').startsWith('Bearer ') ? [{ id: w.emp }] : []
+          return obj ? (fs[0] ? out(200, fs[0]) : out(406, { code: 'PGRST116', message: 'no rows' })) : out(200, fs)
+        }
         const real = REALES.has(t) || (t === 'empresa_config' && sel.includes('bloquear_pedidos_duplicados'))
         if (req.method === 'GET' || req.method === 'HEAD') {
           let filas: J[] = []
@@ -130,7 +134,7 @@ function arrancarShim(): Promise<number> {
   return new Promise(r => server.listen(0, '127.0.0.1', () => r((server.address() as { port: number }).port)))
 }
 
-let POST: (r: Request) => Promise<Response>, ESTADO: (r: Request) => Promise<Response>, WEBHOOK: (r: Request) => Promise<Response>, CONSULTA: (r: Request) => Promise<Response>
+let POST: (r: Request) => Promise<Response>, ESTADO: (r: Request) => Promise<Response>, WEBHOOK: (r: Request) => Promise<Response>, CONSULTA: (r: Request) => Promise<Response>, ADMIN_REV: (r: Request) => Promise<Response>
 const fetchReal = globalThis.fetch
 before(async () => {
   admin = new pg.Client({ ...SOCK, database: 'postgres' }); await admin.connect()
@@ -159,7 +163,7 @@ before(async () => {
       begin insert into caja_llamadas values (p_pedido, p_dispositivo); return '{"estado":"devuelto"}'::jsonb; end $f$;`)
   for (const f of ['stock-v2-factor-migracion.sql', 'rpc-crear-pedido-stock-v2-factor.sql', 'devolver-stock-pedido.sql', 'pedidos-repetidos.sql', 'crear-pedido-stock-v1.7-operacion.sql', 'pedidos-duplicados-bloqueo.sql']) await db.query(readFileSync(join(SUP, f), 'utf8'))
   const port = await arrancarShim()
-  process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${port}`; process.env.SUPABASE_SERVICE_ROLE_KEY = 'clave-de-prueba-no-real'
+  process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${port}`; process.env.SUPABASE_SERVICE_ROLE_KEY = 'clave-de-prueba-no-real'; process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-de-prueba-no-real'
   // Mercado Pago es un doble: GET payment responde lo configurado; CUALQUIER otra llamada a MP (p. ej. un reembolso) queda registrada y debe ser vacía
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const u = String(typeof input === 'string' || input instanceof URL ? input : input.url)
@@ -174,6 +178,7 @@ before(async () => {
   ESTADO = (await import('../../app/api/pedidos/estado/route')).POST as typeof ESTADO
   WEBHOOK = (await import('../../app/api/mp/webhook/route')).POST as typeof WEBHOOK
   CONSULTA = (await import('../../app/api/operacion/consulta/route')).POST as typeof CONSULTA
+  ADMIN_REV = (await import('../../app/api/admin/pedidos-revision/route')).POST as typeof ADMIN_REV
 })
 after(async () => { globalThis.fetch = fetchReal; server?.close(); await db?.end(); await admin?.query(`drop database if exists ${DB} with (force)`); await admin?.end() })
 
@@ -471,6 +476,46 @@ describe('Condición B · concurrencia del CICLO COMPLETO por la ruta (reclamo �
       assert.ok(rva.candidatos.includes(opPb) || rvb.candidatos.includes(opPa), `ronda ${i}: los dos nuevos no se relacionan entre sí`)
       const ret = await db.query('select pedido_id from pedidos_en_revision($1, $2::uuid[])', [w.emp, [p0.id, pa.id, pb.id]]); assert.deepEqual(ret.rows.map(r => r.pedido_id).sort(), [pa.id, pb.id].sort())
     }
+  })
+})
+
+describe('Admin · marcas EN REVISIÓN / DUPLICADO y totales (CTO 14/11, ajuste 1)', () => {
+  beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas; delete from transiciones_prep'); await mundo() })
+  const adminRev = (ids: unknown, auth: string | null = 'Bearer admin-de-prueba') => ADMIN_REV(new Request('http://x/api/admin/pedidos-revision', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { authorization: auth } : {}) }, body: JSON.stringify({ pedido_ids: ids }) }))
+
+  test('AD1) distingue EN REVISIÓN (PENDIENTE) de DUPLICADO; el pedido original, el LEGÍTIMO y los ajenos NO figuran', async () => {
+    const t = tel(); const p1 = await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3); const p3 = await continuar(t, 'c', 4); const p4 = await continuar(t, 'd', 5)
+    await resolver(p3.id, 'DUPLICADO'); await resolver(p4.id, 'LEGITIMO')
+    const r = await adminRev([p1.id, p2.id, p3.id, p4.id]); assert.equal(r.status, 200)
+    assert.deepEqual((await j(r)) as unknown, { revisiones: { [p2.id]: 'PENDIENTE', [p3.id]: 'DUPLICADO' } })
+  })
+
+  test('AD2) el total del día queda SIN los EN REVISIÓN / DUPLICADO y vuelve a sumar el que se resuelve LEGÍTIMO (misma lógica que Inicio)', async () => {
+    const { sinRevision } = await import('../pedidos/revisionAdmin')
+    const t = tel(); const p1 = await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3); const p3 = await continuar(t, 'c', 4)
+    const filas = async () => (await db.query('select id, total from pedidos where empresa_id=$1', [w.emp])).rows as { id: string; total: number }[]
+    const suma = async () => { const m = ((await (await adminRev((await filas()).map(f => f.id))).json()) as { revisiones: Record<string, 'PENDIENTE' | 'DUPLICADO'> }).revisiones; return sinRevision(await filas(), m).reduce((a, f) => a + Number(f.total), 0) }
+    const total1 = Number((await db.query('select total from pedidos where id=$1', [p1.id])).rows[0].total)
+    assert.equal(await suma(), total1, 'solo cuenta el original: el EN REVISIÓN y el otro EN REVISIÓN quedan afuera')
+    await resolver(p2.id, 'LEGITIMO'); await resolver(p3.id, 'DUPLICADO')
+    const total2 = Number((await db.query('select total from pedidos where id=$1', [p2.id])).rows[0].total)
+    assert.equal(await suma(), total1 + total2, 'el LEGÍTIMO vuelve a sumar; el DUPLICADO sigue afuera')
+  })
+
+  test('AD3) sin sesión → 401; ids mal formados → 400; lista vacía → {}; si la verificación falla → 503 (el Admin no inventa)', async () => {
+    assert.equal((await adminRev([], null)).status, 401)
+    assert.equal((await adminRev(['no-es-uuid'])).status, 400); assert.equal((await adminRev('x')).status, 400)
+    assert.deepEqual((await j(await adminRev([]))) as unknown, { revisiones: {} })
+    fallaRpc['pedidos_en_revision'] = { status: 500, code: 'XX000' }
+    assert.equal((await adminRev([crypto.randomUUID()])).status, 503)
+  })
+
+  test('AD4) otra empresa: un pedido de OTRA empresa nunca figura marcado', async () => {
+    const t = tel(); await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3)
+    const otra = (await db.query('insert into empresas default values returning id')).rows[0].id
+    const { pedidosRetenidos } = await import('../pedidos/revision')
+    const { createAdminClient } = await import('../supabase/admin')
+    const r = await pedidosRetenidos(createAdminClient(), otra, [p2.id]); assert.equal(r.ok, true); assert.equal(r.retenidos.size, 0)
   })
 })
 

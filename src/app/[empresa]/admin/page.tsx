@@ -79,7 +79,7 @@ export default function AdminDashboard() {
 
       // Pedidos EN REVISIÓN (posible duplicado) y DUPLICADO no cuentan en el total del día ni en los activos (CTO 14/11). Los demás criterios no cambian.
       // Si no se pudo verificar la revisión, se muestra lo de siempre (sin inventar exclusiones).
-      const mapaRev = await traerRevisiones([...new Set([...(pedidosHoy ?? []), ...(pedidosAyer ?? []), ...(activos ?? [])].map(p => p.id as string))])
+      const mapaRev = await traerRevisiones([...new Set([...(pedidosHoy ?? []), ...(pedidosAyer ?? []), ...(activos ?? [])].map(p => (p as { id: string }).id))])
       const hoyOk = sinRevision((pedidosHoy ?? []) as { id: string; total: number }[], mapaRev)
       const ayerOk = sinRevision((pedidosAyer ?? []) as { id: string; total: number }[], mapaRev)
       const totalHoy = hoyOk.reduce((acc, p) => acc + Number(p.total), 0)

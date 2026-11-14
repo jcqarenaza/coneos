@@ -328,14 +328,16 @@ begin
         -- Relación pedido nuevo ↔ candidatos: se registra ACÁ, en la misma transacción y bajo los mismos locks (teléfono → contenido) que el reclamo,
         -- antes de que exista el pedido. El pedido se enlaza después por pedidos.operacion_id. Idempotente (reintentos de la misma operación).
         -- Foto de los candidatos (mínimo para poder compararlos aunque el candidato se elimine o su operación se purgue). Mismo orden que v_cands.
-        select coalesce(jsonb_agg(x.j order by x.ord), '[]'::jsonb) into v_snap from (
-          select array_position(v_cands, pc.operacion_id) as ord, jsonb_build_object(
-            'operacion_id', pc.operacion_id, 'numero_pedido', pc.numero_pedido, 'created_at', pc.created_at, 'estado', pc.estado,
-            'cliente', coalesce(nullif(pc.nombre_cliente, ''), pc.datos_delivery ->> 'nombre'),
-            'items', coalesce((select jsonb_agg(jsonb_build_object('nombre', i.nombre_producto_snap, 'presentacion', i.nombre_presentacion_snap, 'cantidad', i.cantidad,
-                       'opciones', coalesce((select jsonb_agg(o.nombre_snap order by o.id) from public.pedido_item_opciones o where o.pedido_item_id = i.id), '[]'::jsonb)) order by i.id)
-                     from public.pedido_items i where i.pedido_id = pc.id), '[]'::jsonb)) as j
-          from public.pedidos pc where pc.empresa_id = p_empresa_id and pc.operacion_id = any (v_cands)) x;
+        begin   -- la foto es ACCESORIA: si fallara por cualquier motivo, NUNCA debe impedir crear el pedido
+          select coalesce(jsonb_agg(x.j order by x.ord), '[]'::jsonb) into v_snap from (
+            select array_position(v_cands, pc.operacion_id) as ord, jsonb_build_object(
+              'operacion_id', pc.operacion_id, 'numero_pedido', pc.numero_pedido, 'created_at', pc.created_at, 'estado', pc.estado,
+              'cliente', coalesce(nullif(pc.nombre_cliente, ''), pc.datos_delivery ->> 'nombre'),
+              'items', coalesce((select jsonb_agg(jsonb_build_object('nombre', i.nombre_producto_snap, 'presentacion', i.nombre_presentacion_snap, 'cantidad', i.cantidad,
+                         'opciones', coalesce((select jsonb_agg(o.nombre_snap order by o.id) from public.pedido_item_opciones o where o.pedido_item_id = i.id), '[]'::jsonb)) order by i.id)
+                       from public.pedido_items i where i.pedido_id = pc.id), '[]'::jsonb)) as j
+            from public.pedidos pc where pc.empresa_id = p_empresa_id and pc.operacion_id = any (v_cands)) x;
+        exception when others then v_snap := '[]'::jsonb; end;
         insert into public.pedido_revisiones_duplicado (empresa_id, sucursal_id, operacion_id, candidatos, coincidencia, candidatos_snapshot)
         values (p_empresa_id, p_sucursal_id, p_operacion_id, v_cands, case when v_ident then 'IDENTICA' else 'DISTINTA' end, v_snap)
         on conflict (empresa_id, operacion_id) do nothing;

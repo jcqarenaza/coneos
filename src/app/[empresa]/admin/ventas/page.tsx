@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useEmpresa } from '@/lib/useEmpresa'
 import { confirmarArqueoStock } from '@/lib/arqueo-confirmar'
+import { traerRevisiones, sinRevision, ROTULO_REVISION, type MapaRevisiones } from '@/lib/pedidos/revisionAdmin'
 import { ConePageHeader, ConeButton, ConeModal } from '@/components/admin/ConeComponents'
 import { Loader2, TrendingUp, ShoppingBag, BarChart3, CreditCard, ChevronDown, ChevronRight, XCircle } from 'lucide-react'
 
@@ -55,6 +56,7 @@ export default function VentasPage() {
   const [tab, setTab] = useState<'resumen' | 'historial' | 'arqueo'>('resumen')
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [pedidos, setPedidos] = useState<PedidoVenta[]>([])
+  const [revisiones, setRevisiones] = useState<MapaRevisiones>({})   // marcas EN REVISIÓN / DUPLICADO (CTO 14/11)
   const [loading, setLoading] = useState(true)
   const [sucursalFiltro, setSucursalFiltro] = useState<string>('todas')
   const [metodoPagoFiltro, setMetodoPagoFiltro] = useState<string>('todos')
@@ -135,7 +137,11 @@ export default function VentasPage() {
       todos = todos.concat(pagina)
       if (pagina.length < POR_PAGINA) break
     }
-    setPedidos(todos)
+    // Marcas de revisión de duplicados. Los EN REVISIÓN / DUPLICADO se MUESTRAN marcados en el listado y NO suman en el resumen de cobrados
+    // (que ya trae solo PAID..DELIVERED: allí no deberían aparecer; se excluyen igual por seguridad). Sin poder verificar: se muestra lo de siempre.
+    const mapa = await traerRevisiones(todos.map(p => p.id))
+    setRevisiones(mapa ?? {})
+    setPedidos(tab === 'resumen' ? sinRevision(todos, mapa) : todos)
     setLoading(false)
   }
 
@@ -547,6 +553,7 @@ export default function VentasPage() {
                       <div className="flex-1 grid grid-cols-5 gap-3 items-center">
                         <div>
                           <p className="text-neutral-800 font-bold text-sm">#{p.numero_pedido}</p>
+                          {revisiones[p.id] && <span data-testid="marca-revision" className={`inline-block text-[10px] font-extrabold px-1.5 py-0.5 rounded text-white ${revisiones[p.id] === 'DUPLICADO' ? 'bg-red-600' : 'bg-amber-500'}`}>{ROTULO_REVISION[revisiones[p.id]]}</span>}
                           <p className="text-neutral-400 text-xs">{formatHora(p.created_at)}</p>
                         </div>
                         <div>
