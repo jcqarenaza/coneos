@@ -6,6 +6,8 @@ import { avisar, confirmar } from '@/components/admin/ConeDialog'
 import { createClient } from '@/lib/supabase/client'
 import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, History, ChevronLeft, ChevronRight, CloudRain, Trash2, Volume2, VolumeX } from 'lucide-react'
 import NuevoPedido from './NuevoPedido'
+import RevisionDuplicado, { BadgeRevision } from './RevisionDuplicado'
+import type { RevisionVista } from '@/lib/pedidos/revision'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string; nombre: string; puede_cobrar: boolean; puede_preparar: boolean; sucursal_id: string | null } }
@@ -13,7 +15,7 @@ interface OpcionItem { nombre_snap: string; emoji_snap: string | null }
 interface PedidoItem { id: string; nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; combo_ref?: string | null; promo_nombre_snap?: string | null; pedido_item_opciones: OpcionItem[] }
 interface DatosDelivery { nombre: string; telefono: string; direccion: string; entre_calles?: string }
 interface Colaborador { id: string; nombre: string; emoji_reparto?: string | null }
-interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; descuento_cobro?: number | null; descuento_cobro_detalle?: string | null; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; tiene_captura?: boolean; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; ticket_impreso_at?: string | null; updated_at?: string; facturas?: { estado: string }[]; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null }
+interface Pedido { id: string; numero_pedido: number; codigo_retiro: string; estado: string; total: number; descuento_cobro?: number | null; descuento_cobro_detalle?: string | null; metodo_pago: string | null; notas: string | null; created_at: string; numero_mesa?: number | null; pagado?: boolean; nombre_cliente?: string | null; mesa_cuenta_id?: string | null; pedido_pagos?: { metodo: string; monto: number }[]; sucursales?: { nombre: string }; pedido_items: PedidoItem[]; tipo_pedido?: string | null; costo_envio?: number; datos_delivery?: DatosDelivery | null; tiene_captura?: boolean; colaborador_id?: string | null; colaborador_nombre?: string | null; hora_retiro?: string | null; comanda_impresa_at?: string | null; ticket_impreso_at?: string | null; updated_at?: string; facturas?: { estado: string }[]; cuenta_transfer?: { nombre: string } | null; cuenta_mp?: { nombre: string } | null; /* POSIBLE DUPLICADO (CTO 14/11): presente solo si el pedido está en revisión (PENDIENTE) o fue marcado DUPLICADO */ revision?: RevisionVista | null }
 
 const ESTADO_LABEL: Record<string, string> = { PENDING_PAYMENT: 'Pendiente', PAID: 'Pagado', PREPARING: 'Preparando', READY: 'Listo', DELIVERED: 'Entregado' }
 const ESTADO_DOT: Record<string, string> = { PENDING_PAYMENT: 'bg-red-400', PAID: 'bg-blue-400', PREPARING: 'bg-amber-400', READY: 'bg-green-400', DELIVERED: 'bg-neutral-300' }
@@ -472,7 +474,7 @@ export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispos
   // solo lo NO cobrado se borra — pendiente, o mesa aún sin pagar. El server
   // sigue siendo la autoridad; esto solo evita ofrecer un botón que rebota.
   function esBorrable(p: Pedido) {
-    return (p.estado === 'PENDING_PAYMENT' || (p.numero_mesa != null && p.pagado === false)) && !facturados.has(p.id)
+    return !p.revision && (p.estado === 'PENDING_PAYMENT' || (p.numero_mesa != null && p.pagado === false)) && !facturados.has(p.id)
   }
   function BadgeTakeaway({ p }: { p: Pedido }) {
     if (p.tipo_pedido !== 'takeaway') return null
@@ -613,11 +615,21 @@ export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispos
     if (estadoNuevo === 'PAID' && !(await confirmarSiHayRepetido(pedidoId))) return false
     setProcesando(true)
     if (estadoNuevo === 'DELIVERED') setEntregado(false)
-    await fetch('/api/pedidos/estado', {
+    const resEstado = await fetch('/api/pedidos/estado', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pedido_id: pedidoId, estado_nuevo: estadoNuevo, operador_id: sesion.operador.id, ...(receptor ? { receptor } : {}) }),
     })
+    // COMPUERTA DE REVISIÓN DE DUPLICADO (CTO 14/11): el servidor rechazó el avance (409 REVISION_DUPLICADO). Nada se cobró ni se preparó:
+    // no seguir con comanda/ticket (los llamadores usan este false) y mostrar la Revisión.
+    if (resEstado.status === 409) {
+      const dEstado = await resEstado.json().catch(() => null)
+      if (dEstado?.codigo === 'REVISION_DUPLICADO') {
+        cargarPedidosRef.current(); setProcesando(false)
+        await avisar(dEstado.error, { titulo: 'Pedido en revisión' })
+        return false
+      }
+    }
     if (receptor) resetReceptor()
     cargarPedidosRef.current()
     setProcesando(false)
@@ -1253,11 +1265,11 @@ export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispos
                   <ShoppingBag className="h-8 w-8 mb-2" /><p className="text-xs">Sin pedidos</p>
                 </div>
               ) : pedidosFiltrados.map(pedido => (
-                <div key={pedido.id} className={`w-full text-left border-b border-neutral-50 border-l-4 transition-colors ${seleccionado?.id === pedido.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${ESTADO_LEFT[pedido.estado]}`}>
+                <div key={pedido.id} className={`w-full text-left border-b border-neutral-50 border-l-4 transition-colors ${seleccionado?.id === pedido.id ? 'bg-neutral-50' : 'bg-white hover:bg-neutral-50/50'} ${pedido.revision ? (pedido.revision.estado === 'DUPLICADO' ? 'border-l-red-600 ring-1 ring-inset ring-red-200' : 'border-l-amber-500 ring-1 ring-inset ring-amber-300') : ESTADO_LEFT[pedido.estado]}`}>
                   {/* JC 29/09: asignable en curso — y en delivery-EFECTIVO
                       también recién llegado: asignar de una lo ACEPTA
                       (cobra el cadete, el Aceptar era trámite) */}
-                  {pedido.tipo_pedido === 'delivery' && (pedido.estado === 'PREPARING' || pedido.estado === 'READY'
+                  {pedido.tipo_pedido === 'delivery' && !pedido.revision && (pedido.estado === 'PREPARING' || pedido.estado === 'READY'
                     || (pedido.estado === 'PENDING_PAYMENT' && pedido.metodo_pago === 'efectivo')) && (
                     <div className="flex items-center gap-2 px-4 pt-2">
                       <input type="checkbox" checked={pedidosSeleccionados.includes(pedido.id)}
@@ -1271,6 +1283,7 @@ export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispos
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-neutral-800 text-base">#{pedido.numero_pedido}</span>
                       {pedido.tipo_pedido === 'delivery' && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">Delivery</span>}
+                      <BadgeRevision r={pedido.revision} />
                     </div>
                     <BadgeMesa p={pedido} /><BadgeTakeaway p={pedido} /><BadgeFiscal id={pedido.id} /><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_BADGE[pedido.estado]}`}>{ESTADO_LABEL[pedido.estado]}</span>
                   </div>
@@ -1319,6 +1332,11 @@ export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispos
                   </div>
                   <BadgeMesa p={seleccionado} /><BadgeTakeaway p={seleccionado} /><BadgeFiscal id={seleccionado.id} /><span className={`px-3 py-1.5 rounded-xl text-sm font-bold ${ESTADO_BADGE[seleccionado.estado]}`}>{ESTADO_LABEL[seleccionado.estado]}</span>
                 </div>
+
+                {seleccionado.revision && (
+                  <RevisionDuplicado key={`${seleccionado.id}-${seleccionado.revision.estado}`} revision={seleccionado.revision} pedidoId={seleccionado.id} numeroPedido={seleccionado.numero_pedido}
+                    dispositivoId={dispositivo.id} operadorId={sesion.operador.id} onResuelto={() => cargarPedidosRef.current()} />
+                )}
 
                 <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden shadow-sm mb-4">
                   {(() => {
@@ -1420,10 +1438,10 @@ export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispos
                     <p className="text-amber-700 text-sm">📝 {seleccionado.notas}</p>
                   </div>
                 ) : null}
-                <button onClick={() => { marcarComanda(seleccionado.id); imprimirComanda(seleccionado.id) }}
+                {!seleccionado.revision && <button onClick={() => { marcarComanda(seleccionado.id); imprimirComanda(seleccionado.id) }}
                   className="w-full mb-3 py-2.5 flex items-center justify-center gap-2 border border-neutral-200 rounded-xl text-neutral-600 text-sm font-semibold hover:bg-neutral-50 transition-colors">
                   <Printer className="h-4 w-4" /> {seleccionado.estado === 'PENDING_PAYMENT' ? 'Imprimir comanda' : 'Reimprimir comanda'}
-                </button>
+                </button>}
                 {esBorrable(seleccionado) && (
                   <button onClick={() => eliminarPedido(seleccionado, false)} disabled={eliminando}
                     className="w-full mb-3 py-2 flex items-center justify-center gap-2 border border-red-200 text-red-500 rounded-xl text-sm font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
@@ -1445,7 +1463,7 @@ export default function VistaCaja({ dispositivo, sesion, deviceToken }: { dispos
                 )}
 
                 <div className="space-y-2">
-                  {seleccionado.estado === 'PENDING_PAYMENT' && (<>
+                  {seleccionado.estado === 'PENDING_PAYMENT' && !seleccionado.revision && (<>
                     {seleccionado.metodo_pago && (
                       <div className="flex items-center gap-2 mb-2 px-1">
                         <span className="text-xs text-neutral-400">Cliente eligió:</span>

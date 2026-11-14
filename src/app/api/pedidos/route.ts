@@ -5,7 +5,7 @@ import { esSlotValido, type Franja, generarSlots } from '@/lib/takeaway/slots'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 import { estaAbierto, diaOperativo, diaHabilita, diaSemanaAR, horaMinutosAR, type Franja, type HorarioPorDia } from '@/lib/horarios'
 import { canalDePedido } from '@/lib/pagos/mp'
-import { calcularHuella, reclamarOperacion, soloDigitos, esUuid, errorProbadoSinPedido, MENSAJE_REPETIDO } from '@/lib/pedidos/repetidos'
+import { calcularHuella, reclamarOperacion, soloDigitos, esUuid, errorProbadoSinPedido, MENSAJE_REPETIDO, MENSAJE_PEDIDO_ACTIVO, esAlcanceBloqueo, leerLlaveBloqueo } from '@/lib/pedidos/repetidos'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -375,11 +375,15 @@ export async function POST(request: Request) {
     }
     const operacionId: string = body.operacion_id
     const huella = calcularHuella({ sucursal_id, tipo_pedido: esMesa ? 'mesa' : tipo_pedido, origen, numero_mesa: esMesa ? numero_mesa : null, items: itemsRpc })
+    // BLOQUEO DE DUPLICADOS (CTO 13/11): solo delivery/take away online Y solo si la empresa prendió la llave (apagada por defecto).
+    // Sin llave o fuera de alcance, la llamada es la histórica y nada cambia (kiosco, caja y mesas no pasan por acá con bloqueo).
+    const enAlcanceBloqueo = esAlcanceBloqueo({ origen, esMesa, venta_caja }) && await leerLlaveBloqueo(supabase as unknown as Parameters<typeof leerLlaveBloqueo>[0], empresa_id)
     const reclamo = await reclamarOperacion(supabase as unknown as Parameters<typeof reclamarOperacion>[0], {
       empresa_id, sucursal_id, operacion_id: operacionId, huella,
       telefono: soloDigitos((datos_delivery as { telefono?: string } | null)?.telefono),
       visitante: typeof visitante_id === 'string' && visitante_id ? visitante_id.slice(0, 80) : null,
       dispositivo_id: dispositivoIdSano, confirmar: body.confirmar_advertencia === true,
+      ...(enAlcanceBloqueo ? { bloqueo: { confirmar_otro: body.confirmar_otro_pedido === true } } : {}),
     })
     if (reclamo.tipo === 'EXISTENTE') {
       const { data: ex } = reclamo.pedido_id
@@ -392,6 +396,14 @@ export async function POST(request: Request) {
       return NextResponse.json({
         error: MENSAJE_REPETIDO,
         duplicado: { operacion_id: operacionId, ventana_minutos: reclamo.ventana_minutos, id: reclamo.existente.pedido_id, numero_pedido: reclamo.existente.numero_pedido, estado: reclamo.existente.estado },
+      }, { status: 409 })
+    }
+    // Modo bloqueo (aviso, D1 14/11: idéntico o distinto, el cliente puede continuar y el pedido queda en revisión). La clave de respuesta es `bloqueo` (NO `duplicado`): una pestaña vieja que no conoce el bloqueo no muestra el modal
+    // con "Sí, continuar" —que acá no serviría de nada— sino el texto de `error`.
+    if (reclamo.tipo === 'PEDIDO_ACTIVO') {
+      return NextResponse.json({
+        error: MENSAJE_PEDIDO_ACTIVO,
+        bloqueo: { tipo: 'ACTIVO', operacion_id: operacionId, ventana_horas: reclamo.ventana_horas, coincidencia: reclamo.coincidencia, ...(reclamo.existente.mismo_visitante ? { id: reclamo.existente.pedido_id, numero_pedido: reclamo.existente.numero_pedido, estado: reclamo.existente.estado } : {}), permite_otro: true },
       }, { status: 409 })
     }
     if (reclamo.tipo === 'EN_PROCESO') return NextResponse.json({ error: 'Tu pedido se está procesando. Esperá un momento y no lo envíes de nuevo.', en_proceso: true }, { status: 409 })
