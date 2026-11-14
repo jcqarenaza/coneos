@@ -68,19 +68,15 @@ CONFIG_PREVIA = {'existia': None, 'valor': None}
 CON_LLAVE = '--con-llave-lab' in sys.argv
 RESTAURADA = {'hecho': False, 'fallo': False}
 RESIDUOS_FUERA = []
-# Sucursales ficticias de corridas anteriores autorizadas para borrar (CTO 14/11): SOLO estas 6 + las creadas en esta corrida
-RESIDUOS_AUTORIZADOS = {
-    '2b12e277-ed2f-4acb-a6c8-22a2d4ac9824': 't-http-f5a684-a1',
-    'd9093b39-2205-4b91-962f-018a6e647ed9': 't-http-f5a684-a2',
-    '7ee05c5e-6af7-41e9-92e6-f543e80e3eec': 't-http-f5a684-b1',
-    'f1d9b8f8-695a-42a3-9a38-16597fe279c7': 't-http-fee5bd-a1',
-    '1cb2edb3-ff60-4936-b52f-aed428f0af36': 't-http-fee5bd-a2',
-    'fd305cc3-8fb0-404a-ab89-8dc41b45a796': 't-http-fee5bd-b1',
-    # autorizados por el CTO el 14/11 (tercera corrida)
-    'e0276f5c-39e8-4e7a-9fa3-d2a04c400d68': 't-http-d568c8-a1',
-    '34d3e753-ef8b-4519-97cd-9a633e004635': 't-http-d568c8-a2',
-    'fcb6b2b2-fded-45e5-93ee-bebab9db2f95': 't-http-d568c8-b1',
-}   # por defecto NO se activa ninguna llave (limite CTO)
+# Sucursales ficticias EXISTENTES que se REUTILIZAN (decision CTO 14/11): el script NO crea ni borra sucursales.
+# Las 8 residuales (a1/a2 de 4 corridas) se conservan por decision CTO (trigger trg_stock_rama_hab_inmut impide borrar sus filas).
+# clave -> (id, slug, empresa_id). Las b1 anteriores se borraron: sin B1 el script aborta (no crea reemplazos).
+SUCURSALES_REUTILIZADAS = {
+    'sA1': ('e0276f5c-39e8-4e7a-9fa3-d2a04c400d68', 't-http-d568c8-a1', EMP_A),
+    'sA2': ('34d3e753-ef8b-4519-97cd-9a633e004635', 't-http-d568c8-a2', EMP_A),
+    'sB1': (None, None, EMP_B),
+}
+# por defecto NO se activa ninguna llave (limite CTO): solo con --con-llave-lab
 
 
 # ───────────────────────── utilidades ─────────────────────────
@@ -195,7 +191,24 @@ def verificar_destinos():
     print('Destinos verificados por slug: /%s y /%s (Federal excluida).' % (SLUG_A, SLUG_B))
 
 
-def crear_fixtures(run):
+def resolver_sucursales():
+    """Verifica que las sucursales de prueba a reutilizar existan y pertenezcan a /cecchetto o /demoburger.
+    Si falta una o no coincide: aborta SIN crear nada ni reemplazos."""
+    F = {}
+    for clave, (sid, slug, emp) in SUCURSALES_REUTILIZADAS.items():
+        if not sid:
+            print('ABORTO: falta la sucursal de prueba %s (empresa %s). No se crean reemplazos automaticamente. Pedir instruccion al CTO.' % (clave, emp))
+            sys.exit(8)
+        st, js = svc('GET', '/rest/v1/sucursales?select=id,slug,empresa_id&id=eq.%s' % sid, evidencia=False)
+        if not (st == 200 and isinstance(js, list) and len(js) == 1 and js[0].get('slug') == slug and js[0].get('empresa_id') == emp and emp in (EMP_A, EMP_B) and emp != FEDERAL):
+            print('ABORTO: la sucursal %s (%s, %s) no existe o no coincide con la empresa de prueba esperada. No se crean reemplazos.' % (clave, sid, slug))
+            sys.exit(8)
+        F[clave] = sid
+    print('Sucursales de prueba reutilizadas y verificadas: %s' % ', '.join('%s=%s' % (k, SUCURSALES_REUTILIZADAS[k][1]) for k in SUCURSALES_REUTILIZADAS))
+    return F
+
+
+def crear_fixtures(run, F_suc):
     U = {}
     for nombre in ('aa', 'ab', 'sa', 'no'):
         email = 't-http-%s-%s@example.test' % (run, nombre)   # usuarios ficticios
@@ -206,16 +219,10 @@ def crear_fixtures(run):
             sys.exit(5)
         U[nombre] = {'email': email, 'pw': pw, 'id': js['id']}
         CREADOS['auth'].append(js['id'])
-    F = {'sA1': str(uuid.uuid4()), 'sA2': str(uuid.uuid4()), 'sB1': str(uuid.uuid4()),
+    F = {'sA1': F_suc['sA1'], 'sA2': F_suc['sA2'], 'sB1': F_suc['sB1'],
          'pA1': str(uuid.uuid4()), 'pA2': str(uuid.uuid4()), 'pB1': str(uuid.uuid4()),
          'oA1': str(uuid.uuid4()), 'oA2': str(uuid.uuid4()), 'oB1': str(uuid.uuid4())}
     ok = lambda st: st in (200, 201, 204)
-    st, js = svc('POST', '/rest/v1/sucursales', [
-        {'id': F['sA1'], 'empresa_id': EMP_A, 'nombre': 'T-HTTP A1', 'slug': 't-http-%s-a1' % run},
-        {'id': F['sA2'], 'empresa_id': EMP_A, 'nombre': 'T-HTTP A2', 'slug': 't-http-%s-a2' % run},
-        {'id': F['sB1'], 'empresa_id': EMP_B, 'nombre': 'T-HTTP B1', 'slug': 't-http-%s-b1' % run}], prefer='return=minimal')
-    assert ok(st), ('sucursales', st, js)
-    CREADOS['sucursales'] += [F['sA1'], F['sA2'], F['sB1']]
     st, js = svc('POST', '/rest/v1/usuarios_admin', [
         {'id': U['aa']['id'], 'empresa_id': EMP_A, 'nombre': 'tAA'},
         {'id': U['ab']['id'], 'empresa_id': EMP_B, 'nombre': 'tAB'},
@@ -508,31 +515,7 @@ def limpiar(run):
         svc('DELETE', '/rest/v1/usuarios_admin?id=in.' + inn(CREADOS['usuarios']), prefer='return=minimal', evidencia=False)
     for uid in CREADOS['auth']:
         svc('DELETE', '/auth/v1/admin/users/' + uid, evidencia=False)
-    # sucursales ficticias: SOLO los 9 IDs autorizados + las creadas en esta corrida. Se consulta POR ID (sin patrones de slug)
-    permitidos = dict(RESIDUOS_AUTORIZADOS)
-    for sid in CREADOS['sucursales']:
-        permitidos[sid] = 'creada en esta corrida'
-    st_s, js_s = svc('GET', '/rest/v1/sucursales?select=id,slug,empresa_id&id=in.' + inn(list(permitidos)), evidencia=False)
-    encontradas = js_s if isinstance(js_s, list) else []
-    suc_ids = []
-    for x in encontradas:
-        if x['empresa_id'] in (EMP_A, EMP_B):
-            suc_ids.append(x['id'])
-        else:
-            print('!!! sucursal %s (%s) NO pertenece a /cecchetto ni /demoburger: NO se borra' % (x['id'], x['slug']))
-            rec('LIMPIEZA', 'sucursal %s no coincide con empresa de prueba' % x['id'], 'empresa A o B', 'otra empresa: no se borra', False)
-    for sid in permitidos:
-        if sid not in [x['id'] for x in encontradas]:
-            print('  sucursal %s (%s): ya no existe (nada que borrar)' % (sid, permitidos[sid]))
-    if suc_ids:
-        for tabla in ('catalogo_version', 'stock_rama', 'stock_rama_habilitacion'):   # filas por defecto creadas por trigger, solo de esos IDs
-            st_t, js_t = svc('DELETE', '/rest/v1/%s?sucursal_id=in.%s' % (tabla, inn(suc_ids)), prefer='return=representation', evidencia=False)
-            print('  %s: %s fila(s) eliminadas (status %s)' % (tabla, len(js_t) if isinstance(js_t, list) else js_t, st_t))
-        for sid in suc_ids:   # una por una: un fallo no cancela las demas
-            st_d, js_d = svc('DELETE', '/rest/v1/sucursales?id=eq.%s' % sid, prefer='return=representation', evidencia=False)
-            borrada = st_d in (200, 204) and isinstance(js_d, list) and len(js_d) == 1
-            print('  sucursal %s (%s): %s (status %s)' % (sid, permitidos[sid], 'ELIMINADA' if borrada else 'NO ELIMINADA %s' % (js_d,), st_d))
-            rec('LIMPIEZA', 'eliminar sucursal ficticia %s %s' % (sid, permitidos[sid]), 'eliminada', '%s %s' % (st_d, 'ok' if borrada else js_d), borrada)
+    # las sucursales de prueba se REUTILIZAN: este script no crea ni borra sucursales (decision CTO)
     # verificacion de residuos
     st, js = svc('GET', '/rest/v1/pedido_revisiones_duplicado?select=id&operacion_id=in.' + inn(todas_ops or [str(uuid.uuid4())]), evidencia=False)
     st2, js2 = svc('GET', '/rest/v1/empresa_config?select=bloquear_pedidos_duplicados&bloquear_pedidos_duplicados=eq.true', evidencia=False)
@@ -548,16 +531,10 @@ def main():
     st, _ = http('GET', '/auth/v1/health', evidencia=False)
     print('Conectividad con Auth: status %s' % st)
     verificar_destinos()
-    st_p, js_p = svc('GET', '/rest/v1/sucursales?select=id,slug&slug=like.t-http-*', evidencia=False)
-    extra = [x for x in (js_p if isinstance(js_p, list) else []) if x['id'] not in RESIDUOS_AUTORIZADOS]
-    if extra:
-        print('DETENIDO: hay sucursales t-http-* fuera del alcance autorizado (no se toca nada):')
-        for x in extra:
-            print('   %s %s' % (x['id'], x['slug']))
-        sys.exit(7)
+    F_suc = resolver_sucursales()   # antes de crear cualquier cosa
     U = F = None
     try:
-        U, F, n0 = crear_fixtures(run)
+        U, F, n0 = crear_fixtures(run, F_suc)
         bloque_auth_rls(U, F)
         bloque_postgrest(U, F, n0, run)
     except AssertionError as e:
@@ -569,12 +546,12 @@ def main():
         sys.exit(5)
 
     grupos = [('Auth real', ['AUTH']), ('RLS ADMIN_EMPRESA A', ['RLS_A']), ('RLS ADMIN_EMPRESA B', ['RLS_B']), ('RLS ADMIN_SUCURSAL', ['RLS_SUC']),
-              ('Usuario sin permisos', ['SINPERM']), ('Token invalido / anon', ['TOKEN_ANON']), ('PostgREST uuid[]', ['UUID_ARR']), ('PostgREST jsonb', ['JSONB']), ('RPC reales', ['RPC']), ('Llave (restaurada / Federal off)', ['LLAVE']), ('Limpieza sucursales', ['LIMPIEZA'])]
+              ('Usuario sin permisos', ['SINPERM']), ('Token invalido / anon', ['TOKEN_ANON']), ('PostgREST uuid[]', ['UUID_ARR']), ('PostgREST jsonb', ['JSONB']), ('RPC reales', ['RPC']), ('Llave (restaurada / Federal off)', ['LLAVE'])]
     print('\n================ RESUMEN ================')
     todo_ok = True
     for nombre, gs in grupos:
         rs = [r for r in RESULTS if r[0] in gs]
-        if not rs and nombre in ('Llave (restaurada / Federal off)', 'Limpieza sucursales'):
+        if not rs and nombre in ('Llave (restaurada / Federal off)',):
             continue
         fails = [r for r in rs if r[4] is False]
         nvs = [r for r in rs if r[4] is None]
