@@ -97,12 +97,23 @@ export function errorProbadoSinPedido(error: { code?: string | null; message?: s
 export const soloDigitos = (v: unknown): string | null => { const d = String(v ?? '').replace(/\D/g, ''); return d.length >= 6 ? d : null }
 
 type RpcClient = { rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }> }
+/**
+ * PRIVACIDAD (CTO 14/11): en modo bloqueo la coincidencia de TELÉFONO detecta el pedido activo pero no autoriza a verlo. El pedido
+ * (id = llave pública del seguimiento, número y estado) solo viaja si es del MISMO VISITANTE; si no, los tres quedan en null y
+ * `mismo_visitante` en false. Se vuelve a imponer acá aunque la base ya lo filtre (defensa en profundidad).
+ */
+export type ExistenteBloqueo = { mismo_visitante: boolean; pedido_id: string | null; numero_pedido: number | null; estado: string | null }
+type ExistenteCrudo = { mismo_visitante?: boolean; pedido_id?: string | null; numero_pedido?: number | null; estado?: string | null }
+export function existenteBloqueo(e: ExistenteCrudo | null | undefined): ExistenteBloqueo {
+  if (e?.mismo_visitante !== true) return { mismo_visitante: false, pedido_id: null, numero_pedido: null, estado: null }
+  return { mismo_visitante: true, pedido_id: e.pedido_id ?? null, numero_pedido: e.numero_pedido ?? null, estado: e.estado ?? null }
+}
 export type Reclamo =
   | { tipo: 'NUEVA' }
   | { tipo: 'EXISTENTE'; pedido_id: string | null }
   | { tipo: 'DUPLICADO'; ventana_minutos: number; existente: { pedido_id: string | null; numero_pedido: number | null; estado: string | null } }
-  | { tipo: 'BLOQUEADO_IDENTICO'; ventana_minutos: number; existente: { pedido_id: string | null; numero_pedido: number | null; estado: string | null } }   // modo bloqueo, nivel 1: sin salida
-  | { tipo: 'PEDIDO_ACTIVO'; ventana_horas: number; existente: { pedido_id: string | null; numero_pedido: number | null; estado: string | null } }          // modo bloqueo, nivel 2: salida solo con la excepción explícita
+  | { tipo: 'BLOQUEADO_IDENTICO'; ventana_minutos: number; existente: ExistenteBloqueo }   // modo bloqueo, nivel 1: sin salida
+  | { tipo: 'PEDIDO_ACTIVO'; ventana_horas: number; existente: ExistenteBloqueo }          // modo bloqueo, nivel 2: salida solo con la excepción explícita
   | { tipo: 'EN_PROCESO' }
   | { tipo: 'OPERACION_INVALIDA' }
   | { tipo: 'SIN_PROTECCION' }          // la base no respondió (p. ej. SQL aún no aplicado): FAIL-CLOSED, el endpoint NO crea el pedido sin protección (503 recuperable)
@@ -117,7 +128,7 @@ export async function reclamarOperacion(
   const dormir = opts.dormir ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
   const intentos = opts.intentos ?? 25, esperaMs = opts.esperaMs ?? 400
   for (let i = 0; i <= intentos; i++) {
-    let r: { estado?: string; pedido_id?: string | null; ventana_minutos?: number; ventana_horas?: number; existente?: { pedido_id?: string | null; numero_pedido?: number | null; estado?: string | null } } | null = null
+    let r: { estado?: string; pedido_id?: string | null; ventana_minutos?: number; ventana_horas?: number; existente?: ExistenteCrudo } | null = null
     try {
       const { data, error } = await supabase.rpc('reclamar_operacion_pedido', {
         p_empresa_id: a.empresa_id, p_sucursal_id: a.sucursal_id, p_operacion_id: a.operacion_id, p_huella: a.huella,
@@ -134,8 +145,8 @@ export async function reclamarOperacion(
       case 'EXISTENTE': return { tipo: 'EXISTENTE', pedido_id: r.pedido_id ?? null }
       case 'OPERACION_INVALIDA': return { tipo: 'OPERACION_INVALIDA' }
       case 'DUPLICADO': return { tipo: 'DUPLICADO', ventana_minutos: Number(r.ventana_minutos ?? 0), existente: { pedido_id: r.existente?.pedido_id ?? null, numero_pedido: r.existente?.numero_pedido ?? null, estado: r.existente?.estado ?? null } }
-      case 'BLOQUEADO_IDENTICO': return { tipo: 'BLOQUEADO_IDENTICO', ventana_minutos: Number(r.ventana_minutos ?? 0), existente: { pedido_id: r.existente?.pedido_id ?? null, numero_pedido: r.existente?.numero_pedido ?? null, estado: r.existente?.estado ?? null } }
-      case 'PEDIDO_ACTIVO': return { tipo: 'PEDIDO_ACTIVO', ventana_horas: Number(r.ventana_horas ?? 0), existente: { pedido_id: r.existente?.pedido_id ?? null, numero_pedido: r.existente?.numero_pedido ?? null, estado: r.existente?.estado ?? null } }
+      case 'BLOQUEADO_IDENTICO': return { tipo: 'BLOQUEADO_IDENTICO', ventana_minutos: Number(r.ventana_minutos ?? 0), existente: existenteBloqueo(r.existente) }
+      case 'PEDIDO_ACTIVO': return { tipo: 'PEDIDO_ACTIVO', ventana_horas: Number(r.ventana_horas ?? 0), existente: existenteBloqueo(r.existente) }
       case 'EN_CURSO': if (i < intentos) { await dormir(esperaMs); continue } return { tipo: 'EN_PROCESO' }
       default: console.error('[pedidos] estado de operación desconocido (el endpoint responde 503 y NO crea el pedido):', r); return { tipo: 'SIN_PROTECCION' }
     }

@@ -33,10 +33,19 @@ describe('reclamarOperacion · parámetros y estados del bloqueo', () => {
     await reclamarOperacion(rpcCon({ estado: 'NUEVA' }, cap), { ...base, bloqueo: { confirmar_otro: false } }); await reclamarOperacion(rpcCon({ estado: 'NUEVA' }, cap), { ...base, bloqueo: { confirmar_otro: true } })
     assert.equal(cap[0].p_alcance_bloqueo, true); assert.equal(cap[0].p_confirmar_otro, false); assert.equal(cap[1].p_confirmar_otro, true)
   })
-  test('BLOQUEADO_IDENTICO y PEDIDO_ACTIVO se mapean con el pedido existente', async () => {
-    const ex = { pedido_id: 'p1', numero_pedido: 43, estado: 'READY' }
+  test('BLOQUEADO_IDENTICO y PEDIDO_ACTIVO se mapean con el pedido existente SOLO si es del mismo visitante', async () => {
+    const ex = { mismo_visitante: true, pedido_id: 'p1', numero_pedido: 43, estado: 'READY' }
     assert.deepEqual(await reclamarOperacion(rpcCon({ estado: 'BLOQUEADO_IDENTICO', ventana_minutos: 30, existente: ex }), base), { tipo: 'BLOQUEADO_IDENTICO', ventana_minutos: 30, existente: ex })
     assert.deepEqual(await reclamarOperacion(rpcCon({ estado: 'PEDIDO_ACTIVO', ventana_horas: 3, existente: ex }), base), { tipo: 'PEDIDO_ACTIVO', ventana_horas: 3, existente: ex })
+  })
+  test('PRIVACIDAD (CTO 14/11): sin mismo_visitante === true se descartan id, número y estado, AUNQUE la base los mande (defensa en profundidad)', async () => {
+    const vacio = { mismo_visitante: false, pedido_id: null, numero_pedido: null, estado: null }
+    for (const existente of [{ mismo_visitante: false }, { mismo_visitante: false, pedido_id: 'p1', numero_pedido: 43, estado: 'READY' }, { pedido_id: 'p1', numero_pedido: 43, estado: 'READY' }, { mismo_visitante: 'true', pedido_id: 'p1' }, undefined]) {
+      for (const estado of ['BLOQUEADO_IDENTICO', 'PEDIDO_ACTIVO']) {
+        const r = await reclamarOperacion(rpcCon({ estado, ventana_minutos: 30, ventana_horas: 3, existente }), base)
+        assert.ok(r.tipo === 'BLOQUEADO_IDENTICO' || r.tipo === 'PEDIDO_ACTIVO'); assert.deepEqual(r.existente, vacio, JSON.stringify(existente))
+      }
+    }
   })
   test('estado desconocido sigue siendo FAIL-CLOSED (SIN_PROTECCION), no un permiso', async () => {
     const orig = console.error; console.error = () => {}
@@ -75,6 +84,11 @@ describe('componente · los tres modos', () => {
     assert.ok(h.includes('Ver mi pedido #43') && h.includes('Volver') && h.includes('Es otro pedido, continuar') && h.includes(MENSAJE_PEDIDO_ACTIVO))
     assert.ok(!h.includes('Sí, continuar'), 'no es el botón del duplicado idéntico')
     assert.ok(h.indexOf('Ver mi pedido') < h.indexOf('Volver') && h.indexOf('Volver') < h.indexOf('Es otro pedido'), 'jerarquía: ver pedido > volver > excepción')
+  })
+  test('pedido_activo SIN link (pedido de otro visitante): no hay «Ver mi pedido» ni href; quedan «Volver» y «Es otro pedido, continuar»', () => {
+    const h = html({ modo: 'pedido_activo', numeroPedido: null, verPedidoHref: null, onContinuar: () => {} })
+    assert.ok(!h.includes('Ver mi pedido') && !h.includes('href=') && !h.includes('/pedido/'))
+    assert.ok(h.includes('Volver') && h.includes('Es otro pedido, continuar') && h.includes(MENSAJE_PEDIDO_ACTIVO) && h.indexOf('Volver') < h.indexOf('Es otro pedido'))
   })
   test('pedido_activo sin onContinuar: no hay excepción disponible', () => { assert.ok(!html({ modo: 'pedido_activo', numeroPedido: 1, verPedidoHref: '/x' }).includes('Es otro pedido')) })
   test('sin número de pedido (no se pudo resolver): igual hay Volver', () => { assert.ok(html({ modo: 'bloqueo_identico' }).includes('Volver')) })

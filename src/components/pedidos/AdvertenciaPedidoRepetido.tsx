@@ -37,7 +37,8 @@ export default function AdvertenciaPedidoRepetido({ color = '#171717', numeroPed
         ) : (
           <>
             {hayVer && <a href={verPedidoHref!} className="block w-full py-3.5 rounded-2xl text-white font-bold text-base mb-2 active:scale-98 transition-all" style={{ backgroundColor: color }}>Ver mi pedido #{numeroPedido}</a>}
-            <button onClick={onVolver} className="w-full py-3.5 rounded-2xl border-2 border-neutral-200 text-neutral-700 font-bold text-base mb-3 active:bg-neutral-50 transition-colors">Volver</button>
+            {/* Sin link (el pedido encontrado es de otro visitante: no se entrega acceso) "Volver" pasa a ser la acción principal. */}
+            <button onClick={onVolver} className={hayVer ? 'w-full py-3.5 rounded-2xl border-2 border-neutral-200 text-neutral-700 font-bold text-base mb-3 active:bg-neutral-50 transition-colors' : 'w-full py-3.5 rounded-2xl text-white font-bold text-base mb-3 active:scale-98 transition-all'} style={hayVer ? undefined : { backgroundColor: color }}>Volver</button>
             {onContinuar && <button onClick={onContinuar} className="w-full py-2 text-sm font-semibold text-neutral-400 underline underline-offset-2">Es otro pedido, continuar</button>}
           </>
         )}

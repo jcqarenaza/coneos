@@ -403,13 +403,14 @@ export async function POST(request: Request) {
     if (reclamo.tipo === 'BLOQUEADO_IDENTICO') {
       return NextResponse.json({
         error: MENSAJE_BLOQUEO_IDENTICO,
-        bloqueo: { tipo: 'IDENTICO', operacion_id: operacionId, ventana_minutos: reclamo.ventana_minutos, id: reclamo.existente.pedido_id, numero_pedido: reclamo.existente.numero_pedido, estado: reclamo.existente.estado },
+        // PRIVACIDAD (CTO 14/11): id/numero/estado SOLO si el pedido es del mismo visitante (ver existenteBloqueo); por teléfono solo no viaja nada.
+        bloqueo: { tipo: 'IDENTICO', operacion_id: operacionId, ventana_minutos: reclamo.ventana_minutos, ...(reclamo.existente.mismo_visitante ? { id: reclamo.existente.pedido_id, numero_pedido: reclamo.existente.numero_pedido, estado: reclamo.existente.estado } : {}) },
       }, { status: 409 })
     }
     if (reclamo.tipo === 'PEDIDO_ACTIVO') {
       return NextResponse.json({
         error: MENSAJE_PEDIDO_ACTIVO,
-        bloqueo: { tipo: 'ACTIVO', operacion_id: operacionId, ventana_horas: reclamo.ventana_horas, id: reclamo.existente.pedido_id, numero_pedido: reclamo.existente.numero_pedido, estado: reclamo.existente.estado, permite_otro: true },
+        bloqueo: { tipo: 'ACTIVO', operacion_id: operacionId, ventana_horas: reclamo.ventana_horas, ...(reclamo.existente.mismo_visitante ? { id: reclamo.existente.pedido_id, numero_pedido: reclamo.existente.numero_pedido, estado: reclamo.existente.estado } : {}), permite_otro: true },
       }, { status: 409 })
     }
     if (reclamo.tipo === 'EN_PROCESO') return NextResponse.json({ error: 'Tu pedido se está procesando. Esperá un momento y no lo envíes de nuevo.', en_proceso: true }, { status: 409 })

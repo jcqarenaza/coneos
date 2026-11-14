@@ -129,10 +129,41 @@ describe('Bloqueo de duplicados por la ruta real (opción C, CTO 13/11)', () => 
     await llave(true); const t = tel()
     const p1 = await pedir(delivery(t, { visitante_id: 'celu-sandra', dispositivo_id: crypto.randomUUID() }), 2); assert.equal(p1.status, 200)
     const r = await pedir(delivery(t, { visitante_id: 'otro-dispositivo', dispositivo_id: crypto.randomUUID() }), 3); const d = await jb(r)
-    assert.equal(r.status, 409); assert.equal(d.bloqueo?.tipo, 'ACTIVO'); assert.equal(d.bloqueo?.permite_otro, true); assert.equal(d.bloqueo?.estado, 'PENDING_PAYMENT')
-    assert.ok(d.bloqueo?.numero_pedido != null && d.bloqueo?.id); assert.equal(d.bloqueo?.ventana_horas, 3)
+    assert.equal(r.status, 409); assert.equal(d.bloqueo?.tipo, 'ACTIVO'); assert.equal(d.bloqueo?.permite_otro, true); assert.equal(d.bloqueo?.ventana_horas, 3)
+    // PRIVACIDAD (CTO 14/11): otro visitante ⇒ ni id (llave pública del seguimiento), ni número, ni estado del pedido ajeno en NINGÚN lugar de la respuesta
+    const p1id = (await jb(p1)).pedido!.id; const crudo = JSON.stringify(d)
+    assert.equal(d.bloqueo?.id, undefined); assert.equal(d.bloqueo?.numero_pedido, undefined); assert.equal(d.bloqueo?.estado, undefined)
+    assert.ok(!crudo.includes(p1id), 'el UUID del pedido ajeno no viaja')
     assert.equal(d.duplicado, undefined, 'una pestaña vieja NO debe abrir el modal con "Sí, continuar": la clave es `bloqueo`')
     assert.match(d.error ?? '', /ya tiene un pedido en curso/); assert.equal(await npedidos(), 1); assert.equal(await stock(), 48)
+  })
+  test('A1b) PRIVACIDAD: mismo teléfono y MISMO visitante (la dueña) → 409 ACTIVO con su pedido (id, número, estado) para «Ver mi pedido»; el dispositivo compartido NO da acceso', async () => {
+    await llave(true); const t = tel(); const disp = crypto.randomUUID()
+    const p1 = await jb(await pedir(delivery(t, { visitante_id: 'celu-sandra', dispositivo_id: disp }), 2))
+    const dueña = await jb(await pedir(delivery(t, { visitante_id: 'celu-sandra', dispositivo_id: disp }), 3))
+    assert.equal(dueña.bloqueo?.tipo, 'ACTIVO'); assert.equal(dueña.bloqueo?.id, p1.pedido!.id); assert.equal(dueña.bloqueo?.estado, 'PENDING_PAYMENT'); assert.ok(dueña.bloqueo?.numero_pedido != null)
+    const ajeno = await jb(await pedir(delivery(t, { visitante_id: 'otro-navegador', dispositivo_id: disp }), 3))     // MISMO dispositivo (en delivery es uno solo para todos)
+    assert.equal(ajeno.bloqueo?.tipo, 'ACTIVO'); assert.equal(ajeno.bloqueo?.id, undefined); assert.ok(!JSON.stringify(ajeno).includes(p1.pedido!.id))
+    const sinVis = await jb(await pedir(delivery(t, {}), 3))                                                          // sin visitante: nunca es coincidencia
+    assert.equal(sinVis.bloqueo?.tipo, 'ACTIVO'); assert.equal(sinVis.bloqueo?.id, undefined)
+  })
+  test('A1c) PRIVACIDAD, contenido IDÉNTICO: bloqueo duro sin salida y sin entregar el pedido ajeno; la dueña sí recibe el suyo', async () => {
+    await llave(true); const t = tel(); const p1 = await jb(await pedir(delivery(t, { visitante_id: 'celu-sandra' }), 2))
+    const ajeno = await jb(await pedir(delivery(t, { visitante_id: 'otro-navegador' }), 2))
+    assert.equal(ajeno.bloqueo?.tipo, 'IDENTICO'); assert.equal(ajeno.bloqueo?.id, undefined); assert.equal(ajeno.bloqueo?.numero_pedido, undefined); assert.ok(!JSON.stringify(ajeno).includes(p1.pedido!.id))
+    const dueña = await jb(await pedir(delivery(t, { visitante_id: 'celu-sandra' }), 2))
+    assert.equal(dueña.bloqueo?.tipo, 'IDENTICO'); assert.equal(dueña.bloqueo?.id, p1.pedido!.id); assert.equal(await npedidos(), 1)
+  })
+  test('A1d) ESCENARIO #43/#49: el segundo cliente (otro visitante) puede elegir «Es otro pedido, continuar» y obtiene un pedido propio; el #43 queda intacto', async () => {
+    await llave(true); const t = tel(); const disp = crypto.randomUUID()
+    const p43 = (await jb(await pedir(delivery(t, { visitante_id: 'celu-sandra', dispositivo_id: disp }), 2))).pedido!
+    const op = crypto.randomUUID(); const aviso = await pedir(delivery(t, { operacion_id: op, visitante_id: 'segundo', dispositivo_id: disp }), 3)
+    assert.equal(aviso.status, 409); assert.equal((await jb(aviso)).bloqueo?.id, undefined)
+    const ok = await pedir(delivery(t, { operacion_id: op, visitante_id: 'segundo', dispositivo_id: disp, confirmar_otro_pedido: true }), 3); const p49 = (await jb(ok)).pedido!
+    assert.equal(ok.status, 200); assert.notEqual(p49.id, p43.id); assert.equal(await npedidos(), 2); assert.equal(await stock(), 45)
+    const f = await db.query('select id, estado, numero_pedido, operacion_id from pedidos where id=$1', [p43.id])
+    assert.equal(f.rows[0].estado, 'PENDING_PAYMENT'); assert.equal(f.rows[0].numero_pedido, p43.numero_pedido)
+    const volver = await pedir(delivery(t, { visitante_id: 'tercero' }), 4); assert.equal(volver.status, 409); assert.equal(await npedidos(), 2, '«Volver» (no reenviar) no crea nada')
   })
   test('A2) contenido IDÉNTICO → 409 IDENTICO sin salida: ni confirmar_advertencia ni confirmar_otro_pedido (ni ambos) lo saltean', async () => {
     await llave(true); const t = tel(); assert.equal((await pedir(delivery(t))).status, 200)

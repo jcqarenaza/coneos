@@ -26,6 +26,12 @@
 --     ANTES del lock por contenido ya existente (orden fijo: teléfono → huella; ninguna otra función los toma al revés).
 --     Dos solicitudes simultáneas del mismo teléfono —con igual o distinto contenido— pasan de a una: la segunda ve la operación
 --     EN_CURSO de la primera (ya commiteada al volver la RPC) y recibe BLOQUEADO_IDENTICO / PEDIDO_ACTIVO.
+--  5. PRIVACIDAD (corrección CTO 14/11): la coincidencia de TELÉFONO detecta el pedido activo pero NO autoriza a verlo.
+--     'existente' devuelve pedido_id / numero_pedido / estado SOLO si el pedido encontrado es del MISMO VISITANTE (el mismo navegador
+--     que lo creó; id_visitante idéntico). Si coincide solo el teléfono —otro visitante, otro navegador, un familiar o alguien que
+--     escribió un número ajeno— devuelve únicamente {"mismo_visitante": false}: el servidor no tiene qué entregar y no hay UUID que se filtre.
+--     La detección, los bloqueos y la excepción «Es otro pedido, continuar» NO dependen de esto. Si hay varios pedidos activos,
+--     se prefiere el del mismo visitante. El id_dispositivo no se usa para esto: en delivery es un único dispositivo compartido por todos.
 --
 -- "PEDIDO ACTIVO" (decisión CTO 13/11 + revisión de la base real)
 --   · Estado del PEDIDO (no de pedido_operaciones): PENDING_PAYMENT, PAID, PREPARING, READY.
@@ -137,7 +143,7 @@ declare
   v_activo boolean := true; v_min integer := 30; v_bloq boolean := false; v_horas integer := 3; v_modo boolean := false;
   v_op record; v_dup record; v_tel text := nullif(regexp_replace(coalesce(p_telefono,''), '\D', '', 'g'), '');
   v_tel_n text := public.normalizar_telefono_pedido(p_telefono);
-  v_vis text := nullif(p_visitante, ''); v_ped_id uuid;
+  v_vis text := nullif(p_visitante, ''); v_ped_id uuid; v_mismo boolean := false;
   v_activos constant text[] := array['PENDING_PAYMENT','PAID','PREPARING','READY'];
 begin
   if p_empresa_id is null or p_sucursal_id is null or p_operacion_id is null or coalesce(p_huella,'') = '' then
@@ -193,7 +199,7 @@ begin
 
   if v_modo then
     -- NIVEL 1 · mismo contenido, misma persona, pedido ACTIVO, dentro de la ventana de minutos → bloqueo duro (sin salida)
-    select o.operacion_id, p.id as pedido_id, p.numero_pedido, p.estado as estado_pedido into v_dup
+    select o.operacion_id, p.id as pedido_id, p.numero_pedido, p.estado as estado_pedido, o.id_visitante as vis_existente into v_dup
       from public.pedido_operaciones o
       left join public.pedidos p on p.empresa_id = o.empresa_id and p.operacion_id = o.operacion_id
      where o.empresa_id = p_empresa_id and o.sucursal_id = p_sucursal_id and o.huella = p_huella
@@ -210,15 +216,18 @@ begin
                   and v_tel is null and v_vis is null and o.id_telefono is null and o.id_visitante is null then o.id_dispositivo = p_dispositivo_id
              else false
            end
-     order by o.created_at desc limit 1;
+     order by (v_vis is not null and o.id_visitante = v_vis) desc, o.created_at desc limit 1;
     if found then
+      v_mismo := v_vis is not null and v_dup.vis_existente is not distinct from v_vis;
       return jsonb_build_object('estado', 'BLOQUEADO_IDENTICO', 'ventana_minutos', v_min,
-        'existente', jsonb_build_object('pedido_id', v_dup.pedido_id, 'numero_pedido', v_dup.numero_pedido, 'estado', v_dup.estado_pedido));
+        'existente', jsonb_build_object('mismo_visitante', v_mismo) ||
+          case when v_mismo then jsonb_build_object('pedido_id', v_dup.pedido_id, 'numero_pedido', v_dup.numero_pedido, 'estado', v_dup.estado_pedido)
+               else '{}'::jsonb end);
     end if;
 
     -- NIVEL 2 · mismo TELÉFONO normalizado, contenido distinto, pedido ACTIVO dentro de la ventana de horas → advertencia fuerte
     if v_tel_n is not null then
-      select o.operacion_id, p.id as pedido_id, p.numero_pedido, p.estado as estado_pedido into v_dup
+      select o.operacion_id, p.id as pedido_id, p.numero_pedido, p.estado as estado_pedido, o.id_visitante as vis_existente into v_dup
         from public.pedido_operaciones o
         left join public.pedidos p on p.empresa_id = o.empresa_id and p.operacion_id = o.operacion_id
        where o.empresa_id = p_empresa_id and o.sucursal_id = p_sucursal_id
@@ -229,8 +238,9 @@ begin
          and public.normalizar_telefono_pedido(o.id_telefono) = v_tel_n
          and ((p.id is not null and p.estado = any (v_activos))
               or (p.id is null and o.estado = 'EN_CURSO' and o.updated_at >= now() - interval '90 seconds'))
-       order by o.created_at desc limit 1;
+       order by (v_vis is not null and o.id_visitante = v_vis) desc, o.created_at desc limit 1;
       if found then
+        v_mismo := v_vis is not null and v_dup.vis_existente is not distinct from v_vis;
         -- Excepción explícita ("Es otro pedido, continuar"): vale SOLO si el servidor YA advirtió esta misma operación (ADVERTIDA).
         if coalesce(p_confirmar_otro, false) and v_op.estado = 'ADVERTIDA' then
           update public.pedido_operaciones set estado = 'EN_CURSO', updated_at = now() where empresa_id = p_empresa_id and operacion_id = p_operacion_id;
@@ -241,7 +251,9 @@ begin
           values (p_empresa_id, p_operacion_id, p_sucursal_id, p_huella, v_tel, v_vis, p_dispositivo_id, 'ADVERTIDA');
         end if;
         return jsonb_build_object('estado', 'PEDIDO_ACTIVO', 'ventana_horas', v_horas,
-          'existente', jsonb_build_object('pedido_id', v_dup.pedido_id, 'numero_pedido', v_dup.numero_pedido, 'estado', v_dup.estado_pedido));
+          'existente', jsonb_build_object('mismo_visitante', v_mismo) ||
+            case when v_mismo then jsonb_build_object('pedido_id', v_dup.pedido_id, 'numero_pedido', v_dup.numero_pedido, 'estado', v_dup.estado_pedido)
+                 else '{}'::jsonb end);
       end if;
     end if;
   elsif v_activo then

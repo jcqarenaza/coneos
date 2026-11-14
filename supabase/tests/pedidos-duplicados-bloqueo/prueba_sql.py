@@ -75,13 +75,26 @@ print('=== T1 · CASO REAL #43/#49: mismo teléfono, contenido distinto, otro vi
 w = world(db); a, opa, pa = comprar(w, 'H-43', tel=TEL, vis='vis-sandra-celu', disp=uuid.uuid4()); estado(w, pa, 'READY')
 r = reclamar(w, uuid.uuid4(), 'H-49', tel=TEL, vis='vis-otro-dispositivo', disp=uuid.uuid4())
 check('T1. #43 en READY + #49 (mismo teléfono, otra huella, otro visitante, otro dispositivo): PEDIDO_ACTIVO y NO se crea el segundo pedido',
-      est(a) == 'NUEVA' and est(r) == 'PEDIDO_ACTIVO' and r['existente']['pedido_id'] == str(pa) and r['existente']['estado'] == 'READY' and npedidos(w) == 1, str(r))
-check('T1b. el aviso trae número de pedido y la ventana', r['existente']['numero_pedido'] is not None and r['ventana_horas'] == 3, str(r['existente']))
+      est(a) == 'NUEVA' and est(r) == 'PEDIDO_ACTIVO' and npedidos(w) == 1, str(r))
+check('T1b. PRIVACIDAD (CTO 14/11): por teléfono solo, la base NO devuelve id, número ni estado del pedido ajeno; solo mismo_visitante=false y la ventana',
+      r['existente'] == {'mismo_visitante': False} and r['ventana_horas'] == 3 and str(pa) not in json.dumps(r), str(r))
+r_mismo = reclamar(w, uuid.uuid4(), 'H-49b', tel=TEL, vis='vis-sandra-celu', disp=uuid.uuid4())
+check('T1c. mismo teléfono + MISMO visitante (la dueña en su navegador): PEDIDO_ACTIVO y SÍ trae su pedido (id, número, estado) para «Ver mi pedido»',
+      est(r_mismo) == 'PEDIDO_ACTIVO' and r_mismo['existente']['mismo_visitante'] is True and r_mismo['existente']['pedido_id'] == str(pa)
+      and r_mismo['existente']['numero_pedido'] is not None and r_mismo['existente']['estado'] == 'READY', str(r_mismo))
+w = world(db); a2, _, pa2 = comprar(w, 'H-43', tel=TEL, vis=None); estado(w, pa2, 'READY'); r_nulo = reclamar(w, uuid.uuid4(), 'H-49', tel=TEL, vis=None)
+check('T1d. visitante NULL en ambos NO es coincidencia (null = null no autoriza nada): PEDIDO_ACTIVO sin pedido_id',
+      est(r_nulo) == 'PEDIDO_ACTIVO' and r_nulo['existente'] == {'mismo_visitante': False}, str(r_nulo))
+dsp = uuid.uuid4(); w = world(db); a3, _, pa3 = comprar(w, 'H-43', tel=TEL, vis='vis-A', disp=dsp); estado(w, pa3, 'READY'); r_disp = reclamar(w, uuid.uuid4(), 'H-49', tel=TEL, vis='vis-B', disp=dsp)
+check('T1e. delivery real: MISMO dispositivo compartido pero otro visitante → no se entrega el pedido (el dispositivo no es criterio de acceso)',
+      est(r_disp) == 'PEDIDO_ACTIVO' and r_disp['existente'] == {'mismo_visitante': False}, str(r_disp))
 
 print('=== T2/T3 · estados activos ===')
 for e in ('READY', 'PENDING_PAYMENT', 'PAID', 'PREPARING'):
-    w = world(db); _, _, p = comprar(w, 'H-X', tel=TEL); estado(w, p, e); r = reclamar(w, uuid.uuid4(), 'H-Y', tel=TEL)
+    w = world(db); _, _, p = comprar(w, 'H-X', tel=TEL, vis='vis-T'); estado(w, p, e); r = reclamar(w, uuid.uuid4(), 'H-Y', tel=TEL, vis='vis-T')
     check(f'T2/T3. teléfono con pedido {e}: advertencia fuerte (PEDIDO_ACTIVO)', est(r) == 'PEDIDO_ACTIVO' and r['existente']['estado'] == e, str(r))
+    w = world(db); _, _, p = comprar(w, 'H-X', tel=TEL, vis='vis-T'); estado(w, p, e); r = reclamar(w, uuid.uuid4(), 'H-Y', tel=TEL, vis='vis-OTRO')
+    check(f'T2/T3b. teléfono con pedido {e} y OTRO visitante: se detecta igual, sin entregar el pedido', est(r) == 'PEDIDO_ACTIVO' and r['existente'] == {'mismo_visitante': False}, str(r))
 
 print('=== T4/T5 · estados que NO bloquean ===')
 for e in ('CANCELLED', 'DELIVERED', 'REJECTED'):
@@ -100,7 +113,11 @@ check('T6. dos teléfonos DIFERENTES con contenido idéntico: sin cruce', est(r)
 w = world(db); comprar(w, 'H-X', tel='1111111111', vis='vis-X'); r = reclamar(w, uuid.uuid4(), 'H-X', tel='2222222222', vis='vis-X')
 check('T6b. mismo visitante pero teléfonos distintos: son clientes distintos (identidad existente, solo el teléfono)', est(r) == 'NUEVA')
 w = world(db); _, _, p = comprar(w, 'H-X', tel=TEL, vis='vis-1'); r = reclamar(w, uuid.uuid4(), 'H-X', tel=TEL, vis='vis-OTRO')
-check('T6c. mismo teléfono + contenido IDÉNTICO (aunque cambie el visitante): BLOQUEADO_IDENTICO, con el pedido detectado', est(r) == 'BLOQUEADO_IDENTICO' and r['existente']['pedido_id'] == str(p) and npedidos(w) == 1, str(r))
+check('T6c. mismo teléfono + contenido IDÉNTICO (aunque cambie el visitante): BLOQUEADO_IDENTICO (sigue duro) SIN entregar el pedido ajeno',
+      est(r) == 'BLOQUEADO_IDENTICO' and r['existente'] == {'mismo_visitante': False} and str(p) not in json.dumps(r) and npedidos(w) == 1, str(r))
+r_id = reclamar(w, uuid.uuid4(), 'H-X', tel=TEL, vis='vis-1')
+check('T6c2. mismo teléfono + contenido idéntico + MISMO visitante: BLOQUEADO_IDENTICO y trae su pedido para «Ver mi pedido»',
+      est(r_id) == 'BLOQUEADO_IDENTICO' and r_id['existente']['mismo_visitante'] is True and r_id['existente']['pedido_id'] == str(p) and r_id['existente']['numero_pedido'] is not None, str(r_id))
 op = uuid.uuid4(); b1 = reclamar(w, op, 'H-X', tel=TEL); b2 = reclamar(w, op, 'H-X', tel=TEL, confirmar=True); b3 = reclamar(w, op, 'H-X', tel=TEL, otro=True); b4 = reclamar(w, op, 'H-X', tel=TEL, confirmar=True, otro=True)
 check('T6d. el bloqueo de idénticos NO tiene salida: ni confirmar_advertencia ni "es otro pedido" (ni ambos) lo saltean, y no queda ninguna fila ADVERTIDA',
       [est(x) for x in (b1, b2, b3, b4)] == ['BLOQUEADO_IDENTICO'] * 4 and npedidos(w) == 1, str([est(x) for x in (b1, b2, b3, b4)]))
@@ -131,6 +148,31 @@ check('T7e. con la excepción explícita sobre la operación ya advertida: se pe
 check('T7f. un TERCER intento del mismo teléfono vuelve a advertir (la excepción no es una autorización permanente)', est(reclamar(w, uuid.uuid4(), 'H-C', tel=TEL)) == 'PEDIDO_ACTIVO')
 r4 = reclamar(w, op, 'H-B', tel=TEL, vis='v-hijo', otro=True)
 check('T7g. repetir la operación ya completada devuelve EXISTENTE (idempotencia intacta)', est(r4) == 'EXISTENTE' and r4['pedido_id'] == str(pid))
+
+print('=== T11 · CORRECCIÓN DE PRIVACIDAD (CTO 14/11): escenario real #43/#49 de punta a punta ===')
+DISP = uuid.uuid4()                                   # en delivery el dispositivo es UNO solo, compartido por todos los clientes
+w = world(db); _, op43, p43 = comprar(w, 'H-43', tel=TEL, vis='vis-sandra', disp=DISP)       # #43: PENDING_PAYMENT (estado inicial)
+cu = connect(db).cursor(); cu.execute("select estado, numero_pedido from pedidos where id=%s", (p43,)); est43_antes, num43 = cu.fetchone()
+op49 = uuid.uuid4(); r49 = reclamar(w, op49, 'H-49', tel=TEL, vis='vis-segundo-cliente', disp=DISP)
+check('T11a. #49 (mismo teléfono, otro visitante, contenido distinto): se detecta el pedido activo y NO se entrega acceso al #43',
+      est43_antes == 'PENDING_PAYMENT' and est(r49) == 'PEDIDO_ACTIVO' and r49['existente'] == {'mismo_visitante': False} and str(p43) not in json.dumps(r49) and npedidos(w) == 1, str(r49))
+r49v = reclamar(w, op49, 'H-49', tel=TEL, vis='vis-segundo-cliente', disp=DISP)
+check('T11b. «Volver»: no se crea ningún pedido y la operación queda solo ADVERTIDA (nada de stock ni pedido)', est(r49v) == 'PEDIDO_ACTIVO' and npedidos(w) == 1)
+r49c = reclamar(w, op49, 'H-49', tel=TEL, vis='vis-segundo-cliente', disp=DISP, otro=True); p49 = venta(w, op=op49); completar(w, op49, p49)
+check('T11c. «Es otro pedido, continuar» sin haber visto el link: confirma sobre la operación ya advertida y crea un pedido NUEVO e independiente',
+      est(r49c) == 'NUEVA' and p49 != p43 and npedidos(w) == 2, str(r49c))
+cu.execute("select estado, numero_pedido, operacion_id from pedidos where id=%s", (p43,)); e43, n43, o43 = cu.fetchone()
+cu.execute("select operacion_id, estado from pedidos where id=%s", (p49,)); o49, e49 = cu.fetchone()
+check('T11d. el #43 no se modificó ni se reutilizó (mismo estado, número y operación); el #49 tiene su propia operación', (e43, n43, str(o43)) == (est43_antes, num43, str(op43)) and str(o49) == str(op49) and str(o49) != str(o43))
+cu.execute("select count(*) from pedido_operaciones where empresa_id=%s and estado='COMPLETADA'", (w['emp'],))
+check('T11e. quedan DOS operaciones completadas, una por pedido (cada pedido con su propia llave de seguimiento)', cu.fetchone()[0] == 2)
+r43 = reclamar(w, op43, 'H-43', tel=TEL, vis='vis-sandra', disp=DISP)
+check('T11f. el primer cliente repite su misma operación: sigue devolviendo SU pedido (EXISTENTE), el #43 intacto', est(r43) == 'EXISTENTE' and r43['pedido_id'] == str(p43))
+w = world(db); _, _, pm1 = comprar(w, 'H-1', tel=TEL, vis='vis-A'); estado(w, pm1, 'READY')
+opb = uuid.uuid4(); reclamar(w, opb, 'H-2', tel=TEL, vis='vis-B'); reclamar(w, opb, 'H-2', tel=TEL, vis='vis-B', otro=True); pm2 = venta(w, op=opb); completar(w, opb, pm2)   # el 2º pedido del teléfono sale por la excepción explícita
+rA = reclamar(w, uuid.uuid4(), 'H-3', tel=TEL, vis='vis-A'); rB = reclamar(w, uuid.uuid4(), 'H-3', tel=TEL, vis='vis-B'); rC = reclamar(w, uuid.uuid4(), 'H-3', tel=TEL, vis='vis-C')
+check('T11g. con varios pedidos activos del mismo teléfono cada visitante recibe SU pedido (aunque no sea el más reciente); un tercero no recibe ninguno',
+      rA['existente'].get('pedido_id') == str(pm1) and rB['existente'].get('pedido_id') == str(pm2) and rC['existente'] == {'mismo_visitante': False}, f"{rA['existente']} {rB['existente']} {rC['existente']}")
 
 print('=== T8 · llave apagada: comportamiento anterior sin cambios ===')
 w = world(db, bloqueo=False); _, _, p = comprar(w, 'H-X', tel=TEL); estado(w, p, 'READY')
