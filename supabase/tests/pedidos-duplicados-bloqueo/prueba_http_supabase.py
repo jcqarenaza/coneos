@@ -3,9 +3,10 @@
 """
 PRUEBA HTTP REAL — pedidos duplicados (CTO 14/11/2026)
 
-Ejecuta solicitudes HTTP reales contra Auth y PostgREST de la rama de pruebas
-`test-04-sin-bloqueo` (project ref ewtqxtwvkreofqlclbqf). NO toca produccion: el script se niega a correr si las claves
-no pertenecen a esa rama. No usa dependencias externas (solo libreria estandar de Python 3.8+).
+Ejecuta solicitudes HTTP reales contra Auth y PostgREST de la base unica cones-prod (project ref wpiwjpvjqshsgrxxwsld),
+usando EXCLUSIVAMENTE el LAB: empresa /cecchetto (empresa A) y la empresa demo /demoburger (empresa B, para el aislamiento).
+NUNCA toca /federal (produccion real): el script se niega a correr si algun id coincide con el de Federal.
+Se niega a correr si las claves no pertenecen a cones-prod. No usa dependencias externas (solo libreria estandar de Python 3.8+).
 
 Las claves se leen de variables de entorno (nunca por argumento ni de un archivo versionado):
   SB_ANON_KEY            clave anon (legacy JWT) de la rama
@@ -28,11 +29,12 @@ import urllib.parse
 import urllib.request
 import uuid
 
-REF = 'ewtqxtwvkreofqlclbqf'
-PROD_REF = 'wpiwjpvjqshsgrxxwsld'
+REF = 'wpiwjpvjqshsgrxxwsld'          # cones-prod (base unica)
 BASE = 'https://%s.supabase.co' % REF
-EMP_A = 'aaaaaaaa-0000-0000-0000-000000000001'
-EMP_B = 'aaaaaaaa-0000-0000-0000-000000000002'
+EMP_A = 'cdd77401-6b81-474f-b96c-8faaca1476fd'   # LAB: /cecchetto
+EMP_B = '3dffcc70-eff0-4966-885b-a67a0dc1078f'   # demo: /demoburger (solo para probar aislamiento entre empresas)
+SLUG_A, SLUG_B = 'cecchetto', 'demoburger'
+FEDERAL = 'ce000000-0000-0000-0000-000000000001'  # produccion real: PROHIBIDO tocar
 
 ANON = os.environ.get('SB_ANON_KEY', '').strip()
 SVC = os.environ.get('SB_SERVICE_ROLE_KEY', '').strip()
@@ -73,9 +75,12 @@ def guardas():
         if ref is None:
             print('%s no es un JWT legacy de Supabase (usar las "Legacy API keys" de la rama).' % nombre)
             sys.exit(2)
-        if ref == PROD_REF or ref != REF:
-            print('%s NO pertenece a la rama de pruebas %s. ABORTO sin hacer ninguna solicitud.' % (nombre, REF))
+        if ref != REF:
+            print('%s NO pertenece a cones-prod (%s). ABORTO sin hacer ninguna solicitud.' % (nombre, REF))
             sys.exit(3)
+    if FEDERAL in (EMP_A, EMP_B):
+        print('Una de las empresas de prueba es Federal. ABORTO.')
+        sys.exit(3)
     if _jwt_claim(ANON, 'role') != 'anon' or _jwt_claim(SVC, 'role') != 'service_role':
         print('Las claves estan cruzadas: SB_ANON_KEY debe ser role=anon y SB_SERVICE_ROLE_KEY role=service_role.')
         sys.exit(2)
@@ -141,7 +146,7 @@ def q(v):
 def crear_fixtures(run):
     U = {}
     for nombre in ('aa', 'ab', 'sa', 'no'):
-        email = 't-http-%s-%s@example.test' % (run, nombre)
+        email = 't-http-%s-%s@example.test' % (run, nombre)   # usuarios ficticios
         pw = secrets.token_urlsafe(18)
         st, js = svc('POST', '/auth/v1/admin/users', {'email': email, 'password': pw, 'email_confirm': True}, evidencia=True, nota='alta de usuario ficticio')
         if st not in (200, 201) or not isinstance(js, dict) or 'id' not in js:
@@ -204,7 +209,7 @@ def bloque_auth_rls(U, F):
         st, js = http('GET', '/rest/v1/empresas?select=slug&order=slug', bearer=U[u]['jwt'])
         return st, ([r['slug'] for r in js] if isinstance(js, list) else js)
 
-    for u, grupo, esp in (('aa', 'RLS_A', ['emp-a-t']), ('ab', 'RLS_B', ['emp-b-t']), ('sa', 'RLS_SUC', ['emp-a-t'])):
+    for u, grupo, esp in (('aa', 'RLS_A', [SLUG_A]), ('ab', 'RLS_B', [SLUG_B]), ('sa', 'RLS_SUC', [SLUG_A])):
         st, vis = empresas(u)
         rec(grupo, 'RLS: %s ve solo su empresa (empresas)' % u, '200 %s' % esp, '%s %s' % (st, vis), st == 200 and vis == esp)
     st, vis = empresas('no')
