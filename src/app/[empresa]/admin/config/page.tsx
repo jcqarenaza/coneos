@@ -8,7 +8,7 @@ import { ConePageHeader, ConeButton, ConeCard } from '@/components/admin/ConeCom
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Check, Upload, X } from 'lucide-react'
-import { validarMinutosRepetidos } from '@/lib/pedidos/repetidos-config'
+import { validarMinutosRepetidos, validarHorasPedidoActivo } from '@/lib/pedidos/repetidos-config'
 import Image from 'next/image'
 
 interface Config {
@@ -20,6 +20,8 @@ interface Config {
   entrada_unificada: boolean
   prevenir_pedidos_repetidos: boolean
   pedidos_repetidos_minutos: string   // texto TAL CUAL lo escribe el usuario (no se trunca ni se corrige al tipear); se valida al guardar
+  bloquear_pedidos_duplicados: boolean          // detección de posibles duplicados por teléfono + revisión en Caja (default OFF)
+  pedido_activo_ventana_horas: string           // ventana (horas) para considerar "en curso" un pedido del mismo teléfono; texto TAL CUAL, se valida al guardar
 }
 interface Empresa { nombre: string; slug: string; plan: string }
 
@@ -39,20 +41,26 @@ export default function ConfigPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('empresas').select('nombre, slug, plan').eq('id', ctx.empresaId).single(),
-      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta, pwa_nombre, pwa_icono_url, mostrar_agotados, entrada_unificada, prevenir_pedidos_repetidos, pedidos_repetidos_minutos').eq('empresa_id', ctx.empresaId).single(),
+      supabase.from('empresa_config').select('primary_color, secondary_color, logo_url, texto_bienvenida, moneda, cuit, razon_social, condicion_iva, punto_venta, pwa_nombre, pwa_icono_url, mostrar_agotados, entrada_unificada, prevenir_pedidos_repetidos, pedidos_repetidos_minutos, bloquear_pedidos_duplicados, pedido_activo_ventana_horas').eq('empresa_id', ctx.empresaId).single(),
     ]).then(([{ data: emp }, { data: cfg }]) => {
       if (emp) setEmpresa(emp)
-      if (cfg) setConfig({
-        ...cfg,
-        cuit: cfg.cuit ?? '',
-        razon_social: cfg.razon_social ?? '',
-        condicion_iva: cfg.condicion_iva ?? 'RI',
-        punto_venta: cfg.punto_venta ?? 1,
-        mostrar_agotados: cfg.mostrar_agotados ?? false,
-        entrada_unificada: cfg.entrada_unificada ?? false,
-        prevenir_pedidos_repetidos: cfg.prevenir_pedidos_repetidos ?? true,
-        pedidos_repetidos_minutos: String(cfg.pedidos_repetidos_minutos ?? 30),
-      })
+      if (cfg) {
+        // columnas nuevas leídas con tipo explícito (este cliente de Supabase no tiene tipos generados y las infiere como never)
+        const dup = cfg as unknown as { bloquear_pedidos_duplicados?: boolean | null; pedido_activo_ventana_horas?: number | null }
+        setConfig({
+          ...cfg,
+          cuit: cfg.cuit ?? '',
+          razon_social: cfg.razon_social ?? '',
+          condicion_iva: cfg.condicion_iva ?? 'RI',
+          punto_venta: cfg.punto_venta ?? 1,
+          mostrar_agotados: cfg.mostrar_agotados ?? false,
+          entrada_unificada: cfg.entrada_unificada ?? false,
+          prevenir_pedidos_repetidos: cfg.prevenir_pedidos_repetidos ?? true,
+          pedidos_repetidos_minutos: String(cfg.pedidos_repetidos_minutos ?? 30),
+          bloquear_pedidos_duplicados: dup.bloquear_pedidos_duplicados ?? false,
+          pedido_activo_ventana_horas: String(dup.pedido_activo_ventana_horas ?? 3),
+        })
+      }
     })
   }, [ctx])
 
@@ -80,6 +88,10 @@ export default function ConfigPage() {
     if (config.prevenir_pedidos_repetidos && !vMin.ok) {
       avisar('Pedidos repetidos: ingresá un tiempo en minutos, entero, entre 1 y 1440 (24 horas).'); return
     }
+    const vHoras = validarHorasPedidoActivo(config.pedido_activo_ventana_horas)
+    if (config.prevenir_pedidos_repetidos && config.bloquear_pedidos_duplicados && !vHoras.ok) {
+      avisar('Posibles pedidos duplicados: ingresá un tiempo en horas, entero, entre 1 y 24.'); return
+    }
     setSaving(true)
     const supabase = createClient()
     const upd = await supabase.from('empresa_config').update({
@@ -99,6 +111,9 @@ export default function ConfigPage() {
       prevenir_pedidos_repetidos: config.prevenir_pedidos_repetidos === true,
       // desactivada: se conserva el último valor válido (la base exige > 0 siempre)
       ...(vMin.ok ? { pedidos_repetidos_minutos: vMin.minutos } : {}),
+      bloquear_pedidos_duplicados: config.bloquear_pedidos_duplicados === true,
+      // apagado: se conserva el último valor válido (la base exige 1–24 siempre)
+      ...(vHoras.ok ? { pedido_activo_ventana_horas: vHoras.horas } : {}),
     }).eq('empresa_id', ctx.empresaId)
     setSaving(false)
     if (upd.error) { avisar(`No se pudo guardar: ${upd.error.message}`); return }
@@ -209,6 +224,28 @@ export default function ConfigPage() {
                     onChange={e => tocar({ pedidos_repetidos_minutos: e.target.value })}
                     className="w-32" aria-invalid={!validarMinutosRepetidos(config.pedidos_repetidos_minutos).ok} />
                   <p className="text-xs text-neutral-400">Entre 1 y 1440 minutos (24 horas). Ejemplos: 2 para un kiosco ágil, 30 para una cocina con tiempos largos.</p>
+                </div>
+              )}
+              {/* Posibles pedidos duplicados por teléfono (CTO 14/11): misma ubicación que el aviso de repetidos. OFF por defecto; por negocio. */}
+              {config.prevenir_pedidos_repetidos && (
+                <div className="pt-3 border-t border-neutral-200 space-y-3">
+                  <button type="button" onClick={() => tocar({ bloquear_pedidos_duplicados: !config.bloquear_pedidos_duplicados })}
+                    className="w-full flex items-center justify-between gap-3 text-left">
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-700">Bloqueo de posibles pedidos duplicados</p>
+                      <p className="text-xs text-neutral-400 mt-1">Encendido: en delivery y take away online, si el mismo teléfono ya tiene un pedido en curso, se avisa al cliente y el pedido nuevo queda en revisión en Caja hasta que alguien decida si es legítimo o duplicado. Apagado: todo sigue como hasta ahora.</p>
+                    </div>
+                    <span className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${config.bloquear_pedidos_duplicados ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
+                      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${config.bloquear_pedidos_duplicados ? 'left-[22px]' : 'left-0.5'}`} />
+                    </span>
+                  </button>
+                  <div className="space-y-1">
+                    <Label>Considerar &quot;en curso&quot; un pedido del mismo teléfono durante (horas)</Label>
+                    <Input type="text" inputMode="numeric" autoComplete="off" value={config.pedido_activo_ventana_horas}
+                      onChange={e => tocar({ pedido_activo_ventana_horas: e.target.value })}
+                      className="w-32" aria-invalid={!validarHorasPedidoActivo(config.pedido_activo_ventana_horas).ok} />
+                    <p className="text-xs text-neutral-400">Entre 1 y 24 horas (por defecto 3). El teléfono es la señal de identidad: dos clientes con teléfonos distintos nunca se marcan como duplicados, aunque pidan lo mismo.</p>
+                  </div>
                 </div>
               )}
             </div>
