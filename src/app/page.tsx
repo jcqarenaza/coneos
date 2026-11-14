@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { LANDING, waLink } from '@/lib/landing.config'
+import DemoVideos from '@/components/landing/DemoVideos'
 
 // ═══ SEO ═══
 export const metadata: Metadata = {
@@ -224,6 +225,15 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* DEMOS ANIMADOS: recorrido del panel y un pedido real de punta a punta */}
+      <section id="demo" className="px-6 md:px-8 py-20">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl md:text-4xl font-black text-center mb-3">Mirá cómo funciona</h2>
+          <p className="text-slate-400 text-center mb-14 text-lg">El panel de administración y la operación de un pedido, paso a paso.</p>
+          <DemoVideos />
         </div>
       </section>
 
