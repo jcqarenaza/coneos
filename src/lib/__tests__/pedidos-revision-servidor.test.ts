@@ -141,7 +141,7 @@ before(async () => {
     create table empresa_config (empresa_id uuid primary key, primary_color text);
     alter table pedidos add column hora_retiro timestamptz, add column visitante_id text, add column mp_payment_id text, add column notas text,
       add column updated_at timestamptz default now(), add column mp_credencial_id uuid, add column descuento_cobro numeric, add column receptor_doc_tipo int,
-      add column receptor_doc_nro text, add column receptor_cond_iva int, add column transferencia_cuenta_id uuid, add column created_at timestamptz default now();
+      add column receptor_doc_nro text, add column receptor_cond_iva int, add column transferencia_cuenta_id uuid, add column created_at timestamptz default now(), add column salio_at timestamptz, add column colaborador_id uuid, add column colaborador_nombre text;
     alter table stock_movimientos add column rama_id uuid;
     create table pedido_estados_log (id uuid primary key default gen_random_uuid(), pedido_id uuid, operador_id uuid, estado_anterior text, estado_nuevo text, created_at timestamptz default now());
     create table dispositivos (id uuid primary key default gen_random_uuid(), empresa_id uuid, sucursal_id uuid, tipo text, activo boolean default true);
@@ -300,6 +300,18 @@ describe('Posible duplicado: ciclo completo por las rutas reales (CTO 14/11)', (
     assert.equal((await revDe(p2.id)).estado, 'PENDIENTE'); assert.equal(await stock(), 45)
     const sinRev = await primero(tel(), 'z', 1); assert.equal((await resolver(sinRev.id, 'DUPLICADO')).status, 409, 'un pedido sin revisión no se puede marcar duplicado')
     assert.equal(await stock(), 44)
+  })
+
+  test('S9) asignar_cadete (delivery efectivo PENDING → READY de un solo acto): un pedido retenido NO se asigna ni avanza; el resto de la selección sí; tras LEGITIMO sí', async () => {
+    const col = (await db.query("select gen_random_uuid() as id")).rows[0].id as string
+    FIXTURES.colaboradores = [{ id: col, nombre: 'Cadete' }]
+    const t = tel(); const p1 = await primero(t, 'a', 1); const p2 = await continuar(t, 'b', 2)
+    const asignar = (ids: string[]) => consulta('asignar_cadete', { pedido_ids: ids, colaborador_id: col })
+    const solo = await asignar([p2.id]); assert.equal(solo.status, 409); assert.equal(solo.d.codigo, 'REVISION_DUPLICADO'); assert.equal((await fila(p2.id)).estado, 'PENDING_PAYMENT')
+    const mixto = await asignar([p1.id, p2.id]); assert.equal(mixto.status, 200)
+    assert.equal((await fila(p1.id)).estado, 'READY', 'el libre sigue su circuito'); assert.equal((await fila(p2.id)).estado, 'PENDING_PAYMENT', 'el retenido no avanzó'); assert.deepEqual(await logDe(p2.id), [])
+    await resolver(p2.id, 'LEGITIMO'); assert.equal((await asignar([p2.id])).status, 200); assert.equal((await fila(p2.id)).estado, 'READY')
+    delete FIXTURES.colaboradores
   })
 
   test('S8) FAIL-CLOSED / base vieja: si no se puede saber si está retenido → 503 y no avanza; si la función no existe (SQL sin aplicar) → flujo de siempre', async () => {

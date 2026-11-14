@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { esUuid, firmarCaptura, resumirCaptura, TTL_URL_FIRMADA_SEG } from '@/lib/storage'
-import { revisionesParaCaja, itemsComparables, resolverRevision, marcarReembolsoGestionado, type Db } from '@/lib/pedidos/revision'
+import { revisionesParaCaja, itemsComparables, resolverRevision, marcarReembolsoGestionado, pedidosRetenidos, CODIGO_RETENIDO, MENSAJE_RETENIDO, type Db } from '@/lib/pedidos/revision'
 
 // Datos de las pantallas de OPERACIÓN (caja/preparación/display), server-side.
 // Estas pantallas no tienen sesión de auth propia: sus consultas directas a la
@@ -310,6 +310,13 @@ export async function POST(request: Request) {
     const { data: col } = await supabase.from('colaboradores')
       .select('id, nombre').eq('id', colaborador_id).eq('empresa_id', disp.empresa_id).maybeSingle()
     if (!col) return NextResponse.json({ error: 'Colaborador no válido' }, { status: 404 })
+    // COMPUERTA DE REVISIÓN DE DUPLICADO (CTO 14/11, D3 — ÍTEM A RATIFICAR: este endpoint no estaba entre los dos aprobados).
+    // Asignar cadete pasa PENDING_PAYMENT → READY de un solo acto en delivery-efectivo: sin esta compuerta salteaba la revisión.
+    // Los pedidos retenidos se sacan de la lista (no se asignan ni avanzan); el resto sigue igual. Error de lectura → FAIL-CLOSED.
+    const ret = await pedidosRetenidos(supabase as unknown as Db, empresaId, pedido_ids.filter(esUuid))
+    if (!ret.ok) return NextResponse.json({ error: 'No se pudo verificar la revisión de duplicado. Reintentá.' }, { status: 503 })
+    const pedidoIdsOk: string[] = pedido_ids.filter((id: unknown) => !ret.retenidos.has(String(id)))
+    if (ret.retenidos.size > 0 && pedidoIdsOk.length === 0) return NextResponse.json({ error: MENSAJE_RETENIDO, codigo: CODIGO_RETENIDO }, { status: 409 })
     // JC 29/09 (regla re-sellada): ASIGNAR SIEMPRE = LISTO. En delivery-
     // EFECTIVO recién llegado, asignar de una = aceptado + LISTO en un
     // acto (quien asigna ya lo tiene hecho; el cadete cobra en la puerta,
@@ -317,7 +324,7 @@ export async function POST(request: Request) {
     // certifica el pago primero y recién ahí puede asignar.
     const { data: aceptados } = await supabase.from('pedidos')
       .update({ estado: 'READY', updated_at: new Date().toISOString() })
-      .in('id', pedido_ids).eq('empresa_id', disp.empresa_id)
+      .in('id', pedidoIdsOk).eq('empresa_id', disp.empresa_id)
       .eq('estado', 'PENDING_PAYMENT').eq('tipo_pedido', 'delivery').eq('metodo_pago', 'efectivo')
       .select('id')
     for (const pa of aceptados ?? []) {
@@ -328,20 +335,20 @@ export async function POST(request: Request) {
     // Tiempo de entrega: si el pedido cambia de cadete, la salida registrada era
     // del anterior — se borra para que el tiempo del nuevo cadete no quede inflado.
     await supabase.from('pedidos').update({ salio_at: null })
-      .in('id', pedido_ids).eq('empresa_id', disp.empresa_id)
+      .in('id', pedidoIdsOk).eq('empresa_id', disp.empresa_id)
       .not('salio_at', 'is', null).or(`colaborador_id.is.null,colaborador_id.neq.${col.id}`)
     // El cinturón de siempre: asignar solo pedidos EN CURSO (los recién
     // aceptados arriba ya son PREPARING y entran acá)
     await supabase.from('pedidos')
       .update({ colaborador_id: col.id, colaborador_nombre: col.nombre })
-      .in('id', pedido_ids).eq('empresa_id', disp.empresa_id)
+      .in('id', pedidoIdsOk).eq('empresa_id', disp.empresa_id)
       .in('estado', ['PREPARING', 'READY'])
     // ASIGNAR = LISTO (JC 29/09): asignar cadete en PREPARANDO es decir "está
     // listo, que salga" — el mismo acto pasa esos pedidos a READY (los que ya
     // estaban READY quedan igual; Marcar listo sigue para pedidos sin cadete).
     const { data: pasados } = await supabase.from('pedidos')
       .update({ estado: 'READY', updated_at: new Date().toISOString() })
-      .in('id', pedido_ids).eq('empresa_id', disp.empresa_id).eq('estado', 'PREPARING')
+      .in('id', pedidoIdsOk).eq('empresa_id', disp.empresa_id).eq('estado', 'PREPARING')
       .select('id')
     for (const pp of pasados ?? []) {
       await supabase.from('pedido_estados_log').insert({
