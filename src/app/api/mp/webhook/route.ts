@@ -67,16 +67,23 @@ export async function POST(request: Request) {
           console.log(`[mp/webhook] Pedido ${pedidoId} RETENIDO por revisión de duplicado: pago MP ${paymentId} registrado, sin preparar ni facturar`)
           break
         }
-        await supabase.from('pedidos')
+        // CTO 14/11 (ajuste MP): la transición es CONDICIONAL al estado (PENDING_PAYMENT → PREPARING la gana UNA sola notificación) y solo el que
+        // la gana factura. Avisos repetidos o concurrentes del mismo pago —también los que llegan después de un LEGITIMO— no repiten la nota,
+        // la transición ni la factura. La nota del pago no se vuelve a agregar si ya quedó registrada mientras el pedido estaba en revisión.
+        const yaNotado = String(pedido.notas ?? '').includes(`MP payment ${paymentId}`)
+        const { data: gano } = await supabase.from('pedidos')
           // 9c: pago confirmado → PREPARING. (JC 25/09) el id del pago va a SU columna
           // (el ticket imprime la operación) y la nota ya no pisa las notas del cliente.
           .update({
             estado: 'PREPARING', pagado: true, mp_payment_id: String(paymentId),
-            notas: pedido.notas ? `${pedido.notas} · MP payment ${paymentId}` : `MP payment ${paymentId}`,
+            notas: yaNotado ? pedido.notas : pedido.notas ? `${pedido.notas} · MP payment ${paymentId}` : `MP payment ${paymentId}`,
           })
-          .eq('id', pedido.id)
-        console.log(`[mp/webhook] Pedido ${pedidoId} pagado via MP ${paymentId} (via ${via})`)
-        await facturarSiCorresponde(pedido.id)
+          .eq('id', pedido.id).eq('estado', 'PENDING_PAYMENT')
+          .select('id')
+        if (Array.isArray(gano) && gano.length > 0) {
+          console.log(`[mp/webhook] Pedido ${pedidoId} pagado via MP ${paymentId} (via ${via})`)
+          await facturarSiCorresponde(pedido.id)
+        }
       }
     }
     break

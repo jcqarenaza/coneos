@@ -4,7 +4,6 @@
 // teléfono). Mientras la revisión esté PENDIENTE o resuelta como DUPLICADO el pedido está RETENIDO: ningún camino lo puede cobrar, preparar
 // ni facturar (D3). Luci resuelve LEGITIMO (se libera y el circuito sigue) o DUPLICADO (se devuelve el stock con las funciones existentes, D2).
 // Este módulo NO toca crear_pedido_stock, las funciones de sabores ni el modelo de stock: solo las LLAMA.
-import { acreditarPuntosPedido } from '@/lib/beneficios'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 
 // Cliente de base tipado a lo mínimo: la tabla nueva no está en los tipos generados.
@@ -45,8 +44,9 @@ export interface RevisionFila {
   creado_at: string; resuelto_at: string | null; resuelto_por: string | null; nota: string | null
   stock_devuelto_at: string | null; reanudado_at: string | null
   reembolso_pendiente: boolean; reembolso_gestionado_at: string | null; reembolso_gestionado_por: string | null
+  candidatos_snapshot?: { operacion_id: string; numero_pedido: number; created_at: string; estado: string; cliente: string | null; items: { nombre?: string | null; presentacion?: string | null; cantidad?: number | null; opciones?: string[] | null }[] }[] | null
 }
-const COLS_REV = 'id, operacion_id, candidatos, coincidencia, estado, creado_at, resuelto_at, resuelto_por, nota, stock_devuelto_at, reanudado_at, reembolso_pendiente, reembolso_gestionado_at, reembolso_gestionado_por'
+const COLS_REV = 'id, operacion_id, candidatos, coincidencia, estado, creado_at, resuelto_at, resuelto_por, nota, stock_devuelto_at, reanudado_at, reembolso_pendiente, reembolso_gestionado_at, reembolso_gestionado_por, candidatos_snapshot'
 
 /** La revisión (si hay) del pedido, por su operación. null = el pedido no tiene revisión (o el SQL no está aplicado). */
 export async function revisionDePedido(supabase: Db, empresa_id: string, pedido_id: string): Promise<RevisionFila | null> {
@@ -93,7 +93,7 @@ export async function cerrarCarrerasDePago(supabase: Db, empresa_id: string, ped
 // ───────────────────────── Reanudación del circuito tras LEGITIMO (condición A) ─────────────────────────
 /**
  * Si el pedido es LEGITIMO, ya tiene un pago MP confirmado (mp_payment_id) y sigue en PENDING_PAYMENT, hace lo que el webhook habría hecho:
- * PREPARING + log de estados + facturación + puntos. UNA sola vez: se RECLAMA con un UPDATE condicional sobre reanudado_at (quien lo gana ejecuta,
+ * PREPARING + log de estados + facturación (los puntos, como en el webhook, se acreditan al entregar). UNA sola vez: se RECLAMA con un UPDATE condicional sobre reanudado_at (quien lo gana ejecuta,
  * el otro no hace nada). Si la transición falla después del reclamo, se suelta el reclamo para que se pueda reintentar.
  */
 export async function reanudarSiCorresponde(supabase: Db, empresa_id: string, pedido_id: string, operador_id: string | null = null): Promise<'reanudado' | 'nada'> {
@@ -113,7 +113,7 @@ export async function reanudarSiCorresponde(supabase: Db, empresa_id: string, pe
     return 'nada'
   }
   await supabase.from('pedido_estados_log').insert({ pedido_id, operador_id, estado_anterior: 'PENDING_PAYMENT', estado_nuevo: 'PREPARING' })
-  await acreditarPuntosPedido(pedido_id).catch(() => {})
+  // Puntos: el webhook NO los acredita al confirmar el pago (se acreditan al ENTREGAR, por api/pedidos/estado, que es idempotente): la reanudación hace lo MISMO que el webhook.
   await facturarSiCorresponde(pedido_id)
   return 'reanudado'
 }
@@ -218,7 +218,7 @@ type PedidoItemRow = { nombre_producto_snap?: string | null; nombre_presentacion
 export const itemsComparables = (rows: PedidoItemRow[] | null | undefined): ItemComparable[] =>
   (rows ?? []).map(r => ({ nombre: String(r.nombre_producto_snap ?? '—'), presentacion: r.nombre_presentacion_snap ?? null, cantidad: Number(r.cantidad ?? 0), opciones: (r.pedido_item_opciones ?? []).map(o => String(o.nombre_snap ?? '')).filter(Boolean) }))
 
-export interface CandidatoVista { numero_pedido: number; created_at: string; estado: string; cliente: string | null; items: ItemComparable[]; comparacion: ReturnType<typeof compararPedidos> }
+export interface CandidatoVista { desde_foto?: boolean; numero_pedido: number; created_at: string; estado: string; cliente: string | null; items: ItemComparable[]; comparacion: ReturnType<typeof compararPedidos> }
 export interface RevisionVista {
   estado: 'PENDIENTE' | 'DUPLICADO'; coincidencia: 'IDENTICA' | 'DISTINTA'; creado_at: string; resuelto_at: string | null
   reembolso_pendiente: boolean; reembolso_gestionado_at: string | null; stock_devuelto: boolean; candidatos: CandidatoVista[]
@@ -258,7 +258,12 @@ export async function revisionesParaCaja(supabase: Db, a: { empresa_id: string; 
     if (!rev) continue                                                     // retenido pero de OTRA sucursal: la Caja no lo ve
     const mio = a.pedidos.find(p => p.id === pid)!
     const candidatos: CandidatoVista[] = (rev.candidatos ?? []).flatMap(o => {   // el orden de la base = mejor coincidencia primero
-      const c = candPorOp.get(o); if (!c) return []                        // candidato ya purgado: no se inventa
+      const c = candPorOp.get(o)
+      if (!c) {                                                            // el pedido candidato ya no existe (eliminado): se usa la FOTO tomada al detectar; sin foto, no se inventa
+        const f = (rev.candidatos_snapshot ?? []).find(x => x?.operacion_id === o); if (!f) return []
+        const items = (f.items ?? []).map(i => ({ nombre: String(i.nombre ?? '—'), presentacion: i.presentacion ?? null, cantidad: Number(i.cantidad ?? 0), opciones: (i.opciones ?? []).map(String) }) as ItemComparable)
+        return [{ desde_foto: true, numero_pedido: f.numero_pedido, created_at: f.created_at, estado: f.estado, cliente: f.cliente ?? null, items, comparacion: compararPedidos(mio.items, items) }]
+      }
       const items = itemsComparables(c.pedido_items)
       return [{ numero_pedido: c.numero_pedido, created_at: c.created_at, estado: c.estado, cliente: nombreCliente(c), items, comparacion: compararPedidos(mio.items, items) }]
     })

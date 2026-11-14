@@ -151,6 +151,9 @@ before(async () => {
     create table sabores_llamadas (pedido uuid); create table sabores_falla (on_ boolean);
     create function devolver_sabores_pedido(p_empresa uuid, p_pedido uuid) returns void language plpgsql as $f$
       begin if exists (select 1 from sabores_falla where on_) then raise exception 'falla simulada de sabores'; end if; insert into sabores_llamadas values (p_pedido); end $f$;
+    create table transiciones_prep (pedido uuid, at timestamptz default now());
+    create function trg_prep() returns trigger language plpgsql as $f$ begin insert into transiciones_prep(pedido) values (new.id); return new; end $f$;
+    create trigger t_prep after update on pedidos for each row when (new.estado = 'PREPARING' and old.estado is distinct from 'PREPARING') execute function trg_prep();
     create table caja_llamadas (pedido uuid, dispositivo uuid);
     create function devolver_stock_pedido_caja(p_empresa uuid, p_pedido uuid, p_dispositivo uuid) returns jsonb language plpgsql as $f$
       begin insert into caja_llamadas values (p_pedido, p_dispositivo); return '{"estado":"devuelto"}'::jsonb; end $f$;`)
@@ -223,7 +226,7 @@ const pasarAMP = (id: string) => db.query("update pedidos set metodo_pago='mp' w
 const reset = () => { for (const k of Object.keys(llamadas)) delete llamadas[k]; llamadasMP.length = 0; fallaRpc = {} }
 
 describe('Posible duplicado: ciclo completo por las rutas reales (CTO 14/11)', () => {
-  beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas'); await mundo() })
+  beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas; delete from transiciones_prep'); await mundo() })
 
   test('S1) CASO REAL #43/#49: el segundo cliente continúa → se crea su pedido propio, el #43 queda INTACTO y el nuevo queda con revisión PENDIENTE que apunta al #43', async () => {
     const t = tel(); const p43 = await primero(t, 'celu-sandra', 2); const p49 = await continuar(t, 'otro-celu', 3)
@@ -325,7 +328,7 @@ describe('Posible duplicado: ciclo completo por las rutas reales (CTO 14/11)', (
 })
 
 describe('Condición A · Mercado Pago confirma el pago mientras la revisión está PENDIENTE', () => {
-  beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas'); await mundo() })
+  beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas; delete from transiciones_prep'); await mundo() })
 
   test('A1) el pago se REGISTRA pero NO se prepara ni se factura; un segundo aviso del mismo pago no repite nada; al resolver LEGITIMO el circuito se REANUDA una sola vez (PREPARING + log + factura + puntos)', async () => {
     const t = tel(); await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3); await pasarAMP(p2.id)
@@ -338,7 +341,7 @@ describe('Condición A · Mercado Pago confirma el pago mientras la revisión es
     const r = await resolver(p2.id, 'LEGITIMO'); assert.equal(r.status, 200); assert.equal(r.d.reanudado, true)
     f = await fila(p2.id); assert.equal(f.estado, 'PREPARING')
     assert.deepEqual(await logDe(p2.id), [{ estado_anterior: 'PENDING_PAYMENT', estado_nuevo: 'PREPARING' }])
-    assert.equal(contador('edge:facturar'), 1, 'se facturó exactamente una vez'); assert.equal(contador('tabla:beneficios_config'), 1, 'se intentó acreditar puntos una vez')
+    assert.equal(contador('edge:facturar'), 1, 'se facturó exactamente una vez'); assert.equal(contador('tabla:beneficios_config'), 0, 'igual que el webhook: los puntos NO se acreditan al confirmar el pago (se acreditan al entregar)')
     assert.ok((await revDe(p2.id)).reanudado_at)
     // repetir / doble click / otro webhook: NADA se duplica
     await resolver(p2.id, 'LEGITIMO'); await webhook(p2.id, wh.pagoId)
@@ -360,6 +363,46 @@ describe('Condición A · Mercado Pago confirma el pago mientras la revisión es
     }
   })
 
+  const transiciones = async (id: string) => Number((await db.query('select count(*) from transiciones_prep where pedido=$1', [id])).rows[0].count)
+  const wh = (pedido_id: string, pagoId: string) => { pagosMP.set(pagoId, { status: 'approved', external_reference: pedido_id }); return WEBHOOK(new Request('http://x/api/mp/webhook', { method: 'POST', body: JSON.stringify({ type: 'payment', data: { id: pagoId } }) })) }
+  const legitimoSoloSQL = (pid: string) => db.query("select resolver_revision_duplicado($1, $2, 'LEGITIMO', null, null)", [w.emp, pid])   // decisión tomada, reanudación TODAVÍA pendiente
+
+  test('A4) AVISOS CONCURRENTES mientras está retenido (4 a la vez, 10 rondas): el pago se registra una vez, la nota una vez, sin transición ni factura; después LEGITIMO reanuda con UNA transición y UNA factura', async () => {
+    for (let i = 0; i < 10; i++) {
+      reset(); await db.query('delete from transiciones_prep'); await mundo(); const t = tel(); await primero(t, 'a', 1); const p2 = await continuar(t, 'b', 1); await pasarAMP(p2.id)
+      const pago = `7${i}00`
+      const rs = await Promise.all([wh(p2.id, pago), wh(p2.id, pago), wh(p2.id, pago), wh(p2.id, pago)]); assert.deepEqual(rs.map(r => r.status), [200, 200, 200, 200])
+      const f = await fila(p2.id); assert.equal(f.estado, 'PENDING_PAYMENT'); assert.equal(f.mp_payment_id, pago); assert.equal(f.notas.split(`MP payment ${pago}`).length - 1, 1, `ronda ${i}: nota duplicada`)
+      assert.equal(contador('edge:facturar'), 0); assert.equal(await transiciones(p2.id), 0)
+      assert.equal((await resolver(p2.id, 'LEGITIMO')).status, 200)
+      assert.equal(await transiciones(p2.id), 1, `ronda ${i}`); assert.equal(contador('edge:facturar'), 1); assert.equal((await logDe(p2.id)).length, 1); assert.equal((await fila(p2.id)).estado, 'PREPARING')
+    }
+  })
+
+  test('A5) LEGITIMO ya decidido pero reanudación pendiente + AVISOS REPETIDOS Y CONCURRENTES + doble click de Luci (10 rondas): UNA sola transición a PREPARING, UNA sola factura, la nota del pago una sola vez, cero puntos', async () => {
+    for (let i = 0; i < 10; i++) {
+      reset(); await db.query('delete from transiciones_prep'); await mundo(); const t = tel(); await primero(t, 'a', 1); const p2 = await continuar(t, 'b', 1); await pasarAMP(p2.id)
+      const pago = `6${i}00`; await wh(p2.id, pago); await legitimoSoloSQL(p2.id)
+      assert.equal((await fila(p2.id)).estado, 'PENDING_PAYMENT'); assert.equal(await transiciones(p2.id), 0)
+      const rs = await Promise.all([wh(p2.id, pago), wh(p2.id, pago), wh(p2.id, pago), resolver(p2.id, 'LEGITIMO'), resolver(p2.id, 'LEGITIMO')])
+      assert.ok(rs.every(r => r.status === 200), `ronda ${i}: ${rs.map(r => r.status)}`)
+      const f = await fila(p2.id)
+      assert.equal(f.estado, 'PREPARING'); assert.equal(await transiciones(p2.id), 1, `ronda ${i}: transiciones`); assert.equal(contador('edge:facturar'), 1, `ronda ${i}: facturas=${contador('edge:facturar')}`)
+      assert.ok((await logDe(p2.id)).length <= 1, `ronda ${i}: log duplicado`); assert.equal(f.notas.split(`MP payment ${pago}`).length - 1, 1, `ronda ${i}: nota duplicada`)
+      assert.equal(contador('tabla:beneficios_config'), 0, 'sin acreditación de puntos al reanudar (como el webhook)')
+    }
+  })
+
+  test('A6) avisos repetidos DESPUÉS de la reanudación no cambian nada; y los puntos se acreditan UNA vez, al entregar, por el camino de siempre', async () => {
+    const t = tel(); await primero(t, 'a', 1); const p2 = await continuar(t, 'b', 1); await pasarAMP(p2.id)
+    const pago = '5500'; await wh(p2.id, pago); await resolver(p2.id, 'LEGITIMO')
+    const antes = await fila(p2.id); const f0 = contador('edge:facturar')
+    await Promise.all([wh(p2.id, pago), wh(p2.id, pago)]); await resolver(p2.id, 'LEGITIMO')
+    assert.deepEqual(await fila(p2.id), antes); assert.equal(contador('edge:facturar'), f0); assert.equal(await transiciones(p2.id), 1)
+    reset(); assert.equal((await estadoReq(p2.id, 'READY')).status, 200); assert.equal((await estadoReq(p2.id, 'DELIVERED')).status, 200)
+    assert.equal(contador('tabla:beneficios_config'), 1, 'una sola consulta de acreditación al entregar')
+  })
+
   test('A3) un pedido que NO está en revisión: el webhook se comporta EXACTAMENTE como antes (PREPARING + factura), sin tocar el circuito', async () => {
     const p = await primero(tel(), 'a', 2); await pasarAMP(p.id); const wh = await webhook(p.id)
     const f = await fila(p.id); assert.equal(f.estado, 'PREPARING'); assert.equal(f.pagado, true); assert.equal(f.mp_payment_id, wh.pagoId); assert.equal(contador('edge:facturar'), 1)
@@ -367,7 +410,7 @@ describe('Condición A · Mercado Pago confirma el pago mientras la revisión es
 })
 
 describe('Condición E · DUPLICADO ya pagado por Mercado Pago: reembolso MANUAL', () => {
-  beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas'); await mundo() })
+  beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas; delete from transiciones_prep'); await mundo() })
 
   test('E1) pagó ANTES de resolver: DUPLICADO deja reembolso_pendiente; el sistema NO llama a MP para devolver; el pedido no se prepara ni factura; «gestionado» deja constancia (idempotente)', async () => {
     const t = tel(); await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3); await pasarAMP(p2.id); await webhook(p2.id)
@@ -432,7 +475,7 @@ describe('Condición B · concurrencia del CICLO COMPLETO por la ruta (reclamo �
 })
 
 describe('Vista Caja · datos de la revisión (pedidos_hoy) y regresiones de otros circuitos', () => {
-  beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas'); await mundo() })
+  beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas; delete from transiciones_prep'); await mundo() })
   type PH = { pedidos: { id: string; estado: string; revision?: { estado: string; coincidencia: string; reembolso_pendiente: boolean; stock_devuelto: boolean; candidatos: { numero_pedido: number; estado: string; cliente: string | null; comparacion: { identicos: boolean; lineas: { nombre: string; nuevo: number; candidato: number; estado: string }[] } }[] } | null }[] }
 
   test('V1) CASO #43/#49: pedidos_hoy entrega la revisión del nuevo con el #43 como candidato (número, estado, cliente) y la comparación REAL (2 vs 3); el original NO tiene revisión', async () => {
@@ -466,6 +509,19 @@ describe('Vista Caja · datos de la revisión (pedidos_hoy) y regresiones de otr
     const t = tel(); await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3)
     const d = (await consulta('pedidos_hoy', {}, w.dispOtraSuc)).d as unknown as PH
     assert.equal(d.pedidos.find(p => p.id === p2.id)?.revision ?? null, null)
+  })
+
+  test('V5) DURABILIDAD (CTO ajuste 4): tras PURGAR las operaciones viejas la revisión sigue mostrando al candidato; si además el candidato se ELIMINA, se muestra desde la FOTO (marcado) con la comparación real', async () => {
+    const t = tel(); const p43 = await primero(t, 'celu-sandra', 2); const p49 = await continuar(t, 'otro-celu', 3)
+    await db.query("update pedido_operaciones set created_at = now() - interval '45 days' where empresa_id=$1", [w.emp])
+    assert.ok(Number((await db.query('select purgar_operaciones_pedido(5000) as n')).rows[0].n) >= 2)
+    let ped = ((await consulta('pedidos_hoy')).d as unknown as PH).pedidos; let c = ped.find(p => p.id === p49.id)!.revision!.candidatos
+    assert.equal(c.length, 1); assert.equal(c[0].numero_pedido, p43.numero_pedido); assert.equal((c[0] as { desde_foto?: boolean }).desde_foto, undefined, 'el candidato vivo se lee del pedido real')
+    await db.query('delete from pedidos where id=$1', [p43.id])
+    ped = ((await consulta('pedidos_hoy')).d as unknown as PH).pedidos; const rv = ped.find(p => p.id === p49.id)!.revision!; c = rv.candidatos
+    assert.equal(rv.estado, 'PENDIENTE'); assert.equal(c.length, 1); assert.equal(c[0].numero_pedido, p43.numero_pedido); assert.equal((c[0] as { desde_foto?: boolean }).desde_foto, true)
+    assert.deepEqual(c[0].comparacion.lineas.map(l => [l.nombre, l.nuevo, l.candidato, l.estado]), [['Alfajor', 3, 2, 'distinto']])
+    assert.equal((await resolver(p49.id, 'LEGITIMO')).status, 200, 'se puede resolver igual')
   })
 
   test('R1) KIOSCO / CAJA / fuera de alcance: mismo teléfono y mismo contenido NO crean revisión y el circuito de estados es el de siempre', async () => {

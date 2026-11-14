@@ -156,9 +156,11 @@ create table if not exists public.pedido_revisiones_duplicado (
   reanudado_at timestamptz,                                      -- LEGITIMO de un pedido ya pagado por MP: cuándo se reanudó el circuito
   reembolso_pendiente boolean not null default false,            -- DUPLICADO ya pagado por MP: la devolución en Mercado Pago es MANUAL
   reembolso_gestionado_at timestamptz, reembolso_gestionado_por uuid,
+  candidatos_snapshot jsonb not null default '[]'::jsonb,        -- foto de los candidatos al detectar (nº, hora, estado, cliente, ítems): sobrevive si el pedido candidato se elimina
   constraint pedido_revisiones_duplicado_resuelto_coherente check ((estado = 'PENDIENTE') = (resuelto_at is null)),
   constraint pedido_revisiones_duplicado_op_uk unique (empresa_id, operacion_id)
 );
+alter table public.pedido_revisiones_duplicado add column if not exists candidatos_snapshot jsonb not null default '[]'::jsonb;
 comment on table public.pedido_revisiones_duplicado is 'coneos:pedidos-bloqueo-13-11';
 create index if not exists idx_pedido_revisiones_pendientes on public.pedido_revisiones_duplicado (empresa_id, sucursal_id) where estado = 'PENDIENTE';
 create index if not exists idx_pedido_revisiones_reembolso on public.pedido_revisiones_duplicado (empresa_id, sucursal_id) where reembolso_pendiente and reembolso_gestionado_at is null;
@@ -225,7 +227,7 @@ declare
   v_op record; v_dup record; v_tel text := nullif(regexp_replace(coalesce(p_telefono,''), '\D', '', 'g'), '');
   v_tel_n text := public.normalizar_telefono_pedido(p_telefono);
   v_vis text := nullif(p_visitante, ''); v_ped_id uuid; v_mismo boolean := false;
-  v_cands uuid[] := array[]::uuid[]; v_row record; v_hay boolean := false; v_ident boolean := false;
+  v_cands uuid[] := array[]::uuid[]; v_snap jsonb := '[]'::jsonb; v_row record; v_hay boolean := false; v_ident boolean := false;
   v_activos constant text[] := array['PENDING_PAYMENT','PAID','PREPARING','READY'];
 begin
   if p_empresa_id is null or p_sucursal_id is null or p_operacion_id is null or coalesce(p_huella,'') = '' then
@@ -325,8 +327,17 @@ begin
         update public.pedido_operaciones set estado = 'EN_CURSO', updated_at = now() where empresa_id = p_empresa_id and operacion_id = p_operacion_id;
         -- Relación pedido nuevo ↔ candidatos: se registra ACÁ, en la misma transacción y bajo los mismos locks (teléfono → contenido) que el reclamo,
         -- antes de que exista el pedido. El pedido se enlaza después por pedidos.operacion_id. Idempotente (reintentos de la misma operación).
-        insert into public.pedido_revisiones_duplicado (empresa_id, sucursal_id, operacion_id, candidatos, coincidencia)
-        values (p_empresa_id, p_sucursal_id, p_operacion_id, v_cands, case when v_ident then 'IDENTICA' else 'DISTINTA' end)
+        -- Foto de los candidatos (mínimo para poder compararlos aunque el candidato se elimine o su operación se purgue). Mismo orden que v_cands.
+        select coalesce(jsonb_agg(x.j order by x.ord), '[]'::jsonb) into v_snap from (
+          select array_position(v_cands, pc.operacion_id) as ord, jsonb_build_object(
+            'operacion_id', pc.operacion_id, 'numero_pedido', pc.numero_pedido, 'created_at', pc.created_at, 'estado', pc.estado,
+            'cliente', coalesce(nullif(pc.nombre_cliente, ''), pc.datos_delivery ->> 'nombre'),
+            'items', coalesce((select jsonb_agg(jsonb_build_object('nombre', i.nombre_producto_snap, 'presentacion', i.nombre_presentacion_snap, 'cantidad', i.cantidad,
+                       'opciones', coalesce((select jsonb_agg(o.nombre_snap order by o.id) from public.pedido_item_opciones o where o.pedido_item_id = i.id), '[]'::jsonb)) order by i.id)
+                     from public.pedido_items i where i.pedido_id = pc.id), '[]'::jsonb)) as j
+          from public.pedidos pc where pc.empresa_id = p_empresa_id and pc.operacion_id = any (v_cands)) x;
+        insert into public.pedido_revisiones_duplicado (empresa_id, sucursal_id, operacion_id, candidatos, coincidencia, candidatos_snapshot)
+        values (p_empresa_id, p_sucursal_id, p_operacion_id, v_cands, case when v_ident then 'IDENTICA' else 'DISTINTA' end, v_snap)
         on conflict (empresa_id, operacion_id) do nothing;
         return jsonb_build_object('estado', 'NUEVA', 'confirmada_otro', true);
       end if;

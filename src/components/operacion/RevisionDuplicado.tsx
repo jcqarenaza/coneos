@@ -84,6 +84,7 @@ export default function RevisionDuplicado({ revision: r, pedidoId, numeroPedido,
                 <span className="font-black text-neutral-900 text-sm">#{c.numero_pedido}</span>
                 <span className="text-neutral-500"> · {fecha(c.created_at)} {hora(c.created_at)}</span><br />
                 <span className="text-neutral-600">{ESTADO_TXT[c.estado] ?? c.estado}{c.cliente ? ` · ${c.cliente}` : ''}</span>
+                {c.desde_foto && <><br /><span className="text-[10px] font-bold text-neutral-500">Pedido eliminado · datos al momento de detectar</span></>}
               </button>
             ))}
           </div>

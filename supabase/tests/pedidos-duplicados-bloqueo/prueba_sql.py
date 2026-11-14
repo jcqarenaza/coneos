@@ -18,6 +18,7 @@ def fresh(name):
     c = connect(name).cursor()
     c.execute(open(os.path.join(SUP, 'tests', 'stock-v2', '00-schema-reducido.sql'), encoding='utf-8').read())
     c.execute("create table empresa_config (empresa_id uuid primary key, primary_color text)")
+    c.execute("alter table pedidos add column if not exists created_at timestamptz not null default now()")   # existe en producción (Ventas ordena por ella); el esquema reducido no la trae
     c.execute("alter table pedidos add column if not exists mp_payment_id text")   # existe en producción (lo graba el webhook MP); el esquema reducido no la trae
     c.execute("alter default privileges for role postgres in schema public grant execute on functions to anon, authenticated, service_role")
     c.execute("alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role")
@@ -411,6 +412,30 @@ for f in BASE: c.execute(open(os.path.join(SUP, f), encoding='utf-8').read())
 e1, _ = aplicar(c, NUEVO); e2, _ = aplicar(c, NUEVO)
 c.execute("select count(*), max(pronargs) from pg_proc where proname='reclamar_operacion_pedido'"); n = c.fetchone()
 check('S7. el script se puede aplicar dos veces seguidas (idempotente): una sola función de 10 parámetros', e1 is None and e2 is None and n == (1, 10), str(n))
+
+
+print('=== DURABILIDAD DE CANDIDATOS (CTO 14/11, ajuste 4) ===')
+w = world(db); opA, pA = comprar(w, 'H-D1', tel=TEL, vis='vis-d1')[1:]; opB, pB = continuar(w, 'H-D2', tel=TEL, vis='vis-d2')
+q = connect(db).cursor()
+q.execute("select candidatos_snapshot from pedido_revisiones_duplicado where empresa_id=%s and operacion_id=%s", (w['emp'], opB)); snap = q.fetchone()[0]
+check('D1. al crear la revisión queda la FOTO del candidato (nº de pedido, estado e ítems con cantidad)', len(snap) == 1 and snap[0]['operacion_id'] == str(opA) and snap[0]['items'][0]['cantidad'] == 1 and snap[0]['numero_pedido'] is not None, str(snap)[:200])
+q.execute("update pedido_operaciones set created_at = now() - interval '45 days' where empresa_id=%s", (w['emp'],))
+q.execute("select purgar_operaciones_pedido(5000)"); purgadas = q.fetchone()[0]
+q.execute("select count(*) from pedido_operaciones where empresa_id=%s", (w['emp'],)); quedan = q.fetchone()[0]
+q.execute("select operacion_id from pedidos where id in (%s,%s) order by numero_pedido", (pA, pB)); ops_ped = [str(r[0]) for r in q.fetchall()]
+rv = revision(w, opB)
+q.execute("select p.id from pedidos p join pedido_revisiones_duplicado r on r.empresa_id=p.empresa_id and p.operacion_id = r.candidatos[1] where r.operacion_id=%s", (opB,)); cand_vivo = q.fetchone()
+check('D2. tras PURGAR las operaciones viejas, la revisión PENDIENTE sigue identificando al candidato (pedidos.operacion_id sin FK) y la compuerta sigue reteniendo al nuevo',
+      purgadas >= 2 and quedan == 0 and ops_ped == [str(opA), str(opB)] and rv[0] == 'PENDIENTE' and cand_vivo is not None and str(cand_vivo[0]) == str(pA) and en_revision(w, [pA, pB]) == {str(pB)}, f'purgadas={purgadas} quedan={quedan} ops={ops_ped} rv={rv} cand={cand_vivo} rev={en_revision(w, [pA, pB])}')
+q.execute("delete from pedidos where id=%s", (pA,))
+q.execute("select count(*) from pedidos where empresa_id=%s and operacion_id=%s", (w['emp'], opA)); vivo = q.fetchone()[0]
+q.execute("select candidatos, candidatos_snapshot from pedido_revisiones_duplicado where operacion_id=%s", (opB,)); cs = q.fetchone()
+check('D3. si ADEMÁS el pedido candidato se elimina, la revisión conserva la relación (uuid del candidato) y la foto con los datos para comparar',
+      vivo == 0 and [str(x) for x in cs[0]] == [str(opA)] and cs[1][0]['operacion_id'] == str(opA) and cs[1][0]['items'][0]['nombre'] == 'a', str(cs)[:200])
+w2 = world(db); opC, pC = comprar(w2, 'H-D3', tel=TEL, vis='vis-d3')[1:]; opD, pD = continuar(w2, 'H-D4', tel=TEL, vis='vis-d4')
+q.execute("select candidatos_snapshot from pedido_revisiones_duplicado where operacion_id=%s", (opD,)); sn2 = q.fetchone()[0]
+q.execute("select count(*) from pedido_revisiones_duplicado where operacion_id=%s and jsonb_typeof(candidatos_snapshot)='array'", (opC,)); sin_rev = q.fetchone()[0]
+check('D4. la foto no agrega nada al pedido original (sin revisión) y la revisión sigue siendo UNA por pedido nuevo', sin_rev == 0 and len(sn2) == 1)
 
 print('=== REVERSIÓN ===')
 cc = fresh('blq_ctrl')
