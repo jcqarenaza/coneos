@@ -460,8 +460,11 @@ def limpiar(run):
         suc_ids += [x['id'] for x in js_s if x.get('id') not in suc_ids]
     if suc_ids:
         # catalogo_version se crea sola al dar de alta una sucursal y bloquea el borrado
-        svc('DELETE', '/rest/v1/catalogo_version?sucursal_id=in.' + inn(suc_ids), prefer='return=minimal', evidencia=False)
-        svc('DELETE', '/rest/v1/sucursales?id=in.' + inn(suc_ids), prefer='return=minimal', evidencia=False)
+        # idem stock_rama / stock_rama_habilitacion (filas por defecto creadas por trigger)
+        for tabla in ('catalogo_version', 'stock_rama', 'stock_rama_habilitacion'):
+            svc('DELETE', '/rest/v1/%s?sucursal_id=in.%s' % (tabla, inn(suc_ids)), prefer='return=minimal', evidencia=False)
+        for sid in suc_ids:  # una por una: si una falla no arrastra a las demas
+            svc('DELETE', '/rest/v1/sucursales?id=eq.%s' % sid, prefer='return=minimal', evidencia=False)
     if CON_LLAVE and CONFIG_PREVIA['existia'] is True:
         svc('PATCH', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, {'bloquear_pedidos_duplicados': CONFIG_PREVIA['valor']}, prefer='return=minimal', evidencia=False)
     elif CON_LLAVE and CONFIG_PREVIA['existia'] is False:
