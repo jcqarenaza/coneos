@@ -159,9 +159,6 @@ export default function ConfigPage() {
 
         <ConeCard title="Datos fiscales">
           <div className="space-y-2.5">
-            <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl">
-              <p className="text-xs text-blue-700 font-medium">Estos datos se usan para los tickets de caja. La integración con ARCA para facturación electrónica estará disponible próximamente.</p>
-            </div>
             <div className="space-y-1">
               <Label>Razón social</Label>
               <Input value={config.razon_social ?? ''} onChange={e => tocar({ razon_social: e.target.value })} placeholder="Cecchetto S.R.L." />
