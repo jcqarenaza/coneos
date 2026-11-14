@@ -65,7 +65,18 @@ EVID = []        # evidencia de cada solicitud (sin secretos)
 RESULTS = []     # (grupo, caso, esperado, obtenido, ok)
 CREADOS = {'auth': [], 'sucursales': [], 'usuarios': [], 'pedidos': [], 'operaciones': [], 'revisiones_ops': []}
 CONFIG_PREVIA = {'existia': None, 'valor': None}
-CON_LLAVE = '--con-llave-lab' in sys.argv   # por defecto NO se activa ninguna llave (limite CTO)
+CON_LLAVE = '--con-llave-lab' in sys.argv
+RESTAURADA = {'hecho': False, 'fallo': False}
+RESIDUOS_FUERA = []
+# Sucursales ficticias de corridas anteriores autorizadas para borrar (CTO 14/11): SOLO estas 6 + las creadas en esta corrida
+RESIDUOS_AUTORIZADOS = {
+    '2b12e277-ed2f-4acb-a6c8-22a2d4ac9824': 't-http-f5a684-a1',
+    'd9093b39-2205-4b91-962f-018a6e647ed9': 't-http-f5a684-a2',
+    '7ee05c5e-6af7-41e9-92e6-f543e80e3eec': 't-http-f5a684-b1',
+    'f1d9b8f8-695a-42a3-9a38-16597fe279c7': 't-http-fee5bd-a1',
+    '1cb2edb3-ff60-4936-b52f-aed428f0af36': 't-http-fee5bd-a2',
+    'fd305cc3-8fb0-404a-ab89-8dc41b45a796': 't-http-fee5bd-b1',
+}   # por defecto NO se activa ninguna llave (limite CTO)
 
 
 # ───────────────────────── utilidades ─────────────────────────
@@ -353,6 +364,7 @@ def bloque_postgrest(U, F, n0, run):
     print('\n== RPC REALES ==')
     if CON_LLAVE:  # SOLO con --con-llave-lab (requiere autorizacion explicita): enciende la llave unicamente en /cecchetto y la restaura
         # llave encendida SOLO en la rama de pruebas, para la empresa A; se restaura al final
+        llave_federal('ANTES de activar la llave del lab')
         st, js = svc('GET', '/rest/v1/empresa_config?select=bloquear_pedidos_duplicados&empresa_id=eq.%s' % EMP_A)
         if isinstance(js, list) and js:
             CONFIG_PREVIA.update(existia=True, valor=js[0]['bloquear_pedidos_duplicados'])
@@ -360,6 +372,7 @@ def bloque_postgrest(U, F, n0, run):
         else:
             CONFIG_PREVIA.update(existia=False, valor=None)
             svc('POST', '/rest/v1/empresa_config', {'empresa_id': EMP_A, 'bloquear_pedidos_duplicados': True}, prefer='return=minimal', nota='llave encendida SOLO en la rama de pruebas')
+        llave_federal('DURANTE (llave del lab encendida)')
 
     o1, o2 = str(uuid.uuid4()), str(uuid.uuid4())
     CREADOS['operaciones'] += [o1, o2]
@@ -390,6 +403,9 @@ def bloque_postgrest(U, F, n0, run):
                      'reclamar con p_confirmar_otro -> NUEVA confirmada_otro y revision con snapshot generado por la funcion',
                      'snapshot generado por la funcion real (pedido 99xxxx en el candidato)'):
             rec('RPC' if 'snapshot' not in caso else 'JSONB', 'NO VERIFICABLE (llave apagada, no se activa): ' + caso, 'requiere bloquear_pedidos_duplicados=true', 'omitido por limite CTO: no activar ninguna llave', None)
+    restaurar_llave()   # la llave queda apagada apenas terminan los tres casos
+    if RESTAURADA['fallo']:
+        sys.exit(5)
 
     o3 = str(uuid.uuid4())
     CREADOS['operaciones'].append(o3)
@@ -437,8 +453,43 @@ def bloque_postgrest(U, F, n0, run):
     rec('RPC', 'tras resolver LEGITIMO, pA1 deja de estar retenido (solo queda pA2 DUPLICADO)', '1 fila (pA2)', '%s %s' % (st, [m['pedido_id'] == F['pA2'] for m in js] if isinstance(js, list) else js), st == 200 and isinstance(js, list) and len(js) == 1 and js[0]['pedido_id'] == F['pA2'])
 
 
+def llave_federal(momento):
+    """Solo LECTURA de la llave de Federal. Si estuviera en true, se detiene todo."""
+    st, js = svc('GET', '/rest/v1/empresa_config?select=bloquear_pedidos_duplicados&empresa_id=eq.%s' % FEDERAL)
+    v = js[0]['bloquear_pedidos_duplicados'] if isinstance(js, list) and js else (None if isinstance(js, list) else 'ERROR')
+    rec('LLAVE', 'Federal: llave %s' % momento, 'false (o sin fila = default false)', '%s %r' % (st, v), st == 200 and v in (False, None))
+    if not (st == 200 and v in (False, None)):
+        print('DETENIDO: la llave de Federal no esta en false (%r, status %s). No se continua.' % (v, st))
+        restaurar_llave()
+        sys.exit(6)
+
+
+def restaurar_llave():
+    """Devuelve la llave de /cecchetto a su valor original y lo verifica. Idempotente."""
+    if not CON_LLAVE or RESTAURADA['hecho'] or CONFIG_PREVIA['existia'] is None:
+        return
+    try:
+        if CONFIG_PREVIA['existia']:
+            svc('PATCH', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, {'bloquear_pedidos_duplicados': CONFIG_PREVIA['valor']}, prefer='return=minimal', nota='restaurar llave /cecchetto')
+        else:
+            svc('DELETE', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, prefer='return=minimal', nota='restaurar llave /cecchetto (no existia la fila)')
+        st, js = svc('GET', '/rest/v1/empresa_config?select=bloquear_pedidos_duplicados&empresa_id=eq.%s' % EMP_A)
+        v = js[0]['bloquear_pedidos_duplicados'] if isinstance(js, list) and js else None
+        esperado = CONFIG_PREVIA['valor'] if CONFIG_PREVIA['existia'] else None
+        okr = (st == 200 and v == esperado)
+        rec('LLAVE', 'llave de /cecchetto restaurada a su valor original', repr(esperado), '%s %r' % (st, v), okr)
+        RESTAURADA['hecho'] = okr
+        RESTAURADA['fallo'] = not okr
+    except Exception as e:
+        RESTAURADA['fallo'] = True
+        rec('LLAVE', 'llave de /cecchetto restaurada a su valor original', repr(CONFIG_PREVIA['valor']), 'EXCEPCION %s' % e, False)
+    if RESTAURADA['fallo']:
+        print('!!! LA RESTAURACION DE LA LLAVE FALLO. Detener todo y reportar al CTO.')
+
+
 def limpiar(run):
-    print('\n== LIMPIEZA (solo los datos ficticios de esta corrida) ==')
+    print('\n== LIMPIEZA (solo los datos ficticios autorizados) ==')
+    restaurar_llave()
     ops = [o for o in CREADOS['revisiones_ops'] if o]
     todas_ops = ops + [o for o in CREADOS['operaciones'] if o]
     inn = lambda L: '(' + ','.join(L) + ')'
@@ -453,25 +504,29 @@ def limpiar(run):
         svc('DELETE', '/rest/v1/usuarios_admin?id=in.' + inn(CREADOS['usuarios']), prefer='return=minimal', evidencia=False)
     for uid in CREADOS['auth']:
         svc('DELETE', '/auth/v1/admin/users/' + uid, evidencia=False)
-    # barrido: sucursales ficticias (slug t-http-*) de esta o de corridas anteriores, solo en las 2 empresas de prueba
-    st_s, js_s = svc('GET', '/rest/v1/sucursales?select=id&slug=like.t-http-*&empresa_id=in.(%s,%s)' % (EMP_A, EMP_B), evidencia=False)
-    suc_ids = list(CREADOS['sucursales'])
-    if isinstance(js_s, list):
-        suc_ids += [x['id'] for x in js_s if x.get('id') not in suc_ids]
+    # sucursales ficticias: SOLO las 6 autorizadas + las de esta corrida (slug t-http-<run>-xx)
+    st_s, js_s = svc('GET', '/rest/v1/sucursales?select=id,slug,empresa_id&slug=like.t-http-*', evidencia=False)
+    permitidos = dict(RESIDUOS_AUTORIZADOS)
+    for sid in CREADOS['sucursales']:
+        permitidos[sid] = 'creada en esta corrida'
+    fuera = [x for x in (js_s if isinstance(js_s, list) else []) if x['id'] not in permitidos]
+    if fuera:
+        print('!!! SUCURSALES t-http-* FUERA DEL ALCANCE AUTORIZADO (no se tocan): %s' % ', '.join('%s %s' % (x['id'], x['slug']) for x in fuera))
+        RESIDUOS_FUERA.extend(x['id'] for x in fuera)
+    suc_ids = [x['id'] for x in (js_s if isinstance(js_s, list) else []) if x['id'] in permitidos and x['empresa_id'] in (EMP_A, EMP_B)]
     if suc_ids:
-        # catalogo_version se crea sola al dar de alta una sucursal y bloquea el borrado
-        # idem stock_rama / stock_rama_habilitacion (filas por defecto creadas por trigger)
-        for tabla in ('catalogo_version', 'stock_rama', 'stock_rama_habilitacion'):
+        for tabla in ('catalogo_version', 'stock_rama', 'stock_rama_habilitacion'):   # filas por defecto creadas por trigger
             svc('DELETE', '/rest/v1/%s?sucursal_id=in.%s' % (tabla, inn(suc_ids)), prefer='return=minimal', evidencia=False)
-        for sid in suc_ids:  # una por una: si una falla no arrastra a las demas
-            svc('DELETE', '/rest/v1/sucursales?id=eq.%s' % sid, prefer='return=minimal', evidencia=False)
-    if CON_LLAVE and CONFIG_PREVIA['existia'] is True:
-        svc('PATCH', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, {'bloquear_pedidos_duplicados': CONFIG_PREVIA['valor']}, prefer='return=minimal', evidencia=False)
-    elif CON_LLAVE and CONFIG_PREVIA['existia'] is False:
-        svc('DELETE', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, prefer='return=minimal', evidencia=False)
+        for sid in suc_ids:   # una por una: un fallo no cancela las demas
+            st_d, js_d = svc('DELETE', '/rest/v1/sucursales?id=eq.%s' % sid, prefer='return=representation', evidencia=False)
+            borrada = st_d in (200, 204) and isinstance(js_d, list) and len(js_d) == 1
+            print('  sucursal %s (%s): %s (status %s)' % (sid, permitidos[sid], 'ELIMINADA' if borrada else 'NO ELIMINADA %s' % (js_d,), st_d))
+            rec('LIMPIEZA', 'eliminar sucursal ficticia %s %s' % (sid, permitidos[sid]), 'eliminada', '%s %s' % (st_d, 'ok' if borrada else js_d), borrada)
     # verificacion de residuos
     st, js = svc('GET', '/rest/v1/pedido_revisiones_duplicado?select=id&operacion_id=in.' + inn(todas_ops or [str(uuid.uuid4())]), evidencia=False)
     st2, js2 = svc('GET', '/rest/v1/empresa_config?select=bloquear_pedidos_duplicados&bloquear_pedidos_duplicados=eq.true', evidencia=False)
+    if CON_LLAVE:
+        llave_federal('DESPUES (llave del lab restaurada)')
     print('  revisiones residuales: %s | empresas con la llave en true: %s' % (len(js) if isinstance(js, list) else js, len(js2) if isinstance(js2, list) else js2))
 
 
@@ -482,6 +537,13 @@ def main():
     st, _ = http('GET', '/auth/v1/health', evidencia=False)
     print('Conectividad con Auth: status %s' % st)
     verificar_destinos()
+    st_p, js_p = svc('GET', '/rest/v1/sucursales?select=id,slug&slug=like.t-http-*', evidencia=False)
+    extra = [x for x in (js_p if isinstance(js_p, list) else []) if x['id'] not in RESIDUOS_AUTORIZADOS]
+    if extra:
+        print('DETENIDO: hay sucursales t-http-* fuera del alcance autorizado (no se toca nada):')
+        for x in extra:
+            print('   %s %s' % (x['id'], x['slug']))
+        sys.exit(7)
     U = F = None
     try:
         U, F, n0 = crear_fixtures(run)
@@ -492,13 +554,17 @@ def main():
         rec('SETUP', 'preparacion de fixtures', 'ok', str(e), False)
     finally:
         limpiar(run)
+    if RESTAURADA['fallo']:
+        sys.exit(5)
 
     grupos = [('Auth real', ['AUTH']), ('RLS ADMIN_EMPRESA A', ['RLS_A']), ('RLS ADMIN_EMPRESA B', ['RLS_B']), ('RLS ADMIN_SUCURSAL', ['RLS_SUC']),
-              ('Usuario sin permisos', ['SINPERM']), ('Token invalido / anon', ['TOKEN_ANON']), ('PostgREST uuid[]', ['UUID_ARR']), ('PostgREST jsonb', ['JSONB']), ('RPC reales', ['RPC'])]
+              ('Usuario sin permisos', ['SINPERM']), ('Token invalido / anon', ['TOKEN_ANON']), ('PostgREST uuid[]', ['UUID_ARR']), ('PostgREST jsonb', ['JSONB']), ('RPC reales', ['RPC']), ('Llave (restaurada / Federal off)', ['LLAVE']), ('Limpieza sucursales', ['LIMPIEZA'])]
     print('\n================ RESUMEN ================')
     todo_ok = True
     for nombre, gs in grupos:
         rs = [r for r in RESULTS if r[0] in gs]
+        if not rs and nombre in ('Llave (restaurada / Federal off)', 'Limpieza sucursales'):
+            continue
         fails = [r for r in rs if r[4] is False]
         nvs = [r for r in rs if r[4] is None]
         ok = bool(rs) and not fails
