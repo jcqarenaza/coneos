@@ -43,6 +43,7 @@ EVID = []        # evidencia de cada solicitud (sin secretos)
 RESULTS = []     # (grupo, caso, esperado, obtenido, ok)
 CREADOS = {'auth': [], 'sucursales': [], 'usuarios': [], 'pedidos': [], 'operaciones': [], 'revisiones_ops': []}
 CONFIG_PREVIA = {'existia': None, 'valor': None}
+CON_LLAVE = '--con-llave-lab' in sys.argv   # por defecto NO se activa ninguna llave (limite CTO)
 
 
 # ───────────────────────── utilidades ─────────────────────────
@@ -73,7 +74,7 @@ def guardas():
     for nombre, k in (('SB_ANON_KEY', ANON), ('SB_SERVICE_ROLE_KEY', SVC)):
         ref = _jwt_ref(k)
         if ref is None:
-            print('%s no es un JWT legacy de Supabase (usar las "Legacy API keys" de la rama).' % nombre)
+            print('%s no es un JWT legacy de Supabase (usar las "Legacy API keys" de cones-prod).' % nombre)
             sys.exit(2)
         if ref != REF:
             print('%s NO pertenece a cones-prod (%s). ABORTO sin hacer ninguna solicitud.' % (nombre, REF))
@@ -126,8 +127,12 @@ def http(metodo, ruta, *, key=None, bearer='__default__', body=None, prefer=None
 
 
 def rec(grupo, caso, esperado, obtenido, ok):
-    RESULTS.append((grupo, caso, esperado, obtenido, bool(ok)))
-    print(('  PASS  ' if ok else '  FAIL  ') + caso + ('' if ok else '   -> esperado: %s | obtenido: %s' % (esperado, obtenido)))
+    # ok = True (PASS) | False (FAIL) | None (NO VERIFICABLE)
+    RESULTS.append((grupo, caso, esperado, obtenido, None if ok is None else bool(ok)))
+    if ok is None:
+        print('  N/V   ' + caso)
+    else:
+        print(('  PASS  ' if ok else '  FAIL  ') + caso + ('' if ok else '   -> esperado: %s | obtenido: %s' % (esperado, obtenido)))
 
 
 def svc(metodo, ruta, body=None, prefer=None, evidencia=True, nota=None):
@@ -143,6 +148,16 @@ def q(v):
 
 
 # ───────────────────────── fixtures ficticios ─────────────────────────
+def verificar_destinos():
+    """Resuelve por slug los negocios de prueba y exige que coincidan con los ids configurados. No lee Federal."""
+    for emp, slug in ((EMP_A, SLUG_A), (EMP_B, SLUG_B)):
+        st, js = svc('GET', '/rest/v1/empresas?select=id,slug&id=eq.%s' % emp, evidencia=False)
+        if not (st == 200 and isinstance(js, list) and len(js) == 1 and js[0].get('slug') == slug and js[0].get('id') != FEDERAL):
+            print('El id %s no corresponde al negocio de prueba /%s. ABORTO sin crear nada.' % (emp, slug))
+            sys.exit(3)
+    print('Destinos verificados por slug: /%s y /%s (Federal excluida).' % (SLUG_A, SLUG_B))
+
+
 def crear_fixtures(run):
     U = {}
     for nombre in ('aa', 'ab', 'sa', 'no'):
@@ -225,6 +240,16 @@ def bloque_auth_rls(U, F):
     st, js = http('GET', '/rest/v1/empresas?select=slug', bearer=None)
     rec('TOKEN_ANON', 'Sin cabecera Authorization (solo apikey anon) no obtiene empresas', '200 [] (o error)', '%s' % st, (st == 200 and js == []) or st >= 400)
 
+    # no exposicion de pedidos (UUID) ajenos
+    st, js = http('GET', '/rest/v1/pedidos?select=id&id=eq.%s' % F['pB1'], bearer=U['aa']['jwt'])
+    rec('RLS_A', 'ADMIN_EMPRESA A no obtiene el UUID de un pedido de la empresa B', '200 [] o 401/403', '%s %s' % (st, (len(js) if isinstance(js, list) else js)), (st == 200 and js == []) or st in (401, 403))
+    st, js = http('GET', '/rest/v1/pedidos?select=id&id=eq.%s' % F['pA1'], bearer=U['ab']['jwt'])
+    rec('RLS_B', 'ADMIN_EMPRESA B no obtiene el UUID de un pedido de la empresa A', '200 [] o 401/403', '%s %s' % (st, (len(js) if isinstance(js, list) else js)), (st == 200 and js == []) or st in (401, 403))
+    st, js = http('GET', '/rest/v1/pedidos?select=id&id=eq.%s' % F['pA1'], bearer=ANON)
+    rec('TOKEN_ANON', 'Sesion anonima no obtiene el UUID de ningun pedido', '200 [] o 401/403', '%s %s' % (st, (len(js) if isinstance(js, list) else js)), (st == 200 and js == []) or st in (401, 403))
+    st, js = http('GET', '/rest/v1/pedidos?select=id&id=eq.%s' % F['pA1'], bearer=U['no']['jwt'])
+    rec('SINPERM', 'Usuario sin permisos no obtiene el UUID de ningun pedido', '200 [] o 401/403', '%s %s' % (st, (len(js) if isinstance(js, list) else js)), (st == 200 and js == []) or st in (401, 403))
+
     # tabla y funciones de servidor: inaccesibles con JWT de usuario y con anon
     for etiqueta, bearer in (('authenticated (admin A)', U['aa']['jwt']), ('anon', ANON)):
         st, js = http('GET', '/rest/v1/pedido_revisiones_duplicado?select=id&limit=1', bearer=bearer)
@@ -302,14 +327,15 @@ def bloque_postgrest(U, F, n0, run):
     rec('JSONB', 'OBSERVACION: jsonb enviado como string JSON queda como %s (el codigo real envia objetos, no strings)' % type(s).__name__, 'informativo', '%s tipo=%s' % (st, type(s).__name__), st in (200, 201, 400))
 
     print('\n== RPC REALES ==')
-    # llave encendida SOLO en la rama de pruebas, para la empresa A; se restaura al final
-    st, js = svc('GET', '/rest/v1/empresa_config?select=bloquear_pedidos_duplicados&empresa_id=eq.%s' % EMP_A)
-    if isinstance(js, list) and js:
-        CONFIG_PREVIA.update(existia=True, valor=js[0]['bloquear_pedidos_duplicados'])
-        svc('PATCH', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, {'bloquear_pedidos_duplicados': True}, prefer='return=minimal', nota='llave encendida SOLO en la rama de pruebas')
-    else:
-        CONFIG_PREVIA.update(existia=False, valor=None)
-        svc('POST', '/rest/v1/empresa_config', {'empresa_id': EMP_A, 'bloquear_pedidos_duplicados': True}, prefer='return=minimal', nota='llave encendida SOLO en la rama de pruebas')
+    if CON_LLAVE:  # SOLO con --con-llave-lab (requiere autorizacion explicita): enciende la llave unicamente en /cecchetto y la restaura
+        # llave encendida SOLO en la rama de pruebas, para la empresa A; se restaura al final
+        st, js = svc('GET', '/rest/v1/empresa_config?select=bloquear_pedidos_duplicados&empresa_id=eq.%s' % EMP_A)
+        if isinstance(js, list) and js:
+            CONFIG_PREVIA.update(existia=True, valor=js[0]['bloquear_pedidos_duplicados'])
+            svc('PATCH', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, {'bloquear_pedidos_duplicados': True}, prefer='return=minimal', nota='llave encendida SOLO en la rama de pruebas')
+        else:
+            CONFIG_PREVIA.update(existia=False, valor=None)
+            svc('POST', '/rest/v1/empresa_config', {'empresa_id': EMP_A, 'bloquear_pedidos_duplicados': True}, prefer='return=minimal', nota='llave encendida SOLO en la rama de pruebas')
 
     o1, o2 = str(uuid.uuid4()), str(uuid.uuid4())
     CREADOS['operaciones'] += [o1, o2]
@@ -322,18 +348,25 @@ def bloque_postgrest(U, F, n0, run):
     if st in (200, 201) and isinstance(js, list):
         CREADOS['pedidos'].append(js[0]['id'])
     pedido_o1 = js[0]['id'] if st in (200, 201) and isinstance(js, list) else None
-    st, js = svc('POST', '/rest/v1/rpc/reclamar_operacion_pedido', P(p_operacion_id=o2, p_huella='h-%s-2' % run, p_telefono='02302514650', p_visitante='vis2'))
-    ex = js.get('existente') if isinstance(js, dict) else None
-    rec('RPC', 'reclamar: mismo telefono (otro formato) y otro visitante -> PEDIDO_ACTIVO/DISTINTA, existente={"mismo_visitante":false} sin pedido_id', 'PEDIDO_ACTIVO DISTINTA, sin pedido_id',
-        '%s %s' % (st, js), st == 200 and js.get('estado') == 'PEDIDO_ACTIVO' and js.get('coincidencia') == 'DISTINTA' and ex == {'mismo_visitante': False})
-    st, js = svc('POST', '/rest/v1/rpc/reclamar_operacion_pedido', P(p_operacion_id=o2, p_huella='h-%s-2' % run, p_telefono='02302514650', p_visitante='vis2', p_confirmar_otro=True))
-    rec('RPC', 'reclamar con p_confirmar_otro=true -> NUEVA confirmada_otro', '200 NUEVA confirmada_otro=true', '%s %s' % (st, js), st == 200 and js == {'estado': 'NUEVA', 'confirmada_otro': True})
-    CREADOS['revisiones_ops'].append(o2)
-    st, js = svc('GET', '/rest/v1/pedido_revisiones_duplicado?select=estado,coincidencia,candidatos,candidatos_snapshot&operacion_id=eq.%s' % o2)
-    r0 = js[0] if isinstance(js, list) and js else {}
-    s0 = (r0.get('candidatos_snapshot') or [{}])[0]
-    rec('JSONB', 'snapshot generado por la funcion real: revision PENDIENTE, candidatos [o1] (uuid[]), snapshot con numero/estado/items del pedido', 'PENDIENTE, [o1], numero %s, PENDING_PAYMENT, items []' % n_ped,
-        '%s' % json.dumps(r0)[:300], r0.get('estado') == 'PENDIENTE' and r0.get('candidatos') == [o1] and s0.get('numero_pedido') == n_ped and s0.get('estado') == 'PENDING_PAYMENT' and isinstance(s0.get('items'), list) and 'cliente' in s0)
+    if CON_LLAVE:
+        st, js = svc('POST', '/rest/v1/rpc/reclamar_operacion_pedido', P(p_operacion_id=o2, p_huella='h-%s-2' % run, p_telefono='02302514650', p_visitante='vis2'))
+        ex = js.get('existente') if isinstance(js, dict) else None
+        rec('RPC', 'reclamar: mismo telefono (otro formato) y otro visitante -> PEDIDO_ACTIVO/DISTINTA, existente={"mismo_visitante":false} sin pedido_id', 'PEDIDO_ACTIVO DISTINTA, sin pedido_id',
+            '%s %s' % (st, js), st == 200 and js.get('estado') == 'PEDIDO_ACTIVO' and js.get('coincidencia') == 'DISTINTA' and ex == {'mismo_visitante': False})
+        st, js = svc('POST', '/rest/v1/rpc/reclamar_operacion_pedido', P(p_operacion_id=o2, p_huella='h-%s-2' % run, p_telefono='02302514650', p_visitante='vis2', p_confirmar_otro=True))
+        rec('RPC', 'reclamar con p_confirmar_otro=true -> NUEVA confirmada_otro', '200 NUEVA confirmada_otro=true', '%s %s' % (st, js), st == 200 and js == {'estado': 'NUEVA', 'confirmada_otro': True})
+        CREADOS['revisiones_ops'].append(o2)
+        st, js = svc('GET', '/rest/v1/pedido_revisiones_duplicado?select=estado,coincidencia,candidatos,candidatos_snapshot&operacion_id=eq.%s' % o2)
+        r0 = js[0] if isinstance(js, list) and js else {}
+        s0 = (r0.get('candidatos_snapshot') or [{}])[0]
+        rec('JSONB', 'snapshot generado por la funcion real: revision PENDIENTE, candidatos [o1] (uuid[]), snapshot con numero/estado/items del pedido', 'PENDIENTE, [o1], numero %s, PENDING_PAYMENT, items []' % n_ped,
+            '%s' % json.dumps(r0)[:300], r0.get('estado') == 'PENDIENTE' and r0.get('candidatos') == [o1] and s0.get('numero_pedido') == n_ped and s0.get('estado') == 'PENDING_PAYMENT' and isinstance(s0.get('items'), list) and 'cliente' in s0)
+    else:
+        for caso in ('reclamar con llave: mismo telefono y otro visitante -> PEDIDO_ACTIVO sin pedido_id',
+                     'reclamar con p_confirmar_otro -> NUEVA confirmada_otro y revision con snapshot generado por la funcion',
+                     'snapshot generado por la funcion real (pedido 99xxxx en el candidato)'):
+            rec('RPC' if 'snapshot' not in caso else 'JSONB', 'NO VERIFICABLE (llave apagada, no se activa): ' + caso, 'requiere bloquear_pedidos_duplicados=true', 'omitido por limite CTO: no activar ninguna llave', None)
+
     o3 = str(uuid.uuid4())
     CREADOS['operaciones'].append(o3)
     st, js = svc('POST', '/rest/v1/rpc/reclamar_operacion_pedido', {k: v for k, v in P(p_operacion_id=o3, p_huella='h-%s-3' % run, p_telefono=None, p_visitante=None).items() if k in ('p_empresa_id', 'p_sucursal_id', 'p_operacion_id', 'p_huella', 'p_telefono', 'p_visitante', 'p_dispositivo_id')})
@@ -398,9 +431,9 @@ def limpiar(run):
         svc('DELETE', '/auth/v1/admin/users/' + uid, evidencia=False)
     if CREADOS['sucursales']:
         svc('DELETE', '/rest/v1/sucursales?id=in.' + inn(CREADOS['sucursales']), prefer='return=minimal', evidencia=False)
-    if CONFIG_PREVIA['existia'] is True:
+    if CON_LLAVE and CONFIG_PREVIA['existia'] is True:
         svc('PATCH', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, {'bloquear_pedidos_duplicados': CONFIG_PREVIA['valor']}, prefer='return=minimal', evidencia=False)
-    elif CONFIG_PREVIA['existia'] is False:
+    elif CON_LLAVE and CONFIG_PREVIA['existia'] is False:
         svc('DELETE', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, prefer='return=minimal', evidencia=False)
     # verificacion de residuos
     st, js = svc('GET', '/rest/v1/pedido_revisiones_duplicado?select=id&operacion_id=in.' + inn(todas_ops or [str(uuid.uuid4())]), evidencia=False)
@@ -414,6 +447,7 @@ def main():
     print('PRUEBA HTTP REAL — rama %s — corrida %s — %s' % (REF, run, datetime.datetime.now().isoformat(timespec='seconds')))
     st, _ = http('GET', '/auth/v1/health', evidencia=False)
     print('Conectividad con Auth: status %s' % st)
+    verificar_destinos()
     U = F = None
     try:
         U, F, n0 = crear_fixtures(run)
@@ -431,9 +465,12 @@ def main():
     todo_ok = True
     for nombre, gs in grupos:
         rs = [r for r in RESULTS if r[0] in gs]
-        ok = bool(rs) and all(r[4] for r in rs)
+        fails = [r for r in rs if r[4] is False]
+        nvs = [r for r in rs if r[4] is None]
+        ok = bool(rs) and not fails
         todo_ok &= ok
-        print('%-26s %s  (%d/%d casos)' % (nombre, 'PASS' if ok else ('FAIL' if rs else 'SIN DATOS'), sum(1 for r in rs if r[4]), len(rs)))
+        estado = 'FAIL' if fails else ('SIN DATOS' if not rs else ('PASS (con %d caso(s) NO VERIFICABLE)' % len(nvs) if nvs else 'PASS'))
+        print('%-26s %s  (%d PASS / %d FAIL / %d N/V de %d)' % (nombre, estado, sum(1 for r in rs if r[4] is True), len(fails), len(nvs), len(rs)))
     print('ADMIN_SUCURSAL: alcance = marcas de TODA su empresa (documentado, sin cambiar politicas).')
     nombre_arch = 'resultado_http_%s.json' % datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     with open(nombre_arch, 'w', encoding='utf-8') as f:
