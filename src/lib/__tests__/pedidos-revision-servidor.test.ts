@@ -20,6 +20,7 @@ type J = Record<string, unknown>
 const w = { emp: '', suc: '', suc2: '', prod: '', pres: '', disp: '', dispOtraSuc: '', dispNoCaja: '' }
 const llamadas: Record<string, number> = {}                 // RPC y rutas especiales vistas por el shim
 const contador = (k: string) => llamadas[k] ?? 0
+const cortarRpc = new Set<string>()                          // RPC que SE EJECUTAN en la base pero cuya respuesta se pierde (corte de red / timeout): el caso ambiguo
 let fallaRpc: Record<string, { status: number; code: string }> = {}   // RPC que responden error SIN ejecutarse
 const pagosMP = new Map<string, { status: string; external_reference: string }>()
 const llamadasMP: string[] = []                             // TODA llamada a api.mercadopago.com que no sea un GET de payment (p. ej. un reembolso): debe quedar vacía
@@ -84,7 +85,9 @@ function arrancarShim(): Promise<number> {
             // PostgREST devuelve una funcion que retorna TABLA como arreglo de objetos JSON (no como compuesto): se imita
             const esTabla = (await db.query('select bool_or(proretset) as t from pg_proc where proname=$1', [rpc[1]])).rows[0].t === true
             if (esTabla) { const r = await db.query(`select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) as r from ${llamada} t`, vals); return out(200, r.rows[0].r) }
-            const r = await db.query(`select ${llamada} as r`, vals); return out(200, r.rows[0].r ?? null)
+            const r = await db.query(`select ${llamada} as r`, vals)
+            if (cortarRpc.has(rpc[1])) { cortarRpc.delete(rpc[1]); req.socket.destroy(); return }   // ejecutó y NO respondió
+            return out(200, r.rows[0].r ?? null)
           }
           catch (e) { const er = e as { code?: string; message?: string }; return out(400, { message: er.message, code: er.code }) }
         }
@@ -228,7 +231,7 @@ async function webhook(pedido_id: string, pagoId = String(++seqPago)) {
 const consulta = async (accion: string, extra: J = {}, dispositivo_id = w.disp) => { const r = await CONSULTA(new Request('http://x/api/operacion/consulta', { method: 'POST', body: JSON.stringify({ dispositivo_id, accion, ...extra }) })); return { status: r.status, d: (await r.json()) as J } }
 const resolver = (pedido_id: string, resolucion: string, dispositivo_id = w.disp) => consulta('revision_resolver', { pedido_id, resolucion }, dispositivo_id)
 const pasarAMP = (id: string) => db.query("update pedidos set metodo_pago='mp' where id=$1", [id])
-const reset = () => { for (const k of Object.keys(llamadas)) delete llamadas[k]; llamadasMP.length = 0; fallaRpc = {} }
+const reset = () => { for (const k of Object.keys(llamadas)) delete llamadas[k]; llamadasMP.length = 0; fallaRpc = {}; cortarRpc.clear() }
 
 describe('Posible duplicado: ciclo completo por las rutas reales (CTO 14/11)', () => {
   beforeEach(async () => { reset(); await db.query('delete from sabores_falla; delete from sabores_llamadas; delete from caja_llamadas; delete from transiciones_prep'); await mundo() })
@@ -288,6 +291,25 @@ describe('Posible duplicado: ciclo completo por las rutas reales (CTO 14/11)', (
     await db.query('delete from sabores_falla')
     assert.equal((await resolver(p2.id, 'DUPLICADO')).status, 200)
     rv = await revDe(p2.id); assert.ok(rv.stock_devuelto_at); assert.equal(await stock(), 48, 'devuelto exactamente UNA vez'); assert.equal(await sabores(), 1)
+  })
+
+  test('S5b) RESPUESTA AMBIGUA (CTO): la base devolvió el stock pero se cortó la respuesta (excepción) → NO se toma como éxito, el reclamo se suelta y el reintento NO devuelve dos veces', async () => {
+    const t = tel(); await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3)
+    cortarRpc.add('devolver_stock_pedido')
+    const r = await resolver(p2.id, 'DUPLICADO'); assert.notEqual(r.status, 200, 'una respuesta perdida jamás es confirmación')
+    let rv = await revDe(p2.id); assert.equal(rv.estado, 'DUPLICADO'); assert.equal(rv.stock_devuelto_at, null, 'reclamo liberado')
+    assert.equal(await stock(), 48, 'la base SÍ devolvió antes del corte')
+    assert.equal((await resolver(p2.id, 'DUPLICADO')).status, 200)
+    rv = await revDe(p2.id); assert.ok(rv.stock_devuelto_at); assert.equal(await stock(), 48, 'el reintento (función idempotente) no devuelve de nuevo'); assert.equal(await sabores(), 1)
+  })
+
+  test('S5c) DEADLOCK 40P01 en la devolución: error recuperable — no se marca devuelto, se suelta el reclamo y el reintento completa', async () => {
+    const t = tel(); await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3)
+    fallaRpc['devolver_stock_pedido'] = { status: 409, code: '40P01' }
+    const r = await resolver(p2.id, 'DUPLICADO'); assert.equal(r.status, 500); assert.equal(r.d.codigo, 'EFECTOS_PENDIENTES')
+    let rv = await revDe(p2.id); assert.equal(rv.stock_devuelto_at, null); assert.equal(await stock(), 45)
+    delete fallaRpc['devolver_stock_pedido']
+    assert.equal((await resolver(p2.id, 'DUPLICADO')).status, 200); rv = await revDe(p2.id); assert.ok(rv.stock_devuelto_at); assert.equal(await stock(), 48)
   })
 
   test('S6) Pedido con stock por RAMA: se usa devolver_stock_pedido_caja (doble: el SQL real no está en el repo) y NO devolver_stock_pedido', async () => {

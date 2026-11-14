@@ -72,6 +72,19 @@ check('F5. devolver un pedido NO toca los movimientos/kilos de otro pedido (el o
 c.execute("select detalle from stock_sabor_movimientos where pedido_id=%s and motivo='devolucion' limit 1", (p,)); dd = c.fetchone()[0]
 check('F6. HALLAZGO: el detalle de sabores también dice «eliminación del pedido» aunque la causa sea un duplicado', 'eliminación' in dd, dd)
 
+
+print('=== OBSERVACIÓN DEL CTO: UPDATE de stock_sabor sin verificar filas ===')
+m = pedido(True)
+c.execute("delete from stock_sabor where opcion_id=%s and sucursal_id=%s", (opA, suc))      # inconsistencia: el sabor ya no tiene fila de stock
+r = dev_sab(m)
+c.execute("select count(*) from stock_sabor_movimientos where pedido_id=%s and motivo='devolucion' and opcion_id=%s", (m, opA)); mov_sin_fila = c.fetchone()[0]
+c.execute("select count(*) from stock_sabor where opcion_id=%s and sucursal_id=%s", (opA, suc)); hay_fila = c.fetchone()[0]
+check('F7. HALLAZGO CONFIRMADO: sin fila en stock_sabor, la función real informa «devuelto» y registra el movimiento de devolución pero NO aumenta ningún stock (el libro queda sin respaldo)', r['estado'] == 'devuelto' and mov_sin_fila == 1 and hay_fila == 0, f'{r} mov={mov_sin_fila} fila={hay_fila}')
+c.execute("select tc.constraint_type, kcu.column_name from information_schema.table_constraints tc join information_schema.key_column_usage kcu using (constraint_name, table_schema) where tc.table_name='stock_sabor' and tc.constraint_type in ('UNIQUE','PRIMARY KEY') order by 1,2"); rs = c.fetchall()
+c.execute("select indexdef from pg_indexes where indexname='ux_ssm_pedido_opcion_motivo'"); ix = c.fetchone()
+check('F8. restricciones: stock_sabor es único por (sucursal_id, opcion_id) y existe el índice único (pedido, opción, motivo) del libro', ('UNIQUE', 'opcion_id') in rs and ('UNIQUE', 'sucursal_id') in rs and ix is not None and 'UNIQUE' in ix[0], str(rs) + ' ' + str(ix))
+c.execute("insert into stock_sabor(empresa_id,sucursal_id,opcion_id,kg) values(%s,%s,%s,10)", (emp, suc, opA))
+
 print('=== FALLA PARCIAL con funciones reales: stock devuelto, sabores falla, reintento ===')
 z = pedido(True); sz0, ssa = stock(), sabor(opA)
 dev_stock(z); sz1 = stock()

@@ -135,23 +135,30 @@ export async function devolverStockDeRevision(supabase: Db, a: { empresa_id: str
   if (!Array.isArray(gano) || gano.length === 0) return { ok: true }       // otro camino lo está devolviendo / ya lo devolvió
   const soltar = () => supabase.from('pedido_revisiones_duplicado').update({ stock_devuelto_at: null }).eq('id', rev.id)
 
-  const { data: ped } = await supabase.from('pedidos').select('id, empresa_id, stock_descontado').eq('id', a.pedido_id).eq('empresa_id', a.empresa_id).maybeSingle()
-  if (!ped) { await soltar(); return { ok: false, error: 'Pedido no encontrado.' } }
-  if ((ped as { stock_descontado: boolean | null }).stock_descontado === true) {
-    const { count: movsRama, error: errRama } = await supabase.from('stock_movimientos').select('id', { count: 'exact', head: true }).eq('pedido_id', a.pedido_id).not('rama_id', 'is', null)
-    if (errRama) { await soltar(); console.error('[revision] no se pudo leer el libro de stock', errRama.message); return { ok: false, error: 'No se pudo devolver el stock. Reintentá.' } }
-    if ((movsRama ?? 0) > 0) {
-      const { data: dev, error } = await supabase.rpc('devolver_stock_pedido_caja', { p_empresa: a.empresa_id, p_pedido: a.pedido_id, p_dispositivo: a.dispositivo_id })
-      if (error) { await soltar(); console.error('[revision] devolver_stock_pedido_caja', error.message); return { ok: false, error: 'No se pudo devolver el stock. Reintentá.' } }
-      const est = (dev as { estado?: string } | null)?.estado
-      if (est !== 'devuelto' && est !== 'sin_efecto') { await soltar(); return { ok: false, error: 'El stock de este pedido requiere revisión manual: la base no lo movió.' } }
-    } else {
-      const { error } = await supabase.rpc('devolver_stock_pedido', { p_empresa_id: a.empresa_id, p_pedido_id: a.pedido_id })
-      if (error) { await soltar(); console.error('[revision] devolver_stock_pedido', error.message); return { ok: false, error: 'No se pudo devolver el stock. Reintentá.' } }
+  // Una excepción (corte de red, timeout) NO es éxito: se suelta el reclamo y se reintenta. Las tres funciones son idempotentes, así que si la base ya
+  // había devuelto antes del corte, el reintento no devuelve dos veces (CTO 14/11: una respuesta ambigua nunca se interpreta como confirmación).
+  try {
+    const { data: ped } = await supabase.from('pedidos').select('id, empresa_id, stock_descontado').eq('id', a.pedido_id).eq('empresa_id', a.empresa_id).maybeSingle()
+    if (!ped) { await soltar(); return { ok: false, error: 'Pedido no encontrado.' } }
+    if ((ped as { stock_descontado: boolean | null }).stock_descontado === true) {
+      const { count: movsRama, error: errRama } = await supabase.from('stock_movimientos').select('id', { count: 'exact', head: true }).eq('pedido_id', a.pedido_id).not('rama_id', 'is', null)
+      if (errRama) { await soltar(); console.error('[revision] no se pudo leer el libro de stock', errRama.message); return { ok: false, error: 'No se pudo devolver el stock. Reintentá.' } }
+      if ((movsRama ?? 0) > 0) {
+        const { data: dev, error } = await supabase.rpc('devolver_stock_pedido_caja', { p_empresa: a.empresa_id, p_pedido: a.pedido_id, p_dispositivo: a.dispositivo_id })
+        if (error) { await soltar(); console.error('[revision] devolver_stock_pedido_caja', error.message); return { ok: false, error: 'No se pudo devolver el stock. Reintentá.' } }
+        const est = (dev as { estado?: string } | null)?.estado
+        if (est !== 'devuelto' && est !== 'sin_efecto') { await soltar(); return { ok: false, error: 'El stock de este pedido requiere revisión manual: la base no lo movió.' } }
+      } else {
+        const { error } = await supabase.rpc('devolver_stock_pedido', { p_empresa_id: a.empresa_id, p_pedido_id: a.pedido_id })
+        if (error) { await soltar(); console.error('[revision] devolver_stock_pedido', error.message); return { ok: false, error: 'No se pudo devolver el stock. Reintentá.' } }
+      }
     }
+    const { error: errSab } = await supabase.rpc('devolver_sabores_pedido', { p_empresa: a.empresa_id, p_pedido: a.pedido_id })
+    if (errSab && errSab.code !== 'PGRST202' && errSab.code !== '42883') { await soltar(); console.error('[revision] devolver_sabores_pedido', errSab.message); return { ok: false, error: 'No se pudo devolver el stock de sabores. Reintentá.' } }
+  } catch (e) {
+    await soltar(); console.error('[revision] excepción al devolver stock (reclamo liberado, reintentar):', e)
+    return { ok: false, error: 'No se pudo confirmar la devolución de stock. Reintentá.' }
   }
-  const { error: errSab } = await supabase.rpc('devolver_sabores_pedido', { p_empresa: a.empresa_id, p_pedido: a.pedido_id })
-  if (errSab && errSab.code !== 'PGRST202' && errSab.code !== '42883') { await soltar(); console.error('[revision] devolver_sabores_pedido', errSab.message); return { ok: false, error: 'No se pudo devolver el stock de sabores. Reintentá.' } }
   return { ok: true }
 }
 
