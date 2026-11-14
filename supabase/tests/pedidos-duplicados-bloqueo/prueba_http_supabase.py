@@ -76,6 +76,10 @@ RESIDUOS_AUTORIZADOS = {
     'f1d9b8f8-695a-42a3-9a38-16597fe279c7': 't-http-fee5bd-a1',
     '1cb2edb3-ff60-4936-b52f-aed428f0af36': 't-http-fee5bd-a2',
     'fd305cc3-8fb0-404a-ab89-8dc41b45a796': 't-http-fee5bd-b1',
+    # autorizados por el CTO el 14/11 (tercera corrida)
+    'e0276f5c-39e8-4e7a-9fa3-d2a04c400d68': 't-http-d568c8-a1',
+    '34d3e753-ef8b-4519-97cd-9a633e004635': 't-http-d568c8-a2',
+    'fcb6b2b2-fded-45e5-93ee-bebab9db2f95': 't-http-d568c8-b1',
 }   # por defecto NO se activa ninguna llave (limite CTO)
 
 
@@ -504,19 +508,26 @@ def limpiar(run):
         svc('DELETE', '/rest/v1/usuarios_admin?id=in.' + inn(CREADOS['usuarios']), prefer='return=minimal', evidencia=False)
     for uid in CREADOS['auth']:
         svc('DELETE', '/auth/v1/admin/users/' + uid, evidencia=False)
-    # sucursales ficticias: SOLO las 6 autorizadas + las de esta corrida (slug t-http-<run>-xx)
-    st_s, js_s = svc('GET', '/rest/v1/sucursales?select=id,slug,empresa_id&slug=like.t-http-*', evidencia=False)
+    # sucursales ficticias: SOLO los 9 IDs autorizados + las creadas en esta corrida. Se consulta POR ID (sin patrones de slug)
     permitidos = dict(RESIDUOS_AUTORIZADOS)
     for sid in CREADOS['sucursales']:
         permitidos[sid] = 'creada en esta corrida'
-    fuera = [x for x in (js_s if isinstance(js_s, list) else []) if x['id'] not in permitidos]
-    if fuera:
-        print('!!! SUCURSALES t-http-* FUERA DEL ALCANCE AUTORIZADO (no se tocan): %s' % ', '.join('%s %s' % (x['id'], x['slug']) for x in fuera))
-        RESIDUOS_FUERA.extend(x['id'] for x in fuera)
-    suc_ids = [x['id'] for x in (js_s if isinstance(js_s, list) else []) if x['id'] in permitidos and x['empresa_id'] in (EMP_A, EMP_B)]
+    st_s, js_s = svc('GET', '/rest/v1/sucursales?select=id,slug,empresa_id&id=in.' + inn(list(permitidos)), evidencia=False)
+    encontradas = js_s if isinstance(js_s, list) else []
+    suc_ids = []
+    for x in encontradas:
+        if x['empresa_id'] in (EMP_A, EMP_B):
+            suc_ids.append(x['id'])
+        else:
+            print('!!! sucursal %s (%s) NO pertenece a /cecchetto ni /demoburger: NO se borra' % (x['id'], x['slug']))
+            rec('LIMPIEZA', 'sucursal %s no coincide con empresa de prueba' % x['id'], 'empresa A o B', 'otra empresa: no se borra', False)
+    for sid in permitidos:
+        if sid not in [x['id'] for x in encontradas]:
+            print('  sucursal %s (%s): ya no existe (nada que borrar)' % (sid, permitidos[sid]))
     if suc_ids:
-        for tabla in ('catalogo_version', 'stock_rama', 'stock_rama_habilitacion'):   # filas por defecto creadas por trigger
-            svc('DELETE', '/rest/v1/%s?sucursal_id=in.%s' % (tabla, inn(suc_ids)), prefer='return=minimal', evidencia=False)
+        for tabla in ('catalogo_version', 'stock_rama', 'stock_rama_habilitacion'):   # filas por defecto creadas por trigger, solo de esos IDs
+            st_t, js_t = svc('DELETE', '/rest/v1/%s?sucursal_id=in.%s' % (tabla, inn(suc_ids)), prefer='return=representation', evidencia=False)
+            print('  %s: %s fila(s) eliminadas (status %s)' % (tabla, len(js_t) if isinstance(js_t, list) else js_t, st_t))
         for sid in suc_ids:   # una por una: un fallo no cancela las demas
             st_d, js_d = svc('DELETE', '/rest/v1/sucursales?id=eq.%s' % sid, prefer='return=representation', evidencia=False)
             borrada = st_d in (200, 204) and isinstance(js_d, list) and len(js_d) == 1
