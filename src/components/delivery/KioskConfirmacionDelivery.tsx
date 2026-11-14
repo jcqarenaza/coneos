@@ -126,6 +126,9 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   // GO CTO 8/11: un id de operación por intento (reintentos técnicos = mismo pedido) y confirmación validada en el servidor.
   const operacionRef = useRef<OperacionActual | null>(null)
   const confirmarRef = useRef(false)
+  const confirmarOtroRef = useRef(false)   // excepción explícita "Es otro pedido, continuar" (solo nivel 2 del bloqueo, CTO 13/11)
+  // Bloqueo de duplicados (CTO 13/11): 'IDENTICO' = sin salida; 'ACTIVO' = salida solo con la excepción explícita
+  const [bloqueo, setBloqueo] = useState<{ tipo: 'IDENTICO' | 'ACTIVO'; id: string | null; numero_pedido: number | null } | null>(null)
   const [duplicado, setDuplicado] = useState<{ id: string | null; numero_pedido: number | null; estado: string | null } | null>(null)
   const [reutilizado, setReutilizado] = useState(false)
   const [copiado, setCopiado] = useState(false)
@@ -194,14 +197,19 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     operacionRef.current = operacionPara(operacionRef.current, firmaDelivery({ items, canal, metodo, horaRetiro, costoEnvio, datos, esTakeaway, dispositivo: esTakeaway ? null : dispositivo.id }))
     const res = await fetch('/api/pedidos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operacion_id: operacionRef.current.id, ...(confirmarRef.current ? { confirmar_advertencia: true } : {}), empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', visitante_id: (() => { try { return localStorage.getItem('coneos_visitante_id') } catch { return null } })(), tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(horaRetiro ? { hora_retiro: horaRetiro } : {}) /* programado: ambos canales; el server exige la llave en delivery */ }),
+      body: JSON.stringify({ operacion_id: operacionRef.current.id, ...(confirmarRef.current ? { confirmar_advertencia: true } : {}), ...(confirmarOtroRef.current ? { confirmar_otro_pedido: true } : {}), empresa_id: dispositivo.empresa_id, sucursal_id: dispositivo.sucursal_id, dispositivo_id: esTakeaway ? null : dispositivo.id, items, metodo_pago: metodo, origen: esTakeaway ? 'TAKEAWAY' : 'DELIVERY', visitante_id: (() => { try { return localStorage.getItem('coneos_visitante_id') } catch { return null } })(), tipo_pedido: canal, costo_envio: costoEnvio, /* espejo: TA manda su costo de servicio por el mismo campo que el server ya persiste */ datos_delivery: datos, ...(horaRetiro ? { hora_retiro: horaRetiro } : {}) /* programado: ambos canales; el server exige la llave en delivery */ }),
     })
     const data = await res.json().catch(() => null)
     setCreando(false)
     confirmarRef.current = false
+    confirmarOtroRef.current = false
     if (!res.ok || !data?.pedido) {
       // Ya hay un pedido igual cobrado/en marcha: el cliente decide (ver pedido / pedir otro igual)
       if (res.status === 409 && data?.duplicado) { setDuplicado(data.duplicado); return null }
+      // Bloqueo de duplicados (CTO 13/11): igual en curso → sin salida; mismo teléfono con otro contenido → salida solo con la excepción
+      if (res.status === 409 && data?.bloqueo && (data.bloqueo.tipo === 'IDENTICO' || data.bloqueo.tipo === 'ACTIVO')) {
+        setBloqueo({ tipo: data.bloqueo.tipo, id: data.bloqueo.id ?? null, numero_pedido: data.bloqueo.numero_pedido ?? null }); return null
+      }
       // 9d: precio desactualizado (mensaje humano del ciclo C) → no es un error
       // del cliente: el catálogo cambió. El padre re-precia y volvemos al carrito.
       if (res.status === 409 && String(data?.error ?? '').toLowerCase().includes('precio') && onPreciosDesactualizados) {
@@ -312,6 +320,18 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       verPedidoHref={duplicado.id ? `/${window.location.pathname.split('/').filter(Boolean)[0]}/pedido/${duplicado.id}` : null}
       onVolver={() => { setDuplicado(null); operacionRef.current = null; confirmarRef.current = false }}
       onContinuar={() => { confirmarRef.current = true; setDuplicado(null); if (paso === 'transferencia') confirmarTransferencia(); else confirmarPago() }}
+    />
+  ) : null
+
+  // ── Bloqueo de duplicados (opción C, CTO 13/11) ──
+  const modalBloqueo = bloqueo ? (
+    <AdvertenciaPedidoRepetido
+      modo={bloqueo.tipo === 'IDENTICO' ? 'bloqueo_identico' : 'pedido_activo'}
+      color={config.primary_color}
+      numeroPedido={bloqueo.numero_pedido}
+      verPedidoHref={bloqueo.id ? `/${window.location.pathname.split('/').filter(Boolean)[0]}/pedido/${bloqueo.id}` : null}
+      onVolver={() => { setBloqueo(null); operacionRef.current = null; confirmarRef.current = false; confirmarOtroRef.current = false }}
+      onContinuar={bloqueo.tipo === 'ACTIVO' ? () => { confirmarOtroRef.current = true; setBloqueo(null); if (paso === 'transferencia') confirmarTransferencia(); else confirmarPago() } : undefined}
     />
   ) : null
 
@@ -449,6 +469,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
                     )}
 
           {modalDuplicado}
+          {modalBloqueo}
 
           {metodos.length === 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 text-center">
@@ -479,6 +500,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#ffffff' }}>
       <Header title="Transferencia bancaria" />
       {modalDuplicado}
+      {modalBloqueo}
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
         {reutilizado && pedidoNum !== null && (
           <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 mb-3">

@@ -4,6 +4,19 @@
 import { createHash } from 'node:crypto'
 
 export const MENSAJE_REPETIDO = 'Estás cargando un pedido igual al que realizaste hace unos minutos. ¿Querés generar otro pedido?'
+// Bloqueo de duplicados (opción C, CTO 13/11). Estos textos los ven también las pestañas viejas que no conocen `bloqueo` (solo leen `error`).
+export const MENSAJE_BLOQUEO_IDENTICO = 'Ya tenés un pedido igual en curso. Para no duplicarlo, no podemos cargar otro idéntico.'
+export const MENSAJE_PEDIDO_ACTIVO = 'Este teléfono ya tiene un pedido en curso. Si querés sumar algo a ese pedido, comunicate con el local.'
+
+/**
+ * ALCANCE del bloqueo (CTO 13/11): SOLO delivery y take away ONLINE. Kiosco, caja (venta_caja) y mesas quedan fuera.
+ * Función pura: la decisión de alcance vive en un único lugar y se prueba sola.
+ */
+export function esAlcanceBloqueo(a: { origen?: unknown; esMesa?: boolean; venta_caja?: boolean }): boolean {
+  if (a.venta_caja || a.esMesa) return false
+  const o = String(a.origen ?? '').toUpperCase()
+  return o === 'DELIVERY' || o === 'TAKEAWAY'
+}
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export const esUuid = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v)
 
@@ -88,23 +101,30 @@ export type Reclamo =
   | { tipo: 'NUEVA' }
   | { tipo: 'EXISTENTE'; pedido_id: string | null }
   | { tipo: 'DUPLICADO'; ventana_minutos: number; existente: { pedido_id: string | null; numero_pedido: number | null; estado: string | null } }
+  | { tipo: 'BLOQUEADO_IDENTICO'; ventana_minutos: number; existente: { pedido_id: string | null; numero_pedido: number | null; estado: string | null } }   // modo bloqueo, nivel 1: sin salida
+  | { tipo: 'PEDIDO_ACTIVO'; ventana_horas: number; existente: { pedido_id: string | null; numero_pedido: number | null; estado: string | null } }          // modo bloqueo, nivel 2: salida solo con la excepción explícita
   | { tipo: 'EN_PROCESO' }
   | { tipo: 'OPERACION_INVALIDA' }
   | { tipo: 'SIN_PROTECCION' }          // la base no respondió (p. ej. SQL aún no aplicado): FAIL-CLOSED, el endpoint NO crea el pedido sin protección (503 recuperable)
 
 export async function reclamarOperacion(
   supabase: RpcClient,
-  a: { empresa_id: string; sucursal_id: string; operacion_id: string; huella: string; telefono: string | null; visitante: string | null; dispositivo_id: string | null; confirmar: boolean },
+  a: { empresa_id: string; sucursal_id: string; operacion_id: string; huella: string; telefono: string | null; visitante: string | null; dispositivo_id: string | null; confirmar: boolean;
+       /** Presente SOLO si el pedido está en alcance (delivery/take away online) Y la empresa tiene la llave prendida. Ausente = llamada histórica de 8 parámetros. */
+       bloqueo?: { confirmar_otro: boolean } },
   opts: { esperaMs?: number; intentos?: number; dormir?: (ms: number) => Promise<void> } = {},
 ): Promise<Reclamo> {
   const dormir = opts.dormir ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
   const intentos = opts.intentos ?? 25, esperaMs = opts.esperaMs ?? 400
   for (let i = 0; i <= intentos; i++) {
-    let r: { estado?: string; pedido_id?: string | null; ventana_minutos?: number; existente?: { pedido_id?: string | null; numero_pedido?: number | null; estado?: string | null } } | null = null
+    let r: { estado?: string; pedido_id?: string | null; ventana_minutos?: number; ventana_horas?: number; existente?: { pedido_id?: string | null; numero_pedido?: number | null; estado?: string | null } } | null = null
     try {
       const { data, error } = await supabase.rpc('reclamar_operacion_pedido', {
         p_empresa_id: a.empresa_id, p_sucursal_id: a.sucursal_id, p_operacion_id: a.operacion_id, p_huella: a.huella,
         p_telefono: a.telefono, p_visitante: a.visitante, p_dispositivo_id: a.dispositivo_id, p_confirmar: a.confirmar,
+        // Los dos parámetros nuevos viajan SOLO en modo bloqueo: sin la llave (o fuera de alcance) la llamada es idéntica a la histórica,
+        // así el código nuevo convive con la base vieja (la función de 8 parámetros no conoce estos nombres).
+        ...(a.bloqueo ? { p_alcance_bloqueo: true, p_confirmar_otro: a.bloqueo.confirmar_otro === true } : {}),
       })
       if (error) { console.error('[pedidos] reclamar_operacion_pedido falló (el endpoint responde 503 y NO crea el pedido):', error.message); return { tipo: 'SIN_PROTECCION' } }
       r = data as typeof r
@@ -114,9 +134,25 @@ export async function reclamarOperacion(
       case 'EXISTENTE': return { tipo: 'EXISTENTE', pedido_id: r.pedido_id ?? null }
       case 'OPERACION_INVALIDA': return { tipo: 'OPERACION_INVALIDA' }
       case 'DUPLICADO': return { tipo: 'DUPLICADO', ventana_minutos: Number(r.ventana_minutos ?? 0), existente: { pedido_id: r.existente?.pedido_id ?? null, numero_pedido: r.existente?.numero_pedido ?? null, estado: r.existente?.estado ?? null } }
+      case 'BLOQUEADO_IDENTICO': return { tipo: 'BLOQUEADO_IDENTICO', ventana_minutos: Number(r.ventana_minutos ?? 0), existente: { pedido_id: r.existente?.pedido_id ?? null, numero_pedido: r.existente?.numero_pedido ?? null, estado: r.existente?.estado ?? null } }
+      case 'PEDIDO_ACTIVO': return { tipo: 'PEDIDO_ACTIVO', ventana_horas: Number(r.ventana_horas ?? 0), existente: { pedido_id: r.existente?.pedido_id ?? null, numero_pedido: r.existente?.numero_pedido ?? null, estado: r.existente?.estado ?? null } }
       case 'EN_CURSO': if (i < intentos) { await dormir(esperaMs); continue } return { tipo: 'EN_PROCESO' }
       default: console.error('[pedidos] estado de operación desconocido (el endpoint responde 503 y NO crea el pedido):', r); return { tipo: 'SIN_PROTECCION' }
     }
   }
   return { tipo: 'EN_PROCESO' }
+}
+
+type LlaveClient = { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { maybeSingle: () => PromiseLike<{ data: unknown; error: { message: string } | null }> } } } }
+/**
+ * ¿La empresa tiene prendida la llave de bloqueo de duplicados? Ante CUALQUIER problema de lectura (columna inexistente porque el SQL
+ * todavía no se aplicó, error de red, fila ausente) devuelve false = comportamiento anterior (advertencia con "Sí, continuar"), que
+ * sigue siendo fail-closed por reclamar_operacion_pedido. Así el código se puede desplegar ANTES o DESPUÉS del SQL.
+ */
+export async function leerLlaveBloqueo(supabase: LlaveClient, empresa_id: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.from('empresa_config').select('bloquear_pedidos_duplicados').eq('empresa_id', empresa_id).maybeSingle()
+    if (error) { console.warn('[pedidos] llave de bloqueo no disponible (se usa el comportamiento anterior):', error.message); return false }
+    return (data as { bloquear_pedidos_duplicados?: boolean } | null)?.bloquear_pedidos_duplicados === true
+  } catch (e) { console.warn('[pedidos] llave de bloqueo: excepción (se usa el comportamiento anterior):', e); return false }
 }
