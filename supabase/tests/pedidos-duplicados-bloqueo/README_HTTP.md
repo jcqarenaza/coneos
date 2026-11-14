@@ -4,28 +4,16 @@ Hay UNA sola base de datos: `cones-prod` (ref `wpiwjpvjqshsgrxxwsld`). El LAB es
 Script: `prueba_http_supabase.py` (Python 3.8+, sin dependencias). Habla por HTTP con Auth y PostgREST reales.
 Usa solo `/cecchetto` (empresa A) y `/demoburger` (empresa B, para probar aislamiento). **Nunca toca `/federal`**: se niega a correr si un id coincide con Federal o si las claves no son de `cones-prod`.
 
-## 1. Variables de entorno (las claves NO van en el comando ni en el repo)
-Supabase → proyecto `cones-prod` → Project Settings → API → "Legacy API keys":
-- `SB_ANON_KEY` = clave `anon`
-- `SB_SERVICE_ROLE_KEY` = clave `service_role`
+## 1. Claves (no hay que cargar nada)
+El script toma las claves del `.env.local` del repo (`NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`, las mismas que usa la app contra `cones-prod`). No se pegan en ningún lado, no se imprimen y no se guardan.
+Si ese archivo no existe en la computadora, definir las variables `SB_ANON_KEY` y `SB_SERVICE_ROLE_KEY` en la ventana de comandos.
 
-PowerShell (Windows):
-```powershell
-$env:SB_ANON_KEY = Read-Host "anon"
-$env:SB_SERVICE_ROLE_KEY = Read-Host "service_role"
-```
-bash (Mac/Linux):
-```bash
-read -rs SB_ANON_KEY && export SB_ANON_KEY
-read -rs SB_SERVICE_ROLE_KEY && export SB_SERVICE_ROLE_KEY
-```
-
-## 2. Comando
-Desde la raíz del repo:
+## 2. Cómo correrlo
+Doble click en `supabase\tests\pedidos-duplicados-bloqueo\correr_prueba_http.bat`, o desde la raíz del repo:
 ```
 python supabase/tests/pedidos-duplicados-bloqueo/prueba_http_supabase.py
 ```
-Genera `resultado_http_<fecha>.json` en la carpeta actual (sin tokens ni claves). Enviarlo al CTO; **no versionarlo**.
+Genera `resultado_http_<fecha>.json` en la raíz del repo (sin tokens ni claves). Enviarlo al CTO; **no versionarlo**.
 Resultado por control: PASS / FAIL / PASS con casos NO VERIFICABLE. Código de salida: 0 = sin FAIL, 1 = algún FAIL, 2-5 = faltan claves / claves ajenas / sin red / fallo de preparación.
 
 ## 3. Qué hace
