@@ -161,9 +161,10 @@ before(async () => {
     create table transiciones_prep (pedido uuid, at timestamptz default now());
     create function trg_prep() returns trigger language plpgsql as $f$ begin insert into transiciones_prep(pedido) values (new.id); return new; end $f$;
     create trigger t_prep after update on pedidos for each row when (new.estado = 'PREPARING' and old.estado is distinct from 'PREPARING') execute function trg_prep();
-    create table caja_llamadas (pedido uuid, dispositivo uuid);
-    create function devolver_stock_pedido_caja(p_empresa uuid, p_pedido uuid, p_dispositivo uuid) returns jsonb language plpgsql as $f$
-      begin insert into caja_llamadas values (p_pedido, p_dispositivo); return '{"estado":"devuelto"}'::jsonb; end $f$;`)
+    alter table dispositivos add column nombre text;
+    create table caja_llamadas (pedido uuid, dispositivo uuid);   -- ya sin uso: la función de rama es la REAL (fixture de producción)
+    `)
+  await db.query(readFileSync(join(SUP, 'tests/pedidos-duplicados-bloqueo/produccion-rama-14-11.sql'), 'utf8'))
   for (const f of ['stock-v2-factor-migracion.sql', 'rpc-crear-pedido-stock-v2-factor.sql', 'devolver-stock-pedido.sql', 'pedidos-repetidos.sql', 'crear-pedido-stock-v1.7-operacion.sql', 'pedidos-duplicados-bloqueo.sql']) await db.query(readFileSync(join(SUP, f), 'utf8'))
   const port = await arrancarShim()
   process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${port}`; process.env.SUPABASE_SERVICE_ROLE_KEY = 'clave-de-prueba-no-real'; process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-de-prueba-no-real'
@@ -312,12 +313,26 @@ describe('Posible duplicado: ciclo completo por las rutas reales (CTO 14/11)', (
     assert.equal((await resolver(p2.id, 'DUPLICADO')).status, 200); rv = await revDe(p2.id); assert.ok(rv.stock_devuelto_at); assert.equal(await stock(), 48)
   })
 
-  test('S6) Pedido con stock por RAMA: se usa devolver_stock_pedido_caja (doble: el SQL real no está en el repo) y NO devolver_stock_pedido', async () => {
-    const t = tel(); await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3)
-    await db.query("insert into stock_movimientos(empresa_id,sucursal_id,producto_id,delta,motivo,pedido_id,rama_id) values($1,$2,$3,-1,'venta',$4,gen_random_uuid())", [w.emp, w.suc, w.prod, p2.id])
+  test('S6) Pedido con stock por RAMA: DUPLICADO usa la función REAL devolver_stock_pedido_caja (definición leída de producción) y NO devolver_stock_pedido: la rama vuelve a su lugar, una sola vez, y el original no se toca', async () => {
+    const t = tel(); const p1 = await primero(t, 'a', 2); const p2 = await continuar(t, 'b', 3)
+    const one = async (sql: string, ...a: unknown[]) => (await db.query(sql, a)).rows[0].id as string
+    const rama = await one("insert into stock_rama(empresa_id,sucursal_id,presentacion_id,producto_id,cantidad) values($1,$2,$3,$4,10) returning id", w.emp, w.suc, w.pres, w.prod)
+    const item = async (pid: string) => await one('select id from pedido_items where pedido_id=$1 limit 1', pid)
+    const op = await one("insert into stock_operaciones(operacion_id,empresa_id,tipo,huella,estado,resultado,completed_at) values(gen_random_uuid(),$1,'venta',repeat('a',64),'completada','{}'::jsonb,now()) returning operacion_id as id", w.emp)
+    for (const [pid, q] of [[p1.id, 1], [p2.id, 2]] as [string, number][]) {      // libro de venta por rama (lo que hace la venta real) para el original (1) y el duplicado (2)
+      await db.query('update stock_rama set cantidad = cantidad - $1 where id=$2', [q, rama]); const it = await item(pid)
+      await db.query("insert into stock_movimientos(empresa_id,sucursal_id,producto_id,delta,motivo,pedido_id,rama_id,pedido_item_id,consumo_regla,operacion_id) values($1,$2,$3,$4,'venta',$5,$6,$7,'directo',$8)", [w.emp, w.suc, w.prod, -q, pid, rama, it, op])
+    }
+    assert.equal(Number((await db.query('select cantidad from stock_rama where id=$1', [rama])).rows[0].cantidad), 7)
     reset(); assert.equal((await resolver(p2.id, 'DUPLICADO')).status, 200)
     assert.equal(contador('devolver_stock_pedido_caja'), 1); assert.equal(contador('devolver_stock_pedido'), 0)
-    assert.deepEqual((await db.query('select dispositivo from caja_llamadas')).rows.map(r => r.dispositivo), [w.disp])
+    assert.equal(Number((await db.query('select cantidad from stock_rama where id=$1', [rama])).rows[0].cantidad), 9, 'la rama recupera SOLO las 2 del duplicado (la 1 del original sigue descontada)')
+    assert.equal(await stock(), 48, 'el stock plano del duplicado también volvió una vez')
+    assert.equal((await fila(p1.id)).stock_descontado, true, 'el original no se toca')
+    const det = (await db.query("select detalle from stock_movimientos where pedido_id=$1 and motivo='devolucion' and rama_id is not null", [p2.id])).rows
+    assert.equal(det.length, 1); assert.ok(String(det[0].detalle).includes(w.disp), 'el libro identifica la caja que resolvió')
+    assert.equal((await resolver(p2.id, 'DUPLICADO')).status, 200)
+    assert.equal(Number((await db.query('select cantidad from stock_rama where id=$1', [rama])).rows[0].cantidad), 9, 'repetir la acción no devuelve de nuevo')
   })
 
   test('S7) AUTORIZACIÓN de las acciones nuevas: solo una CAJA de la sucursal del pedido; kiosco, otra sucursal, resolución inválida y pedido ajeno se rechazan sin tocar nada', async () => {
