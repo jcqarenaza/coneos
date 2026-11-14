@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { minutosEntrega } from '@/lib/reparto/salida'
+import { traerRevisiones, sinRevision } from '@/lib/pedidos/revisionAdmin'
 import { ShoppingBag, Store, Users, Layers, TrendingUp, Clock, Loader2, Bike, Package } from 'lucide-react'
 
 function formatPrecio(n: number) { return `$${Number(n).toLocaleString('es-AR')}` }
@@ -71,15 +72,20 @@ export default function AdminDashboard() {
         supabase.from('sucursales').select('*', { count: 'exact', head: true }).eq('empresa_id', empresaId).eq('activo', true),
         supabase.from('productos').select('*', { count: 'exact', head: true }).eq('empresa_id', empresaId).eq('activo', true),
         supabase.from('operadores').select('*', { count: 'exact', head: true }).eq('empresa_id', empresaId).eq('activo', true),
-        supabase.from('pedidos').select('total').eq('empresa_id', empresaId).eq('fecha_pedido', hoy),
-        supabase.from('pedidos').select('total').eq('empresa_id', empresaId).eq('fecha_pedido', ayer),
-        supabase.from('pedidos').select('id, numero_pedido, estado, total, created_at').eq('empresa_id', empresaId).eq('fecha_pedido', hoy).in('estado', ['PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY']).order('numero_pedido', { ascending: false }).limit(8),
+        supabase.from('pedidos').select('id, total').eq('empresa_id', empresaId).eq('fecha_pedido', hoy),
+        supabase.from('pedidos').select('id, total').eq('empresa_id', empresaId).eq('fecha_pedido', ayer),
+        supabase.from('pedidos').select('id, numero_pedido, estado, total, created_at').eq('empresa_id', empresaId).eq('fecha_pedido', hoy).in('estado', ['PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY']).order('numero_pedido', { ascending: false }).limit(40),
       ])
 
-      const totalHoy = (pedidosHoy ?? []).reduce((acc, p) => acc + Number(p.total), 0)
-      const totalAyer = (pedidosAyer ?? []).reduce((acc, p) => acc + Number(p.total), 0)
-      setStats({ totalHoy, totalAyer, cantidadHoy: pedidosHoy?.length ?? 0, sucursales: sucursales ?? 0, productos: productos ?? 0, operadores: operadores ?? 0 })
-      setPedidosActivos(activos ?? [])
+      // Pedidos EN REVISIÓN (posible duplicado) y DUPLICADO no cuentan en el total del día ni en los activos (CTO 14/11). Los demás criterios no cambian.
+      // Si no se pudo verificar la revisión, se muestra lo de siempre (sin inventar exclusiones).
+      const mapaRev = await traerRevisiones([...new Set([...(pedidosHoy ?? []), ...(pedidosAyer ?? []), ...(activos ?? [])].map(p => p.id as string))])
+      const hoyOk = sinRevision((pedidosHoy ?? []) as { id: string; total: number }[], mapaRev)
+      const ayerOk = sinRevision((pedidosAyer ?? []) as { id: string; total: number }[], mapaRev)
+      const totalHoy = hoyOk.reduce((acc, p) => acc + Number(p.total), 0)
+      const totalAyer = ayerOk.reduce((acc, p) => acc + Number(p.total), 0)
+      setStats({ totalHoy, totalAyer, cantidadHoy: hoyOk.length, sucursales: sucursales ?? 0, productos: productos ?? 0, operadores: operadores ?? 0 })
+      setPedidosActivos(sinRevision(activos ?? [], mapaRev).slice(0, 8))   // se leen 40 y se recortan a 8 DESPUÉS de excluir, para no quedar corto
 
       // Stock en alerta (cantidad <= mínimo; incluye agotados). Solo filas de
       // producto_stock = solo productos con control activado; sin control, la
