@@ -8,7 +8,7 @@ usando EXCLUSIVAMENTE el LAB: empresa /cecchetto (empresa A) y la empresa demo /
 NUNCA toca /federal (produccion real): el script se niega a correr si algun id coincide con el de Federal.
 Se niega a correr si las claves no pertenecen a cones-prod. No usa dependencias externas (solo libreria estandar de Python 3.8+).
 
-Las claves se leen de variables de entorno (nunca por argumento ni de un archivo versionado):
+Las claves se toman de las variables de entorno SB_* o, si faltan, del .env.local del repo (las mismas de la app; ese archivo no se versiona):
   SB_ANON_KEY            clave anon (legacy JWT) de la rama
   SB_SERVICE_ROLE_KEY    clave service_role (legacy JWT) de la rama
 
@@ -36,8 +36,30 @@ EMP_B = '3dffcc70-eff0-4966-885b-a67a0dc1078f'   # demo: /demoburger (solo para 
 SLUG_A, SLUG_B = 'cecchetto', 'demoburger'
 FEDERAL = 'ce000000-0000-0000-0000-000000000001'  # produccion real: PROHIBIDO tocar
 
-ANON = os.environ.get('SB_ANON_KEY', '').strip()
-SVC = os.environ.get('SB_SERVICE_ROLE_KEY', '').strip()
+def _leer_env_local():
+    """Si faltan las variables SB_*, toma las claves del .env.local / .env del repo (las mismas que usa la app). Nunca las imprime."""
+    aqui = os.path.dirname(os.path.abspath(__file__))
+    raiz = os.path.abspath(os.path.join(aqui, '..', '..', '..'))
+    vistos = {}
+    for d in (os.getcwd(), raiz):
+        for nombre in ('.env.local', '.env'):
+            ruta = os.path.join(d, nombre)
+            if os.path.isfile(ruta):
+                try:
+                    for linea in open(ruta, encoding='utf-8-sig'):
+                        linea = linea.strip()
+                        if not linea or linea.startswith('#') or '=' not in linea:
+                            continue
+                        k, v = linea.split('=', 1)
+                        vistos.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+                except OSError:
+                    pass
+    return vistos
+
+
+_ENV = _leer_env_local()
+ANON = (os.environ.get('SB_ANON_KEY') or _ENV.get('NEXT_PUBLIC_SUPABASE_ANON_KEY') or '').strip()
+SVC = (os.environ.get('SB_SERVICE_ROLE_KEY') or _ENV.get('SUPABASE_SERVICE_ROLE_KEY') or '').strip()
 
 EVID = []        # evidencia de cada solicitud (sin secretos)
 RESULTS = []     # (grupo, caso, esperado, obtenido, ok)
@@ -69,7 +91,7 @@ def _jwt_claim(key, name):
 def guardas():
     faltan = [n for n, v in (('SB_ANON_KEY', ANON), ('SB_SERVICE_ROLE_KEY', SVC)) if not v]
     if faltan:
-        print('FALTAN variables de entorno: %s (ver README_HTTP.md)' % ', '.join(faltan))
+        print('FALTAN claves: %s. No estan en las variables SB_* ni en el .env.local del repo (ver README_HTTP.md)' % ', '.join(faltan))
         sys.exit(2)
     for nombre, k in (('SB_ANON_KEY', ANON), ('SB_SERVICE_ROLE_KEY', SVC)):
         ref = _jwt_ref(k)
