@@ -220,11 +220,13 @@ def crear_fixtures(run):
     assert ok(st), ('pedidos', st, js)
     CREADOS['pedidos'] += [F['pA1'], F['pA2'], F['pB1']]
     ahora = datetime.datetime.utcnow().isoformat() + 'Z'
-    st, js = svc('POST', '/rest/v1/pedido_revisiones_duplicado', [
+    # una fila por solicitud: PostgREST exige las mismas claves en cada objeto de un insert masivo
+    for fila in (
         {'empresa_id': EMP_A, 'sucursal_id': F['sA1'], 'operacion_id': F['oA1'], 'coincidencia': 'DISTINTA'},
         {'empresa_id': EMP_A, 'sucursal_id': F['sA2'], 'operacion_id': F['oA2'], 'coincidencia': 'IDENTICA', 'estado': 'DUPLICADO', 'resuelto_at': ahora},
-        {'empresa_id': EMP_B, 'sucursal_id': F['sB1'], 'operacion_id': F['oB1'], 'coincidencia': 'DISTINTA'}], prefer='return=minimal')
-    assert ok(st), ('revisiones', st, js)
+        {'empresa_id': EMP_B, 'sucursal_id': F['sB1'], 'operacion_id': F['oB1'], 'coincidencia': 'DISTINTA'}):
+        st, js = svc('POST', '/rest/v1/pedido_revisiones_duplicado', fila, prefer='return=minimal')
+        assert ok(st), ('revisiones', st, js)
     CREADOS['revisiones_ops'] += [F['oA1'], F['oA2'], F['oB1']]
     return U, F, n0
 
@@ -451,8 +453,15 @@ def limpiar(run):
         svc('DELETE', '/rest/v1/usuarios_admin?id=in.' + inn(CREADOS['usuarios']), prefer='return=minimal', evidencia=False)
     for uid in CREADOS['auth']:
         svc('DELETE', '/auth/v1/admin/users/' + uid, evidencia=False)
-    if CREADOS['sucursales']:
-        svc('DELETE', '/rest/v1/sucursales?id=in.' + inn(CREADOS['sucursales']), prefer='return=minimal', evidencia=False)
+    # barrido: sucursales ficticias (slug t-http-*) de esta o de corridas anteriores, solo en las 2 empresas de prueba
+    st_s, js_s = svc('GET', '/rest/v1/sucursales?select=id&slug=like.t-http-*&empresa_id=in.(%s,%s)' % (EMP_A, EMP_B), evidencia=False)
+    suc_ids = list(CREADOS['sucursales'])
+    if isinstance(js_s, list):
+        suc_ids += [x['id'] for x in js_s if x.get('id') not in suc_ids]
+    if suc_ids:
+        # catalogo_version se crea sola al dar de alta una sucursal y bloquea el borrado
+        svc('DELETE', '/rest/v1/catalogo_version?sucursal_id=in.' + inn(suc_ids), prefer='return=minimal', evidencia=False)
+        svc('DELETE', '/rest/v1/sucursales?id=in.' + inn(suc_ids), prefer='return=minimal', evidencia=False)
     if CON_LLAVE and CONFIG_PREVIA['existia'] is True:
         svc('PATCH', '/rest/v1/empresa_config?empresa_id=eq.%s' % EMP_A, {'bloquear_pedidos_duplicados': CONFIG_PREVIA['valor']}, prefer='return=minimal', evidencia=False)
     elif CON_LLAVE and CONFIG_PREVIA['existia'] is False:
