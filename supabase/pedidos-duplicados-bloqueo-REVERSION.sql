@@ -2,7 +2,9 @@
 -- Reversión de pedidos-duplicados-bloqueo.sql (13/11/2026). NO destruye pedidos ni operaciones.
 -- Restaura reclamar_operacion_pedido de 8 parámetros con el cuerpo EXACTO de pedidos-repetidos.sql, y borra SOLO lo que marcó el
 -- script de bloqueo ('coneos:pedidos-bloqueo-13-11'): la función de 10 parámetros, normalizar_telefono_pedido, el índice, la constraint
--- y las dos columnas de empresa_config (la llave y la ventana en horas; se pierde solo ese valor de configuración).
+-- las dos columnas de empresa_config (la llave y la ventana en horas; se pierde solo ese valor de configuración) y, desde el 14/11, la
+-- TABLA pedido_revisiones_duplicado con sus funciones (se pierde el REGISTRO de revisiones; los pedidos y operaciones NO se tocan).
+-- ANTES de revertir: resolver (o decidir) las revisiones PENDIENTES y devolver a mano lo que corresponda; el stock ya devuelto no se vuelve a descontar.
 -- Antes: volver el código (api/pedidos y componente) a la versión anterior. Con el código NUEVO y esta reversión aplicada no hay
 -- problema: el servidor lee la llave, no encuentra la columna y llama con 8 parámetros (comportamiento anterior).
 -- ══════════════════════════════════════════════════════════════════════
@@ -20,6 +22,15 @@ begin
             where p.pronamespace='public'::regnamespace and p.proname='normalizar_telefono_pedido' loop
     if r.c = m then execute 'drop function ' || r.f::text; else raise notice 'SE CONSERVA la función % (no es de este script)', r.f; end if;
   end loop;
+  for r in select p.oid::regprocedure as f, obj_description(p.oid,'pg_proc') as c from pg_proc p
+            where p.pronamespace='public'::regnamespace and p.proname in ('resolver_revision_duplicado','pedidos_en_revision') loop
+    if r.c = m then execute 'drop function ' || r.f::text; else raise notice 'SE CONSERVA la función % (no es de este script)', r.f; end if;
+  end loop;
+  if to_regclass('public.pedido_revisiones_duplicado') is not null then      -- if anidado: plpgsql no garantiza el cortocircuito de AND
+    if obj_description(to_regclass('public.pedido_revisiones_duplicado'), 'pg_class') = m then
+      drop table public.pedido_revisiones_duplicado;
+    else raise notice 'SE CONSERVA la tabla public.pedido_revisiones_duplicado (no es de este script)'; end if;
+  end if;
   if to_regclass('public.idx_pedido_operaciones_tel_reciente') is not null then      -- if anidado: plpgsql no garantiza el cortocircuito de AND
     if obj_description(to_regclass('public.idx_pedido_operaciones_tel_reciente'), 'pg_class') = m then
       drop index public.idx_pedido_operaciones_tel_reciente;

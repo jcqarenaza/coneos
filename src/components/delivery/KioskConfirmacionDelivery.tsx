@@ -127,8 +127,8 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const operacionRef = useRef<OperacionActual | null>(null)
   const confirmarRef = useRef(false)
   const confirmarOtroRef = useRef(false)   // excepción explícita "Es otro pedido, continuar" (solo nivel 2 del bloqueo, CTO 13/11)
-  // Bloqueo de duplicados (CTO 13/11): 'IDENTICO' = sin salida; 'ACTIVO' = salida solo con la excepción explícita
-  const [bloqueo, setBloqueo] = useState<{ tipo: 'IDENTICO' | 'ACTIVO'; id: string | null; numero_pedido: number | null } | null>(null)
+  // Aviso de posible duplicado (CTO 13/11 + D1 del 14/11): el teléfono ya tiene un pedido en curso; se puede continuar con la excepción explícita
+  const [bloqueo, setBloqueo] = useState<{ id: string | null; numero_pedido: number | null } | null>(null)
   const [duplicado, setDuplicado] = useState<{ id: string | null; numero_pedido: number | null; estado: string | null } | null>(null)
   const [reutilizado, setReutilizado] = useState(false)
   const [copiado, setCopiado] = useState(false)
@@ -206,9 +206,9 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     if (!res.ok || !data?.pedido) {
       // Ya hay un pedido igual cobrado/en marcha: el cliente decide (ver pedido / pedir otro igual)
       if (res.status === 409 && data?.duplicado) { setDuplicado(data.duplicado); return null }
-      // Bloqueo de duplicados (CTO 13/11): igual en curso → sin salida; mismo teléfono con otro contenido → salida solo con la excepción
-      if (res.status === 409 && data?.bloqueo && (data.bloqueo.tipo === 'IDENTICO' || data.bloqueo.tipo === 'ACTIVO')) {
-        setBloqueo({ tipo: data.bloqueo.tipo, id: data.bloqueo.id ?? null, numero_pedido: data.bloqueo.numero_pedido ?? null }); return null
+      // Aviso de posible duplicado (D1): idéntico o distinto, el cliente puede continuar con "Es otro pedido" (queda en revisión en Caja)
+      if (res.status === 409 && data?.bloqueo?.tipo === 'ACTIVO') {
+        setBloqueo({ id: data.bloqueo.id ?? null, numero_pedido: data.bloqueo.numero_pedido ?? null }); return null
       }
       // 9d: precio desactualizado (mensaje humano del ciclo C) → no es un error
       // del cliente: el catálogo cambió. El padre re-precia y volvemos al carrito.
@@ -323,15 +323,15 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
     />
   ) : null
 
-  // ── Bloqueo de duplicados (opción C, CTO 13/11) ──
+  // ── Aviso de posible duplicado (opción C, CTO 13/11; D1 14/11) ──
   const modalBloqueo = bloqueo ? (
     <AdvertenciaPedidoRepetido
-      modo={bloqueo.tipo === 'IDENTICO' ? 'bloqueo_identico' : 'pedido_activo'}
+      modo="pedido_activo"
       color={config.primary_color}
       numeroPedido={bloqueo.numero_pedido}
       verPedidoHref={bloqueo.id ? `/${window.location.pathname.split('/').filter(Boolean)[0]}/pedido/${bloqueo.id}` : null}
       onVolver={() => { setBloqueo(null); operacionRef.current = null; confirmarRef.current = false; confirmarOtroRef.current = false }}
-      onContinuar={bloqueo.tipo === 'ACTIVO' ? () => { confirmarOtroRef.current = true; setBloqueo(null); if (paso === 'transferencia') confirmarTransferencia(); else confirmarPago() } : undefined}
+      onContinuar={() => { confirmarOtroRef.current = true; setBloqueo(null); if (paso === 'transferencia') confirmarTransferencia(); else confirmarPago() }}
     />
   ) : null
 

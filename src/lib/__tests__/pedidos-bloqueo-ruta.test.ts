@@ -147,12 +147,13 @@ describe('Bloqueo de duplicados por la ruta real (opción C, CTO 13/11)', () => 
     const sinVis = await jb(await pedir(delivery(t, {}), 3))                                                          // sin visitante: nunca es coincidencia
     assert.equal(sinVis.bloqueo?.tipo, 'ACTIVO'); assert.equal(sinVis.bloqueo?.id, undefined)
   })
-  test('A1c) PRIVACIDAD, contenido IDÉNTICO: bloqueo duro sin salida y sin entregar el pedido ajeno; la dueña sí recibe el suyo', async () => {
+  test('A1c) PRIVACIDAD, contenido IDÉNTICO (D1: aviso, no bloqueo): 409 ACTIVO/IDENTICA sin entregar el pedido ajeno; la dueña sí recibe el suyo; no se crea nada sin la excepción', async () => {
     await llave(true); const t = tel(); const p1 = await jb(await pedir(delivery(t, { visitante_id: 'celu-sandra' }), 2))
     const ajeno = await jb(await pedir(delivery(t, { visitante_id: 'otro-navegador' }), 2))
-    assert.equal(ajeno.bloqueo?.tipo, 'IDENTICO'); assert.equal(ajeno.bloqueo?.id, undefined); assert.equal(ajeno.bloqueo?.numero_pedido, undefined); assert.ok(!JSON.stringify(ajeno).includes(p1.pedido!.id))
+    assert.equal(ajeno.bloqueo?.tipo, 'ACTIVO'); assert.equal((ajeno.bloqueo as J).coincidencia, 'IDENTICA'); assert.equal(ajeno.bloqueo?.id, undefined); assert.equal(ajeno.bloqueo?.numero_pedido, undefined); assert.ok(!JSON.stringify(ajeno).includes(p1.pedido!.id))
+    assert.match(ajeno.error ?? '', /¡Atención! Este teléfono ya tiene un pedido en curso\. Revisá que no estés cargando el mismo pedido nuevamente para evitar preparar dos veces lo mismo/)
     const dueña = await jb(await pedir(delivery(t, { visitante_id: 'celu-sandra' }), 2))
-    assert.equal(dueña.bloqueo?.tipo, 'IDENTICO'); assert.equal(dueña.bloqueo?.id, p1.pedido!.id); assert.equal(await npedidos(), 1)
+    assert.equal(dueña.bloqueo?.tipo, 'ACTIVO'); assert.equal(dueña.bloqueo?.id, p1.pedido!.id); assert.equal(await npedidos(), 1)
   })
   test('A1d) ESCENARIO #43/#49: el segundo cliente (otro visitante) puede elegir «Es otro pedido, continuar» y obtiene un pedido propio; el #43 queda intacto', async () => {
     await llave(true); const t = tel(); const disp = crypto.randomUUID()
@@ -165,14 +166,16 @@ describe('Bloqueo de duplicados por la ruta real (opción C, CTO 13/11)', () => 
     assert.equal(f.rows[0].estado, 'PENDING_PAYMENT'); assert.equal(f.rows[0].numero_pedido, p43.numero_pedido)
     const volver = await pedir(delivery(t, { visitante_id: 'tercero' }), 4); assert.equal(volver.status, 409); assert.equal(await npedidos(), 2, '«Volver» (no reenviar) no crea nada')
   })
-  test('A2) contenido IDÉNTICO → 409 IDENTICO sin salida: ni confirmar_advertencia ni confirmar_otro_pedido (ni ambos) lo saltean', async () => {
+  test('A2) contenido IDÉNTICO (D1): confirmar_advertencia NO alcanza; solo la excepción explícita sobre la operación ya advertida crea el pedido, y queda UNA revisión PENDIENTE IDENTICA', async () => {
     await llave(true); const t = tel(); assert.equal((await pedir(delivery(t))).status, 200)
     const op = crypto.randomUUID(); const res = []
-    for (const extra of [{}, { confirmar_advertencia: true }, { confirmar_otro_pedido: true }, { confirmar_advertencia: true, confirmar_otro_pedido: true }]) {
+    for (const extra of [{}, { confirmar_advertencia: true }, { confirmar_otro_pedido: true }]) {
       const r = await pedir(delivery(t, { operacion_id: op, ...extra })); const d = await jb(r); res.push([r.status, d.bloqueo?.tipo, d.duplicado])
     }
-    assert.deepEqual(res, [[409, 'IDENTICO', undefined], [409, 'IDENTICO', undefined], [409, 'IDENTICO', undefined], [409, 'IDENTICO', undefined]])
-    assert.equal(await npedidos(), 1); assert.equal(await stock(), 49)
+    assert.deepEqual(res, [[409, 'ACTIVO', undefined], [409, 'ACTIVO', undefined], [200, undefined, undefined]])
+    assert.equal(await npedidos(), 2); assert.equal(await stock(), 48)
+    const rv = await db.query('select estado, coincidencia, cardinality(candidatos) as n from pedido_revisiones_duplicado where empresa_id=$1', [w.emp])
+    assert.deepEqual(rv.rows, [{ estado: 'PENDIENTE', coincidencia: 'IDENTICA', n: 1 }])
   })
   test('A3) familiar con el mismo teléfono: 409 ACTIVO; con confirmar_otro_pedido sobre la MISMA operación se crea (200); sin advertencia previa no autoriza', async () => {
     await llave(true); const t = tel(); await pedir(delivery(t), 1)
@@ -185,7 +188,7 @@ describe('Bloqueo de duplicados por la ruta real (opción C, CTO 13/11)', () => 
   test('A4) take away también está en alcance', async () => {
     await llave(true); const t = tel(); assert.equal((await pedir(takeaway(t), 1)).status, 200)
     const r = await pedir(takeaway(t), 2); assert.equal(r.status, 409); assert.equal((await jb(r)).bloqueo?.tipo, 'ACTIVO')
-    const r2 = await pedir(takeaway(t), 1); assert.equal((await jb(r2)).bloqueo?.tipo, 'IDENTICO')
+    const r2 = await jb(await pedir(takeaway(t), 1)); assert.equal(r2.bloqueo?.tipo, 'ACTIVO'); assert.equal((r2.bloqueo as J).coincidencia, 'IDENTICA')
   })
   test('A5) pedido CANCELADO o ENTREGADO: permite un pedido nuevo (distinto e idéntico)', async () => {
     await llave(true)

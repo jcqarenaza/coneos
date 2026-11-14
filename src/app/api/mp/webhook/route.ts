@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { credencialesParaWebhook } from '@/lib/pagos/mp'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
+import { pedidosRetenidos, registrarPagoRetenido, type Db } from '@/lib/pedidos/revision'
 
 // Webhook de Mercado Pago — confirma pagos (Fase 3 multi-cuenta).
 // Resolución de credencial: ?c= (exacta, con refresh on-demand) →
@@ -55,6 +56,17 @@ export async function POST(request: Request) {
         .single()
 
       if (pedido && pedido.estado === 'PENDING_PAYMENT') {
+        // COMPUERTA DE REVISIÓN DE DUPLICADO (CTO 14/11, D3 + condición A): si el pedido está retenido (revisión PENDIENTE o DUPLICADO)
+        // el pago se REGISTRA (pagado + mp_payment_id + nota) pero el pedido NO pasa a PREPARING ni se factura. Cuando Luci lo
+        // resuelve LEGITIMO, el circuito se reanuda UNA vez (reanudarSiCorresponde); si lo resuelve DUPLICADO queda el reembolso
+        // pendiente (manual). No se puede saber si está retenido (error) → 503 y MP reintenta el aviso: no se prepara a ciegas.
+        const ret = await pedidosRetenidos(supabase as unknown as Db, cred.empresa_id, [pedido.id])
+        if (!ret.ok) return NextResponse.json({ ok: false }, { status: 503 })
+        if (ret.retenidos.has(pedido.id)) {
+          await registrarPagoRetenido(supabase as unknown as Db, { empresa_id: cred.empresa_id, pedido_id: pedido.id, payment_id: String(paymentId), notas: pedido.notas })
+          console.log(`[mp/webhook] Pedido ${pedidoId} RETENIDO por revisión de duplicado: pago MP ${paymentId} registrado, sin preparar ni facturar`)
+          break
+        }
         await supabase.from('pedidos')
           // 9c: pago confirmado → PREPARING. (JC 25/09) el id del pago va a SU columna
           // (el ticket imprime la operación) y la nota ya no pisa las notas del cliente.

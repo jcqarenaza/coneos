@@ -18,6 +18,7 @@ def fresh(name):
     c = connect(name).cursor()
     c.execute(open(os.path.join(SUP, 'tests', 'stock-v2', '00-schema-reducido.sql'), encoding='utf-8').read())
     c.execute("create table empresa_config (empresa_id uuid primary key, primary_color text)")
+    c.execute("alter table pedidos add column if not exists mp_payment_id text")   # existe en producción (lo graba el webhook MP); el esquema reducido no la trae
     c.execute("alter default privileges for role postgres in schema public grant execute on functions to anon, authenticated, service_role")
     c.execute("alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role")
     return c
@@ -113,20 +114,22 @@ check('T6. dos teléfonos DIFERENTES con contenido idéntico: sin cruce', est(r)
 w = world(db); comprar(w, 'H-X', tel='1111111111', vis='vis-X'); r = reclamar(w, uuid.uuid4(), 'H-X', tel='2222222222', vis='vis-X')
 check('T6b. mismo visitante pero teléfonos distintos: son clientes distintos (identidad existente, solo el teléfono)', est(r) == 'NUEVA')
 w = world(db); _, _, p = comprar(w, 'H-X', tel=TEL, vis='vis-1'); r = reclamar(w, uuid.uuid4(), 'H-X', tel=TEL, vis='vis-OTRO')
-check('T6c. mismo teléfono + contenido IDÉNTICO (aunque cambie el visitante): BLOQUEADO_IDENTICO (sigue duro) SIN entregar el pedido ajeno',
-      est(r) == 'BLOQUEADO_IDENTICO' and r['existente'] == {'mismo_visitante': False} and str(p) not in json.dumps(r) and npedidos(w) == 1, str(r))
+check('T6c. (D1 CTO 14/11) mismo teléfono + contenido IDÉNTICO, otro visitante: aviso PEDIDO_ACTIVO con coincidencia IDENTICA, SIN entregar el pedido ajeno',
+      est(r) == 'PEDIDO_ACTIVO' and r['coincidencia'] == 'IDENTICA' and r['existente'] == {'mismo_visitante': False} and str(p) not in json.dumps(r) and npedidos(w) == 1, str(r))
 r_id = reclamar(w, uuid.uuid4(), 'H-X', tel=TEL, vis='vis-1')
-check('T6c2. mismo teléfono + contenido idéntico + MISMO visitante: BLOQUEADO_IDENTICO y trae su pedido para «Ver mi pedido»',
-      est(r_id) == 'BLOQUEADO_IDENTICO' and r_id['existente']['mismo_visitante'] is True and r_id['existente']['pedido_id'] == str(p) and r_id['existente']['numero_pedido'] is not None, str(r_id))
-op = uuid.uuid4(); b1 = reclamar(w, op, 'H-X', tel=TEL); b2 = reclamar(w, op, 'H-X', tel=TEL, confirmar=True); b3 = reclamar(w, op, 'H-X', tel=TEL, otro=True); b4 = reclamar(w, op, 'H-X', tel=TEL, confirmar=True, otro=True)
-check('T6d. el bloqueo de idénticos NO tiene salida: ni confirmar_advertencia ni "es otro pedido" (ni ambos) lo saltean, y no queda ninguna fila ADVERTIDA',
-      [est(x) for x in (b1, b2, b3, b4)] == ['BLOQUEADO_IDENTICO'] * 4 and npedidos(w) == 1, str([est(x) for x in (b1, b2, b3, b4)]))
-cu = connect(db).cursor(); cu.execute("select count(*) from pedido_operaciones where empresa_id=%s and estado='ADVERTIDA'", (w['emp'],))
-check('T6e. el bloqueo duro no deja filas ADVERTIDA (no engorda la tabla ni habilita confirmaciones)', cu.fetchone()[0] == 0)
+check('T6c2. mismo teléfono + contenido idéntico + MISMO visitante: PEDIDO_ACTIVO (IDENTICA) y trae su pedido para «Ver mi pedido»',
+      est(r_id) == 'PEDIDO_ACTIVO' and r_id['coincidencia'] == 'IDENTICA' and r_id['existente']['mismo_visitante'] is True and r_id['existente']['pedido_id'] == str(p) and r_id['existente']['numero_pedido'] is not None, str(r_id))
+op = uuid.uuid4(); bs = reclamar(w, uuid.uuid4(), 'H-X', tel=TEL, otro=True)
+b1 = reclamar(w, op, 'H-X', tel=TEL); b2 = reclamar(w, op, 'H-X', tel=TEL, confirmar=True); b3 = reclamar(w, op, 'H-X', tel=TEL, otro=True)
+check('T6d. (D1) el contenido idéntico YA NO se bloquea: «es otro pedido» sin advertencia previa no vale, la confirmación legacy tampoco, y SÍ vale sobre la operación advertida',
+      [est(x) for x in (bs, b1, b2, b3)] == ['PEDIDO_ACTIVO', 'PEDIDO_ACTIVO', 'PEDIDO_ACTIVO', 'NUEVA'] and npedidos(w) == 1, str([est(x) for x in (bs, b1, b2, b3)]))
+pid_b = venta(w, op=op); completar(w, op, pid_b)
+cu = connect(db).cursor(); cu.execute("select r.estado, r.coincidencia, array_length(r.candidatos,1) from pedido_revisiones_duplicado r where r.empresa_id=%s and r.operacion_id=%s", (w['emp'], op))
+check('T6e. al continuar con un pedido idéntico queda UNA revisión PENDIENTE (IDENTICA) con su candidato, y el pedido nuevo es independiente', cu.fetchone() == ('PENDIENTE', 'IDENTICA', 1) and npedidos(w) == 2)
 w = world(db); comprar(w, 'H-X', vis='vis-A'); r1 = reclamar(w, uuid.uuid4(), 'H-X', vis='vis-B'); r2 = reclamar(w, uuid.uuid4(), 'H-X', vis='vis-A')
-check('T6f. sin teléfono rige la identidad existente por visitante: visitantes distintos no se cruzan; el mismo visitante, idéntico → bloqueo', est(r1) == 'NUEVA' and est(r2) == 'BLOQUEADO_IDENTICO')
+check('T6f. sin teléfono rige la identidad existente por visitante: visitantes distintos no se cruzan; el mismo visitante, idéntico → aviso', est(r1) == 'NUEVA' and est(r2) == 'PEDIDO_ACTIVO' and r2['coincidencia'] == 'IDENTICA')
 d1, d2 = uuid.uuid4(), uuid.uuid4(); w = world(db); comprar(w, 'H-X', disp=d1)
-check('T6g. sin cliente identificado rige el dispositivo (mismo → bloqueo; otro dispositivo o anónimo → no)', est(reclamar(w, uuid.uuid4(), 'H-X', disp=d1)) == 'BLOQUEADO_IDENTICO' and est(reclamar(w, uuid.uuid4(), 'H-X', disp=d2)) == 'NUEVA' and est(reclamar(w, uuid.uuid4(), 'H-X')) == 'NUEVA')
+check('T6g. sin cliente identificado rige el dispositivo (mismo → aviso; otro dispositivo o anónimo → no)', est(reclamar(w, uuid.uuid4(), 'H-X', disp=d1)) == 'PEDIDO_ACTIVO' and est(reclamar(w, uuid.uuid4(), 'H-X', disp=d2)) == 'NUEVA' and est(reclamar(w, uuid.uuid4(), 'H-X')) == 'NUEVA')
 w = world(db); comprar(w, 'H-X', tel=TEL); envejecer(w, 45)       # fuera de los 30 min del nivel 1, pero dentro de las 3 h del nivel 2, y sigue activo
 r = reclamar(w, uuid.uuid4(), 'H-X', tel=TEL)
 check('T6h. idéntico pero FUERA de la ventana de minutos con el pedido todavía activo: no es nivel 1; cae en el nivel 2 (PEDIDO_ACTIVO)', est(r) == 'PEDIDO_ACTIVO', str(r))
@@ -187,8 +190,8 @@ we = connect(db).cursor(); we.execute("insert into empresas default values retur
 we.execute("insert into empresa_config(empresa_id) values(%s)", (e_nueva,)); we.execute("select bloquear_pedidos_duplicados, pedido_activo_ventana_horas from empresa_config where empresa_id=%s", (e_nueva,))
 check('T8d. empresa_config nueva: bloquear=false, ventana=3 h', we.fetchone() == (False, 3))
 wf = world(db, bloqueo=True); wo = world(db, bloqueo=False); comprar(wf, 'H-X', tel=TEL); comprar(wo, 'H-X', tel=TEL)
-check('T8e. aislamiento por empresa: la que tiene la llave prendida bloquea; la apagada, no (mismo teléfono y contenido)',
-      est(reclamar(wf, uuid.uuid4(), 'H-X', tel=TEL)) == 'BLOQUEADO_IDENTICO' and est(reclamar(wo, uuid.uuid4(), 'H-X', tel=TEL)) == 'DUPLICADO')
+check('T8e. aislamiento por empresa: la que tiene la llave prendida avisa (PEDIDO_ACTIVO); la apagada usa la advertencia de siempre (DUPLICADO) (mismo teléfono y contenido)',
+      est(reclamar(wf, uuid.uuid4(), 'H-X', tel=TEL)) == 'PEDIDO_ACTIVO' and est(reclamar(wo, uuid.uuid4(), 'H-X', tel=TEL)) == 'DUPLICADO')
 w = world(db, bloqueo=True, prevenir=False); comprar(w, 'H-X', tel=TEL)
 check('T8f. llave prendida pero prevenir_pedidos_repetidos APAGADO: no hay bloqueo (se respeta la prevención apagada)', est(reclamar(w, uuid.uuid4(), 'H-X', tel=TEL)) == 'NUEVA' and est(reclamar(w, uuid.uuid4(), 'H-Y', tel=TEL)) == 'NUEVA')
 
@@ -226,14 +229,14 @@ detalle = []
 for k in range(25):
     w = world(db); tel = f'12{k:08d}'
     res = correr(2, lambda i, c: intento(w, 'H-IGUAL', tel, c, vis=f'vis-{i}', disp=uuid.uuid4()))
-    ok_ig &= sorted(res) == ['BLOQUEADO_IDENTICO', 'NUEVA'] and npedidos(w) == 1
-    if sorted(res) != ['BLOQUEADO_IDENTICO', 'NUEVA']: detalle.append(res)
-check('T10b. 25 rondas × 2 solicitudes simultáneas con contenido IDÉNTICO: siempre exactamente 1 pedido (1 NUEVA + 1 BLOQUEADO_IDENTICO)', ok_ig, str(detalle[:3]))
+    ok_ig &= sorted(res) == ['NUEVA', 'PEDIDO_ACTIVO'] and npedidos(w) == 1
+    if sorted(res) != ['NUEVA', 'PEDIDO_ACTIVO']: detalle.append(res)
+check('T10b. 25 rondas × 2 solicitudes simultáneas con contenido IDÉNTICO: siempre exactamente 1 pedido (1 NUEVA + 1 PEDIDO_ACTIVO)', ok_ig, str(detalle[:3]))
 ok8 = True; detalle = []
 for k in range(10):
     w = world(db); tel = f'13{k:08d}'
     res = correr(8, lambda i, c: intento(w, f'H-{i % 4}', tel, c, vis=f'vis-{i}', disp=uuid.uuid4()))
-    ok8 &= res.count('NUEVA') == 1 and npedidos(w) == 1 and all(x in ('PEDIDO_ACTIVO', 'BLOQUEADO_IDENTICO') for x in res if x != 'NUEVA')
+    ok8 &= res.count('NUEVA') == 1 and npedidos(w) == 1 and all(x == 'PEDIDO_ACTIVO' for x in res if x != 'NUEVA')
     if res.count('NUEVA') != 1: detalle.append(res)
 check('T10c. 10 rondas × 8 solicitudes simultáneas del mismo teléfono (4 contenidos distintos, repetidos): siempre exactamente 1 pedido', ok8, str(detalle[:2]))
 w = world(db); res = correr(6, lambda i, c: intento(w, f'H-{i}', f'14{i:08d}', c, vis=f'vis-{i}'))
@@ -243,6 +246,114 @@ check('T10e. 6 solicitudes simultáneas SIN teléfono (rama de identidad por vis
 w = world(db); tel = '1511111111'; op = uuid.uuid4()
 res = correr(4, lambda i, c: est(reclamar(w, op, 'H-MISMA', tel=tel, conn=c)))
 check('T10f. la MISMA operación enviada 4 veces a la vez (doble clic): una sola NUEVA, el resto EN_CURSO (idempotencia intacta)', res.count('NUEVA') == 1 and res.count('EN_CURSO') == 3, str(res))
+
+print('=== T12 · REVISIÓN DE POSIBLE DUPLICADO (CTO 14/11, D4): relación, resolución, carreras y ciclo completo ===')
+def revision(w, op):
+    cu = connect(w['db']).cursor(); cu.execute("select estado, coincidencia, candidatos, reembolso_pendiente, stock_devuelto_at, resuelto_por from pedido_revisiones_duplicado where empresa_id=%s and operacion_id=%s", (w['emp'], op)); return cu.fetchone()
+def resolver(w, pid, res, oper=None, nota=None, conn=None):
+    cu = (conn or connect(w['db'])).cursor(); cu.execute("select resolver_revision_duplicado(%s,%s,%s,%s,%s)", (w['emp'], pid, res, oper, nota)); return cu.fetchone()[0]
+def en_revision(w, pids):
+    cu = connect(w['db']).cursor(); cu.execute("select pedido_id from pedidos_en_revision(%s, %s::uuid[])", (w['emp'], [str(x) for x in pids])); return {str(r[0]) for r in cu.fetchall()}
+def continuar(w, huella, conn=None, **kw):
+    """Flujo del cliente de punta a punta: avisa → «Es otro pedido, continuar» → crea el pedido → completa la operación. Devuelve (op, pedido_id)."""
+    op = uuid.uuid4(); a = reclamar(w, op, huella, conn=conn, **kw); assert est(a) == 'PEDIDO_ACTIVO', a
+    b = reclamar(w, op, huella, otro=True, conn=conn, **kw); assert est(b) == 'NUEVA', b
+    pid = venta(w, conn=conn, op=op); completar(w, op, pid, conn=conn); return op, pid
+OPERADOR = uuid.uuid4()
+def errc(sql, *a):
+    try: connect(db).cursor().execute(sql, a or None); return None
+    except psycopg2.Error as e: return e.pgcode
+
+w = world(db); opA, pA, = comprar(w, 'H-43', tel=TEL, vis='vis-sandra', disp=DISP)[1:]
+opB, pB = continuar(w, 'H-49', tel=TEL, vis='vis-segundo', disp=DISP)
+rv = revision(w, opB)
+check('T12a. #43/#49: al continuar queda UNA revisión PENDIENTE del pedido nuevo con el candidato anterior (DISTINTA); el pedido original NO tiene revisión',
+      rv is not None and rv[0] == 'PENDIENTE' and rv[1] == 'DISTINTA' and [str(x) for x in rv[2]] == [str(opA)] and revision(w, opA) is None and npedidos(w) == 2, str(rv))
+check('T12b. la compuerta (pedidos_en_revision) marca SOLO al pedido nuevo', en_revision(w, [pA, pB]) == {str(pB)}, str(en_revision(w, [pA, pB])))
+w = world(db); opA, pA = comprar(w, 'H-X', tel=TEL, vis='vis-1')[1:]; opB, pB = continuar(w, 'H-X', tel=TEL, vis='vis-2')
+rv = revision(w, opB)
+check('T12c. contenido IDÉNTICO: la revisión queda como IDENTICA con el candidato', rv[1] == 'IDENTICA' and [str(x) for x in rv[2]] == [str(opA)])
+
+w = world(db); opA, pA = comprar(w, 'H-1', tel=TEL, vis='vis-A')[1:]; opB, pB = continuar(w, 'H-2', tel=TEL, vis='vis-B'); opC, pC = continuar(w, 'H-3', tel=TEL, vis='vis-B')
+rc = revision(w, opC); rb = revision(w, opB)
+check('T12d. varios activos: el tercer pedido lista TODOS los candidatos (el del mismo visitante primero); el segundo solo al primero',
+      sorted(str(x) for x in rc[2]) == sorted([str(opA), str(opB)]) and str(rc[2][0]) == str(opB) and [str(x) for x in rb[2]] == [str(opA)], f'{rc} {rb}')
+
+w = world(db); comprar(w, 'H-X', tel='1111111111'); r = reclamar(w, uuid.uuid4(), 'H-Y', tel='2222222222')
+cu = connect(db).cursor(); cu.execute("select count(*) from pedido_revisiones_duplicado where empresa_id=%s", (w['emp'],))
+check('T12e. teléfonos diferentes: no se cruzan y no se crea ninguna revisión', est(r) == 'NUEVA' and cu.fetchone()[0] == 0)
+for e in ('CANCELLED', 'DELIVERED'):
+    w = world(db); _, _, p = comprar(w, 'H-X', tel=TEL); estado(w, p, e); op = uuid.uuid4(); r = reclamar(w, op, 'H-Y', tel=TEL); r2 = reclamar(w, op, 'H-Y', tel=TEL, otro=True)
+    check(f'T12f. pedido {e}: no hay candidato, no hay aviso ni revisión', est(r) == 'NUEVA' and revision(w, op) is None)
+
+# carrera: el candidato todavía no tiene pedido (operación EN_CURSO) cuando el cliente confirma; la relación se guarda por OPERACIÓN
+w = world(db); opA = uuid.uuid4(); rA = reclamar(w, opA, 'H-A', tel=TEL, vis='vis-a')                 # A reclamó y todavía no creó el pedido
+opB = uuid.uuid4(); a = reclamar(w, opB, 'H-B', tel=TEL, vis='vis-b'); b = reclamar(w, opB, 'H-B', tel=TEL, vis='vis-b', otro=True)
+pB = venta(w, op=opB); completar(w, opB, pB)
+pA = venta(w, op=opA); completar(w, opA, pA)                                                           # recién ahora nace el pedido de A
+rv = revision(w, opB)
+check('T12g. CARRERA: B confirma mientras A aún no tiene pedido → la revisión guarda la OPERACIÓN de A y, cuando A termina de crearse, la relación queda completa',
+      est(rA) == 'NUEVA' and est(a) == 'PEDIDO_ACTIVO' and est(b) == 'NUEVA' and [str(x) for x in rv[2]] == [str(opA)] and en_revision(w, [pA, pB]) == {str(pB)}, str(rv))
+cu = connect(db).cursor(); cu.execute("select p.id from pedidos p join pedido_operaciones o on o.operacion_id = p.operacion_id where o.operacion_id = any(%s::uuid[])", ([str(x) for x in rv[2]],))
+check('T12h. el candidato guardado por operación se resuelve al pedido real (pedidos.operacion_id)', [str(r[0]) for r in cu.fetchall()] == [str(pA)])
+
+# resolución
+w = world(db); opA, pA = comprar(w, 'H-1', tel=TEL, vis='vis-A')[1:]; opB, pB = continuar(w, 'H-2', tel=TEL, vis='vis-B')
+cu = connect(db).cursor(); cu.execute("select estado from pedidos where id in (%s,%s) order by numero_pedido", (pA, pB)); antes = cu.fetchall()
+r1 = resolver(w, pB, 'LEGITIMO', OPERADOR, 'es de otro familiar'); r2 = resolver(w, pB, 'LEGITIMO', OPERADOR); r3 = resolver(w, pB, 'DUPLICADO', OPERADOR)
+rv = revision(w, opB); cu.execute("select estado from pedidos where id in (%s,%s) order by numero_pedido", (pA, pB)); despues = cu.fetchall()
+check('T12i. LEGITIMO: se resuelve UNA vez (quién y cuándo), repetirlo no hace nada, un DUPLICADO posterior no pisa la decisión, y los pedidos no cambian de estado',
+      est(r1) == 'RESUELTA' and est(r2) == 'YA_RESUELTA' and est(r3) == 'YA_RESUELTA_DISTINTA' and rv[0] == 'LEGITIMO' and str(rv[5]) == str(OPERADOR) and antes == despues and en_revision(w, [pA, pB]) == set(), f'{r1} {r2} {r3} {rv}')
+w = world(db); opA, pA = comprar(w, 'H-1', tel=TEL, vis='vis-A')[1:]; opB, pB = continuar(w, 'H-2', tel=TEL, vis='vis-B')
+cu = connect(db).cursor(); cu.execute("update pedidos set metodo_pago='mp', pagado=true, mp_payment_id='9001' where id=%s", (pB,))
+rd = resolver(w, pB, 'DUPLICADO', OPERADOR); rv = revision(w, opB)
+check('T12j. DUPLICADO de un pedido ya pagado por MP: queda reembolso_pendiente=true (gestión MANUAL); el SQL no toca ni el pedido ni el stock',
+      est(rd) == 'RESUELTA' and rd['reembolso_pendiente'] is True and rv[0] == 'DUPLICADO' and rv[3] is True and rv[4] is None, str(rd))
+w = world(db); opA, pA = comprar(w, 'H-1', tel=TEL, vis='vis-A')[1:]; opB, pB = continuar(w, 'H-2', tel=TEL, vis='vis-B')
+cu = connect(db).cursor(); cu.execute("update pedidos set metodo_pago='mp', pagado=true where id=%s", (pB,))   # MP elegido pero SIN pago confirmado (pagado nace TRUE igual)
+rd = resolver(w, pB, 'DUPLICADO', OPERADOR)
+check('T12j2. DUPLICADO de un pedido MP que NUNCA se pagó (pagado=true de nacimiento, sin mp_payment_id): NO marca reembolso (no se simula plata que no existe)',
+      est(rd) == 'RESUELTA' and rd['reembolso_pendiente'] is False, str(rd))
+w = world(db); opA, pA = comprar(w, 'H-1', tel=TEL, vis='vis-A')[1:]; opB, pB = continuar(w, 'H-2', tel=TEL, vis='vis-B')
+rd = resolver(w, pB, 'DUPLICADO', OPERADOR); cu = connect(db).cursor(); cu.execute("update pedido_revisiones_duplicado set estado=estado where operacion_id=%s", (opB,))
+check('T12k. DUPLICADO en efectivo/transferencia (sin pago MP): reembolso_pendiente=false; el pedido sigue RETENIDO (no se puede cobrar ni preparar) y el original no',
+      est(rd) == 'RESUELTA' and rd['reembolso_pendiente'] is False and en_revision(w, [pA, pB]) == {str(pB)})
+w = world(db); opA, pA = comprar(w, 'H-1', tel=TEL, vis='vis-A')[1:]; opB, pB = continuar(w, 'H-2', tel=TEL, vis='vis-B')
+res2 = correr(2, lambda i, c: est(resolver(w, pB, ['LEGITIMO', 'DUPLICADO'][i], OPERADOR, conn=c)))
+check('T12l. dos Lucis resuelven a la vez (uno LEGITIMO, otro DUPLICADO): una sola decisión gana, la otra recibe YA_RESUELTA_DISTINTA', sorted(res2) == ['RESUELTA', 'YA_RESUELTA_DISTINTA'], str(res2))
+check('T12m. pedido sin revisión → SIN_REVISION; pedido inexistente → PEDIDO_NO_ENCONTRADO; resolución inválida → error (P0001)',
+      est(resolver(w, pA, 'LEGITIMO')) == 'SIN_REVISION' and est(resolver(w, uuid.uuid4(), 'LEGITIMO')) == 'PEDIDO_NO_ENCONTRADO' and errc("select resolver_revision_duplicado(%s,%s,'BORRAR',null,null)", w['emp'], pB) == 'P0001')
+
+# CTO B: ciclo completo (reclamo → aviso → confirmación → creación del pedido → completar) con DOS clientes simultáneos y un pedido activo previo
+ok_cic = True; det = []
+for k in range(20):
+    w = world(db); tel = f'14{k:08d}'; opA, pA = comprar(w, 'H-A', tel=tel, vis='vis-A')[1:]
+    def ciclo(i, c, w=w, tel=tel):
+        return continuar(w, f'H-{"BC"[i]}', conn=c, tel=tel, vis=f'vis-{"BC"[i]}')
+    try: (opB, pB), (opC, pC) = correr(2, ciclo)
+    except Exception as e: ok_cic = False; det.append(repr(e)[:120]); continue
+    rb, rc = revision(w, opB), revision(w, opC)
+    cb, cc = {str(x) for x in rb[2]}, {str(x) for x in rc[2]}
+    ok = npedidos(w) == 3 and str(opA) in cb and str(opA) in cc and ((str(opC) in cb) != (str(opB) in cc)) and en_revision(w, [pA, pB, pC]) == {str(pB), str(pC)}
+    ok_cic &= ok
+    if not ok: det.append((str(opA)[:4], cb, cc))
+check('T12n. CICLO COMPLETO concurrente (20 rondas): 2 clientes con el mismo teléfono y un pedido previo → 3 pedidos, las DOS revisiones existen, ambas apuntan al previo y entre ellas una (y solo una) apunta a la otra; sin deadlocks',
+      ok_cic, str(det[:2]))
+ok_cic3 = True; det = []
+for k in range(10):
+    w = world(db); tel = f'15{k:08d}'; opA, pA = comprar(w, 'H-A', tel=tel, vis='vis-A')[1:]
+    def ciclo3(i, c, w=w, tel=tel): return continuar(w, f'H-{"BCD"[i]}', conn=c, tel=tel, vis=f'vis-{"BCD"[i]}')
+    try: rs = correr(3, ciclo3)
+    except Exception as e: ok_cic3 = False; det.append(repr(e)[:120]); continue
+    revs = [revision(w, op) for op, _ in rs]
+    ok = npedidos(w) == 4 and all(r is not None and str(opA) in {str(x) for x in r[2]} for r in revs) and en_revision(w, [pA] + [p for _, p in rs]) == {str(p) for _, p in rs}
+    ok_cic3 &= ok
+    if not ok: det.append(revs)
+check('T12o. CICLO COMPLETO con TRES clientes simultáneos: 4 pedidos, 3 revisiones, todas conservan la relación con el pedido previo', ok_cic3, str(det[:1]))
+w = world(db); opA, pA = comprar(w, 'H-1', tel=TEL, vis='vis-A')[1:]; op = uuid.uuid4()
+reclamar(w, op, 'H-2', tel=TEL, vis='vis-B'); x1 = reclamar(w, op, 'H-2', tel=TEL, vis='vis-B', otro=True); x2 = reclamar(w, op, 'H-2', tel=TEL, vis='vis-B', otro=True)
+cu = connect(db).cursor(); cu.execute("select count(*) from pedido_revisiones_duplicado where empresa_id=%s", (w['emp'],))
+check('T12p. reintento de la confirmación (respuesta perdida): sigue habiendo UNA sola revisión y la operación no se duplica (EN_CURSO)', est(x1) == 'NUEVA' and est(x2) == 'EN_CURSO' and cu.fetchone()[0] == 1, f'{est(x1)} {est(x2)}')
 
 print('=== BORDES · ventana, normalización, aislamiento ===')
 w = world(db, horas=1); _, _, p = comprar(w, 'H-X', tel=TEL); envejecer(w, 59); r1 = reclamar(w, uuid.uuid4(), 'H-Y', tel=TEL); envejecer(w, 2); r2 = reclamar(w, uuid.uuid4(), 'H-Y', tel=TEL)
@@ -273,6 +384,13 @@ priv = cu.fetchall()
 check('S1. EXECUTE solo para service_role (anon y authenticated no pueden llamar ni reclamar ni normalizar)', priv == [(False, False), (False, False), (True, True)], str(priv))
 cu.execute("select prosecdef, proconfig from pg_proc where proname='reclamar_operacion_pedido'"); sd = cu.fetchone()
 check('S2. SECURITY DEFINER con search_path fijo (pg_catalog, pg_temp)', sd[0] is True and any('pg_catalog' in x for x in sd[1]), str(sd))
+cu = connect(db).cursor()
+cu.execute("select has_table_privilege('anon','public.pedido_revisiones_duplicado','select'), has_table_privilege('authenticated','public.pedido_revisiones_duplicado','select'), has_table_privilege('service_role','public.pedido_revisiones_duplicado','select'), has_table_privilege('service_role','public.pedido_revisiones_duplicado','insert')")
+tp = cu.fetchone()
+cu.execute("select relrowsecurity from pg_class where oid='public.pedido_revisiones_duplicado'::regclass"); rls = cu.fetchone()[0]
+cu.execute("select has_function_privilege('anon','public.resolver_revision_duplicado(uuid,uuid,text,uuid,text)','execute'), has_function_privilege('authenticated','public.resolver_revision_duplicado(uuid,uuid,text,uuid,text)','execute'), has_function_privilege('service_role','public.resolver_revision_duplicado(uuid,uuid,text,uuid,text)','execute'), has_function_privilege('anon','public.pedidos_en_revision(uuid,uuid[])','execute'), has_function_privilege('authenticated','public.pedidos_en_revision(uuid,uuid[])','execute'), has_function_privilege('service_role','public.pedidos_en_revision(uuid,uuid[])','execute')")
+fp = cu.fetchone()
+check('S1b. la tabla de revisiones y sus funciones: SOLO service_role (anon y authenticated no leen ni resuelven) y la tabla tiene RLS activada', tp == (False, False, True, True) and rls is True and fp == (False, False, True, False, False, True), f'{tp} {rls} {fp}')
 c = fresh('blq_pre1'); err, _ = aplicar(c, NUEVO)
 check('S3. sin pedidos-repetidos.sql aplicado, el script aborta con PRECHECK y no deja nada', err is not None and 'PRECHECK' in err, (err or '')[:90])
 c = fresh('blq_pre2')
@@ -311,6 +429,8 @@ c.execute("select count(*) from pedido_operaciones"); nop = c.fetchone()[0]
 c.execute("select has_function_privilege('anon','reclamar_operacion_pedido(uuid,uuid,uuid,text,text,text,uuid,boolean)','execute'), has_function_privilege('service_role','reclamar_operacion_pedido(uuid,uuid,uuid,text,text,text,uuid,boolean)','execute')"); pv = c.fetchone()
 check('R1. reversión: vuelve UNA función de 8 parámetros con el cuerpo EXACTO (md5 idéntico al de pedidos-repetidos.sql), sin columnas ni función de teléfono', err is None and n == (1, 8) and md5_rev == md5_orig and ncol == 0 and nn == 0, f'{err} {n} {md5_rev == md5_orig} cols={ncol}')
 check('R2. la reversión NO borra pedidos ni operaciones y deja los permisos correctos', npd == 1 and nop == 1 and pv == (False, True), f'pedidos={npd} ops={nop} {pv}')
+c.execute("select to_regclass('public.pedido_revisiones_duplicado') is null, (select count(*) from pg_proc where proname in ('resolver_revision_duplicado','pedidos_en_revision'))"); rv_gone = c.fetchone()
+check('R5. la reversión borra la tabla de revisiones y sus dos funciones (y SOLO eso: pedidos y operaciones siguen)', err is None and rv_gone == (True, 0) and npd == 1 and nop == 1, str(rv_gone))
 err2, _ = aplicar(c, NUEVO); c.execute("select count(*), max(pronargs) from pg_proc where proname='reclamar_operacion_pedido'")
 check('R3. después de revertir se puede re-aplicar el bloqueo', err2 is None and c.fetchone() == (1, 10))
 err3, _ = aplicar(c, REVERSION); err4, _ = aplicar(c, REVERSION)

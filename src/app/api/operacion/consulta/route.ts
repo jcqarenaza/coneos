@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { esUuid, firmarCaptura, resumirCaptura, TTL_URL_FIRMADA_SEG } from '@/lib/storage'
+import { revisionesParaCaja, itemsComparables, resolverRevision, marcarReembolsoGestionado, type Db } from '@/lib/pedidos/revision'
 
 // Datos de las pantallas de OPERACIÓN (caja/preparación/display), server-side.
 // Estas pantallas no tienen sesión de auth propia: sus consultas directas a la
@@ -64,7 +65,34 @@ export async function POST(request: Request) {
     const { data: empCfg } = await supabase.from('empresa_config')
       .select('modulos').eq('empresa_id', disp.empresa_id).maybeSingle()
     const repartoOn = (empCfg?.modulos as Record<string, unknown> | null)?.reparto === true
-    return NextResponse.json({ reparto_on: repartoOn, pedidos: (pedidos ?? []).map(p => resumirCaptura(p, empresaId)), colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta }, comanda_auto: sucCfg?.comanda_auto ?? false, ticket_auto: sucCfg?.ticket_auto ?? false })
+    // REVISIÓN DE POSIBLE DUPLICADO (CTO 14/11): los pedidos retenidos viajan con su `revision` (candidatos + comparación con datos reales).
+    // Solo los de la sucursal del dispositivo. Si no se pudo leer (error ≠ SQL sin aplicar) `revisiones_error` avisa a la Caja: NO se oculta ni se inventa.
+    const lista = (pedidos ?? []) as unknown as (Parameters<typeof resumirCaptura>[0] & { pedido_items?: Parameters<typeof itemsComparables>[0] })[]
+    const revs = await revisionesParaCaja(supabase as unknown as Db, { empresa_id: empresaId, sucursal_id: sucursalId, pedidos: lista.map(p => ({ id: p.id, items: itemsComparables(p.pedido_items) })) })
+    const pedidosOut = lista.map(p => resumirCaptura({ ...p, revision: revs?.get(p.id) ?? null }, empresaId))
+    return NextResponse.json({ reparto_on: repartoOn, pedidos: pedidosOut, ...(revs === null ? { revisiones_error: true } : {}), colaboradores: colaboradores ?? [], stock_alertas: { agotados: stockAgotados, bajos: stockBajos, items: enAlerta }, comanda_auto: sucCfg?.comanda_auto ?? false, ticket_auto: sucCfg?.ticket_auto ?? false })
+  }
+
+  // ── REVISIÓN DE POSIBLE DUPLICADO: Luci resuelve (CTO 14/11) ──
+  // Solo un dispositivo CAJA activo de la sucursal del pedido. LEGITIMO libera el pedido (y reanuda el circuito si MP ya había cobrado);
+  // DUPLICADO lo deja marcado, devuelve stock y sabores con las funciones existentes y, si ya estaba pagado por MP, deja el reembolso MANUAL pendiente.
+  if (accion === 'revision_resolver' || accion === 'revision_reembolso') {
+    const { data: dtipo } = await supabase.from('dispositivos').select('tipo').eq('id', dispositivo_id).maybeSingle()
+    if ((dtipo as { tipo?: string } | null)?.tipo !== 'CAJA') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    if (!esUuid(body.pedido_id)) return NextResponse.json({ error: 'pedido_id requerido' }, { status: 400 })
+    const { data: ped } = await supabase.from('pedidos').select('id, empresa_id, sucursal_id').eq('id', body.pedido_id).maybeSingle()
+    if (!ped || ped.empresa_id !== empresaId || ped.sucursal_id !== sucursalId) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    const operador = esUuid(body.operador_id) ? body.operador_id : null
+    if (accion === 'revision_reembolso') {
+      const r = await marcarReembolsoGestionado(supabase as unknown as Db, { empresa_id: empresaId, pedido_id: body.pedido_id, operador_id: operador })
+      return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: r.error }, { status: 409 })
+    }
+    const r = await resolverRevision(supabase as unknown as Db, {
+      empresa_id: empresaId, pedido_id: body.pedido_id, resolucion: String(body.resolucion ?? ''), operador_id: operador, dispositivo_id: String(dispositivo_id),
+      nota: typeof body.nota === 'string' ? body.nota.slice(0, 500) : null,
+    })
+    if (!r.ok) return NextResponse.json({ error: r.error, codigo: r.codigo, resolucion: r.resolucion }, { status: r.status })
+    return NextResponse.json({ ok: true, resolucion: r.resolucion, ya_resuelta: r.ya_resuelta, reembolso_pendiente: r.reembolso_pendiente, reanudado: r.reanudado })
   }
 
   if (accion === 'historial') {

@@ -17,15 +17,18 @@
 --       p_confirmar_otro  boolean default false  → la excepción explícita "Es otro pedido, continuar" (solo nivel 2).
 --     El MODO BLOQUEO se activa solo si: alcance = true  Y  llave de la empresa = true  Y  prevenir_pedidos_repetidos = true.
 --     Fuera de ese modo la función se comporta EXACTAMENTE como antes (kiosco, caja, mesas, y toda empresa con la llave apagada).
---       NIVEL 1 · contenido idéntico (misma huella, ventana pedidos_repetidos_minutos, misma identidad) con un pedido ACTIVO →
---                 'BLOQUEADO_IDENTICO'. Sin excepción posible: ni confirmar_advertencia ni confirmar_otro lo saltean.
---       NIVEL 2 · mismo TELÉFONO NORMALIZADO, contenido distinto, con un pedido ACTIVO dentro de pedido_activo_ventana_horas →
---                 'PEDIDO_ACTIVO'. Solo se puede continuar con la excepción explícita (p_confirmar_otro) sobre la MISMA operación
---                 que el servidor ya advirtió (estado ADVERTIDA), igual que la confirmación actual.
+--       AVISO (CTO 14/11, D1 — reemplaza al bloqueo duro del 13/11): mismo TELÉFONO NORMALIZADO (ventana pedido_activo_ventana_horas) o, sin
+--                 teléfono, misma identidad existente + misma huella (ventana pedidos_repetidos_minutos), con un pedido ACTIVO →
+--                 'PEDIDO_ACTIVO' con 'coincidencia' = IDENTICA | DISTINTA. Ya no hay bloqueo duro: el cliente puede continuar con la excepción
+--                 explícita (p_confirmar_otro) sobre la MISMA operación que el servidor ya advirtió (estado ADVERTIDA).
+--                 Al continuar se registra la relación en pedido_revisiones_duplicado (PENDIENTE) y la COMPUERTA del servidor impide
+--                 que ese pedido se cobre, se prepare o se facture hasta que Luci lo resuelva en Vista Caja (LEGITIMO / DUPLICADO).
+--                 Esto SOLO es seguro con la compuerta desplegada (api/pedidos/estado, api/mp/webhook, asignar_cadete): activar la llave
+--                 DESPUÉS de desplegar el código.
 --  4. ATOMICIDAD: en modo bloqueo con teléfono, la función toma un advisory lock por (empresa, sucursal, teléfono normalizado)
 --     ANTES del lock por contenido ya existente (orden fijo: teléfono → huella; ninguna otra función los toma al revés).
 --     Dos solicitudes simultáneas del mismo teléfono —con igual o distinto contenido— pasan de a una: la segunda ve la operación
---     EN_CURSO de la primera (ya commiteada al volver la RPC) y recibe BLOQUEADO_IDENTICO / PEDIDO_ACTIVO.
+--     EN_CURSO de la primera (ya commiteada al volver la RPC) y recibe PEDIDO_ACTIVO.
 --  5. PRIVACIDAD (corrección CTO 14/11): la coincidencia de TELÉFONO detecta el pedido activo pero NO autoriza a verlo.
 --     'existente' devuelve pedido_id / numero_pedido / estado SOLO si el pedido encontrado es del MISMO VISITANTE (el mismo navegador
 --     que lo creó; id_visitante idéntico). Si coincide solo el teléfono —otro visitante, otro navegador, un familiar o alguien que
@@ -38,8 +41,7 @@
 --     PAID (pagado, todavía sin preparar) EXISTE en la base real (6 pedidos) y el CTO pidió revisarlo: se INCLUYE.
 --   · NO cuentan: CANCELLED (y cualquier rechazado), DELIVERED/finalizado, pedido eliminado (la fila no existe).
 --   · Una operación EN_CURSO sin pedido todavía cuenta durante 90 s (es la carrera: la primera ya reclamó y está creando el pedido).
---   · En modo bloqueo el NIVEL 1 también usa solo estados activos (el modo anterior contaba también DELIVERED dentro de la ventana):
---     un bloqueo duro sin salida no puede impedir pedir de nuevo lo mismo a quien ya recibió su pedido (prueba 5 del CTO).
+--   · En modo bloqueo el contenido idéntico también compara solo contra pedidos activos (el modo anterior contaba también DELIVERED dentro de la ventana).
 --
 -- QUÉ NO TOCA: crear_pedido_stock, descontar/devolver_sabores_pedido, el modelo de stock, completar_/liberar_/purgar_,
 --   la tabla pedido_operaciones (salvo un índice), la lógica de idempotencia ni el comportamiento fail-closed.
@@ -74,6 +76,14 @@ begin
   end loop;
   if not exists (select 1 from pg_proc p where p.pronamespace='public'::regnamespace and p.proname='reclamar_operacion_pedido') then
     raise exception 'PRECHECK: no existe reclamar_operacion_pedido (aplicar antes pedidos-repetidos.sql)'; end if;
+  -- tabla y funciones de revisión (CTO 14/11): si existen, tienen que ser de este script
+  if to_regclass('public.pedido_revisiones_duplicado') is not null
+     and coalesce(obj_description(to_regclass('public.pedido_revisiones_duplicado'), 'pg_class'), '') <> 'coneos:pedidos-bloqueo-13-11' then
+    raise exception 'PRECHECK: ya existe public.pedido_revisiones_duplicado y NO es de este script; no se pisa'; end if;
+  for r in select p.oid::regprocedure as f, obj_description(p.oid,'pg_proc') as c from pg_proc p
+            where p.pronamespace='public'::regnamespace and p.proname in ('resolver_revision_duplicado','pedidos_en_revision') loop
+    if coalesce(r.c,'') <> 'coneos:pedidos-bloqueo-13-11' then raise exception 'PRECHECK: ya existe % y NO es de este script; no se pisa', r.f; end if;
+  end loop;
   -- función auxiliar homónima: solo si es nuestra
   for r in select p.oid::regprocedure as f, obj_description(p.oid,'pg_proc') as c from pg_proc p
             where p.pronamespace='public'::regnamespace and p.proname='normalizar_telefono_pedido' loop
@@ -127,6 +137,77 @@ do $idx$ begin
   end if;
 end $idx$;
 
+-- 3b) REVISIÓN DE POSIBLE DUPLICADO (CTO 14/11) ------------------------------------------------
+-- Una fila por operación que el cliente confirmó con «Es otro pedido, continuar» teniendo un pedido activo del mismo teléfono.
+-- Se relaciona con el pedido nuevo por pedidos.operacion_id (la fila nace ANTES que el pedido, en el mismo reclamo atómico) y con los
+-- candidatos por pedido_operaciones.operacion_id. NO vive en pedido_operaciones porque purgar_operaciones_pedido borra a los 30 días.
+-- Solo service_role: ni el navegador ni el cliente leen esta tabla (RLS activada y sin políticas).
+create table if not exists public.pedido_revisiones_duplicado (
+  id uuid primary key default gen_random_uuid(),
+  empresa_id uuid not null references public.empresas(id),
+  sucursal_id uuid not null references public.sucursales(id),
+  operacion_id uuid not null,
+  candidatos uuid[] not null default '{}',                       -- operacion_id de los pedidos activos detectados (el primero es el mejor candidato)
+  coincidencia text not null check (coincidencia in ('IDENTICA','DISTINTA')),
+  estado text not null default 'PENDIENTE' check (estado in ('PENDIENTE','LEGITIMO','DUPLICADO')),
+  creado_at timestamptz not null default now(),
+  resuelto_at timestamptz, resuelto_por uuid, nota text,
+  stock_devuelto_at timestamptz,                                 -- DUPLICADO: cuándo se devolvió stock+sabores (null = pendiente / no aplica)
+  reanudado_at timestamptz,                                      -- LEGITIMO de un pedido ya pagado por MP: cuándo se reanudó el circuito
+  reembolso_pendiente boolean not null default false,            -- DUPLICADO ya pagado por MP: la devolución en Mercado Pago es MANUAL
+  reembolso_gestionado_at timestamptz, reembolso_gestionado_por uuid,
+  constraint pedido_revisiones_duplicado_resuelto_coherente check ((estado = 'PENDIENTE') = (resuelto_at is null)),
+  constraint pedido_revisiones_duplicado_op_uk unique (empresa_id, operacion_id)
+);
+comment on table public.pedido_revisiones_duplicado is 'coneos:pedidos-bloqueo-13-11';
+create index if not exists idx_pedido_revisiones_pendientes on public.pedido_revisiones_duplicado (empresa_id, sucursal_id) where estado = 'PENDIENTE';
+create index if not exists idx_pedido_revisiones_reembolso on public.pedido_revisiones_duplicado (empresa_id, sucursal_id) where reembolso_pendiente and reembolso_gestionado_at is null;
+alter table public.pedido_revisiones_duplicado enable row level security;
+revoke all on table public.pedido_revisiones_duplicado from public, anon, authenticated;
+grant select, insert, update on table public.pedido_revisiones_duplicado to service_role;
+
+-- ¿Qué pedidos de la lista están RETENIDOS por una revisión? (compuerta de preparación: api/pedidos/estado, api/mp/webhook, asignar_cadete)
+-- PENDIENTE: Luci todavía no decidió. DUPLICADO: decidió que es un duplicado — el pedido conserva su estado pero NUNCA debe cobrarse ni prepararse
+-- (por ejemplo, si el cliente igual paga por Mercado Pago después). LEGITIMO libera el pedido y no figura acá.
+drop function if exists public.pedidos_en_revision(uuid, uuid[]);
+create or replace function public.pedidos_en_revision(p_empresa uuid, p_pedidos uuid[])
+ returns table (pedido_id uuid, revision_estado text) language sql stable security definer set search_path to pg_catalog, pg_temp
+as $$
+  select p.id, r.estado from public.pedidos p
+    join public.pedido_revisiones_duplicado r on r.empresa_id = p.empresa_id and r.operacion_id = p.operacion_id
+   where p.empresa_id = p_empresa and p.id = any (p_pedidos) and r.estado in ('PENDIENTE','DUPLICADO')
+$$;
+comment on function public.pedidos_en_revision(uuid, uuid[]) is 'coneos:pedidos-bloqueo-13-11';
+revoke all on function public.pedidos_en_revision(uuid, uuid[]) from public, anon, authenticated;
+grant execute on function public.pedidos_en_revision(uuid, uuid[]) to service_role;
+
+-- Resolución de Luci. ATÓMICA y de una sola vez: PENDIENTE → LEGITIMO | DUPLICADO bajo FOR UPDATE; un segundo intento no repite nada.
+-- NO toca el pedido, el stock, los pagos ni las facturas: eso lo hace el servidor DESPUÉS, con las funciones existentes (ver api/operacion/consulta).
+create or replace function public.resolver_revision_duplicado(p_empresa uuid, p_pedido uuid, p_resolucion text, p_operador uuid default null, p_nota text default null)
+ returns jsonb language plpgsql security definer set search_path to pg_catalog, pg_temp
+as $$
+declare v_r public.pedido_revisiones_duplicado%rowtype; v_ped record; v_reemb boolean;
+begin
+  if p_resolucion is null or p_resolucion not in ('LEGITIMO','DUPLICADO') then raise exception 'RESOLUCION_INVALIDA' using errcode = 'P0001'; end if;
+  select p.id, p.estado, p.metodo_pago, p.mp_payment_id, p.operacion_id into v_ped from public.pedidos p where p.id = p_pedido and p.empresa_id = p_empresa;
+  if v_ped.id is null then return jsonb_build_object('estado', 'PEDIDO_NO_ENCONTRADO'); end if;
+  select * into v_r from public.pedido_revisiones_duplicado r where r.empresa_id = p_empresa and r.operacion_id = v_ped.operacion_id for update;
+  if v_r.id is null then return jsonb_build_object('estado', 'SIN_REVISION'); end if;
+  if v_r.estado <> 'PENDIENTE' then       -- ya resuelta: idempotente, NO se repite nada
+    return jsonb_build_object('estado', case when v_r.estado = p_resolucion then 'YA_RESUELTA' else 'YA_RESUELTA_DISTINTA' end, 'resolucion', v_r.estado,
+      'stock_devuelto_at', v_r.stock_devuelto_at, 'reanudado_at', v_r.reanudado_at, 'reembolso_pendiente', v_r.reembolso_pendiente, 'revision_id', v_r.id);
+  end if;
+  -- 'pagado' nace TRUE en no-mesa aunque MP no haya cobrado: el pago REAL es mp_payment_id (lo graba el webhook al confirmar)
+  v_reemb := p_resolucion = 'DUPLICADO' and v_ped.metodo_pago = 'mp' and nullif(btrim(coalesce(v_ped.mp_payment_id, '')), '') is not null;
+  update public.pedido_revisiones_duplicado
+     set estado = p_resolucion, resuelto_at = now(), resuelto_por = p_operador, nota = nullif(btrim(coalesce(p_nota, '')), ''), reembolso_pendiente = v_reemb
+   where id = v_r.id;
+  return jsonb_build_object('estado', 'RESUELTA', 'resolucion', p_resolucion, 'reembolso_pendiente', v_reemb, 'revision_id', v_r.id);
+end $$;
+comment on function public.resolver_revision_duplicado(uuid, uuid, text, uuid, text) is 'coneos:pedidos-bloqueo-13-11';
+revoke all on function public.resolver_revision_duplicado(uuid, uuid, text, uuid, text) from public, anon, authenticated;
+grant execute on function public.resolver_revision_duplicado(uuid, uuid, text, uuid, text) to service_role;
+
 -- 4) reclamar_operacion_pedido v2 (10 parámetros) ------------------------------------
 drop function if exists public.reclamar_operacion_pedido(uuid, uuid, uuid, text, text, text, uuid, boolean);
 
@@ -144,6 +225,7 @@ declare
   v_op record; v_dup record; v_tel text := nullif(regexp_replace(coalesce(p_telefono,''), '\D', '', 'g'), '');
   v_tel_n text := public.normalizar_telefono_pedido(p_telefono);
   v_vis text := nullif(p_visitante, ''); v_ped_id uuid; v_mismo boolean := false;
+  v_cands uuid[] := array[]::uuid[]; v_row record; v_hay boolean := false; v_ident boolean := false;
   v_activos constant text[] := array['PENDING_PAYMENT','PAID','PREPARING','READY'];
 begin
   if p_empresa_id is null or p_sucursal_id is null or p_operacion_id is null or coalesce(p_huella,'') = '' then
@@ -198,63 +280,66 @@ begin
   end if;
 
   if v_modo then
-    -- NIVEL 1 · mismo contenido, misma persona, pedido ACTIVO, dentro de la ventana de minutos → bloqueo duro (sin salida)
-    select o.operacion_id, p.id as pedido_id, p.numero_pedido, p.estado as estado_pedido, o.id_visitante as vis_existente into v_dup
-      from public.pedido_operaciones o
-      left join public.pedidos p on p.empresa_id = o.empresa_id and p.operacion_id = o.operacion_id
-     where o.empresa_id = p_empresa_id and o.sucursal_id = p_sucursal_id and o.huella = p_huella
-       and o.operacion_id <> p_operacion_id
-       and o.estado in ('EN_CURSO','COMPLETADA')
-       and o.created_at >= now() - make_interval(mins => v_min)
-       and ((p.id is not null and p.estado = any (v_activos))
-            or (p.id is null and o.estado = 'EN_CURSO' and o.updated_at >= now() - interval '90 seconds'))
-       and case
-             when v_tel is not null and o.id_telefono is not null
-               then (o.id_telefono = v_tel or public.normalizar_telefono_pedido(o.id_telefono) = v_tel_n)
-             when v_vis is not null and o.id_visitante is not null then o.id_visitante = v_vis
-             when p_dispositivo_id is not null and o.id_dispositivo is not null
-                  and v_tel is null and v_vis is null and o.id_telefono is null and o.id_visitante is null then o.id_dispositivo = p_dispositivo_id
-             else false
-           end
-     order by (v_vis is not null and o.id_visitante = v_vis) desc, o.created_at desc limit 1;
-    if found then
-      v_mismo := v_vis is not null and v_dup.vis_existente is not distinct from v_vis;
-      return jsonb_build_object('estado', 'BLOQUEADO_IDENTICO', 'ventana_minutos', v_min,
-        'existente', jsonb_build_object('mismo_visitante', v_mismo) ||
-          case when v_mismo then jsonb_build_object('pedido_id', v_dup.pedido_id, 'numero_pedido', v_dup.numero_pedido, 'estado', v_dup.estado_pedido)
-               else '{}'::jsonb end);
-    end if;
-
-    -- NIVEL 2 · mismo TELÉFONO normalizado, contenido distinto, pedido ACTIVO dentro de la ventana de horas → advertencia fuerte
-    if v_tel_n is not null then
-      select o.operacion_id, p.id as pedido_id, p.numero_pedido, p.estado as estado_pedido, o.id_visitante as vis_existente into v_dup
+    -- CANDIDATOS (CTO 14/11, D1). Ya NO hay bloqueo duro: contenido idéntico o distinto, el cliente recibe el MISMO aviso y puede continuar con
+    -- «Es otro pedido, continuar»; la protección pasa a Vista Caja (pedido_revisiones_duplicado + compuerta de preparación en el servidor).
+    -- Candidato = pedido ACTIVO de la misma persona:
+    --   · por TELÉFONO normalizado dentro de pedido_activo_ventana_horas (cualquier contenido), o
+    --   · por la identidad existente (visitante / dispositivo, sin teléfono) con la MISMA huella dentro de pedidos_repetidos_minutos.
+    -- Orden: el del mismo visitante, luego el de contenido idéntico, luego el más reciente. Una operación EN_CURSO sin pedido todavía (carrera)
+    -- también es candidata (90 s): la relación se guarda por OPERACIÓN, que existe desde el reclamo, no por pedido.
+    for v_row in
+      select o.operacion_id, p.id as pedido_id, p.numero_pedido, p.estado as estado_pedido, o.id_visitante as vis_existente,
+             (o.huella = p_huella) as misma_huella
         from public.pedido_operaciones o
         left join public.pedidos p on p.empresa_id = o.empresa_id and p.operacion_id = o.operacion_id
        where o.empresa_id = p_empresa_id and o.sucursal_id = p_sucursal_id
          and o.operacion_id <> p_operacion_id
-         and o.id_telefono is not null
          and o.estado in ('EN_CURSO','COMPLETADA')
-         and o.created_at >= now() - make_interval(hours => v_horas)
-         and public.normalizar_telefono_pedido(o.id_telefono) = v_tel_n
          and ((p.id is not null and p.estado = any (v_activos))
               or (p.id is null and o.estado = 'EN_CURSO' and o.updated_at >= now() - interval '90 seconds'))
-       order by (v_vis is not null and o.id_visitante = v_vis) desc, o.created_at desc limit 1;
-      if found then
-        v_mismo := v_vis is not null and v_dup.vis_existente is not distinct from v_vis;
-        -- Excepción explícita ("Es otro pedido, continuar"): vale SOLO si el servidor YA advirtió esta misma operación (ADVERTIDA).
-        if coalesce(p_confirmar_otro, false) and v_op.estado = 'ADVERTIDA' then
-          update public.pedido_operaciones set estado = 'EN_CURSO', updated_at = now() where empresa_id = p_empresa_id and operacion_id = p_operacion_id;
-          return jsonb_build_object('estado', 'NUEVA', 'confirmada_otro', true);
-        end if;
-        if v_op.operacion_id is null then
-          insert into public.pedido_operaciones(empresa_id, operacion_id, sucursal_id, huella, id_telefono, id_visitante, id_dispositivo, estado)
-          values (p_empresa_id, p_operacion_id, p_sucursal_id, p_huella, v_tel, v_vis, p_dispositivo_id, 'ADVERTIDA');
-        end if;
-        return jsonb_build_object('estado', 'PEDIDO_ACTIVO', 'ventana_horas', v_horas,
-          'existente', jsonb_build_object('mismo_visitante', v_mismo) ||
-            case when v_mismo then jsonb_build_object('pedido_id', v_dup.pedido_id, 'numero_pedido', v_dup.numero_pedido, 'estado', v_dup.estado_pedido)
-                 else '{}'::jsonb end);
+         and (
+              (v_tel_n is not null and o.id_telefono is not null
+                 and o.created_at >= now() - make_interval(hours => v_horas)
+                 and public.normalizar_telefono_pedido(o.id_telefono) = v_tel_n)
+           or (o.huella = p_huella and o.created_at >= now() - make_interval(mins => v_min)
+                 and case
+                       when v_tel is not null and o.id_telefono is not null
+                         then (o.id_telefono = v_tel or public.normalizar_telefono_pedido(o.id_telefono) = v_tel_n)
+                       when v_vis is not null and o.id_visitante is not null then o.id_visitante = v_vis
+                       when p_dispositivo_id is not null and o.id_dispositivo is not null
+                            and v_tel is null and v_vis is null and o.id_telefono is null and o.id_visitante is null then o.id_dispositivo = p_dispositivo_id
+                       else false
+                     end)
+             )
+       order by (v_vis is not null and o.id_visitante = v_vis) desc, (o.huella = p_huella) desc, o.created_at desc
+    loop
+      v_cands := v_cands || v_row.operacion_id;
+      if not v_hay then v_dup := v_row; v_hay := true; end if;
+      if v_row.misma_huella then v_ident := true; end if;
+    end loop;
+
+    if v_hay then
+      v_mismo := v_vis is not null and v_dup.vis_existente is not distinct from v_vis;
+      -- Excepción explícita ("Es otro pedido, continuar"): vale SOLO si el servidor YA advirtió esta misma operación (ADVERTIDA).
+      if coalesce(p_confirmar_otro, false) and v_op.estado = 'ADVERTIDA' then
+        update public.pedido_operaciones set estado = 'EN_CURSO', updated_at = now() where empresa_id = p_empresa_id and operacion_id = p_operacion_id;
+        -- Relación pedido nuevo ↔ candidatos: se registra ACÁ, en la misma transacción y bajo los mismos locks (teléfono → contenido) que el reclamo,
+        -- antes de que exista el pedido. El pedido se enlaza después por pedidos.operacion_id. Idempotente (reintentos de la misma operación).
+        insert into public.pedido_revisiones_duplicado (empresa_id, sucursal_id, operacion_id, candidatos, coincidencia)
+        values (p_empresa_id, p_sucursal_id, p_operacion_id, v_cands, case when v_ident then 'IDENTICA' else 'DISTINTA' end)
+        on conflict (empresa_id, operacion_id) do nothing;
+        return jsonb_build_object('estado', 'NUEVA', 'confirmada_otro', true);
       end if;
+      if v_op.operacion_id is null then
+        insert into public.pedido_operaciones(empresa_id, operacion_id, sucursal_id, huella, id_telefono, id_visitante, id_dispositivo, estado)
+        values (p_empresa_id, p_operacion_id, p_sucursal_id, p_huella, v_tel, v_vis, p_dispositivo_id, 'ADVERTIDA');
+      end if;
+      -- PRIVACIDAD (CTO 14/11): pedido_id / numero_pedido / estado SOLO si el pedido es del mismo visitante.
+      return jsonb_build_object('estado', 'PEDIDO_ACTIVO', 'ventana_horas', v_horas,
+        'coincidencia', case when v_ident then 'IDENTICA' else 'DISTINTA' end,
+        'existente', jsonb_build_object('mismo_visitante', v_mismo) ||
+          case when v_mismo then jsonb_build_object('pedido_id', v_dup.pedido_id, 'numero_pedido', v_dup.numero_pedido, 'estado', v_dup.estado_pedido)
+               else '{}'::jsonb end);
     end if;
   elsif v_activo then
     -- Comportamiento ANTERIOR, sin cambios (kiosco, caja, mesas, empresas con la llave apagada)

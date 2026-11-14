@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { acreditarPuntosPedido } from '@/lib/beneficios'
 import { buscarPaymentPorPedido } from '@/lib/pagos/mp'
 import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
+import { pedidosRetenidos, CODIGO_RETENIDO, MENSAJE_RETENIDO, type Db } from '@/lib/pedidos/revision'
 
 // GET ?pedido_id= → estado mínimo del pedido, para que kiosk/delivery (anónimos)
 // detecten el pago MP y muestren número y código de retiro.
@@ -59,6 +60,16 @@ export async function POST(request: Request) {
     .single()
   if (!pedido) {
     return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
+  }
+
+  // ══ COMPUERTA DE REVISIÓN DE DUPLICADO (CTO 14/11, D3) ══
+  // Un pedido con revisión PENDIENTE (o resuelta como DUPLICADO) NO se puede cobrar, preparar, dejar listo ni entregar desde acá.
+  // Cancelar queda libre (no avanza el circuito). Antes de cualquier consulta a MP, escritura o facturación. Si no se puede saber
+  // (error de lectura) FAIL-CLOSED: el pedido no avanza. Sin el SQL aplicado la compuerta no encuentra nada y el flujo es el de siempre.
+  if (estado_nuevo !== 'CANCELLED') {
+    const ret = await pedidosRetenidos(supabase as unknown as Db, pedido.empresa_id, [pedido_id])
+    if (!ret.ok) return NextResponse.json({ error: 'No se pudo verificar la revisión de duplicado. Reintentá.' }, { status: 503 })
+    if (ret.retenidos.has(pedido_id)) return NextResponse.json({ error: MENSAJE_RETENIDO, codigo: CODIGO_RETENIDO, revision_estado: ret.retenidos.get(pedido_id) }, { status: 409 })
   }
 
   // ══ AUDITORÍA B — VALIDACIÓN MANUAL DE MP (decisiones CTO a-d) ══
