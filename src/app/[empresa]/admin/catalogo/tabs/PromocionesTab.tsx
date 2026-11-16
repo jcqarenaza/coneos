@@ -19,6 +19,7 @@ import { ConeModal, ConeButton, ConeBadge } from '@/components/admin/ConeCompone
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Plus, Loader2, Pencil, Trash2, Upload, X } from 'lucide-react'
+import { textoVigencia } from '@/lib/promos/vigencia'
 
 interface Producto { id: string; nombre: string; activo: boolean; categoria_id: string | null; orden: number | null }
 interface Categoria { id: string; nombre: string; orden: number | null }
@@ -28,6 +29,7 @@ interface Promo {
   id: string; nombre: string; descripcion: string | null; imagen_url: string | null
   precio: number; precio_regular: number | null
   vigencia_desde: string | null; vigencia_hasta: string | null
+  hora_desde: string | null; hora_hasta: string | null  // 'HH:MM:SS' (opcionales)
   visible_kiosk: boolean; visible_delivery: boolean; visible_mesa: boolean; visible_takeaway: boolean
   es_novedad: boolean; activo: boolean
   promo_slots: { id: string; orden: number; titulo: string; cantidad?: number | null; promo_slot_presentaciones: { presentacion_id: string }[] }[]
@@ -36,7 +38,7 @@ interface Promo {
 const emptyForm = () => ({
   nombre: '', descripcion: '', imagen_url: null as string | null,
   precio: '',
-  vigencia_desde: '', vigencia_hasta: '',
+  vigencia_desde: '', vigencia_hasta: '', hora_desde: '', hora_hasta: '',
   visible_kiosk: true, visible_delivery: true, visible_mesa: true, visible_takeaway: true,
   es_novedad: false, activo: true,
 })
@@ -113,6 +115,7 @@ export default function PromocionesTab() {
       nombre: p.nombre, descripcion: p.descripcion ?? '', imagen_url: p.imagen_url,
       precio: String(p.precio),
       vigencia_desde: p.vigencia_desde ?? '', vigencia_hasta: p.vigencia_hasta ?? '',
+      hora_desde: (p.hora_desde ?? '').slice(0, 5), hora_hasta: (p.hora_hasta ?? '').slice(0, 5),
       visible_kiosk: p.visible_kiosk, visible_delivery: p.visible_delivery, visible_mesa: p.visible_mesa, visible_takeaway: p.visible_takeaway,
       es_novedad: p.es_novedad, activo: p.activo,
     })
@@ -138,16 +141,23 @@ export default function PromocionesTab() {
     if (!form.nombre.trim()) { avisar('Poné un nombre a la promo.'); return }
     if (!Number.isFinite(precio) || precio <= 0) { avisar('El precio del combo debe ser mayor a 0.'); return }
     if (form.vigencia_desde && form.vigencia_hasta && form.vigencia_hasta < form.vigencia_desde) { avisar('La vigencia "hasta" no puede ser anterior a "desde".'); return }
+    if (form.hora_desde && !form.vigencia_desde) { avisar('Para poner hora de inicio, elegí también la fecha "desde".'); return }
+    if (form.hora_hasta && !form.vigencia_hasta) { avisar('Para poner hora de cierre, elegí también la fecha "hasta".'); return }
+    if (form.vigencia_desde && form.vigencia_desde === form.vigencia_hasta && form.hora_desde && form.hora_hasta && form.hora_hasta <= form.hora_desde) { avisar('Si es el mismo día, la hora de cierre debe ser posterior a la de inicio.'); return }
     if (slots.length === 0) { avisar('El combo necesita al menos un componente.'); return }
     if (slots.some(s => s.presentacion_ids.length === 0)) { avisar('Cada componente necesita al menos una presentación permitida.'); return }
 
     setSaving(true)
     const supabase = createClient()
+    const original = editId ? promos.find(x => x.id === editId) : undefined
     const body = {
       empresa_id: ctx.empresaId,
       nombre: form.nombre.trim(), descripcion: form.descripcion.trim() || null, imagen_url: form.imagen_url,
       precio, precio_regular: precioRegular,
       vigencia_desde: form.vigencia_desde || null, vigencia_hasta: form.vigencia_hasta || null,
+      // Las columnas de hora solo se envían si hay hora (o si la promo ya la tenía, para poder limpiarla): así guardar promos sin hora sigue funcionando aunque la migración no esté aplicada.
+      ...(form.hora_desde || original?.hora_desde ? { hora_desde: form.vigencia_desde && form.hora_desde ? form.hora_desde : null } : {}),
+      ...(form.hora_hasta || original?.hora_hasta ? { hora_hasta: form.vigencia_hasta && form.hora_hasta ? form.hora_hasta : null } : {}),
       visible_kiosk: form.visible_kiosk, visible_delivery: form.visible_delivery, visible_mesa: form.visible_mesa, visible_takeaway: form.visible_takeaway,
       es_novedad: form.es_novedad, activo: form.activo,
     }
@@ -238,7 +248,7 @@ export default function PromocionesTab() {
                   <span className="font-bold text-neutral-800">{fmt(p.precio)}</span>
                   {(p.vigencia_desde || p.vigencia_hasta) && (
                     <span className="text-neutral-400 ml-2 text-xs">
-                      {p.vigencia_desde ? `desde ${p.vigencia_desde}` : ''}{p.vigencia_desde && p.vigencia_hasta ? ' · ' : ''}{p.vigencia_hasta ? `hasta ${p.vigencia_hasta}` : ''}
+                      {p.vigencia_desde ? `desde ${textoVigencia(p.vigencia_desde, p.hora_desde)}` : ''}{p.vigencia_desde && p.vigencia_hasta ? ' · ' : ''}{p.vigencia_hasta ? `hasta ${textoVigencia(p.vigencia_hasta, p.hora_hasta)}` : ''}
                     </span>
                   )}
                 </p>
@@ -288,12 +298,19 @@ export default function PromocionesTab() {
             </div>
             <div>
               <Label>Vigente desde (opcional)</Label>
-              <Input type="date" value={form.vigencia_desde} onChange={e => setForm(f => ({ ...f, vigencia_desde: e.target.value }))} />
+              <div className="flex gap-2">
+                <Input type="date" value={form.vigencia_desde} onChange={e => setForm(f => ({ ...f, vigencia_desde: e.target.value }))} />
+                <Input type="time" aria-label="Hora de inicio" value={form.hora_desde} onChange={e => setForm(f => ({ ...f, hora_desde: e.target.value }))} className="w-32" />
+              </div>
             </div>
             <div>
               <Label>Vigente hasta (opcional)</Label>
-              <Input type="date" value={form.vigencia_hasta} onChange={e => setForm(f => ({ ...f, vigencia_hasta: e.target.value }))} />
+              <div className="flex gap-2">
+                <Input type="date" value={form.vigencia_hasta} onChange={e => setForm(f => ({ ...f, vigencia_hasta: e.target.value }))} />
+                <Input type="time" aria-label="Hora de cierre" value={form.hora_hasta} onChange={e => setForm(f => ({ ...f, hora_hasta: e.target.value }))} className="w-32" />
+              </div>
             </div>
+            <p className="col-span-2 -mt-1 text-xs text-neutral-400">La hora es opcional. Sin hora, la promo rige desde el comienzo del día de inicio hasta el final del día de cierre. Ejemplo: desde 18/11 18:00 hasta 19/11 02:00.</p>
           </div>
 
           {rango && Number(form.precio) > 0 && (
