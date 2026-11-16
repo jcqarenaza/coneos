@@ -6,6 +6,7 @@ import { facturarSiCorresponde } from '@/lib/facturacion/facturar'
 import { estaAbierto, diaOperativo, diaHabilita, diaSemanaAR, horaMinutosAR, type Franja, type HorarioPorDia } from '@/lib/horarios'
 import { canalDePedido } from '@/lib/pagos/mp'
 import { calcularHuella, reclamarOperacion, soloDigitos, esUuid, errorProbadoSinPedido, MENSAJE_REPETIDO, MENSAJE_PEDIDO_ACTIVO, esAlcanceBloqueo, leerLlaveBloqueo } from '@/lib/pedidos/repetidos'
+import { promoPedible, type VigenciaPromo } from '@/lib/promos/vigencia'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -290,13 +291,30 @@ export async function POST(request: Request) {
     const promoIds = [...new Set(itemsIn.filter(i => i.promo_id).map(i => String(i.promo_id)))]
     const presIds = [...new Set(itemsIn.filter(i => i.combo_ref).map(i => String(i.presentacion_id)))]
     const opIds = [...new Set(itemsIn.filter(i => i.combo_ref).flatMap(i => (i.opciones ?? []).map(o => o.opcion_id)))]
+    // Vigencia de la promo AL CREAR EL PEDIDO (fecha y hora de Argentina; margen al cierre configurable por promo, 5 min por defecto).
+    // Si las migraciones de horas / margen aún no están aplicadas, degrada sin romper.
+    const consultaPromo = (cols: string) => supabase.from('promociones').select(cols).in('id', promoIds).eq('empresa_id', empresa_id)
+    const SEL_PV = 'id, nombre, precio, activo, vigencia_desde, vigencia_hasta, hora_desde, hora_hasta, gracia_cierre_min'
+    const consultaPromos = async () => {
+      // Intenta con todo; si faltan columnas de migraciones aún no aplicadas, degrada de a una.
+      for (const cols of [SEL_PV, SEL_PV.replace(', gracia_cierre_min', ''), SEL_PV.replace(', hora_desde, hora_hasta, gracia_cierre_min', '')]) {
+        const r = await consultaPromo(cols)
+        if (!r.error) return r
+      }
+      return consultaPromo(SEL_PV.replace(', hora_desde, hora_hasta, gracia_cierre_min', ''))
+    }
     const [{ data: promosDb }, { data: presDb }, { data: opsDb }, { data: slotsDb }] = await Promise.all([
-      supabase.from('promociones').select('id, precio').in('id', promoIds).eq('empresa_id', empresa_id),
+      consultaPromos(),
       supabase.from('presentaciones').select('id, precio').in('id', presIds).eq('empresa_id', empresa_id),
       opIds.length ? supabase.from('opciones').select('id, precio_adicional').in('id', opIds).eq('empresa_id', empresa_id) : Promise.resolve({ data: [] }),
       supabase.from('promo_slots').select('id, orden').in('promo_id', promoIds),
     ])
     const promoPrecio: Record<string, number> = {}; (promosDb ?? []).forEach((p: { id: string; precio: number }) => { promoPrecio[p.id] = Number(p.precio) })
+    for (const p of (promosDb ?? []) as unknown as ({ id: string; nombre: string; activo: boolean } & VigenciaPromo)[]) {
+      if (p.activo === false || !promoPedible(p)) {
+        return NextResponse.json({ error: `La promo "${p.nombre}" ya no está vigente. Sacala del carrito para continuar.`, codigo: 'PROMO_FUERA_DE_VIGENCIA', promo_id: p.id }, { status: 409 })
+      }
+    }
     const presPrecio: Record<string, number> = {}; (presDb ?? []).forEach((p: { id: string; precio: number }) => { presPrecio[p.id] = Number(p.precio) })
     const opPrecio: Record<string, number> = {}; ((opsDb ?? []) as { id: string; precio_adicional: number }[]).forEach(o => { opPrecio[o.id] = Number(o.precio_adicional ?? 0) })
     const slotOrden: Record<string, number> = {}; (slotsDb ?? []).forEach((s: { id: string; orden: number }) => { slotOrden[s.id] = s.orden })

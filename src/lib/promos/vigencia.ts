@@ -10,6 +10,7 @@ export type VigenciaPromo = {
   vigencia_hasta?: string | null   // 'YYYY-MM-DD'
   hora_desde?: string | null       // 'HH:MM' o 'HH:MM:SS'
   hora_hasta?: string | null
+  gracia_cierre_min?: number | null  // margen al cierre al crear el pedido (por promo); null = GRACIA_CIERRE_MIN
 }
 
 export type AhoraAR = { fecha: string; fechaHora: string }  // 'YYYY-MM-DD' y 'YYYY-MM-DD HH:MM'
@@ -31,6 +32,18 @@ export function promoVigente(p: VigenciaPromo, ahora: AhoraAR): boolean {
     if (!ok) return false
   }
   return true
+}
+
+/** Minutos de gracia al CIERRE por defecto (cada promo puede definir el suyo en gracia_cierre_min) cuando se crea el pedido: el cliente que armó el combo antes
+ *  del cierre y confirma unos minutos después no pierde la promo. No hay gracia al inicio. */
+export const GRACIA_CIERRE_MIN = 5
+
+/** ¿Se puede pedir esta promo AHORA? Igual que promoVigente, pero con gracia al cierre (para validar al crear el pedido). */
+export function promoPedible(p: VigenciaPromo, d: Date = new Date(), graciaCierreMin: number = p.gracia_cierre_min ?? GRACIA_CIERRE_MIN): boolean {
+  const ahora = ahoraArgentina(d)
+  const ahoraCierre = ahoraArgentina(new Date(d.getTime() - graciaCierreMin * 60_000))
+  return promoVigente({ ...p, vigencia_hasta: null, hora_hasta: null }, ahora)
+    && promoVigente({ ...p, vigencia_desde: null, hora_desde: null }, ahoraCierre)
 }
 
 /** '2026-11-18' + '18:00:00' → '18/11/2026 18:00' (para mostrar en el admin). */
