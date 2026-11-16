@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Loader2, Check, Upload, X } from 'lucide-react'
 import { validarMinutosRepetidos, validarHorasPedidoActivo } from '@/lib/pedidos/repetidos-config'
 import Image from 'next/image'
+import { FacturacionElectronicaCard } from '@/components/admin/CuitsFacturacion'
 
 interface Config {
   primary_color: string; secondary_color: string; logo_url: string | null
@@ -42,6 +43,7 @@ function TituloConAyuda({ titulo, ayuda }: { titulo: string; ayuda: string }) {
 
 export default function ConfigPage() {
   const { ctx, loading: ctxLoading } = useEmpresa()
+  const [facturacionHabilitada, setFacturacionHabilitada] = useState(false)  // módulo de facturación electrónica (lo informa la tarjeta de abajo)
   const [empresa, setEmpresa] = useState<Empresa | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [saving, setSaving] = useState(false)
@@ -159,6 +161,7 @@ export default function ConfigPage() {
 
         <ConeCard title="Datos fiscales">
           <div className="space-y-2.5">
+            {facturacionHabilitada && <p className="text-xs font-semibold text-neutral-500 bg-neutral-50 border border-neutral-100 rounded-xl px-3 py-2">Para emitir facturas electrónicas cargá tu CUIT acá abajo, en «🧾 Facturación electrónica».</p>}
             <div className="space-y-1">
               <Label>Razón social</Label>
               <Input value={config.razon_social ?? ''} onChange={e => tocar({ razon_social: e.target.value })} placeholder="Cecchetto S.R.L." />
@@ -297,6 +300,11 @@ export default function ConfigPage() {
             </div>
           </div>
         </ConeCard>
+
+        {/* Facturación electrónica (autoservicio de CUITs): UI compartida con Cuentas y cobros. Solo se ofrece si el módulo está habilitado. */}
+        <div className="md:col-span-2 xl:col-span-3 order-none">
+          <FacturacionElectronicaCard onModulo={setFacturacionHabilitada} />
+        </div>
 
         <ConeCard title="Personalización">
           <div className="space-y-2.5">
