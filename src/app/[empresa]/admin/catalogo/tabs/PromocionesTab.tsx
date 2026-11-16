@@ -149,12 +149,15 @@ export default function PromocionesTab() {
 
     setSaving(true)
     const supabase = createClient()
+    const original = editId ? promos.find(x => x.id === editId) : undefined
     const body = {
       empresa_id: ctx.empresaId,
       nombre: form.nombre.trim(), descripcion: form.descripcion.trim() || null, imagen_url: form.imagen_url,
       precio, precio_regular: precioRegular,
       vigencia_desde: form.vigencia_desde || null, vigencia_hasta: form.vigencia_hasta || null,
-      hora_desde: form.vigencia_desde && form.hora_desde ? form.hora_desde : null, hora_hasta: form.vigencia_hasta && form.hora_hasta ? form.hora_hasta : null,
+      // Las columnas de hora solo se envían si hay hora (o si la promo ya la tenía, para poder limpiarla): así guardar promos sin hora sigue funcionando aunque la migración no esté aplicada.
+      ...(form.hora_desde || original?.hora_desde ? { hora_desde: form.vigencia_desde && form.hora_desde ? form.hora_desde : null } : {}),
+      ...(form.hora_hasta || original?.hora_hasta ? { hora_hasta: form.vigencia_hasta && form.hora_hasta ? form.hora_hasta : null } : {}),
       visible_kiosk: form.visible_kiosk, visible_delivery: form.visible_delivery, visible_mesa: form.visible_mesa, visible_takeaway: form.visible_takeaway,
       es_novedad: form.es_novedad, activo: form.activo,
     }

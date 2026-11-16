@@ -139,12 +139,16 @@ export async function GET(request: Request) {
     kiosk: 'visible_kiosk', delivery: 'visible_delivery', mesa: 'visible_mesa',
     takeaway: 'visible_takeaway', operacion: null,
   }
-  let qPromo = supabase.from('promociones')
-    .select('id, nombre, descripcion, imagen_url, precio, precio_regular, es_novedad, visible_delivery, vigencia_desde, vigencia_hasta, hora_desde, hora_hasta, promo_slots(id, orden, titulo, cantidad, promo_slot_presentaciones(presentacion_id))')
-    .eq('empresa_id', empresa_id).eq('activo', true)
-  const colP = colPromo[canal]
-  if (colP) qPromo = qPromo.eq(colP, true)
-  const { data: promosRaw } = await qPromo
+  const SEL_PROMO = 'id, nombre, descripcion, imagen_url, precio, precio_regular, es_novedad, visible_delivery, vigencia_desde, vigencia_hasta, hora_desde, hora_hasta, promo_slots(id, orden, titulo, cantidad, promo_slot_presentaciones(presentacion_id))'
+  const consultaPromos = (cols: string) => {
+    let q = supabase.from('promociones').select(cols).eq('empresa_id', empresa_id).eq('activo', true)
+    const colP = colPromo[canal]
+    if (colP) q = q.eq(colP, true)
+    return q
+  }
+  let { data: promosRaw, error: errPromo } = await consultaPromos(SEL_PROMO)
+  // Si la migración de horas (hora_desde/hora_hasta) todavía no se aplicó, reintenta sin esas columnas: el catálogo no se rompe.
+  if (errPromo) ({ data: promosRaw } = await consultaPromos(SEL_PROMO.replace(' hora_desde, hora_hasta,', '')))
   const presVisibles = new Set(presentacionesFiltradas.map((p: { id: string }) => p.id))
   type SlotRaw = { id: string; orden: number; titulo: string; cantidad?: number | null; promo_slot_presentaciones: { presentacion_id: string }[] }
   const promociones = (promosRaw ?? [])
