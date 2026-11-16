@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { ahoraArgentina, promoVigente } from '@/lib/promos/vigencia'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -133,12 +134,13 @@ export async function GET(request: Request) {
   // este catálogo (si una variedad está oculta/agotada-podada, la promo no
   // se ofrece a medias). Campo nuevo: los clientes viejos lo ignoran.
   const hoyArg = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const ahoraAR = ahoraArgentina()
   const colPromo: Record<string, string | null> = {
     kiosk: 'visible_kiosk', delivery: 'visible_delivery', mesa: 'visible_mesa',
     takeaway: 'visible_takeaway', operacion: null,
   }
   let qPromo = supabase.from('promociones')
-    .select('id, nombre, descripcion, imagen_url, precio, precio_regular, es_novedad, visible_delivery, vigencia_desde, vigencia_hasta, promo_slots(id, orden, titulo, cantidad, promo_slot_presentaciones(presentacion_id))')
+    .select('id, nombre, descripcion, imagen_url, precio, precio_regular, es_novedad, visible_delivery, vigencia_desde, vigencia_hasta, hora_desde, hora_hasta, promo_slots(id, orden, titulo, cantidad, promo_slot_presentaciones(presentacion_id))')
     .eq('empresa_id', empresa_id).eq('activo', true)
   const colP = colPromo[canal]
   if (colP) qPromo = qPromo.eq(colP, true)
@@ -154,16 +156,17 @@ export async function GET(request: Request) {
       visible_delivery: pr.visible_delivery !== false,
       vigencia_desde: (pr as { vigencia_desde?: string | null }).vigencia_desde ?? null,
       vigencia_hasta: (pr as { vigencia_hasta?: string | null }).vigencia_hasta ?? null,
+      hora_desde: (pr as { hora_desde?: string | null }).hora_desde ?? null,
+      hora_hasta: (pr as { hora_hasta?: string | null }).hora_hasta ?? null,
       slots: ((pr.promo_slots ?? []) as SlotRaw[])
         .sort((a, b) => a.orden - b.orden)
         .map(s => ({ id: s.id, orden: s.orden, titulo: s.titulo, cantidad: Math.max(1, Number(s.cantidad ?? 1)),
           presentaciones: s.promo_slot_presentaciones.map(x => x.presentacion_id).filter(id => presVisibles.has(id)) })),
     }))
     .filter(pr => {
-      const desdeOk = !pr.vigencia_desde || hoyArg >= pr.vigencia_desde
-      const hastaOk = !pr.vigencia_hasta || hoyArg <= pr.vigencia_hasta
+      const vigenteOk = promoVigente(pr, ahoraAR)  // fecha y hora de Argentina (hora de inicio/cierre opcional)
       const slotsOk = pr.slots.length > 0 && pr.slots.every(s => s.presentaciones.length > 0)
-      return desdeOk && hastaOk && slotsOk
+      return vigenteOk && slotsOk
     })
 
   // Categorías vacías en la vidriera (JC 12/11): si en este canal/sucursal no queda
