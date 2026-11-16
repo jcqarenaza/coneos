@@ -30,6 +30,7 @@ interface Promo {
   precio: number; precio_regular: number | null
   vigencia_desde: string | null; vigencia_hasta: string | null
   hora_desde: string | null; hora_hasta: string | null  // 'HH:MM:SS' (opcionales)
+  gracia_cierre_min: number | null  // margen al cierre al crear el pedido (null = 5)
   visible_kiosk: boolean; visible_delivery: boolean; visible_mesa: boolean; visible_takeaway: boolean
   es_novedad: boolean; activo: boolean
   promo_slots: { id: string; orden: number; titulo: string; cantidad?: number | null; promo_slot_presentaciones: { presentacion_id: string }[] }[]
@@ -38,7 +39,7 @@ interface Promo {
 const emptyForm = () => ({
   nombre: '', descripcion: '', imagen_url: null as string | null,
   precio: '',
-  vigencia_desde: '', vigencia_hasta: '', hora_desde: '', hora_hasta: '',
+  vigencia_desde: '', vigencia_hasta: '', hora_desde: '', hora_hasta: '', gracia_cierre_min: '5',
   visible_kiosk: true, visible_delivery: true, visible_mesa: true, visible_takeaway: true,
   es_novedad: false, activo: true,
 })
@@ -115,7 +116,7 @@ export default function PromocionesTab() {
       nombre: p.nombre, descripcion: p.descripcion ?? '', imagen_url: p.imagen_url,
       precio: String(p.precio),
       vigencia_desde: p.vigencia_desde ?? '', vigencia_hasta: p.vigencia_hasta ?? '',
-      hora_desde: (p.hora_desde ?? '').slice(0, 5), hora_hasta: (p.hora_hasta ?? '').slice(0, 5),
+      hora_desde: (p.hora_desde ?? '').slice(0, 5), hora_hasta: (p.hora_hasta ?? '').slice(0, 5), gracia_cierre_min: String(p.gracia_cierre_min ?? 5),
       visible_kiosk: p.visible_kiosk, visible_delivery: p.visible_delivery, visible_mesa: p.visible_mesa, visible_takeaway: p.visible_takeaway,
       es_novedad: p.es_novedad, activo: p.activo,
     })
@@ -144,6 +145,8 @@ export default function PromocionesTab() {
     if (form.hora_desde && !form.vigencia_desde) { avisar('Para poner hora de inicio, elegí también la fecha "desde".'); return }
     if (form.hora_hasta && !form.vigencia_hasta) { avisar('Para poner hora de cierre, elegí también la fecha "hasta".'); return }
     if (form.vigencia_desde && form.vigencia_desde === form.vigencia_hasta && form.hora_desde && form.hora_hasta && form.hora_hasta <= form.hora_desde) { avisar('Si es el mismo día, la hora de cierre debe ser posterior a la de inicio.'); return }
+    const gracia = Number(form.gracia_cierre_min === '' ? 5 : form.gracia_cierre_min)
+    if (!Number.isInteger(gracia) || gracia < 0 || gracia > 60) { avisar('El margen al cierre debe ser un número entero de 0 a 60 minutos.'); return }
     if (slots.length === 0) { avisar('El combo necesita al menos un componente.'); return }
     if (slots.some(s => s.presentacion_ids.length === 0)) { avisar('Cada componente necesita al menos una presentación permitida.'); return }
 
@@ -157,6 +160,8 @@ export default function PromocionesTab() {
       vigencia_desde: form.vigencia_desde || null, vigencia_hasta: form.vigencia_hasta || null,
       // Las columnas de hora solo se envían si hay hora (o si la promo ya la tenía, para poder limpiarla): así guardar promos sin hora sigue funcionando aunque la migración no esté aplicada.
       ...(form.hora_desde || original?.hora_desde ? { hora_desde: form.vigencia_desde && form.hora_desde ? form.hora_desde : null } : {}),
+      // El margen solo se envía si cambió respecto del valor por defecto (5) o la promo ya tenía otro: así guardar sigue funcionando aunque la migración no esté aplicada.
+      ...(gracia !== 5 || (original?.gracia_cierre_min != null && original.gracia_cierre_min !== 5) ? { gracia_cierre_min: gracia } : {}),
       ...(form.hora_hasta || original?.hora_hasta ? { hora_hasta: form.vigencia_hasta && form.hora_hasta ? form.hora_hasta : null } : {}),
       visible_kiosk: form.visible_kiosk, visible_delivery: form.visible_delivery, visible_mesa: form.visible_mesa, visible_takeaway: form.visible_takeaway,
       es_novedad: form.es_novedad, activo: form.activo,
@@ -248,7 +253,7 @@ export default function PromocionesTab() {
                   <span className="font-bold text-neutral-800">{fmt(p.precio)}</span>
                   {(p.vigencia_desde || p.vigencia_hasta) && (
                     <span className="text-neutral-400 ml-2 text-xs">
-                      {p.vigencia_desde ? `desde ${textoVigencia(p.vigencia_desde, p.hora_desde)}` : ''}{p.vigencia_desde && p.vigencia_hasta ? ' · ' : ''}{p.vigencia_hasta ? `hasta ${textoVigencia(p.vigencia_hasta, p.hora_hasta)}` : ''}
+                      {p.vigencia_desde ? `desde ${textoVigencia(p.vigencia_desde, p.hora_desde)}` : ''}{p.vigencia_desde && p.vigencia_hasta ? ' · ' : ''}{p.vigencia_hasta ? `hasta ${textoVigencia(p.vigencia_hasta, p.hora_hasta)}` : ''}{p.hora_hasta && p.gracia_cierre_min != null && p.gracia_cierre_min !== 5 ? ` (margen ${p.gracia_cierre_min} min)` : ''}
                     </span>
                   )}
                 </p>
@@ -310,7 +315,11 @@ export default function PromocionesTab() {
                 <Input type="time" aria-label="Hora de cierre" value={form.hora_hasta} onChange={e => setForm(f => ({ ...f, hora_hasta: e.target.value }))} className="w-32" />
               </div>
             </div>
-            <p className="col-span-2 -mt-1 text-xs text-neutral-400">La hora es opcional. Sin hora, la promo rige desde el comienzo del día de inicio hasta el final del día de cierre. Ejemplo: desde 18/11 18:00 hasta 19/11 02:00.</p>
+            <div className="col-span-2 sm:col-span-1">
+              <Label>Margen al cierre (minutos)</Label>
+              <Input type="number" min={0} max={60} step={1} value={form.gracia_cierre_min} onChange={e => setForm(f => ({ ...f, gracia_cierre_min: e.target.value }))} className="w-32" />
+            </div>
+            <p className="col-span-2 -mt-1 text-xs text-neutral-400">Margen al cierre: minutos extra en los que todavía se puede confirmar un pedido con esta promo después de la hora de cierre (para quien ya la tenía en el carrito). Por defecto 5. La hora es opcional. Sin hora, la promo rige desde el comienzo del día de inicio hasta el final del día de cierre. Ejemplo: desde 18/11 18:00 hasta 19/11 02:00.</p>
           </div>
 
           {rango && Number(form.precio) > 0 && (

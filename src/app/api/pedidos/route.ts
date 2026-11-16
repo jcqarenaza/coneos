@@ -291,13 +291,17 @@ export async function POST(request: Request) {
     const promoIds = [...new Set(itemsIn.filter(i => i.promo_id).map(i => String(i.promo_id)))]
     const presIds = [...new Set(itemsIn.filter(i => i.combo_ref).map(i => String(i.presentacion_id)))]
     const opIds = [...new Set(itemsIn.filter(i => i.combo_ref).flatMap(i => (i.opciones ?? []).map(o => o.opcion_id)))]
-    // Vigencia de la promo AL CREAR EL PEDIDO (fecha y hora de Argentina, gracia de 5 min al cierre).
-    // Si la migración de horas aún no está aplicada, reintenta sin hora_desde/hora_hasta.
+    // Vigencia de la promo AL CREAR EL PEDIDO (fecha y hora de Argentina; margen al cierre configurable por promo, 5 min por defecto).
+    // Si las migraciones de horas / margen aún no están aplicadas, degrada sin romper.
     const consultaPromo = (cols: string) => supabase.from('promociones').select(cols).in('id', promoIds).eq('empresa_id', empresa_id)
-    const SEL_PV = 'id, nombre, precio, activo, vigencia_desde, vigencia_hasta, hora_desde, hora_hasta'
+    const SEL_PV = 'id, nombre, precio, activo, vigencia_desde, vigencia_hasta, hora_desde, hora_hasta, gracia_cierre_min'
     const consultaPromos = async () => {
-      const r = await consultaPromo(SEL_PV)
-      return r.error ? consultaPromo(SEL_PV.replace(', hora_desde, hora_hasta', '')) : r
+      // Intenta con todo; si faltan columnas de migraciones aún no aplicadas, degrada de a una.
+      for (const cols of [SEL_PV, SEL_PV.replace(', gracia_cierre_min', ''), SEL_PV.replace(', hora_desde, hora_hasta, gracia_cierre_min', '')]) {
+        const r = await consultaPromo(cols)
+        if (!r.error) return r
+      }
+      return consultaPromo(SEL_PV.replace(', hora_desde, hora_hasta, gracia_cierre_min', ''))
     }
     const [{ data: promosDb }, { data: presDb }, { data: opsDb }, { data: slotsDb }] = await Promise.all([
       consultaPromos(),

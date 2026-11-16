@@ -78,3 +78,22 @@ describe('al crear el pedido: gracia de 5 minutos solo al cierre', () => {
     assert.equal(promoPedible({}, utc('2030-01-01T12:00:00Z')), true)
   })
 })
+
+describe('margen al cierre configurable por promo', () => {
+  const U = (s: string) => new Date(s)
+  const conMargen = (m: number | null) => ({ ...NOCHE, gracia_cierre_min: m })
+  test('con margen 15: se puede pedir hasta 02:14 y no a las 02:15', () => {
+    assert.equal(promoPedible(conMargen(15), U('2026-11-19T05:14:00Z')), true)
+    assert.equal(promoPedible(conMargen(15), U('2026-11-19T05:15:00Z')), false)
+  })
+  test('con margen 10: hasta 02:09; con margen 0: corta a las 02:00', () => {
+    assert.equal(promoPedible(conMargen(10), U('2026-11-19T05:09:00Z')), true)
+    assert.equal(promoPedible(conMargen(10), U('2026-11-19T05:10:00Z')), false)
+    assert.equal(promoPedible(conMargen(0), U('2026-11-19T04:59:00Z')), true)
+    assert.equal(promoPedible(conMargen(0), U('2026-11-19T05:00:00Z')), false)
+  })
+  test('sin valor (null) usa el margen por defecto de 5 minutos', () => {
+    assert.equal(promoPedible(conMargen(null), U('2026-11-19T05:04:00Z')), true)
+    assert.equal(promoPedible(conMargen(null), U('2026-11-19T05:05:00Z')), false)
+  })
+})
