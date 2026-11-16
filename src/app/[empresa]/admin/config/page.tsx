@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label'
 import { Loader2, Check, Upload, X } from 'lucide-react'
 import { validarMinutosRepetidos, validarHorasPedidoActivo } from '@/lib/pedidos/repetidos-config'
 import Image from 'next/image'
-import { FacturacionElectronicaCard } from '@/components/admin/CuitsFacturacion'
+import Link from 'next/link'
+import type { Cuit } from '@/components/admin/CuitsFacturacion'
 
 interface Config {
   primary_color: string; secondary_color: string; logo_url: string | null
@@ -43,7 +44,7 @@ function TituloConAyuda({ titulo, ayuda }: { titulo: string; ayuda: string }) {
 
 export default function ConfigPage() {
   const { ctx, loading: ctxLoading } = useEmpresa()
-  const [facturacionHabilitada, setFacturacionHabilitada] = useState(false)  // módulo de facturación electrónica (lo informa la tarjeta de abajo)
+  const [cuitsReales, setCuitsReales] = useState<Cuit[] | null>(null)  // CUITs que facturan, cargados en Cobros (solo lectura acá). null = cargando/sin acceso
   const [empresa, setEmpresa] = useState<Empresa | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [saving, setSaving] = useState(false)
@@ -52,6 +53,23 @@ export default function ConfigPage() {
   const tocar = (parcial: Partial<typeof config> & object) => { setSucio(true); setConfig(c => c ? ({ ...c, ...parcial } as typeof c) : c) }
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const logoRef = useRef<HTMLInputElement>(null)
+
+  // Datos fiscales REALES: los CUITs que se configuraron en Cobros (facturacion_config). Solo lectura; si falla o no hay, queda el formulario clásico.
+  useEffect(() => {
+    if (!ctx) return
+    let vivo = true
+    ;(async () => {
+      try {
+        const { data: { session } } = await createClient().auth.getSession()
+        if (!session) return
+        const res = await fetch('/api/admin/cuits', { headers: { Authorization: `Bearer ${session.access_token}` } })
+        if (!res.ok) return
+        const d = await res.json()
+        if (vivo) setCuitsReales(Array.isArray(d.cuits) ? d.cuits : [])
+      } catch { /* sin CUITs reales: se muestra el formulario clásico */ }
+    })()
+    return () => { vivo = false }
+  }, [ctx])
 
   useEffect(() => {
     if (!ctx) return
@@ -160,34 +178,55 @@ export default function ConfigPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 
         <ConeCard title="Datos fiscales">
-          <div className="space-y-2.5">
-            {facturacionHabilitada && <p className="text-xs font-semibold text-neutral-500 bg-neutral-50 border border-neutral-100 rounded-xl px-3 py-2">Para emitir facturas electrónicas cargá tu CUIT acá abajo, en «🧾 Facturación electrónica».</p>}
-            <div className="space-y-1">
-              <Label>Razón social</Label>
-              <Input value={config.razon_social ?? ''} onChange={e => tocar({ razon_social: e.target.value })} placeholder="Cecchetto S.R.L." />
+          {cuitsReales && cuitsReales.length > 0 ? (
+            <div className="space-y-3">
+              {cuitsReales.map(c => {
+                const emite = c.activo && c.estado === 'validado'
+                return (
+                  <div key={c.id} className="rounded-xl border border-neutral-100 bg-neutral-50/60 p-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-neutral-800 min-w-0 break-words">{c.razon_social}</p>
+                      <span className={`flex-shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${emite ? 'bg-green-50 text-green-700' : c.estado === 'borrador' ? 'bg-amber-50 text-amber-700' : 'bg-neutral-100 text-neutral-500'}`}>
+                        {emite ? 'Emite facturas' : c.estado === 'borrador' ? 'Pendiente de validar' : 'Desactivado'}
+                      </span>
+                    </div>
+                    <p className="text-sm font-mono text-neutral-600">{c.cuit}</p>
+                    <p className="text-xs text-neutral-500">{c.condicion_fiscal === 'ri' ? 'Responsable Inscripto' : 'Monotributista'} · Punto de venta {c.punto_venta}</p>
+                  </div>
+                )
+              })}
+              <p className="text-xs text-neutral-400">Estos son los CUITs que cargaste en Cobros. Para agregar, editar o activar uno entrá a{' '}
+                {ctx ? <Link href={`/${ctx.empresaSlug}/admin/cuentas`} className="font-semibold text-neutral-600 underline underline-offset-2">Cobros → 🧾 CUITs</Link> : 'Cobros → 🧾 CUITs'}.</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+          ) : (
+            <div className="space-y-2.5">
               <div className="space-y-1">
-                <Label>CUIT</Label>
-                <Input value={config.cuit ?? ''} onChange={e => tocar({ cuit: e.target.value })} placeholder="30-12345678-9" className="font-mono" />
+                <Label>Razón social</Label>
+                <Input value={config.razon_social ?? ''} onChange={e => tocar({ razon_social: e.target.value })} placeholder="Cecchetto S.R.L." />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>CUIT</Label>
+                  <Input value={config.cuit ?? ''} onChange={e => tocar({ cuit: e.target.value })} placeholder="30-12345678-9" className="font-mono" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Condición IVA</Label>
+                  <select value={config.condicion_iva ?? 'RI'} onChange={e => tocar({ condicion_iva: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400 bg-white">
+                    <option value="RI">Responsable Inscripto</option>
+                    <option value="MT">Monotributista</option>
+                    <option value="EX">Exento</option>
+                    <option value="CF">Consumidor Final</option>
+                  </select>
+                </div>
               </div>
               <div className="space-y-1">
-                <Label>Condición IVA</Label>
-                <select value={config.condicion_iva ?? 'RI'} onChange={e => tocar({ condicion_iva: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:border-neutral-400 bg-white">
-                  <option value="RI">Responsable Inscripto</option>
-                  <option value="MT">Monotributista</option>
-                  <option value="EX">Exento</option>
-                  <option value="CF">Consumidor Final</option>
-                </select>
+                <Label>Punto de venta</Label>
+                <Input type="number" value={config.punto_venta ?? 1} onChange={e => tocar({ punto_venta: Number(e.target.value) })} className="w-24 font-mono" />
+                <p className="text-xs text-neutral-400">Número de punto de venta habilitado en AFIP</p>
               </div>
             </div>
-            <div className="space-y-1">
-              <Label>Punto de venta</Label>
-              <Input type="number" value={config.punto_venta ?? 1} onChange={e => tocar({ punto_venta: Number(e.target.value) })} className="w-24 font-mono" />
-              <p className="text-xs text-neutral-400">Número de punto de venta habilitado en AFIP</p>
-            </div>
-          </div>
+          )}
         </ConeCard>
 
         <ConeCard title="Configuración de pedidos">
@@ -300,11 +339,6 @@ export default function ConfigPage() {
             </div>
           </div>
         </ConeCard>
-
-        {/* Facturación electrónica (autoservicio de CUITs): UI compartida con Cuentas y cobros. Solo se ofrece si el módulo está habilitado. */}
-        <div className="md:col-span-2 xl:col-span-3 order-none">
-          <FacturacionElectronicaCard onModulo={setFacturacionHabilitada} />
-        </div>
 
         <ConeCard title="Personalización">
           <div className="space-y-2.5">
