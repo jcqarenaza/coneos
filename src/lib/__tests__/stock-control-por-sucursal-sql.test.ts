@@ -210,6 +210,48 @@ describe('DEVOLUCIÓN: vuelve a la sucursal original, decidida por el libro de l
   })
 })
 
+describe('DEVOLUCIÓN HISTÓRICA (pedido sin movimientos de venta): decide la fila de la sucursal, no el agregado', () => {
+  // simula un pedido anterior al libro: se borran sus movimientos 'venta' y se deja stock_descontado = true
+  const sinLibro = async (id: string) => { await q("delete from stock_movimientos where pedido_id=$1 and motivo='venta'", [id]); await q('update pedidos set stock_descontado=true where id=$1', [id]) }
+  const flag = (p: { id: string }, v: boolean) => q('update productos set controla_stock=$2 where id=$1', [p.id, v])
+  test('H1 producto controlado EN LA SUCURSAL con agregado global FALSO: devuelve', async () => {
+    const p = await prod(w.E1, 'H1', false); await fila(p, w.A, 5, true)
+    const id = await pedidoDe(await vender(w.E1, w.A, p.pres, 2)); assert.equal(await cant(p, w.A), 3)
+    await sinLibro(id); assert.equal((await one('select controla_stock c from productos where id=$1', p.id)).c, false)
+    const r = await one('select devolver_stock_pedido($1,$2) r', w.E1, id); assert.equal(r.r.devuelto, true); assert.equal(r.r.movimientos, 1); assert.equal(await cant(p, w.A), 5)
+  })
+  test('H2 producto NO controlado en esa sucursal con agregado global VERDADERO: no devuelve', async () => {
+    const p = await prod(w.E1, 'H2', true); await fila(p, w.A, 4, true); await fila(p, w.B, 6, false)
+    const id = await pedidoDe(await vender(w.E1, w.B, p.pres, 2)); await sinLibro(id)
+    const r = await one('select devolver_stock_pedido($1,$2) r', w.E1, id); assert.equal(r.r.movimientos, 0); assert.equal(Number(r.r.unidades), 0)
+    assert.equal(await cant(p, w.B), 6); assert.equal(await cant(p, w.A), 4); assert.equal(await nMov(p), 0)
+  })
+  test('H2b sin fila en la sucursal del pedido y agregado verdadero: tampoco devuelve', async () => {
+    const p = await prod(w.E1, 'H2b', true); await fila(p, w.A, 4, true)
+    const id = await pedidoDe(await vender(w.E1, w.C, p.pres, 1)); await sinLibro(id)
+    const r = await one('select devolver_stock_pedido($1,$2) r', w.E1, id); assert.equal(r.r.movimientos, 0); assert.equal(await cant(p, w.C), undefined)
+  })
+  test('H3 pedido histórico de producto RAMA: conserva el criterio anterior (se selecciona por el flag del producto, sin exigir fila controlada)', async () => {
+    const p = await prod(w.E1, 'H3', true); await fila(p, w.A, 0, false)     // fila SIN control en la sucursal: si exigiera control por fila, no se seleccionaría
+    const id = await pedidoDe(await vender(w.E1, w.A, p.pres, 1)); await sinLibro(id)
+    await q("update productos set modelo_stock='rama' where id=$1", [p.id])
+    const m = await err(() => q('select devolver_stock_pedido($1,$2) r', [w.E1, id]))
+    assert.match(m!, /PRODUCTO_MODELO_RAMA/, 'el producto rama entró a la devolución (y ajustar_stock lo rechaza como antes): no fue filtrado por producto_stock.controla')
+    assert.equal((await one('select stock_descontado d from pedidos where id=$1', id)).d, true, 'rollback: el flag no se tocó')
+  })
+  test('H4 pedido CON libro de venta: decide el libro; ni el agregado global ni la marca actual de la fila intervienen', async () => {
+    const p = await prod(w.E1, 'H4', true); await fila(p, w.A, 5, true)
+    const id = await pedidoDe(await vender(w.E1, w.A, p.pres, 2)); assert.equal(await cant(p, w.A), 3)
+    await flag(p, false); await q('update producto_stock set controla=false where producto_id=$1', [p.id])    // agregado falso Y fila sin control HOY
+    const r = await one('select devolver_stock_pedido($1,$2) r', w.E1, id); assert.equal(r.r.devuelto, true); assert.equal(r.r.movimientos, 1); assert.equal(await cant(p, w.A), 5)
+    const r2 = await one('select devolver_stock_pedido($1,$2) r', w.E1, id); assert.equal(r2.r.devuelto, false)    // idempotente
+  })
+  test('H5 el cuerpo de la función ya no consulta pr.controla_stock en el fallback de producto', async () => {
+    const src = (await one("select prosrc from pg_proc where proname='devolver_stock_pedido'")).prosrc as string
+    assert.ok(!/pr\.controla_stock\s*=\s*true\s+and\s+exists/.test(src)); assert.match(src, /pr\.modelo_stock = 'rama' then pr\.controla_stock = true/)
+  })
+})
+
 describe('ARQUEO Y AJUSTE GENERAL: solo lo que ESA sucursal controla', () => {
   const U = 'aaaaaaaa-0000-4000-8000-000000000001'
   test('C1 iniciar_conteo_stock lista solo los productos controlados en la sucursal del conteo (mezcla controlados / libres)', async () => {

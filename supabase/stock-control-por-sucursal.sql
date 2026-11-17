@@ -764,7 +764,10 @@ begin
      where it.pedido_id = p_pedido_id and it.presentacion_id is not null
        and (case when v_con_libro
                  then exists (select 1 from public.stock_movimientos m where m.pedido_id = p_pedido_id and m.motivo = 'venta' and m.producto_id = pr.id)
-                 else (pr.controla_stock = true and exists (select 1 from public.producto_stock psd where psd.producto_id = pr.id and psd.sucursal_id = v_ped.sucursal_id and psd.controla = true)) end)  -- v1.9: criterio histórico = control de la sucursal del pedido
+                 -- v1.9: pedido anterior al libro. Modelo 'producto': decide SOLO la fila (producto, sucursal del pedido) con controla = true (el agregado
+                 -- productos.controla_stock no interviene). Modelo 'rama': se conserva el criterio histórico (flag del producto), sin exigir fila de producto_stock.
+                 else (case when pr.modelo_stock = 'rama' then pr.controla_stock = true
+                            else exists (select 1 from public.producto_stock psd where psd.producto_id = pr.id and psd.sucursal_id = v_ped.sucursal_id and psd.controla = true) end) end)
      group by pr.id
      order by pr.id
   loop
