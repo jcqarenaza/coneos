@@ -60,11 +60,9 @@ export default function StockPage() {
   const [quitar, setQuitar] = useState<{ producto_id: string; texto: string } | null>(null)
   const [accionando, setAccionando] = useState('')
   const [pendientes, setPendientes] = useState<Set<string>>(new Set())   // checkboxes en vuelo (no bloquean a los demás)
-  const [loteConfirmar, setLoteConfirmar] = useState(false)
   // Alta inicial en un acto (CTO 17/11): habilitar el control + cargar la existencia inicial de la sucursal elegida
-  const [alta, setAlta] = useState<{ producto_id: string; nombre: string; yaControla: boolean; valor: string; confirmar: boolean; aviso: string } | null>(null)
+  const [alta, setAlta] = useState<{ producto_id: string; nombre: string; yaControla: boolean; valor: string; confirmar: boolean; confirmaGlobal: boolean; aviso: string } | null>(null)
   const [altaTrab, setAltaTrab] = useState(false)
-  const [loteTrabajando, setLoteTrabajando] = useState(false)
   const [minEdit, setMinEdit] = useState<Record<string, string>>({})
   const [avisoInv, setAvisoInv] = useState<{ ok: boolean; t: string } | null>(null)
   // E2-b: ajuste directo de la hoja de una presentación (productos con stock por rama)
@@ -217,15 +215,16 @@ export default function StockPage() {
       else setAvisoInv({ ok: false, t: er.message })
     } finally { setAccionando('') }
   }
-  function abrirAlta(i: InvItem) { setAvisoInv(null); setQuitar(null); setAlta({ producto_id: i.producto_id, nombre: i.nombre, yaControla: i.controla, valor: '', confirmar: false, aviso: '' }) }
+  function abrirAlta(i: InvItem) { setAvisoInv(null); setQuitar(null); setAlta({ producto_id: i.producto_id, nombre: i.nombre, yaControla: i.controla, valor: '', confirmar: false, confirmaGlobal: false, aviso: '' }) }
   async function guardarAlta() {
     if (!alta) return
     const v = alta.valor.trim()
     if (!/^\d+$/.test(v)) { setAlta({ ...alta, aviso: 'Escribí la existencia inicial: un número entero de 0 en adelante.' }); return }
+    if (!alta.yaControla && !alta.confirmaGlobal) { setAlta({ ...alta, aviso: 'Confirmá que entendés la habilitación global.' }); return }
     const cant = Number(v)
     setAltaTrab(true); setAvisoInv(null)
     try {
-      const j = await api({ accion: 'habilitar_con_stock', sucursal_id: sucId, producto_id: alta.producto_id, cantidad: cant, confirmar: alta.confirmar })
+      const j = await api({ accion: 'habilitar_con_stock', sucursal_id: sucId, producto_id: alta.producto_id, cantidad: cant, confirmar: alta.confirmar, confirma_global: alta.confirmaGlobal })
       const sucNombre = sucs.find(s => s.id === sucId)?.nombre ?? 'esta sucursal'
       const otras = (j.otras_sin_alta ?? []) as { id: string; nombre: string }[]
       setAvisoInv({ ok: true, t: `«${alta.nombre}»: control de stock habilitado con ${cant} en ${sucNombre}.${cant === 0 ? ' Con 0 queda agotado hasta que cargues existencias.' : ''}${otras.length > 0 ? ` Ojo: en ${otras.map(o => o.nombre).join(', ')} queda agotado hasta que le cargues su existencia (el control es del producto, no de la sucursal).` : ''}` })
@@ -236,20 +235,6 @@ export default function StockPage() {
       if (er.codigo === 'CONFIRMAR_REEMPLAZO') setAlta({ ...alta, confirmar: true, aviso: er.message })
       else setAlta({ ...alta, confirmar: false, aviso: er.message })
     } finally { setAltaTrab(false) }
-  }
-  // Alta inicial: habilita de una vez todos los productos visibles (respeta búsqueda y categoría) que todavía no controlan stock
-  async function habilitarLote() {
-    const ids = filtrados.filter(i => !i.controla).map(i => i.producto_id)
-    if (ids.length === 0) return
-    setLoteTrabajando(true); setAvisoInv(null)
-    try {
-      const j = await api({ accion: 'habilitar_lote', sucursal_id: sucId, producto_ids: ids })
-      const set = new Set(ids)
-      setInv(l => l.map(x => set.has(x.producto_id) ? { ...x, controla: true, estado: 'sin_alta' } : x))
-      setAvisoInv({ ok: true, t: `${j.habilitados} producto${j.habilitados === 1 ? '' : 's'} con control de stock. Cargales las existencias con un Ajuste general.` })
-      setLoteConfirmar(false)
-    } catch (e) { setAvisoInv({ ok: false, t: (e as Error).message }); setLoteConfirmar(false) }
-    finally { setLoteTrabajando(false) }
   }
   async function guardarMinimo(i: InvItem) {
     const v = (minEdit[i.producto_id] ?? '').trim()
@@ -329,7 +314,6 @@ export default function StockPage() {
   useEffect(() => { setConteo(null); setContado({}); invalidar(); setMsg(null) }, [sucId])
 
   const filtrados = useMemo(() => inv.filter(i => (!catF || i.categoria_id === catF) && (!busca || i.nombre.toLowerCase().includes(busca.toLowerCase()) || (i.codigo ?? '').toLowerCase().includes(busca.toLowerCase()))), [inv, busca, catF])
-  const sinControlVisibles = useMemo(() => filtrados.filter(i => !i.controla).length, [filtrados])
   // Árbol: categoría → producto → presentaciones (en el orden de las categorías del catálogo)
   const arbol = useMemo(() => {
     const orden = new Map(cats.map((c, k) => [c.id, k]))
@@ -366,25 +350,24 @@ export default function StockPage() {
             <div className="relative"><Search size={14} className="absolute left-3 top-3 text-neutral-400" /><input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar producto o código" className={`${inputCls} pl-8`} /></div>
             <select value={catF} onChange={e => setCatF(e.target.value)} className={inputCls}><option value="">Todas las categorías</option>{cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
             <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer"><input type="checkbox" checked={todos} onChange={e => setTodos(e.target.checked)} />Mostrar todos los productos</label>
-            {puedeHab && todos && sinControlVisibles > 0 && !loteConfirmar && (
-              <button onClick={() => setLoteConfirmar(true)} className="px-3 py-2 rounded-lg border border-neutral-300 text-sm bg-white hover:bg-neutral-50">Habilitar control a {sinControlVisibles === 1 ? 'el' : 'los'} {sinControlVisibles} visible{sinControlVisibles === 1 ? '' : 's'}</button>)}
           </div>
-          {loteConfirmar && (
-            <div className="mb-3 p-3 rounded-lg bg-neutral-50 border border-neutral-200 text-sm text-neutral-800">
-              <p className="mb-2">Vas a habilitar el control de stock de <b>{sinControlVisibles}</b> producto{sinControlVisibles === 1 ? '' : 's'}{catF || busca ? ' (los que ves con el filtro actual)' : ''}. Aplica a todas las sucursales y no carga existencias: después se dan de alta con un Ajuste general.</p>
-              <div className="flex gap-2">
-                <button onClick={habilitarLote} disabled={loteTrabajando} className="px-3 py-1.5 rounded-lg bg-neutral-900 text-white text-sm font-medium disabled:opacity-50">{loteTrabajando ? 'Habilitando…' : 'Sí, habilitar'}</button>
-                <button onClick={() => setLoteConfirmar(false)} disabled={loteTrabajando} className="px-3 py-1.5 rounded-lg border border-neutral-300 text-sm bg-white">Cancelar</button>
-              </div>
-            </div>)}
           {avisoInv && <div className={`mb-3 p-3 rounded-lg text-sm flex gap-2 ${avisoInv.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{avisoInv.ok ? <CheckCircle2 size={16} className="mt-0.5" /> : <AlertTriangle size={16} className="mt-0.5" />}{avisoInv.t}</div>}
           {alta && (
             <div className="mb-3 p-3 rounded-lg bg-neutral-50 border border-neutral-200 text-sm text-neutral-800">
               <div className="font-semibold mb-1">{alta.yaControla ? 'Cargar existencia inicial' : 'Habilitar control de stock'}: {alta.nombre}</div>
-              <p className="mb-2 text-neutral-600">Existencia inicial en <b>{sucs.find(s => s.id === sucId)?.nombre ?? 'esta sucursal'}</b>. Se guarda junto con el control, para que el producto no quede agotado. {!alta.yaControla && 'El control es del producto: las otras sucursales sin existencia cargada quedan agotadas hasta que se la cargues.'}</p>
+              <p className="mb-2 text-neutral-600">Existencia inicial en <b>{sucs.find(s => s.id === sucId)?.nombre ?? 'esta sucursal'}</b>. Se guarda junto con el control, para que el producto no quede agotado.</p>
+              {!alta.yaControla && (
+                <div className="mb-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900">
+                  <ul className="list-disc pl-5 space-y-0.5">
+                    <li>Se activa el control de stock del producto en <b>todas las sucursales</b>.</li>
+                    <li>La existencia inicial se carga <b>solo en {sucs.find(s => s.id === sucId)?.nombre ?? 'la sucursal seleccionada'}</b>.</li>
+                    <li>Las demás sucursales sin existencia quedan <b>agotadas y no podrán vender</b> este producto hasta que les cargues su stock.</li>
+                  </ul>
+                  <label className="mt-2 flex items-start gap-2 cursor-pointer"><input type="checkbox" checked={alta.confirmaGlobal} onChange={e => setAlta({ ...alta, confirmaGlobal: e.target.checked, aviso: '' })} className="mt-0.5" /><span>Entiendo y confirmo la habilitación global.</span></label>
+                </div>)}
               <div className="flex flex-wrap items-center gap-2">
                 <input inputMode="numeric" autoFocus value={alta.valor} onChange={e => setAlta({ ...alta, valor: e.target.value, aviso: '', confirmar: false })} onKeyDown={e => { if (e.key === 'Enter') guardarAlta() }} placeholder="Cantidad" aria-label={`Existencia inicial de ${alta.nombre}`} className="w-28 text-right border border-neutral-300 rounded px-2 py-1.5 tabular-nums" />
-                <button onClick={guardarAlta} disabled={altaTrab} className="px-3 py-1.5 rounded-lg bg-neutral-900 text-white text-sm font-medium disabled:opacity-50">{altaTrab ? 'Guardando…' : alta.confirmar ? 'Sí, reemplazar' : alta.yaControla ? 'Cargar' : 'Habilitar y cargar'}</button>
+                <button onClick={guardarAlta} disabled={altaTrab || (!alta.yaControla && !alta.confirmaGlobal)} className="px-3 py-1.5 rounded-lg bg-neutral-900 text-white text-sm font-medium disabled:opacity-50">{altaTrab ? 'Guardando…' : alta.confirmar ? 'Sí, reemplazar' : alta.yaControla ? 'Cargar' : 'Habilitar y cargar'}</button>
                 <button onClick={() => setAlta(null)} disabled={altaTrab} className="px-3 py-1.5 rounded-lg border border-neutral-300 text-sm bg-white">Cancelar</button>
               </div>
               {alta.aviso && <p className="mt-2 text-amber-800">{alta.aviso}</p>}

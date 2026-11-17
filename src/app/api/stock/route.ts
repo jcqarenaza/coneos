@@ -176,6 +176,8 @@ export async function POST(request: Request) {
     if (eFila) { console.error('[stock] habilitar_con_stock fila', eFila.message); return err('No se pudo leer el stock. No se modificó nada. Reintentá.', 500) }
     const previa = fila ? Number(fila.cantidad) : null
     const yaControla = prod.controla_stock === true
+    // Activar el control es GLOBAL (todas las sucursales): exige confirmación expresa del administrador (CTO 17/11). No aplica si el control ya estaba activo.
+    if (!yaControla && body.confirma_global !== true) return err('Habilitar el control activa el stock del producto en todas las sucursales. Confirmalo para continuar.', 400, { codigo: 'CONFIRMACION_GLOBAL_REQUERIDA' })
     if (previa !== null && previa !== cantidad) {
       if (yaControla) return err(`«${prod.nombre}» ya tiene ${previa} unidades en esta sucursal. Para cambiarlas usá el Ajuste general.`, 409, { codigo: 'YA_TIENE_STOCK', existencias: previa })
       if (body.confirmar !== true) return err(`«${prod.nombre}» tiene ${previa} unidades registradas en esta sucursal de antes. Si seguís, quedan en ${cantidad}.`, 409, { codigo: 'CONFIRMAR_REEMPLAZO', existencias: previa })

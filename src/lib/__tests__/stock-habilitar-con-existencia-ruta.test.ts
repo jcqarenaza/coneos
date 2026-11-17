@@ -100,7 +100,7 @@ async function mundo() {
 const call = (b: J, tok: string | null = TOK.empresa) => STOCK(new Request('http://x/api/stock', { method: 'POST', headers: { 'content-type': 'application/json', ...(tok ? { authorization: `Bearer ${tok}` } : {}) }, body: JSON.stringify(b) }))
 type R = { ok?: boolean; error?: string; codigo?: string; cantidad?: number; ya_aplicado?: boolean; controla?: boolean; existencias?: number; otras_sin_alta?: { id: string; nombre: string }[]; items?: { producto_id: string; controla: boolean; cantidad: number | null; estado: string }[] }
 const j = async (r: Response) => (await r.json()) as R
-const alta = (cantidad: unknown, extra: J = {}, suc = w.A, tok: string | null = TOK.empresa) => call({ accion: 'habilitar_con_stock', sucursal_id: suc, producto_id: P, cantidad, ...extra }, tok)
+const alta = (cantidad: unknown, extra: J = {}, suc = w.A, tok: string | null = TOK.empresa) => call({ accion: 'habilitar_con_stock', sucursal_id: suc, producto_id: P, cantidad, confirma_global: true, ...extra }, tok)
 const flag = async () => (await db.query('select controla_stock from productos where id=$1', [P])).rows[0].controla_stock as boolean
 const fila = async (suc: string) => (await db.query('select cantidad from producto_stock where producto_id=$1 and sucursal_id=$2', [P, suc])).rows[0]?.cantidad as number | undefined
 const movs = async (suc?: string) => Number((await db.query(`select count(*) from stock_movimientos where producto_id=$1 ${suc ? 'and sucursal_id=$2' : ''}`, suc ? [P, suc] : [P])).rows[0].count)
@@ -188,5 +188,24 @@ describe('Inventario: habilitar + existencia inicial en un acto (CTO 17/11)', ()
 
   test('H13) sucursal de OTRA empresa → 403 y no escribe', async () => {
     assert.equal((await alta(5, {}, w.otraSuc)).status, 403); assert.equal(await flag(), false); assert.equal(await movs(), 0)
+  })
+
+  test('H14) SIN confirmación global expresa: 400 CONFIRMACION_GLOBAL_REQUERIDA y no se escribe nada; con el control ya activo no hace falta', async () => {
+    for (const c of [undefined, false, 'true', 1]) { const r = await alta(12, { confirma_global: c }); assert.equal(r.status, 400); assert.equal((await j(r)).codigo, 'CONFIRMACION_GLOBAL_REQUERIDA') }
+    assert.equal(await flag(), false); assert.equal(await fila(w.A), undefined); assert.equal(await movs(), 0); assert.equal(rpcs.filter(x => x === 'ajustar_stock').length, 0)
+    await db.query('update productos set controla_stock=true where id=$1', [P])
+    assert.equal((await j(await alta(8, { confirma_global: undefined }))).ok, true, 'cargar existencia a un producto ya habilitado no activa nada global')
+  })
+})
+
+// «Habilitar a todos» (lote) retirado de la INTERFAZ (CTO 17/11): no puede reutilizar habilitar_con_stock de forma simple y segura
+// (pide una existencia por producto y serían N operaciones parciales). Control a nivel de código fuente de la pantalla (NO es una prueba de navegador).
+describe('Pantalla de stock: sin habilitación global ciega y con aviso obligatorio', () => {
+  const src = readFileSync(join(process.cwd(), 'src/app/[empresa]/admin/stock/page.tsx'), 'utf8')
+  test('U1) la pantalla ya no ofrece ni llama a habilitar_lote', () => { assert.ok(!src.includes('habilitar_lote')); assert.ok(!/Habilitar control a/.test(src)); assert.ok(!src.includes('habilitarLote')) })
+  test('U2) el aviso global lista los 3 puntos y el botón exige confirmación expresa', () => {
+    assert.match(src, /todas las sucursales/); assert.match(src, /solo en \{/); assert.match(src, /agotadas y no podrán vender/)
+    assert.match(src, /Entiendo y confirmo la habilitación global/); assert.match(src, /disabled=\{altaTrab \|\| \(!alta\.yaControla && !alta\.confirmaGlobal\)\}/)
+    assert.match(src, /confirma_global: alta\.confirmaGlobal/)
   })
 })
