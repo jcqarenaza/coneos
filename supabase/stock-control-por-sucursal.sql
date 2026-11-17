@@ -15,7 +15,7 @@
 --   4. Filas de compatibilidad: para cada producto (modelo 'producto') con controla_stock=true, una fila cantidad 0 / controla=true en cada
 --      sucursal EXISTENTE de su empresa que no tenga fila (preserva el «agotado» de hoy). SIN movimientos. No toca cantidades.
 --   5. Funciones: crear_pedido_stock (v1.8 viva → v1.9), ajustar_stock, crear_arqueo_stock, iniciar_conteo_stock,
---      _calcular_ajuste_stock, devolver_stock_pedido. Parten de las definiciones VIVAS leídas de cones-prod el 17/11
+--      _calcular_ajuste_stock, devolver_stock_pedido, y (conversión rama → producto) _restaurar_producto_stock + volver_modelo_producto. Parten de las definiciones VIVAS leídas de cones-prod el 17/11
 --      (copias en supabase/versionado/*.vivo-2026-11-17.sql); cada cambio está marcado «v1.9».
 --   6. Verificaciones DESPUÉS contra el respaldo: si algo no cuadra, la transacción se ABORTA y no queda nada aplicado.
 --
@@ -34,7 +34,7 @@ select e.nombre as empresa, s.nombre as sucursal, s.id as sucursal_id, count(*) 
  group by e.nombre, s.nombre, s.id order by 1, 2, 3;
 */
 --
--- REVERSIÓN (si hiciera falta): (i) volver a crear las 6 funciones desde supabase/versionado/*.vivo-2026-11-17.sql;
+-- REVERSIÓN (si hiciera falta): (i) volver a crear las 8 funciones desde supabase/versionado/*.vivo-2026-11-17.sql;
 --   (ii) alter table public.producto_stock drop column controla;  Las filas en 0 insertadas quedan y equivalen al «sin fila = agotado»
 --   de antes (solo se crearon para productos con controla_stock=true), así que no cambian el comportamiento anterior.
 -- ════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -784,6 +784,125 @@ begin
   return jsonb_build_object('devuelto', true, 'movimientos', v_movs, 'unidades', v_unidades);
 end; $function$;
 
+-- _restaurar_producto_stock  (conversión rama → producto; SECURITY DEFINER)
+CREATE OR REPLACE FUNCTION public._restaurar_producto_stock(p_empresa uuid, p_sucursal uuid, p_producto uuid, p_cantidad integer, p_detalle text, p_usuario uuid, p_operacion uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_id uuid; v_old integer; v_new integer; v_mov uuid;
+begin
+  if p_cantidad is null or p_cantidad < 0 then raise exception 'CANTIDAD_INVALIDA' using errcode = 'P0001'; end if;
+  if not exists (select 1 from public.productos where id = p_producto and empresa_id = p_empresa and modelo_stock = 'producto') then
+    raise exception 'RESTAURAR_REQUIERE_MODELO_PRODUCTO' using errcode = 'P0001'; end if;
+  if not exists (select 1 from public.sucursales where id = p_sucursal and empresa_id = p_empresa) then
+    raise exception 'SUCURSAL_INVALIDA' using errcode = 'P0001'; end if;
+  select id, cantidad into v_id, v_old from public.producto_stock where producto_id = p_producto and sucursal_id = p_sucursal for update;
+  if v_id is null then
+    v_old := 0;
+    if p_cantidad > 0 then
+      -- v1.9 CONTROL POR SUCURSAL (conversión rama → producto): una sucursal SIN fila antes de la conversión vendía libre; la fila que se crea
+      -- acá guarda el conteo, pero NO activa el control (controla = false explícito). Una fila existente conserva su marca (el UPDATE no la toca).
+      insert into public.producto_stock (empresa_id, producto_id, sucursal_id, cantidad, stock_minimo, controla, updated_at)
+      values (p_empresa, p_producto, p_sucursal, p_cantidad, 0, false, now());
+    end if;
+  else
+    update public.producto_stock set cantidad = p_cantidad, updated_at = now() where id = v_id;
+  end if;
+  select coalesce(max(cantidad), 0) into v_new from public.producto_stock where producto_id = p_producto and sucursal_id = p_sucursal;
+  if v_new <> p_cantidad then raise exception 'RESTAURACION_NO_COINCIDE: leido %, esperado %', v_new, p_cantidad using errcode = 'P0001'; end if;
+  if v_new <> v_old then
+    insert into public.stock_movimientos (empresa_id, sucursal_id, producto_id, delta, motivo, detalle, usuario_id, operacion_id)
+    values (p_empresa, p_sucursal, p_producto, v_new - v_old, 'ajuste', p_detalle, p_usuario, p_operacion) returning id into v_mov;
+  end if;
+  return jsonb_build_object('anterior', v_old, 'cantidad', v_new, 'delta', v_new - v_old, 'movimiento_id', v_mov);
+end $function$;
+
+-- volver_modelo_producto  (conversión rama → producto; SECURITY DEFINER)
+CREATE OR REPLACE FUNCTION public.volver_modelo_producto(p_empresa_id uuid, p_producto_id uuid, p_usuario_id uuid, p_usuario_nombre text, p_motivo text, p_operacion_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_mot text := btrim(coalesce(p_motivo,'')); v_huella text; v_reg jsonb; v_mod text; v_del timestamptz; v_ctl_prev boolean;
+  h record; v_saldo numeric; v_suma numeric; v_desde timestamptz; v_hoja record; v_res jsonb; v_rest jsonb; v_rev uuid;
+  v_list jsonb := '[]'::jsonb;
+begin
+  perform public._validar_usuario_stock_empresa(p_empresa_id, p_usuario_id);
+  if p_operacion_id is null then raise exception 'OPERACION_REQUERIDA' using errcode = 'P0001'; end if;
+  if v_mot = '' then raise exception 'MOTIVO_REQUERIDO' using errcode = 'P0001'; end if;
+  v_huella := public._huella(jsonb_build_object('empresa_id', p_empresa_id, 'producto_id', p_producto_id, 'motivo', v_mot, 'usuario_id', p_usuario_id));
+  v_reg := public._registrar_operacion(p_operacion_id, p_empresa_id, 'revertir', v_huella, p_usuario_id);
+  if v_reg->>'estado' = 'repetida' then return (v_reg->'resultado') || jsonb_build_object('repetido', true); end if;
+  perform public._exigir_read_committed();
+
+  perform public._a0_exclusivo();
+  select modelo_stock, deleted_at into v_mod, v_del from public.productos where id = p_producto_id and empresa_id = p_empresa_id for update;
+  if v_mod is null then raise exception 'PRODUCTO_NO_ENCONTRADO' using errcode = 'P0001'; end if;
+  if v_mod <> 'rama' then raise exception 'PRODUCTO_NO_RAMA' using errcode = 'P0001'; end if;
+  perform 1 from public.producto_stock where producto_id = p_producto_id order by sucursal_id for update;
+  perform 1 from public.stock_rama where producto_id = p_producto_id order by id for update;
+
+  if exists (select 1 from public.stock_rama_habilitacion where producto_id = p_producto_id and estado = 'pendiente') then
+    raise exception 'HABILITACION_PENDIENTE: activar o resolver las sucursales pendientes antes de revertir' using errcode = 'P0001'; end if;
+  select min(activada_at) into v_desde from public.stock_rama_habilitacion where producto_id = p_producto_id and estado = 'activa';
+  if v_desde is null then raise exception 'HABILITACION_INEXISTENTE' using errcode = 'P0001'; end if;
+  if exists (select 1 from public.stock_movimientos m where m.producto_id = p_producto_id and m.rama_id is not null and m.motivo <> 'apertura' and m.created_at >= v_desde) then
+    raise exception 'REVERSION_BLOQUEADA: hay movimientos posteriores a la apertura (venta, ingreso, devolucion o ajuste); la reversion exacta no es posible' using errcode = 'P0001'; end if;
+  if exists (select 1 from public.stock_conteos c join public.stock_conteo_base b on b.conteo_id = c.id
+              where c.empresa_id = p_empresa_id and b.producto_id = p_producto_id and c.estado not in ('aplicado','cancelado','anulado'))
+     or exists (select 1 from public.arqueos_stock a where a.empresa_id = p_empresa_id and a.estado = 'pendiente'
+                 and a.sucursal_id in (select sucursal_id from public.stock_rama_habilitacion where producto_id = p_producto_id and estado = 'activa')) then
+    raise exception 'REVERSION_BLOQUEADA: operacion de stock pendiente' using errcode = 'P0001'; end if;
+
+  select controla_stock_previo into v_ctl_prev from (select (resultado->>'controla_stock_previo')::boolean controla_stock_previo from public.stock_operaciones
+          where empresa_id = p_empresa_id and tipo = 'habilitar' and resultado->>'producto_id' = p_producto_id::text order by created_at desc limit 1) z;
+  if v_ctl_prev is null then raise exception 'CONTROLA_STOCK_PREVIO_DESCONOCIDO' using errcode = 'P0001'; end if;
+  -- v1.9 CONTROL POR SUCURSAL (conversión rama → producto): durante el modelo rama las filas de producto_stock están CONGELADAS (trg_stock_ps_guard)
+  -- y conservan su marca controla, que es la única fuente del control por sucursal. El agregado previo debe coincidir con ellas
+  -- («controla en al menos una sucursal»). Si no coincide, esa habilitación se registró con el modelo global anterior (un solo flag para todas las
+  -- sucursales) y el control por sucursal NO se puede reconstruir: se aborta sin cambios en vez de inventarlo (decisión del CTO).
+  if v_ctl_prev is distinct from exists (select 1 from public.producto_stock where producto_id = p_producto_id and controla = true) then
+    raise exception 'CONTROL_POR_SUCURSAL_NO_RECONSTRUIBLE: controla_stock previo (%) no coincide con las filas congeladas de producto_stock', v_ctl_prev using errcode = 'P0001'; end if;
+
+  for h in select * from public.stock_rama_habilitacion where producto_id = p_producto_id and estado = 'activa' order by sucursal_id loop
+    select coalesce((select cantidad from public.producto_stock where producto_id = p_producto_id and sucursal_id = h.sucursal_id), 0) into v_saldo;
+    if v_saldo <> h.saldo_anterior then
+      raise exception 'CONGELADO_ALTERADO: sucursal %, producto_stock %, esperado %', h.sucursal_id, v_saldo, h.saldo_anterior using errcode = 'P0001'; end if;
+    select coalesce(sum(cantidad), 0) into v_suma from public.stock_rama where producto_id = p_producto_id and sucursal_id = h.sucursal_id;
+    if v_suma <> h.total_contado then
+      raise exception 'HOJAS_NO_COINCIDEN_CON_CONTEO: sucursal %, hojas %, contado %', h.sucursal_id, v_suma, h.total_contado using errcode = 'P0001'; end if;
+  end loop;
+
+  for v_hoja in select id, sucursal_id, cantidad from public.stock_rama where producto_id = p_producto_id and cantidad > 0 order by id loop
+    update public.stock_rama set cantidad = 0, updated_at = now() where id = v_hoja.id;
+    insert into public.stock_movimientos (empresa_id, sucursal_id, producto_id, delta, motivo, detalle, rama_id, operacion_id, usuario_id)
+    values (p_empresa_id, v_hoja.sucursal_id, p_producto_id, -v_hoja.cantidad, 'ajuste', 'Reversion a modelo producto · ' || v_mot, v_hoja.id, p_operacion_id, p_usuario_id);
+  end loop;
+
+  update public.productos set modelo_stock = 'producto', controla_stock = v_ctl_prev where id = p_producto_id;
+
+  for h in select * from public.stock_rama_habilitacion where producto_id = p_producto_id and estado = 'activa' order by sucursal_id loop
+    v_rest := public._restaurar_producto_stock(p_empresa_id, h.sucursal_id, p_producto_id, h.total_contado::int,
+                'Reversion a modelo producto · ' || v_mot, p_usuario_id, p_operacion_id);
+    select coalesce((select cantidad from public.producto_stock where producto_id = p_producto_id and sucursal_id = h.sucursal_id), 0) into v_saldo;
+    insert into public.stock_rama_reversion (empresa_id, habilitacion_id, producto_id, sucursal_id, saldo_anterior_congelado, total_contado, saldo_restaurado, diferencia, operacion_id, usuario_id, movimiento_id)
+    values (p_empresa_id, h.id, p_producto_id, h.sucursal_id, h.saldo_anterior, h.total_contado, v_saldo, v_saldo - h.saldo_anterior, p_operacion_id, p_usuario_id,
+            nullif(v_rest->>'movimiento_id','')::uuid) returning id into v_rev;
+    update public.stock_rama_habilitacion set estado = 'revertida', revertida_at = now() where id = h.id;
+    v_list := v_list || jsonb_build_array(jsonb_build_object('sucursal_id', h.sucursal_id, 'saldo_anterior_congelado', h.saldo_anterior,
+                'total_contado', h.total_contado, 'saldo_restaurado', v_saldo, 'diferencia', v_saldo - h.saldo_anterior, 'reversion_id', v_rev));
+  end loop;
+
+  v_res := jsonb_build_object('producto_id', p_producto_id, 'modelo', 'producto', 'controla_stock', v_ctl_prev,
+                              'usuario_nombre', btrim(coalesce(p_usuario_nombre,'')), 'sucursales', v_list);
+  perform public._completar_operacion(p_operacion_id, v_res);
+  return v_res || jsonb_build_object('repetido', false);
+end $function$;
+
 -- 6) VERIFICACIONES DESPUÉS (cualquier fallo aborta TODO)
 do $$
 declare
@@ -812,10 +931,11 @@ begin
   -- Copa Sport / Prueba intacta
   select coalesce(sum(cantidad), 0) into n from public.producto_stock where producto_id = '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e' and sucursal_id = '6a2c2517-854f-43a6-b91a-451e4fc9fb7b';
   if n <> (pre->>'copa_sport_prueba')::numeric then raise exception 'VERIF: Copa Sport/Prueba cambió'; end if;
-  -- las 6 funciones quedaron en v1.9
+  -- las 8 funciones quedaron en v1.9
   if (select count(*) from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public'
-        and p.proname in ('crear_pedido_stock','ajustar_stock','crear_arqueo_stock','iniciar_conteo_stock','_calcular_ajuste_stock','devolver_stock_pedido')
-        and p.prosrc like '%v1.9%') <> 6 then raise exception 'VERIF: faltan funciones v1.9'; end if;
+        and p.proname in ('crear_pedido_stock','ajustar_stock','crear_arqueo_stock','iniciar_conteo_stock','_calcular_ajuste_stock','devolver_stock_pedido',
+                          '_restaurar_producto_stock','volver_modelo_producto')
+        and p.prosrc like '%v1.9%') <> 8 then raise exception 'VERIF: faltan funciones v1.9'; end if;
 end $$;
 
 -- Resumen para revisar antes del COMMIT (filas insertadas por empresa y sucursal + totales)
