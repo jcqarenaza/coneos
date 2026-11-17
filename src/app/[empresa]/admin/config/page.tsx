@@ -61,12 +61,12 @@ export default function ConfigPage() {
     ;(async () => {
       try {
         const { data: { session } } = await createClient().auth.getSession()
-        if (!session) return
+        if (!session) { if (vivo) setCuitsReales([]); return }
         const res = await fetch('/api/admin/cuits', { headers: { Authorization: `Bearer ${session.access_token}` } })
-        if (!res.ok) return
+        if (!res.ok) { if (vivo) setCuitsReales([]); return }
         const d = await res.json()
         if (vivo) setCuitsReales(Array.isArray(d.cuits) ? d.cuits : [])
-      } catch { /* sin CUITs reales: se muestra el formulario clásico */ }
+      } catch { if (vivo) setCuitsReales([]) /* sin CUITs reales: se muestra el formulario clásico */ }
     })()
     return () => { vivo = false }
   }, [ctx])
@@ -178,7 +178,9 @@ export default function ConfigPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 
         <ConeCard title="Datos fiscales">
-          {cuitsReales && cuitsReales.length > 0 ? (
+          {cuitsReales === null ? (
+            <div className="flex justify-center py-10" aria-label="Cargando datos fiscales"><Loader2 className="h-5 w-5 animate-spin text-neutral-300" /></div>
+          ) : cuitsReales.length > 0 ? (
             <div className="space-y-3">
               {cuitsReales.map(c => {
                 const emite = c.activo && c.estado === 'validado'
