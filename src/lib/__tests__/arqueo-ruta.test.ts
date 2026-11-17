@@ -76,9 +76,11 @@ beforeEach(() => {
     { id: P2, empresa_id: EMP, nombre: 'Bomba', categoria_id: CAT, controla_stock: true, activo: true, deleted_at: null },
     { id: PAJENO, empresa_id: EMP2, nombre: 'Ajeno', categoria_id: CAT, controla_stock: true, activo: true, deleted_at: null },
   ]
+  // CONTROL POR SUCURSAL (CTO 17/11): P1 y P2 controlan en S1 (P2 con 0 u.); P1 también en S2
   T.producto_stock = [
-    { empresa_id: EMP, sucursal_id: S1, producto_id: P1, cantidad: 10 },
-    { empresa_id: EMP, sucursal_id: S2, producto_id: P1, cantidad: 99 },
+    { empresa_id: EMP, sucursal_id: S1, producto_id: P1, cantidad: 10, controla: true },
+    { empresa_id: EMP, sucursal_id: S2, producto_id: P1, cantidad: 99, controla: true },
+    { empresa_id: EMP, sucursal_id: S1, producto_id: P2, cantidad: 0, controla: true },
   ]
   T.arqueos_stock = []; T.arqueo_items = []
 })
@@ -210,5 +212,28 @@ describe('guardar', () => {
   test('acción inválida / cuerpo inválido → 400', async () => {
     assert.equal((await post({ accion: 'borrar', ...id })).status, 400)
     assert.equal((await ARQUEO(new Request('http://x/', { method: 'POST', body: 'no-json' }))).status, 400)
+  })
+})
+
+describe('control por SUCURSAL (GO CTO 17/11): el arqueo solo cuenta lo que ESA sucursal controla', () => {
+  test('preparar: un producto con control global pero SIN control en esta sucursal (o sin fila) no se ofrece', async () => {
+    const j = await (await post({ accion: 'preparar', ...id })).json()
+    assert.deepEqual(j.productos.map((p: { id: string }) => p.id).sort(), [P1, P2].sort())
+    T.producto_stock.find(x => x.sucursal_id === S1 && x.producto_id === P2)!.controla = false        // P2 deja de controlar en S1 (sigue el agregado global)
+    const j2 = await (await post({ accion: 'preparar', ...id })).json()
+    assert.deepEqual(j2.productos.map((p: { id: string }) => p.id), [P1])
+    T.producto_stock = T.producto_stock.filter(x => !(x.sucursal_id === S1 && x.producto_id === P1))  // sucursal sin fila → vende libre → no se cuenta
+    assert.deepEqual((await (await post({ accion: 'preparar', ...id })).json()).productos, [])
+  })
+  test('guardar: un producto no controlado en esta sucursal → 422 PRODUCTO_INVALIDO y no escribe nada', async () => {
+    T.producto_stock.find(x => x.sucursal_id === S1 && x.producto_id === P2)!.controla = false
+    const r = await guardar({ items: [{ producto_id: P2, fisico: 3 }] })
+    assert.equal(r.status, 422); assert.equal((await r.json()).code, 'PRODUCTO_INVALIDO'); assert.equal(writes.length, 0)
+    assert.equal((await guardar({ items: [{ producto_id: P1, fisico: 8 }] })).status, 200, 'el controlado sí')
+  })
+  test('el control de OTRA sucursal no habilita: P1 controla en S2 pero la caja es de S1 sin fila de P1', async () => {
+    T.producto_stock = T.producto_stock.filter(x => !(x.sucursal_id === S1 && x.producto_id === P1))
+    const r = await guardar({ items: [{ producto_id: P1, fisico: 8 }] })
+    assert.equal(r.status, 422); assert.equal(writes.length, 0)
   })
 })

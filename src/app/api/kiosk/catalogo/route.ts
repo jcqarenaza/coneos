@@ -37,7 +37,7 @@ export async function GET(request: Request) {
       supabase.from('inventario_opciones').select('opcion_id, disponible').eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id),
       supabase.from('presentacion_grupos').select('presentacion_id, grupo_id'),
       supabase.from('sucursal_catalogo_config').select('entidad_id, entidad_tipo, disponible').eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id),
-      supabase.from('producto_stock').select('producto_id, cantidad').eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id),
+      supabase.from('producto_stock').select('producto_id, cantidad, controla').eq('sucursal_id', sucursal_id).eq('empresa_id', empresa_id),
     ])
 
   // Toggle por empresa (default OFF = ocultar, comportamiento histórico)
@@ -49,11 +49,13 @@ export async function GET(request: Request) {
   ;(catalogoConfig ?? []).forEach((r: { entidad_id: string; disponible: boolean }) => { dispoMap[r.entidad_id] = r.disponible })
 
   // Filtrar productos y presentaciones no disponibles en esta sucursal.
-  // STOCK: producto contable (controla_stock) con cantidad 0 — o sin fila de
-  // stock para esta sucursal — se marca AGOTADO (misma regla que la RPC al
-  // vender: sin fila = sin stock). Un solo punto para los 4 canales.
+  // STOCK (CONTROL POR SUCURSAL, GO CTO 17/11): decide la fila (producto, ESTA sucursal) con controla = true — la misma regla que
+  // crear_pedido_stock al vender. Producto contable controlado acá con cantidad 0 → AGOTADO. Sin fila o con controla = false →
+  // esta sucursal vende libre (aunque otra sucursal controle el mismo producto). productos.controla_stock (agregado) NO decide acá.
+  // Un solo punto para los 4 canales.
   const stockMap: Record<string, number> = {}
-  ;(stockRows ?? []).forEach((s: { producto_id: string; cantidad: number }) => { stockMap[s.producto_id] = s.cantidad })
+  const controlaAqui = new Set<string>()
+  ;(stockRows ?? []).forEach((s: { producto_id: string; cantidad: number; controla?: boolean }) => { stockMap[s.producto_id] = s.cantidad; if (s.controla === true) controlaAqui.add(s.producto_id) })
 
   // ══ STOCK POR RAMA (GO CTO 13/11, defecto D1) ══
   // Un producto en modelo 'rama' NO guarda su existencia en producto_stock sino en
@@ -83,7 +85,7 @@ export async function GET(request: Request) {
     }
   }
   const sinStock = (p: { id: string; controla_stock?: boolean }) =>
-    ramaControlada.has(p.id) ? !ramaConStock.has(p.id) : p.controla_stock === true && !(stockMap[p.id] > 0)
+    ramaControlada.has(p.id) ? !ramaConStock.has(p.id) : controlaAqui.has(p.id) && !(stockMap[p.id] > 0)
 
   // ── AGOTADO VISIBLE (orden CTO 19/09): el sin-stock ya NO se oculta ──
   // El producto sigue en el catálogo con flag `agotado: true`; el cliente lo

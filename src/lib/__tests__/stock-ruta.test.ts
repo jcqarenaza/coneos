@@ -81,7 +81,12 @@ beforeEach(() => {
     { id: 'a0000000-0000-4000-8000-000000000009', empresa_id: EMP, nombre: 'SinControl', categoria_id: 'c1', controla_stock: false, activo: true, deleted_at: null },
   ]
   T.categorias = [{ id: 'c1', empresa_id: EMP, nombre: 'Dulces', orden: 1 }]
-  T.producto_stock = [{ empresa_id: EMP, sucursal_id: S1, producto_id: P1, cantidad: 4, stock_minimo: 5, updated_at: '2026-11-08T10:00:00Z' }]
+  // CONTROL POR SUCURSAL (CTO 17/11): P1 controla en S1 (4 u.); P2 controla SOLO en S2 (0 u.); SinControl tiene una fila en S1 con controla=false (p. ej. creada por una compra).
+  T.producto_stock = [
+    { empresa_id: EMP, sucursal_id: S1, producto_id: P1, cantidad: 4, stock_minimo: 5, controla: true, updated_at: '2026-11-08T10:00:00Z' },
+    { empresa_id: EMP, sucursal_id: S2, producto_id: P2, cantidad: 0, stock_minimo: 0, controla: true, updated_at: '2026-11-08T10:00:00Z' },
+    { empresa_id: EMP, sucursal_id: S1, producto_id: 'a0000000-0000-4000-8000-000000000009', cantidad: 3, stock_minimo: 0, controla: false, updated_at: '2026-11-08T10:00:00Z' },
+  ]
   T.stock_movimientos = []; T.stock_ajustes = []; T.pedidos = []
 })
 const llamar = (b: unknown, tok: string | null = TOKENS.adminEmp) => STOCK(new Request('http://x/api/stock', { method: 'POST',
@@ -120,16 +125,16 @@ describe('/api/stock: acceso', () => {
 })
 
 describe('/api/stock: inventario', () => {
-  test('I1 lista solo productos con control de stock, con estado y sin_alta', async () => {
+  test('I1 lista solo productos que ESTA sucursal controla (control por sucursal), con estado', async () => {
     const j = await (await llamar({ accion: 'inventario', sucursal_id: S1 })).json()
-    assert.equal(j.items.length, 2)
-    const a = j.items.find((i: Row) => i.producto_id === P1), b = j.items.find((i: Row) => i.producto_id === P2)
-    assert.equal(a.cantidad, 4); assert.equal(a.estado, 'bajo'); assert.equal(a.categoria, 'Dulces')
-    assert.equal(b.cantidad, null); assert.equal(b.estado, 'sin_alta')
+    assert.equal(j.items.length, 1, 'P2 controla en S2, no en S1: no aparece; SinControl tiene fila pero controla=false')
+    const a = j.items[0]
+    assert.equal(a.producto_id, P1); assert.equal(a.controla, true); assert.equal(a.cantidad, 4); assert.equal(a.estado, 'bajo'); assert.equal(a.categoria, 'Dulces')
     assert.ok(j.ahora)
   })
-  test('I2 sucursal sin filas: todo «sin alta» (no se inventa stock)', async () => {
-    const j = await (await llamar({ accion: 'inventario', sucursal_id: S2 })).json(); assert.ok(j.items.every((i: Row) => i.estado === 'sin_alta'))
+  test('I2 otra sucursal: ve SU control (P2 con 0 = sin stock), no el de S1', async () => {
+    const j = await (await llamar({ accion: 'inventario', sucursal_id: S2 })).json()
+    assert.deepEqual(j.items.map((i: Row) => [i.producto_id, i.controla, i.cantidad, i.estado]), [[P2, true, 0, 'sin_stock']])
   })
 })
 
@@ -237,20 +242,23 @@ describe('/api/stock: Etapa 1.1 (única puerta para habilitar, quitar control y 
     { id: 'f0000000-0000-4000-8000-000000000002', empresa_id: EMP, producto_id: P1, nombre: 'Unidad', factor_stock: 1, orden: 2, activo: true } ] }
   test('H1 inventario por defecto: solo productos con control; todos=true suma los sin control, con presentaciones y unidades vendibles', async () => {
     PRES()
-    const a = await (await llamar({ accion: 'inventario', sucursal_id: S1 })).json(); assert.deepEqual(a.items.map((i: Row) => i.producto_id).sort(), [P1, P2])
+    const a = await (await llamar({ accion: 'inventario', sucursal_id: S1 })).json(); assert.deepEqual(a.items.map((i: Row) => i.producto_id), [P1])
     const b = await (await llamar({ accion: 'inventario', sucursal_id: S1, todos: true })).json(); assert.equal(b.items.length, 3)
-    const sc = b.items.find((i: Row) => i.producto_id === SC); assert.equal(sc.controla, false); assert.equal(sc.estado, 'sin_control'); assert.equal(sc.cantidad, null)
+    const sc = b.items.find((i: Row) => i.producto_id === SC); assert.equal(sc.controla, false); assert.equal(sc.estado, 'sin_control'); assert.equal(sc.cantidad, null, 'una fila con controla=false no muestra existencias')
+    const p2 = b.items.find((i: Row) => i.producto_id === P2); assert.equal(p2.controla, false, 'P2 controla en S2, acá figura sin control')
     const p1 = b.items.find((i: Row) => i.producto_id === P1); assert.equal(p1.cantidad, 4)
     assert.deepEqual(p1.presentaciones.map((x: Row) => [x.nombre, x.factor, x.vendibles]), [['Caja x6', 6, 0], ['Unidad', 1, 4]])
     assert.equal(b.puede_habilitar, true)
   })
-  test('H2 habilitar: administrador de empresa; escribe SOLO controla_stock del producto de SU empresa; idempotente', async () => {
+  test('H2 habilitar POR SUCURSAL: escribe la fila (producto, sucursal) y el agregado; idempotente; no toca otras sucursales', async () => {
     const r = await llamar({ accion: 'habilitar', sucursal_id: S1, producto_id: SC }); assert.equal(r.status, 200)
-    assert.equal(writes.length, 1); assert.equal(writes[0].t, 'productos'); assert.deepEqual(writes[0].body, { controla_stock: true })
-    assert.equal(writes[0].filtro.id, `eq.${SC}`); assert.equal(writes[0].filtro.empresa_id, `eq.${EMP}`); assert.equal(rpc.length, 0)
-    writes = []; assert.equal((await llamar({ accion: 'habilitar', sucursal_id: S1, producto_id: P1 })).status, 200); assert.equal(writes.length, 0)   // ya estaba habilitado: no escribe
+    assert.deepEqual(writes.map(w => [w.t, w.body]), [['producto_stock', { controla: true }], ['productos', { controla_stock: true }]])
+    assert.equal(writes[0].filtro.producto_id, `eq.${SC}`); assert.equal(writes[0].filtro.sucursal_id, `eq.${S1}`); assert.equal(writes[0].filtro.empresa_id, `eq.${EMP}`)
+    assert.equal(writes[1].filtro.id, `eq.${SC}`); assert.equal(writes[1].filtro.empresa_id, `eq.${EMP}`); assert.equal(rpc.length, 0)
+    writes = []; assert.equal((await llamar({ accion: 'habilitar', sucursal_id: S1, producto_id: P1 })).status, 200); assert.equal(writes.length, 0)   // ya estaba habilitado y el agregado coincide: no escribe
+    writes = []; assert.equal((await llamar({ accion: 'habilitar', sucursal_id: S2, producto_id: P2 })).status, 200); assert.equal(writes.length, 0)
   })
-  test('H3 un ADMIN_SUCURSAL NO puede habilitar ni quitar control (es del producto, no de su sucursal) → 403 y no escribe', async () => {
+  test('H3 un ADMIN_SUCURSAL NO puede habilitar ni quitar control (se reserva al administrador de toda la empresa) → 403 y no escribe', async () => {
     for (const accion of ['habilitar', 'deshabilitar']) assert.equal((await llamar({ accion, sucursal_id: S1, producto_id: SC }, TOKENS.adminSuc)).status, 403)
     assert.equal(writes.length, 0)
     const j = await (await llamar({ accion: 'sucursales' }, TOKENS.adminSuc)).json(); assert.equal(j.puede_habilitar, false)
@@ -261,22 +269,30 @@ describe('/api/stock: Etapa 1.1 (única puerta para habilitar, quitar control y 
     const r = await llamar({ accion: 'habilitar', sucursal_id: S1, producto_id: 'a0000000-0000-4000-8000-0000000000aa', empresa_id: EMP2 }); assert.equal(r.status, 404); assert.equal(writes.length, 0)
     assert.equal((await llamar({ accion: 'habilitar', sucursal_id: S3, producto_id: SC }, TOKENS.adminEmp)).status, 403)   // sucursal de otra empresa
   })
-  test('H5 quitar control con existencias pide confirmación (409) y no escribe; con confirmar:true lo quita', async () => {
+  test('H5 quitar control con existencias pide confirmación (409) y no escribe; con confirmar:true lo quita SOLO en esa sucursal y baja el agregado si era la única', async () => {
     const r = await llamar({ accion: 'deshabilitar', sucursal_id: S1, producto_id: P1 }); assert.equal(r.status, 409)
     const j = await r.json(); assert.equal(j.codigo, 'CONFIRMAR_QUITAR'); assert.equal(j.existencias, 4); assert.equal(writes.length, 0)
     assert.equal((await llamar({ accion: 'deshabilitar', sucursal_id: S1, producto_id: P1, confirmar: true })).status, 200)
-    assert.deepEqual(writes.map(w => [w.t, w.body]), [['productos', { controla_stock: false }]])
+    assert.deepEqual(writes.map(w => [w.t, w.body]), [['producto_stock', { controla: false }], ['productos', { controla_stock: false }]])
+    assert.equal(writes[0].filtro.sucursal_id, `eq.${S1}`)
+  })
+  test('H5b producto controlado en DOS sucursales: quitarlo en una NO baja el agregado (la otra sigue controlando)', async () => {
+    T.producto_stock.push({ empresa_id: EMP, sucursal_id: S2, producto_id: P1, cantidad: 9, stock_minimo: 0, controla: true, updated_at: '2026-11-08T10:00:00Z' })
+    assert.equal((await llamar({ accion: 'deshabilitar', sucursal_id: S1, producto_id: P1, confirmar: true })).status, 200)
+    assert.deepEqual(writes.map(w => [w.t, w.body]), [['producto_stock', { controla: false }]])
+    assert.equal(T.producto_stock.find(x => x.sucursal_id === S2 && x.producto_id === P1)!.controla, true, 'la otra sucursal no se tocó')
   })
   test('H6 quitar control sin existencias no pide confirmación', async () => {
-    assert.equal((await llamar({ accion: 'deshabilitar', sucursal_id: S1, producto_id: P2 })).status, 200)
-    assert.deepEqual(writes.map(w => [w.t, w.body]), [['productos', { controla_stock: false }]])
+    assert.equal((await llamar({ accion: 'deshabilitar', sucursal_id: S2, producto_id: P2 })).status, 200)
+    assert.deepEqual(writes.map(w => [w.t, w.body]), [['producto_stock', { controla: false }], ['productos', { controla_stock: false }]])
   })
   test('H7 mínimo: entero ≥ 0, solo con stock cargado en ESA sucursal; escribe solo stock_minimo; sirve a un ADMIN_SUCURSAL de su sucursal', async () => {
     assert.equal((await llamar({ accion: 'minimo', sucursal_id: S1, producto_id: P1, minimo: 7 }, TOKENS.adminSuc)).status, 200)
     assert.equal(writes.length, 1); assert.equal(writes[0].t, 'producto_stock'); assert.deepEqual(writes[0].body, { stock_minimo: 7 })
     assert.equal(writes[0].filtro.sucursal_id, `eq.${S1}`); assert.equal(writes[0].filtro.empresa_id, `eq.${EMP}`)
     for (const bad of [-1, 1.5, '3', null, 2_000_000]) assert.equal((await llamar({ accion: 'minimo', sucursal_id: S1, producto_id: P1, minimo: bad })).status, 400)
-    const sa = await llamar({ accion: 'minimo', sucursal_id: S1, producto_id: P2, minimo: 2 }); assert.equal(sa.status, 409); assert.equal((await sa.json()).codigo, 'SIN_ALTA')   // P2 sin fila de stock en S1
+    const sa = await llamar({ accion: 'minimo', sucursal_id: S1, producto_id: P2, minimo: 2 }); assert.equal(sa.status, 409); assert.equal((await sa.json()).codigo, 'SIN_ALTA')   // P2 no controla en S1 (sin fila)
+    const sc = await llamar({ accion: 'minimo', sucursal_id: S1, producto_id: 'a0000000-0000-4000-8000-000000000009', minimo: 2 }); assert.equal(sc.status, 409)   // fila con controla=false: tampoco
     assert.equal((await llamar({ accion: 'minimo', sucursal_id: S2, producto_id: P1, minimo: 2 }, TOKENS.adminSuc)).status, 403)                              // otra sucursal
     assert.equal(writes.length, 1)
   })

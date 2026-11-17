@@ -103,7 +103,12 @@ export async function POST(request: Request) {
       // E2-b: un producto en modelo 'rama' se cuenta por PRESENTACION (una fila por hoja). El resto, una fila por producto.
       const presDe = new Map<string, { id: string; nombre: string }[]>()
       for (const x of pres.data ?? []) { const l = presDe.get(x.producto_id as string) ?? []; l.push({ id: x.id as string, nombre: String(x.nombre ?? '') }); presDe.set(x.producto_id as string, l) }
-      const filas = (prods.data ?? []).flatMap(p => p.modelo_stock === 'rama'
+      // CONTROL POR SUCURSAL (GO CTO 17/11): un producto contable se cuenta SOLO si ESTA sucursal lo controla (fila con controla = true).
+      // El stock por rama conserva su criterio (control del producto). Misma regla que la base (crear_arqueo_stock).
+      const ctl = await db.from('producto_stock').select('producto_id').eq('empresa_id', ctx.empresa_id).eq('sucursal_id', ctx.sucursal_id).eq('controla', true)
+      if (ctl.error) { console.error('[arqueo] preparar: error de lectura (control por sucursal)'); return ERR('No se pudo preparar el arqueo', 500) }
+      const controladosAqui = new Set((ctl.data ?? []).map(r => r.producto_id as string))
+      const filas = (prods.data ?? []).filter(p => p.modelo_stock === 'rama' || controladosAqui.has(p.id as string)).flatMap(p => p.modelo_stock === 'rama'
         ? (presDe.get(p.id as string) ?? []).map(x => ({ id: `${p.id}:${x.id}`, producto_id: p.id, presentacion_id: x.id, nombre: `${p.nombre} · ${x.nombre}`, categoria_id: p.categoria_id }))
         : [{ id: p.id, producto_id: p.id, presentacion_id: null, nombre: p.nombre, categoria_id: p.categoria_id }])
       return NextResponse.json({
@@ -165,7 +170,12 @@ export async function POST(request: Request) {
     const { data: prods, error: eProds } = await db.from('productos').select('id, categoria_id, modelo_stock')
       .eq('empresa_id', ctx.empresa_id).eq('activo', true).eq('controla_stock', true).is('deleted_at', null).in('id', ids)
     if (eProds) return ERR('No se pudo guardar el conteo', 500)
-    if ((prods ?? []).length !== ids.length) return ERR('Hay productos que no corresponden al arqueo', 422, 'PRODUCTO_INVALIDO')
+    // CONTROL POR SUCURSAL: además, cada producto contable tiene que estar controlado en ESTA sucursal (rama conserva su criterio)
+    const { data: ctlG, error: eCtl } = await db.from('producto_stock').select('producto_id').eq('empresa_id', ctx.empresa_id).eq('sucursal_id', ctx.sucursal_id).eq('controla', true).in('producto_id', ids)
+    if (eCtl) return ERR('No se pudo guardar el conteo', 500)
+    const ctlSet = new Set((ctlG ?? []).map(r => r.producto_id as string))
+    const valid = (prods ?? []).filter(p => p.modelo_stock === 'rama' || ctlSet.has(p.id as string))
+    if (valid.length !== ids.length) return ERR('Hay productos que no corresponden al arqueo', 422, 'PRODUCTO_INVALIDO')
     if (categoriaId && (prods ?? []).some(p => p.categoria_id !== categoriaId)) {
       return ERR('Hay productos fuera del alcance elegido', 422, 'PRODUCTO_INVALIDO')
     }
