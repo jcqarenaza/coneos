@@ -830,6 +830,7 @@ declare
   v_mot text := btrim(coalesce(p_motivo,'')); v_huella text; v_reg jsonb; v_mod text; v_del timestamptz; v_ctl_prev boolean;
   h record; v_saldo numeric; v_suma numeric; v_desde timestamptz; v_hoja record; v_res jsonb; v_rest jsonb; v_rev uuid;
   v_list jsonb := '[]'::jsonb;
+  v_fila boolean; v_ctl_suc boolean; v_n integer; v_ctl2 boolean; v_cant2 numeric;  -- v1.9: estado por sucursal antes/después de restaurar
 begin
   perform public._validar_usuario_stock_empresa(p_empresa_id, p_usuario_id);
   if p_operacion_id is null then raise exception 'OPERACION_REQUERIDA' using errcode = 'P0001'; end if;
@@ -886,8 +887,20 @@ begin
   update public.productos set modelo_stock = 'producto', controla_stock = v_ctl_prev where id = p_producto_id;
 
   for h in select * from public.stock_rama_habilitacion where producto_id = p_producto_id and estado = 'activa' order by sucursal_id loop
+    -- v1.9: estado individual de ESTA sucursal antes de restaurar (la fila congelada es la fuente del control; sin fila = vendía libre)
+    select count(*) > 0, coalesce(bool_or(controla), false) into v_fila, v_ctl_suc
+      from public.producto_stock where producto_id = p_producto_id and sucursal_id = h.sucursal_id;
     v_rest := public._restaurar_producto_stock(p_empresa_id, h.sucursal_id, p_producto_id, h.total_contado::int,
                 'Reversion a modelo producto · ' || v_mot, p_usuario_id, p_operacion_id);
+    -- v1.9: verificación POR SUCURSAL. Con fila previa: misma marca controla y cantidad = conteo. Sin fila previa: conteo 0 → sigue sin fila;
+    -- conteo > 0 → fila nueva con controla = false. Cualquier otra cosa aborta toda la conversión (rollback completo).
+    select count(*), coalesce(bool_or(controla), false), coalesce(max(cantidad), 0) into v_n, v_ctl2, v_cant2
+      from public.producto_stock where producto_id = p_producto_id and sucursal_id = h.sucursal_id;
+    if not (case when v_fila then v_n = 1 and v_ctl2 = v_ctl_suc and v_cant2 = h.total_contado
+                 when h.total_contado = 0 then v_n = 0
+                 else v_n = 1 and v_ctl2 = false and v_cant2 = h.total_contado end) then
+      raise exception 'RESTAURACION_CONTROL_SUCURSAL_ALTERADA: sucursal %, fila previa %, controla previo %, ahora filas %, controla %, cantidad %',
+        h.sucursal_id, v_fila, v_ctl_suc, v_n, v_ctl2, v_cant2 using errcode = 'P0001'; end if;
     select coalesce((select cantidad from public.producto_stock where producto_id = p_producto_id and sucursal_id = h.sucursal_id), 0) into v_saldo;
     insert into public.stock_rama_reversion (empresa_id, habilitacion_id, producto_id, sucursal_id, saldo_anterior_congelado, total_contado, saldo_restaurado, diferencia, operacion_id, usuario_id, movimiento_id)
     values (p_empresa_id, h.id, p_producto_id, h.sucursal_id, h.saldo_anterior, h.total_contado, v_saldo, v_saldo - h.saldo_anterior, p_operacion_id, p_usuario_id,
@@ -896,6 +909,11 @@ begin
     v_list := v_list || jsonb_build_array(jsonb_build_object('sucursal_id', h.sucursal_id, 'saldo_anterior_congelado', h.saldo_anterior,
                 'total_contado', h.total_contado, 'saldo_restaurado', v_saldo, 'diferencia', v_saldo - h.saldo_anterior, 'reversion_id', v_rev));
   end loop;
+
+  -- v1.9: el agregado debe seguir siendo «controla en al menos una sucursal» sobre las filas restauradas
+  if (select controla_stock from public.productos where id = p_producto_id) is distinct from
+     exists (select 1 from public.producto_stock where producto_id = p_producto_id and controla = true) then
+    raise exception 'AGREGADO_CONTROL_INCOHERENTE: productos.controla_stock no coincide con las filas restauradas' using errcode = 'P0001'; end if;
 
   v_res := jsonb_build_object('producto_id', p_producto_id, 'modelo', 'producto', 'controla_stock', v_ctl_prev,
                               'usuario_nombre', btrim(coalesce(p_usuario_nombre,'')), 'sucursales', v_list);
@@ -931,6 +949,10 @@ begin
   -- Copa Sport / Prueba intacta
   select coalesce(sum(cantidad), 0) into n from public.producto_stock where producto_id = '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e' and sucursal_id = '6a2c2517-854f-43a6-b91a-451e4fc9fb7b';
   if n <> (pre->>'copa_sport_prueba')::numeric then raise exception 'VERIF: Copa Sport/Prueba cambió'; end if;
+  -- la conversión rama → producto quedó con sus guardas por sucursal
+  if not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = 'volver_modelo_producto'
+                   and p.prosrc like '%CONTROL_POR_SUCURSAL_NO_RECONSTRUIBLE%' and p.prosrc like '%RESTAURACION_CONTROL_SUCURSAL_ALTERADA%'
+                   and p.prosrc like '%AGREGADO_CONTROL_INCOHERENTE%') then raise exception 'VERIF: volver_modelo_producto sin guardas de control por sucursal'; end if;
   -- las 8 funciones quedaron en v1.9
   if (select count(*) from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public'
         and p.proname in ('crear_pedido_stock','ajustar_stock','crear_arqueo_stock','iniciar_conteo_stock','_calcular_ajuste_stock','devolver_stock_pedido',

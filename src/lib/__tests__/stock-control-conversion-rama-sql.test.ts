@@ -173,3 +173,87 @@ describe('CONVERSIÓN: habilitaciones del modelo GLOBAL anterior (no reconstruib
     assert.equal(Number(n.n), 8)
   })
 })
+
+describe('CONVERSIÓN: estado INDIVIDUAL por sucursal (cantidad cero, configuraciones mixtas, verificación por sucursal)', () => {
+  const movsRev = async (pid: string, suc: string, o: string) => Number((await one("select count(*) n from stock_movimientos where producto_id=$1 and sucursal_id=$2 and operacion_id=$3 and rama_id is null", pid, suc, o)).n)
+  async function convertir(pid: string) {
+    const o = op(); await q('select volver_modelo_producto($1,$2,$3,$4,$5,$6)', [w.E, pid, w.U, 'Juan', 'prueba', o]); return o
+  }
+  const fila1 = async (pid: string, suc: string) => (await q('select cantidad, controla from producto_stock where producto_id=$1 and sucursal_id=$2', [pid, suc]))[0]
+
+  test('S1 fila previa controla=true con cantidad positiva (conteo igual): sigue controlando, sin movimiento de restauración', async () => {
+    const p = await prod('S1', true)
+    await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad, controla) values($1,$2,$3,6,true)', [w.E, p, w.A])
+    await habilitar(p, true, { [w.A]: 6 }); const o = await convertir(p)
+    assert.deepEqual(await fila1(p, w.A), { cantidad: 6, controla: true }); assert.equal(await movsRev(p, w.A, o), 0)
+  })
+  test('S1b fila controla=true cantidad positiva y conteo distinto: controla se conserva y la cantidad pasa al conteo con UN movimiento', async () => {
+    const p = await prod('S1b', true)
+    await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad, controla) values($1,$2,$3,6,true)', [w.E, p, w.A])
+    await habilitar(p, true, { [w.A]: 4 }); const o = await convertir(p)
+    assert.deepEqual(await fila1(p, w.A), { cantidad: 4, controla: true }); assert.equal(await movsRev(p, w.A, o), 1)
+  })
+  test('S2 fila previa controla=true con cantidad CERO: conteo 0 → sigue la fila controlada en 0 (SIN_STOCK), sin movimientos; conteo 5 → controlada con 5', async () => {
+    const p = await prod('S2', true)
+    await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad, controla) values($1,$2,$3,0,true),($1,$2,$4,0,true)', [w.E, p, w.A, w.B])
+    await habilitar(p, true, { [w.A]: 0, [w.B]: 5 }); const o = await convertir(p)
+    assert.deepEqual(await fila1(p, w.A), { cantidad: 0, controla: true }); assert.equal(await movsRev(p, w.A, o), 0)
+    assert.deepEqual(await fila1(p, w.B), { cantidad: 5, controla: true }); assert.equal(await movsRev(p, w.B, o), 1)
+  })
+  test('S3 fila previa controla=false (cantidad positiva y cero): sigue sin controlar', async () => {
+    const p = await prod('S3', true)
+    await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad, controla) values($1,$2,$3,3,false),($1,$2,$4,0,false),($1,$2,$5,0,true)', [w.E, p, w.A, w.B, w.C])
+    await habilitar(p, true, { [w.A]: 3, [w.B]: 0, [w.C]: 0 }); const o = await convertir(p)
+    assert.deepEqual(await fila1(p, w.A), { cantidad: 3, controla: false }); assert.deepEqual(await fila1(p, w.B), { cantidad: 0, controla: false })
+    assert.deepEqual(await fila1(p, w.C), { cantidad: 0, controla: true })
+    for (const x of [w.A, w.B, w.C]) assert.equal(await movsRev(p, x, o), 0)
+  })
+  test('S4 sin fila previa: conteo 0 → NO se crea fila; conteo > 0 → fila con controla=false', async () => {
+    const p = await prod('S4', true)
+    await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad, controla) values($1,$2,$3,0,true)', [w.E, p, w.C])   // otra sucursal controla (agregado true)
+    await habilitar(p, true, { [w.A]: 0, [w.B]: 8, [w.C]: 0 }); const o = await convertir(p)
+    assert.equal(await fila1(p, w.A), undefined); assert.equal(await movsRev(p, w.A, o), 0)
+    assert.deepEqual(await fila1(p, w.B), { cantidad: 8, controla: false }); assert.equal(await movsRev(p, w.B, o), 1)
+    assert.deepEqual(await fila1(p, w.C), { cantidad: 0, controla: true })
+  })
+  test('S5 control en algunas sucursales y desactivado en otras: cada una conserva su configuración y el agregado queda true', async () => {
+    const p = await prod('S5', true)
+    await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad, controla) values($1,$2,$3,10,true),($1,$2,$4,10,false)', [w.E, p, w.A, w.B])
+    await habilitar(p, true, { [w.A]: 10, [w.B]: 10, [w.C]: 2 }); await convertir(p)
+    assert.equal((await fila1(p, w.A)).controla, true); assert.equal((await fila1(p, w.B)).controla, false); assert.deepEqual(await fila1(p, w.C), { cantidad: 2, controla: false })
+    assert.ok(await agregadoOk(p)); assert.equal((await one('select controla_stock c from productos where id=$1', p)).c, true)
+  })
+  test('S6 sin filas controladas en NINGUNA sucursal (flag previo false) y conteos cero: no queda ninguna fila ni control', async () => {
+    const p = await prod('S6', false)
+    await habilitar(p, false, { [w.A]: 0, [w.B]: 0 }); await convertir(p)
+    assert.equal((await filas(p)).length, 0); assert.equal((await one('select controla_stock c from productos where id=$1', p)).c, false)
+  })
+
+  test('V1 la verificación por sucursal ABORTA si algo altera la marca controla de una fila existente durante la restauración (rollback completo)', async () => {
+    const p = await prod('V1', true)
+    await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad, controla) values($1,$2,$3,5,true),($1,$2,$4,5,false)', [w.E, p, w.A, w.B])
+    await habilitar(p, true, { [w.A]: 5, [w.B]: 5 })
+    const antes = await foto(p); const hojas = (await one('select sum(cantidad) s from stock_rama where producto_id=$1', p)).s
+    await db.query(`create function t_altera() returns trigger language plpgsql as $$ begin new.controla := false; return new; end $$;
+      create trigger t_altera before update on producto_stock for each row when (old.producto_id = '${p}') execute function t_altera()`)
+    try {
+      const m = await err(() => volver(p)); assert.match(m!, /RESTAURACION_CONTROL_SUCURSAL_ALTERADA/)
+    } finally { await db.query('drop trigger t_altera on producto_stock; drop function t_altera()') }
+    assert.deepEqual(await foto(p), antes); assert.equal((await one('select sum(cantidad) s from stock_rama where producto_id=$1', p)).s, hojas)
+    assert.equal((await one("select count(*) n from stock_rama_habilitacion where producto_id=$1 and estado='activa'", p)).n, '2')
+  })
+  test('V2 la verificación por sucursal ABORTA si una fila nueva (sin fila previa) nace con controla=true', async () => {
+    const p = await prod('V2', true)
+    await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad, controla) values($1,$2,$3,0,true)', [w.E, p, w.A])
+    await habilitar(p, true, { [w.A]: 0, [w.B]: 4 })
+    await db.query(`create function t_activa() returns trigger language plpgsql as $$ begin new.controla := true; return new; end $$;
+      create trigger t_activa before insert on producto_stock for each row when (new.producto_id = '${p}') execute function t_activa()`)
+    try { assert.match((await err(() => volver(p)))!, /RESTAURACION_CONTROL_SUCURSAL_ALTERADA/) }
+    finally { await db.query('drop trigger t_activa on producto_stock; drop function t_activa()') }
+    assert.equal((await one('select modelo_stock m from productos where id=$1', p)).m, 'rama'); assert.equal((await filas(p)).length, 1)
+  })
+  test('V3 la migración exige en volver_modelo_producto las tres guardas (no reconstruible, alterada por sucursal, agregado)', async () => {
+    const n = await one("select count(*) n from pg_proc where proname='volver_modelo_producto' and prosrc like '%CONTROL_POR_SUCURSAL_NO_RECONSTRUIBLE%' and prosrc like '%RESTAURACION_CONTROL_SUCURSAL_ALTERADA%' and prosrc like '%AGREGADO_CONTROL_INCOHERENTE%'")
+    assert.equal(Number(n.n), 1)
+  })
+})
