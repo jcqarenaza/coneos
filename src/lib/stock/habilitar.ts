@@ -12,3 +12,9 @@ export function unidadesVendibles(cantidad: number | null, factor: unknown): num
   const f = Math.max(1, Math.floor(Number(factor) || 1))
   return Math.floor(cantidad / f)
 }
+
+/** Existencia inicial al habilitar: entero de 0 en adelante (0 es válido: el producto queda AGOTADO en esa sucursal a propósito). Devuelve el mensaje de error o null. */
+export function validarCantidadInicial(v: unknown): string | null {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 1_000_000) return 'La existencia inicial debe ser un número entero de 0 en adelante.'
+  return null
+}
