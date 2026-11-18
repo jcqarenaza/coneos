@@ -24,7 +24,7 @@
 import { useEffect, useState } from 'react'
 import RegistroVisita from '@/components/RegistroVisita'
 
-interface Canal { configurado: boolean; visible?: boolean; disponible: boolean; anticipado?: boolean; motivo: string | null; proximo: string | null; url: string }
+interface Canal { configurado: boolean; visible?: boolean; disponible: boolean; anticipado?: boolean; motivo: string | null; proximo: string | null; mensaje?: string | null; url: string }
 interface Contexto {
   nombre: string
   sucursal_nombre: string
@@ -161,6 +161,7 @@ export default function EntradaPedidosPage() {
                     : canal.proximo
                       ? <p className="text-sm font-semibold text-amber-600 mt-1">🟠 Abre a las {canal.proximo}</p>
                       : <p className="text-sm font-semibold text-neutral-400 mt-1">{canal.motivo ?? 'No disponible'}</p>}
+                  {!canal.disponible && canal.mensaje && <p className="text-sm text-neutral-500 mt-1.5 leading-snug">{canal.mensaje}</p>}
                 </div>
                 {canal.disponible ? (
                   <a href={canal.url}

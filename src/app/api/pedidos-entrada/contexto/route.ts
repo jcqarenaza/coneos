@@ -171,6 +171,10 @@ export async function GET(request: Request) {
   // la tarjeta queda ELEGIBLE con "🟠 Abre a las HH — pedí ahora" (la page de
   // TA recibe al cliente en modo anticipado). Sin franja restante = cerrado.
   const taAnticipado = !sucursalInactiva && diaOk && taConfigurado && !taDisponible && !!taProximo && (tc?.acepta_anticipado === true)
+  // Mensaje del dueño para "Take Away fuera de horario" (el mismo que ve quien entra directo al link de TA): se muestra TAMBIÉN en la tarjeta,
+  // solo cuando el TA está cerrado por SU horario (no por día no operativo ni sucursal inactiva: esos tienen su propio mensaje) y el dueño lo escribió.
+  const taMensajeCfg = String(tc?.mensaje_fuera_horario ?? '').trim()
+  const taMensaje: string | null = taConfigurado && !sucursalInactiva && diaOk && !taDisponible && !taAnticipado && taMensajeCfg ? taMensajeCfg : null
 
   return NextResponse.json({
     nombre: empresa.nombre,
@@ -193,7 +197,7 @@ export async function GET(request: Request) {
     // transporta la PAGE como passthrough — este endpoint no lo conoce.
     servicios: {
       delivery: { configurado: deliveryConfigurado, visible: dc?.mostrar_en_app !== false, disponible: deliveryDisponible, motivo: deliveryMotivo, proximo: deliveryProximo, url: `/${empresa.slug}/delivery/${sucursal.slug}` },
-      takeaway: { configurado: taConfigurado, visible: tc?.mostrar_en_app !== false, disponible: taDisponible || taAnticipado, anticipado: taAnticipado, motivo: taMotivo, proximo: taProximo, url: `/${empresa.slug}/takeaway/${sucursal.slug}` },
+      takeaway: { configurado: taConfigurado, visible: tc?.mostrar_en_app !== false, disponible: taDisponible || taAnticipado, anticipado: taAnticipado, motivo: taMotivo, proximo: taProximo, mensaje: taMensaje, url: `/${empresa.slug}/takeaway/${sucursal.slug}` },
     },
   })
 }
