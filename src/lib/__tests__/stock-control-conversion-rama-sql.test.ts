@@ -12,6 +12,17 @@ const SUP = join(process.cwd(), 'supabase')
 const SOCK = { host: '/tmp/pgsock', port: 54329, user: 'postgres' }
 const DB = 'ctl_conv_rama'
 const SCRIPT = readFileSync(join(SUP, 'stock-control-por-sucursal.sql'), 'utf8')
+
+// La migración real trae la lista APROBADA de cones-prod (18 pares). En las bases de prueba, la lista se reemplaza por los pares que la regla da en ESE fixture
+// (mismo SQL, mismas guardas); la prueba con la lista real está en stock-control-compat-exacto-sql.test.ts.
+const LISTA = /-- >>> LISTA_APROBADA[\s\S]*?-- <<< LISTA_APROBADA/
+const CONTEOS = /-- >>> CONTEOS_APROBADOS[\s\S]*?-- <<< CONTEOS_APROBADOS/
+async function conLista(c: { query: (s: string) => Promise<{ rows: Record<string, string>[] }> }, base = SCRIPT) {
+  const r = (await c.query(`select pr.empresa_id, pr.id as producto_id, s.id as sucursal_id from productos pr join sucursales s on s.empresa_id = pr.empresa_id
+    where pr.controla_stock = true and pr.modelo_stock = 'producto' and not exists (select 1 from producto_stock ps where ps.producto_id = pr.id and ps.sucursal_id = s.id)`)).rows
+  const ins = r.length ? `insert into _ctl_aprobado (empresa_id, producto_id, sucursal_id) values ${r.map(x => `('${x.empresa_id}','${x.producto_id}','${x.sucursal_id}')`).join(',')};` : ''
+  return base.replace(LISTA, ins).replace(CONTEOS, '')   // los conteos 18 / 17 / 1 / 0 son de cones-prod: solo se ejercitan con la lista real
+}
 let admin: pg.Client, db: pg.Pool
 type Row = Record<string, any>   // eslint-disable-line @typescript-eslint/no-explicit-any
 const q = async (sql: string, p: unknown[] = []) => (await db.query(sql, p)).rows as Row[]
@@ -54,7 +65,7 @@ before(async () => {
   w.E = await id('insert into empresas default values returning id')
   for (const k of ['A', 'B', 'C'] as const) w[k] = await id('insert into sucursales(empresa_id, nombre) values($1,$2) returning id', w.E, k)
   w.U = '99999999-9999-4999-8999-999999999999'
-  await db.query(SCRIPT)   // la migración real primero (base vacía): crea la columna y las 8 funciones v1.9
+  await db.query(await conLista(db))   // la migración real primero (base vacía): crea la columna y las 8 funciones v1.9
 })
 after(async () => { await db?.end(); await admin?.query(`drop database if exists ${DB} with (force)`); await admin?.end() })
 

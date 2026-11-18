@@ -13,6 +13,17 @@ const SUP = join(process.cwd(), 'supabase')
 const SOCK = { host: '/tmp/pgsock', port: 54329, user: 'postgres' }
 const DB = 'ctl_suc_sql', DB2 = 'ctl_suc_abort'
 const SCRIPT = readFileSync(join(SUP, 'stock-control-por-sucursal.sql'), 'utf8')
+
+// La migración real trae la lista APROBADA de cones-prod (18 pares). En las bases de prueba, la lista se reemplaza por los pares que la regla da en ESE fixture
+// (mismo SQL, mismas guardas); la prueba con la lista real está en stock-control-compat-exacto-sql.test.ts.
+const LISTA = /-- >>> LISTA_APROBADA[\s\S]*?-- <<< LISTA_APROBADA/
+const CONTEOS = /-- >>> CONTEOS_APROBADOS[\s\S]*?-- <<< CONTEOS_APROBADOS/
+async function conLista(c: { query: (s: string) => Promise<{ rows: Record<string, string>[] }> }, base = SCRIPT) {
+  const r = (await c.query(`select pr.empresa_id, pr.id as producto_id, s.id as sucursal_id from productos pr join sucursales s on s.empresa_id = pr.empresa_id
+    where pr.controla_stock = true and pr.modelo_stock = 'producto' and not exists (select 1 from producto_stock ps where ps.producto_id = pr.id and ps.sucursal_id = s.id)`)).rows
+  const ins = r.length ? `insert into _ctl_aprobado (empresa_id, producto_id, sucursal_id) values ${r.map(x => `('${x.empresa_id}','${x.producto_id}','${x.sucursal_id}')`).join(',')};` : ''
+  return base.replace(LISTA, ins).replace(CONTEOS, '')   // los conteos 18 / 17 / 1 / 0 son de cones-prod: solo se ejercitan con la lista real
+}
 let admin: pg.Client, db: pg.Pool
 type Row = Record<string, any>   // eslint-disable-line @typescript-eslint/no-explicit-any
 const q = async (sql: string, p: unknown[] = []) => (await db.query(sql, p)).rows as Row[]
@@ -52,7 +63,7 @@ before(async () => {
   await q("select ajustar_stock($1,$2,$3,5,'set','ajuste',null,'alta legado')", [w.E1, w.A, L.copa.id])
   await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad) values($1,$2,$3,2),($1,$2,$4,0)', [w.E1, L.bombon.id, w.A, w.B])
   await q('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad) values($1,$2,$3,3)', [w.E1, L.libre.id, w.A])
-  await db.query(SCRIPT)   // ← LA MIGRACIÓN REAL, una transacción, con sus verificaciones internas
+  await db.query(await conLista(db))   // ← LA MIGRACIÓN REAL, una transacción, con sus verificaciones internas
 })
 after(async () => { await db?.end(); await admin?.query(`drop database if exists ${DB} with (force)`); await admin?.query(`drop database if exists ${DB2} with (force)`); await admin?.end() })
 
@@ -103,7 +114,7 @@ describe('MIGRACIÓN: el script real sobre datos legados', () => {
       // un trigger que «ensucia» el libro al insertar la fila de compatibilidad → la verificación de movimientos debe abortar la migración
       await d2.query(`create function sucio() returns trigger language plpgsql as $$ begin insert into stock_movimientos(empresa_id, sucursal_id, producto_id, delta, motivo, detalle) values (new.empresa_id, new.sucursal_id, new.producto_id, 1, 'ajuste', 'x'); return new; end $$;
         create trigger t_sucio after insert on producto_stock for each row execute function sucio()`)
-      const m = await d2.query(SCRIPT).then(() => null, (x: Error) => x.message); assert.match(m!, /VERIF: cambió la cantidad de movimientos/)
+      const m = await d2.query(await conLista(d2)).then(() => null, (x: Error) => x.message); assert.match(m!, /VERIF: cambió la cantidad de movimientos/)
       assert.equal((await d2.query("select 1 from information_schema.columns where table_name='producto_stock' and column_name='controla'")).rows.length, 0)
       assert.equal((await d2.query('select 1 from producto_stock')).rows.length, 0)
       assert.equal((await d2.query("select 1 from pg_proc where proname='crear_pedido_stock' and prosrc like '%v1.9%'")).rows.length, 0)

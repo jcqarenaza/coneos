@@ -9,11 +9,13 @@
 --
 -- QUÉ HACE (en este orden):
 --   0. Guarda: aborta si la migración ya se aplicó (no pisar configuración por sucursal).
+--   0b. Conjunto EXACTO de compatibilidad aprobado (18 pares empresa/producto/sucursal: cecchetto 17, federal 1, demoburger 0): si el que
+--      correspondería por regla no coincide en ambos sentidos, ABORTA antes de modificar nada.
 --   1. Respaldo de conteos (tabla TEMPORAL, no deja objetos en la base).
 --   2. ALTER producto_stock: columna controla boolean NOT NULL DEFAULT false (el default false = «una fila nueva no activa control»).
 --   3. Marca las filas existentes según el comportamiento global anterior: controla = (productos.controla_stock) SOLO modelo 'producto'.
---   4. Filas de compatibilidad: para cada producto (modelo 'producto') con controla_stock=true, una fila cantidad 0 / controla=true en cada
---      sucursal EXISTENTE de su empresa que no tenga fila (preserva el «agotado» de hoy). SIN movimientos. No toca cantidades.
+--   4. Filas de compatibilidad: se insertan SOLO las 18 filas de la lista aprobada (cantidad 0 / controla=true, SIN movimientos), que son las que
+--      la regla «producto controlado × sucursal sin fila» da hoy en cones-prod (preserva el «agotado» de hoy). No toca cantidades.
 --   5. Funciones: crear_pedido_stock (v1.8 viva → v1.9), ajustar_stock, crear_arqueo_stock, iniciar_conteo_stock,
 --      _calcular_ajuste_stock, devolver_stock_pedido, y (conversión rama → producto) _restaurar_producto_stock + volver_modelo_producto. Parten de las definiciones VIVAS leídas de cones-prod el 17/11
 --      (copias en supabase/versionado/*.vivo-2026-11-17.sql); cada cambio está marcado «v1.9».
@@ -49,6 +51,68 @@ do $$ begin
   end if;
 end $$;
 
+-- 0b) CONJUNTO EXACTO DE COMPATIBILIDAD APROBADO por el CTO (relevamiento de cones-prod): 18 filas = cecchetto 17 + federal 1 + demoburger 0.
+--     La migración solo puede insertar ESTAS filas. Si falta una, sobra una o cambia un identificador (producto, sucursal o empresa), ABORTA
+--     antes de modificar nada. No se amplía solo por productos o sucursales creados después del relevamiento.
+--     SHARE: congela productos y sucursales (sin altas ni cambios) mientras dura la transacción, para que lo verificado sea lo que se inserta.
+lock table public.productos, public.sucursales in share mode;
+create temp table _ctl_aprobado (
+  empresa_id uuid not null, producto_id uuid not null, sucursal_id uuid not null, primary key (producto_id, sucursal_id)
+) on commit drop;
+-- >>> LISTA_APROBADA
+insert into _ctl_aprobado (empresa_id, producto_id, sucursal_id) values
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '1cb2edb3-ff60-4936-b52f-aed428f0af36'),  -- cecchetto · Copa Sport
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '2b12e277-ed2f-4acb-a6c8-22a2d4ac9824'),  -- cecchetto · Copa Sport
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '34d3e753-ef8b-4519-97cd-9a633e004635'),  -- cecchetto · Copa Sport
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '445200ac-85b3-4423-b252-61a8c0134a5c'),  -- cecchetto · Copa Sport
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '6a9b48be-9991-40e2-aa18-6142602241f0'),  -- cecchetto · Copa Sport
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '76ab690b-7ae8-4b0b-bc68-de37cb9e9d8e'),  -- cecchetto · Copa Sport
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', 'd9093b39-2205-4b91-962f-018a6e647ed9'),  -- cecchetto · Copa Sport
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', 'e0276f5c-39e8-4e7a-9fa3-d2a04c400d68'),  -- cecchetto · Copa Sport
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', 'f1d9b8f8-695a-42a3-9a38-16597fe279c7'),  -- cecchetto · Copa Sport
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '4f89235e-52b4-41be-9ef9-7a2f9e155b3b', '1cb2edb3-ff60-4936-b52f-aed428f0af36'),  -- cecchetto · Bomboncitos
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '4f89235e-52b4-41be-9ef9-7a2f9e155b3b', '2b12e277-ed2f-4acb-a6c8-22a2d4ac9824'),  -- cecchetto · Bomboncitos
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '4f89235e-52b4-41be-9ef9-7a2f9e155b3b', '34d3e753-ef8b-4519-97cd-9a633e004635'),  -- cecchetto · Bomboncitos
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '4f89235e-52b4-41be-9ef9-7a2f9e155b3b', '445200ac-85b3-4423-b252-61a8c0134a5c'),  -- cecchetto · Bomboncitos
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '4f89235e-52b4-41be-9ef9-7a2f9e155b3b', '6a9b48be-9991-40e2-aa18-6142602241f0'),  -- cecchetto · Bomboncitos
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '4f89235e-52b4-41be-9ef9-7a2f9e155b3b', 'd9093b39-2205-4b91-962f-018a6e647ed9'),  -- cecchetto · Bomboncitos
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '4f89235e-52b4-41be-9ef9-7a2f9e155b3b', 'e0276f5c-39e8-4e7a-9fa3-d2a04c400d68'),  -- cecchetto · Bomboncitos
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '4f89235e-52b4-41be-9ef9-7a2f9e155b3b', 'f1d9b8f8-695a-42a3-9a38-16597fe279c7'),  -- cecchetto · Bomboncitos
+  ('ce000000-0000-0000-0000-000000000001', '75389763-f394-43e2-8e0d-de2fba3fa892', 'ce000000-0000-0000-0000-000000000010');  -- federal · Balde 2 litros · Cecchetto Delivery
+-- <<< LISTA_APROBADA
+
+do $$
+declare v_falta text; v_sobra text; v_n integer;
+begin
+  create temp table _ctl_calculado on commit drop as
+    select pr.empresa_id, pr.id as producto_id, s.id as sucursal_id
+      from public.productos pr join public.sucursales s on s.empresa_id = pr.empresa_id
+     where pr.controla_stock = true and pr.modelo_stock = 'producto'
+       and not exists (select 1 from public.producto_stock ps where ps.producto_id = pr.id and ps.sucursal_id = s.id);
+  select string_agg(a.empresa_id || '/' || a.producto_id || '/' || a.sucursal_id, '; ') into v_falta
+    from (select * from _ctl_aprobado except select * from _ctl_calculado) a;
+  select string_agg(c.empresa_id || '/' || c.producto_id || '/' || c.sucursal_id, '; ') into v_sobra
+    from (select * from _ctl_calculado except select * from _ctl_aprobado) c;
+  if v_falta is not null then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: faltan filas aprobadas (empresa/producto/sucursal): %', v_falta; end if;
+  if v_sobra is not null then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: sobran filas no aprobadas (empresa/producto/sucursal): %', v_sobra; end if;
+end $$;
+
+-- >>> CONTEOS_APROBADOS
+do $$
+declare v_n integer;
+begin
+  select count(*) into v_n from _ctl_aprobado;
+  if v_n <> 18 then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: la lista aprobada tiene % filas (esperadas 18)', v_n; end if;
+  -- por empresa: cecchetto 17, federal 1, demoburger 0 (cualquier otra empresa, 0)
+  if (select count(*) from _ctl_calculado where empresa_id = 'cdd77401-6b81-474f-b96c-8faaca1476fd') <> 17
+     or (select count(*) from _ctl_calculado where empresa_id = 'ce000000-0000-0000-0000-000000000001') <> 1
+     or (select count(*) from _ctl_calculado where empresa_id = '3dffcc70-eff0-4966-885b-a67a0dc1078f') <> 0
+     or (select count(*) from _ctl_calculado) <> 18 then
+    raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: conteo por empresa distinto de cecchetto 17 / federal 1 / demoburger 0';
+  end if;
+end $$;
+-- <<< CONTEOS_APROBADOS
+
 -- 1) RESPALDO DE CONTEOS (temporal; desaparece al terminar la transacción)
 create temp table _ctl_pre on commit drop as
 select 'ps_filas'::text k, count(*)::numeric v from public.producto_stock
@@ -72,11 +136,9 @@ update public.producto_stock ps set controla = true
  where pr.id = ps.producto_id and pr.controla_stock = true and pr.modelo_stock = 'producto';
 
 -- 4) FILAS DE COMPATIBILIDAD (cantidad 0, controla=true, SIN movimientos) para conservar el «sin fila = agotado» de productos ya controlados
+-- Se insertan EXACTAMENTE las filas de la lista aprobada (verificada en 0b contra lo que correspondería por regla), nunca un conjunto calculado.
 insert into public.producto_stock (empresa_id, producto_id, sucursal_id, cantidad, stock_minimo, controla, updated_at)
-select pr.empresa_id, pr.id, s.id, 0, 0, true, now()
-  from public.productos pr join public.sucursales s on s.empresa_id = pr.empresa_id
- where pr.controla_stock = true and pr.modelo_stock = 'producto'
-   and not exists (select 1 from public.producto_stock ps where ps.producto_id = pr.id and ps.sucursal_id = s.id);
+select a.empresa_id, a.producto_id, a.sucursal_id, 0, 0, true, now() from _ctl_aprobado a;
 
 -- 5) FUNCIONES (definiciones vivas + cambios v1.9)
 CREATE OR REPLACE FUNCTION public.crear_pedido_stock(p_empresa_id uuid, p_sucursal_id uuid, p_dispositivo_id uuid, p_items jsonb, p_metodo_pago text, p_origen text, p_tipo_pedido text, p_costo_envio numeric, p_datos_delivery jsonb, p_estado text, p_codigo_retiro text, p_mesa_cuenta_id uuid DEFAULT NULL::uuid, p_numero_mesa integer DEFAULT NULL::integer, p_pagado boolean DEFAULT NULL::boolean, p_nombre_cliente text DEFAULT NULL::text, p_operacion_id uuid DEFAULT NULL::uuid)
@@ -940,6 +1002,18 @@ begin
   if n <> (pre->>'prod_controla_flag')::numeric then raise exception 'VERIF: cambió el agregado productos.controla_stock'; end if;
   select count(*) into n from public.producto_stock ps join public.productos pr on pr.id = ps.producto_id where pr.modelo_stock <> 'producto';
   if n <> (pre->>'ps_filas_rama')::numeric then raise exception 'VERIF: se tocaron filas de productos por rama'; end if;
+  -- productos por rama con flag: ni la migración ni sus filas los alteran (el flag de rama sigue exactamente igual)
+  select count(*) into n from public.productos where controla_stock = true and modelo_stock <> 'producto';
+  if n <> (pre->>'prod_flag_rama')::numeric then raise exception 'VERIF: cambió el flag de productos por rama (% -> %)', pre->>'prod_flag_rama', n; end if;
+  -- filas de productos 'producto' con flag: las previas + EXACTAMENTE las insertadas (toda fila insertada pertenece a un producto con flag)
+  select count(*) into n from public.producto_stock ps join public.productos pr on pr.id = ps.producto_id where pr.controla_stock = true and pr.modelo_stock = 'producto';
+  if n <> (pre->>'ps_filas_con_flag')::numeric + (pre->>'a_insertar')::numeric then raise exception 'VERIF: filas de productos con flag % <> % + %', n, pre->>'ps_filas_con_flag', pre->>'a_insertar'; end if;
+  -- el conjunto insertado es EXACTAMENTE el aprobado: 18 filas controla=true, cantidad 0, sin movimientos, y el respaldo coincide con la lista
+  if (pre->>'a_insertar')::numeric <> (select count(*) from _ctl_aprobado) then raise exception 'VERIF: a_insertar no coincide con la lista aprobada'; end if;
+  select count(*) into n from _ctl_aprobado a join public.producto_stock ps on ps.empresa_id = a.empresa_id and ps.producto_id = a.producto_id and ps.sucursal_id = a.sucursal_id
+   where ps.controla = true and ps.cantidad = 0 and ps.stock_minimo = 0
+     and not exists (select 1 from public.stock_movimientos m where m.producto_id = a.producto_id and m.sucursal_id = a.sucursal_id);
+  if n <> (select count(*) from _ctl_aprobado) then raise exception 'VERIF: % de % filas aprobadas no quedaron controla=true / cantidad 0 / sin movimientos', (select count(*) from _ctl_aprobado) - n, (select count(*) from _ctl_aprobado); end if;
   -- toda fila de producto con flag=true quedó controla=true; toda fila de producto con flag=false quedó controla=false
   select count(*) into n from public.producto_stock ps join public.productos pr on pr.id = ps.producto_id
    where pr.modelo_stock = 'producto' and ps.controla is distinct from pr.controla_stock;
