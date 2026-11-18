@@ -30,7 +30,7 @@ interface Contexto {
   sucursal_nombre: string
   empresa_id?: string
   sucursal_id?: string
-  negocio: { direccion: string | null; horarios: { desde: string; hasta: string }[]; mensaje: string | null }
+  negocio: { direccion: string | null; horarios: { desde: string; hasta: string }[]; mensaje: string | null; abierto?: boolean }
   config: { primary_color: string; secondary_color: string; logo_url: string | null }
   servicios: { delivery: Canal; takeaway: Canal }
 }
@@ -126,6 +126,8 @@ export default function EntradaPedidosPage() {
   // temprana entre los servicios configurados (dato del agregador, no cálculo)
   const proximos = tarjetas.map(t => t.canal.proximo).filter((x): x is string => !!x).sort()
   const volvemosA = proximos[0] ?? null
+  // Local abierto pero canales online sin disponibilidad: no decir "estamos cerrados"
+  const localAbierto = ctx.negocio?.abierto === true
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-5 py-10" style={{ backgroundColor: '#ffffff' }}>
@@ -137,10 +139,10 @@ export default function EntradaPedidosPage() {
         {!ctx.config.logo_url && <h1 className="text-2xl font-black text-neutral-800">{ctx.nombre}</h1>}
         {!ctx.config.logo_url && <p className="text-sm text-neutral-400 mb-2">{ctx.sucursal_nombre}</p>}
         <h2 className="text-lg font-bold text-neutral-700 mt-6 mb-1">
-          {estado === 'selector' ? '¿Cómo querés recibir tu pedido?' : 'Ahora estamos cerrados'}
+          {estado === 'selector' ? '¿Cómo querés recibir tu pedido?' : localAbierto ? 'Pedidos online no disponibles' : 'Ahora estamos cerrados'}
         </h2>
         {estado === 'cerrado' && volvemosA && (
-          <p className="text-sm font-semibold text-neutral-500 mb-4">Volvemos a atender a las {volvemosA}</p>
+          <p className="text-sm font-semibold text-neutral-500 mb-4">{localAbierto ? 'Volvemos a tomar pedidos online a las' : 'Volvemos a atender a las'} {volvemosA}</p>
         )}
         {(estado === 'selector' || !volvemosA) && <div className="mb-3" />}
 
@@ -178,7 +180,7 @@ export default function EntradaPedidosPage() {
         </div>
 
         {estado === 'cerrado' && (
-          <p className="text-sm text-neutral-400 mt-6">¡Volvé dentro del horario de atención!</p>
+          <p className="text-sm text-neutral-400 mt-6">{localAbierto ? '¡Te esperamos en el local!' : '¡Volvé dentro del horario de atención!'}</p>
         )}
       </div>
     </div>

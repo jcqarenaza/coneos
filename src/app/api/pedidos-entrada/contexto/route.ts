@@ -186,6 +186,9 @@ export async function GET(request: Request) {
       direccion: sucursal.direccion ?? null,
       horarios: (sucursal.horario_general as Franja[] | null) ?? [],
       mensaje: sucursalInactiva ? '🟠 Esta sucursal no se encuentra disponible.' : sucursal.mensaje_cerrado ?? null,
+      // El LOCAL está abierto ahora (día operativo + dentro del horario del negocio + sucursal activa). Distinto de "canales online disponibles":
+      // puede estar abierto con delivery/take away apagados o pausados (ej. promo solo en mostrador).
+      abierto: !sucursalInactiva && diaOk && techoAbierto,
     },
     config: {
       primary_color: cfg?.primary_color ?? '#1E3A5F',
