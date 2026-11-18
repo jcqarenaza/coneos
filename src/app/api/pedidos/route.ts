@@ -438,8 +438,15 @@ export async function POST(request: Request) {
       if (pendiente) {
         mesa_cuenta_id = cuentaAbierta.id
       } else {
-        await supabase.from('mesa_cuentas')
+        const { error: errCierre } = await supabase.from('mesa_cuentas')
           .update({ estado: 'cerrada', closed_at: new Date().toISOString() }).eq('id', cuentaAbierta.id)
+        if (errCierre) {
+          // M12 (GO CTO 18/11): si el cierre de la cuenta anterior falla NO se inserta la nueva (evita dos cuentas abiertas). La RPC todavía no corrió:
+          // está PROBADO que no hay pedido, se libera la operación. La cuenta anterior no se reabre ni se borra (si el cierre quedó aplicado, el próximo pedido abre una nueva).
+          console.error('[pedidos] M12: no se pudo cerrar la cuenta anterior de la mesa; no se abre una nueva', errCierre.message)
+          await liberarOperacion()
+          return NextResponse.json({ error: 'No se pudo abrir la cuenta de la mesa' }, { status: 500 })
+        }
       }
     }
     if (!mesa_cuenta_id) {

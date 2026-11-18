@@ -19,6 +19,8 @@ const SOCK = { host: '/tmp/pgsock', port: 54329, user: 'postgres' }
 const DB = 'mesa_ruta'
 let admin: pg.Client, db: pg.Pool, server: http.Server
 let romperCuenta = false                          // el INSERT en mesa_cuentas falla (500)
+let romperCierre = false                          // el UPDATE (cierre de la cuenta anterior) en mesa_cuentas falla (500) y NO se aplica
+let insertConfirmadoConError = false              // el INSERT en mesa_cuentas SE CONFIRMA en la base pero la respuesta al cliente es un error (500)
 let hookRpc: ((body: Record<string, unknown>) => Promise<void>) | null = null   // se ejecuta ANTES de crear_pedido_stock (simula operaciones concurrentes)
 let errorRpc: { message: string; code?: string } | null = null                  // crear_pedido_stock devuelve este error SIN ejecutarse
 let hookDelete: (() => Promise<void>) | null = null                              // se ejecuta ANTES del DELETE de mesa_cuentas (pedido que aparece entre la lectura y el borrado)
@@ -69,10 +71,12 @@ function arrancarShim(): Promise<number> {
           if (romperCuenta) return out(500, { message: 'db unavailable' })
           const b = body as J; const ks = Object.keys(b)
           const r = await db.query(`insert into mesa_cuentas(${ks.map(k => `"${k}"`).join(',')}) values(${ks.map((_, i) => `$${i + 1}`).join(',')}) returning *`, ks.map(k => b[k]))
+          if (insertConfirmadoConError) return out(500, { message: 'timeout after commit' })
           return obj ? out(201, r.rows[0]) : out(201, r.rows)
         }
         if (t === 'mesa_cuentas' && req.method === 'PATCH') {
           llamadas['PATCH mesa_cuentas'] = (llamadas['PATCH mesa_cuentas'] ?? 0) + 1
+          if (romperCierre) return out(500, { message: 'db unavailable' })
           const f = filtros(url); const b = body as J; const ks = Object.keys(b)
           const r = await db.query(`update mesa_cuentas set ${ks.map((k, i) => `"${k}" = $${f.vals.length + i + 1}`).join(', ')}${f.where} returning *`, [...f.vals, ...ks.map(k => b[k])])
           return String(req.headers.prefer ?? '').includes('return=representation') ? out(200, r.rows) : out(204, undefined)
@@ -142,7 +146,7 @@ const hayCuentaAbiertaConPedidoPagado = async () => { // estado previo: cuenta A
 }
 
 describe('MESA — orden de efectos en la ruta real (CTO 17/11)', () => {
-  beforeEach(async () => { romperCuenta = false; hookRpc = null; errorRpc = null; hookDelete = null; deleteFalso = null; for (const k of Object.keys(llamadas)) delete llamadas[k]; FIXTURES.stock_sabor = []; FIXTURES.promociones = []; FIXTURES.promo_slots = []; FIXTURES.presentaciones = []; FIXTURES.opciones = []; await mundo(50) })
+  beforeEach(async () => { romperCuenta = false; romperCierre = false; insertConfirmadoConError = false; hookRpc = null; errorRpc = null; hookDelete = null; deleteFalso = null; for (const k of Object.keys(llamadas)) delete llamadas[k]; FIXTURES.stock_sabor = []; FIXTURES.promociones = []; FIXTURES.promo_slots = []; FIXTURES.presentaciones = []; FIXTURES.opciones = []; await mundo(50) })
 
   test('M1) camino feliz: primer pedido abre cuenta, descuenta stock y queda enlazado a la cuenta', async () => {
     const r = await j(await pedirMesa()); assert.ok(r.pedido)
@@ -228,6 +232,42 @@ describe('MESA — orden de efectos en la ruta real (CTO 17/11)', () => {
     const res = await pedirMesa({ operacion_id: op }); assert.equal(res.status, 500); assert.equal((await j(res)).error, 'No se pudo abrir la cuenta de la mesa')
     assert.equal(await operaciones(), 0, 'el reclamo quedó liberado'); assert.equal(await npedidos(), 0); assert.equal(await stock(), 50); assert.equal(llamadas['crear_pedido_stock'] ?? 0, 0)
     romperCuenta = false; const r2 = await j(await pedirMesa({ operacion_id: op })); assert.ok(r2.pedido, 'reintento exitoso con la misma operación'); assert.equal(await stock(), 49)
+  })
+
+  // ── M12b/c/d · MANEJO DE ERRORES AL CERRAR LA CUENTA ANTERIOR E INSERTAR LA NUEVA (GO CTO 18/11) ──
+  const abiertas = async () => (await cuentas()).filter(c => c.estado === 'abierta')
+  test('M12b) cuenta anterior pagada e INSERT de la nueva FALLA: 500, la anterior queda cerrada (no se reabre ni se borra), sin pedido ni RPC, operación liberada y el reintento con la misma operacion_id funciona', async () => {
+    const a = await hayCuentaAbiertaConPedidoPagado(); const p0 = await npedidos(); const op0 = await operaciones(); const s0 = await stock(); const b0 = base(); const op = crypto.randomUUID()
+    romperCuenta = true
+    const res = await pedirMesa({ operacion_id: op }); assert.equal(res.status, 500); assert.equal((await j(res)).error, 'No se pudo abrir la cuenta de la mesa')
+    const cs = await cuentas(); assert.equal(cs.length, 1); assert.equal(cs[0].id, a); assert.equal(cs[0].estado, 'cerrada', 'la anterior quedó cerrada'); assert.ok(cs[0].closed_at)
+    assert.equal((llamadas['PATCH mesa_cuentas'] ?? 0) - b0.patch, 1, 'un solo UPDATE: el cierre; nada la reabre'); assert.equal(llamadas['DELETE mesa_cuentas'] ?? 0, 0, 'nada se borra')
+    assert.equal(await npedidos(), p0, 'sin pedido nuevo'); assert.equal(await stock(), s0); assert.equal((llamadas['crear_pedido_stock'] ?? 0) - b0.rpc, 0, 'la RPC no se llamó'); assert.equal(await operaciones(), op0, 'el reclamo quedó liberado')
+    romperCuenta = false; const r2 = await j(await pedirMesa({ operacion_id: op })); assert.ok(r2.pedido, 'el reintento con la misma operacion_id crea el pedido')
+    const c2 = await cuentas(); assert.equal(c2.length, 2); assert.equal(c2[0].estado, 'cerrada'); assert.equal(c2[1].estado, 'abierta'); assert.equal(await pedidosDe(c2[1].id), 1); assert.equal(await npedidos(), p0 + 1)
+  })
+
+  test('M12c) el UPDATE de CIERRE de la cuenta anterior FALLA: 500, NO se intenta el INSERT, la anterior sigue abierta, operación liberada y el reintento funciona', async () => {
+    const a = await hayCuentaAbiertaConPedidoPagado(); const p0 = await npedidos(); const op0 = await operaciones(); const s0 = await stock(); const b0 = base(); const op = crypto.randomUUID()
+    romperCierre = true
+    const res = await pedirMesa({ operacion_id: op }); assert.equal(res.status, 500); assert.equal((await j(res)).error, 'No se pudo abrir la cuenta de la mesa')
+    assert.equal((llamadas['PATCH mesa_cuentas'] ?? 0) - b0.patch, 1, 'se intentó el cierre'); assert.equal((llamadas['POST mesa_cuentas'] ?? 0) - b0.post, 0, 'NO se intentó insertar la cuenta nueva')
+    const cs = await cuentas(); assert.equal(cs.length, 1, 'no hay segunda cuenta'); assert.equal(cs[0].id, a); assert.equal(cs[0].estado, 'abierta', 'la anterior sigue abierta (el cierre no se aplicó)'); assert.equal(cs[0].closed_at, null)
+    assert.equal(llamadas['DELETE mesa_cuentas'] ?? 0, 0); assert.equal(await npedidos(), p0); assert.equal(await stock(), s0); assert.equal((llamadas['crear_pedido_stock'] ?? 0) - b0.rpc, 0); assert.equal(await operaciones(), op0, 'el reclamo quedó liberado')
+    romperCierre = false; const r2 = await j(await pedirMesa({ operacion_id: op })); assert.ok(r2.pedido, 'el reintento con la misma operacion_id crea el pedido')
+    const c2 = await cuentas(); assert.equal(c2.length, 2); assert.equal(c2[0].id, a); assert.equal(c2[0].estado, 'cerrada'); assert.equal(c2[1].estado, 'abierta'); assert.equal(await pedidosDe(c2[1].id), 1); assert.equal((await abiertas()).length, 1)
+  })
+
+  test('M12d) el INSERT SE CONFIRMA pero la respuesta es un error: 500 y operación liberada; el reintento no duplica pedidos, la cuenta huérfana se reemplaza y queda como máximo UNA cuenta abierta', async () => {
+    await hayCuentaAbiertaConPedidoPagado(); const p0 = await npedidos(); const op0 = await operaciones(); const op = crypto.randomUUID()
+    insertConfirmadoConError = true
+    const res = await pedirMesa({ operacion_id: op }); assert.equal(res.status, 500)
+    const cs = await cuentas(); assert.equal(cs.length, 2, 'la cuenta huérfana existe en la base'); assert.equal(cs[0].estado, 'cerrada'); assert.equal(cs[1].estado, 'abierta'); const huerfana = cs[1].id; assert.equal(await pedidosDe(huerfana), 0, 'vacía')
+    assert.equal(await npedidos(), p0, 'sin pedido'); assert.equal(await operaciones(), op0, 'el reclamo quedó liberado')
+    insertConfirmadoConError = false; const r2 = await j(await pedirMesa({ operacion_id: op })); assert.ok(r2.pedido, 'el reintento crea el pedido')
+    assert.equal(await npedidos(), p0 + 1, 'exactamente UN pedido: sin duplicados')
+    const c2 = await cuentas(); assert.equal(c2.length, 3); const ab = c2.filter(c => c.estado === 'abierta'); assert.equal(ab.length, 1, 'como máximo una cuenta abierta'); assert.equal(await pedidosDe(ab[0].id), 1)
+    const h = c2.find(c => c.id === huerfana)!; assert.equal(h.estado, 'cerrada', 'la huérfana quedó cerrada'); assert.equal(await pedidosDe(huerfana), 0)
   })
 
   // ── M13 · COMPENSACIÓN (GO CTO 18/11) ──
