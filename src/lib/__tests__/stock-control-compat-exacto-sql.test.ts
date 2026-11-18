@@ -43,24 +43,27 @@ const aplicar = (p: pg.Pool, sql = SCRIPT) => p.query(sql).then(() => null, (e: 
 before(async () => { admin = new pg.Client({ ...SOCK, database: 'postgres' }); await admin.connect() })
 after(async () => { for (const d of dbs) await admin.query(`drop database if exists ${d} with (force)`); await admin.end() })
 
-describe('GUARDA: conjunto exacto de 18 pares (lista aprobada embebida en el SQL, sin reemplazos)', () => {
-  test('E0 la lista aprobada del SQL tiene 18 pares únicos: cecchetto 17, federal 1, demoburger 0', () => {
-    const bloque = SCRIPT.match(/-- >>> LISTA_APROBADA([\s\S]*?)-- <<< LISTA_APROBADA/)![1]
-    const pares = [...bloque.matchAll(/\('([0-9a-f-]{36})', '([0-9a-f-]{36})', '([0-9a-f-]{36})'\)/g)].map(m => m.slice(1, 4))
-    assert.equal(pares.length, 18); assert.equal(new Set(pares.map(x => x[1] + x[2])).size, 18)
-    assert.equal(pares.filter(x => x[0] === CEC).length, 17); assert.equal(pares.filter(x => x[0] === FED).length, 1); assert.equal(pares.filter(x => x[0] === DEMO).length, 0)
+describe('GUARDA: conjunto exacto 18 = 17 a insertar + 1 liberada (listas embebidas en el SQL, sin reemplazos)', () => {
+  test('E0 aprobada: 17 pares únicos (cecchetto 16, federal 1, demoburger 0); liberada: 1 (Copa Sport × Prueba 2); disjuntas; unión = 18', () => {
+    const pares = (m: string) => [...SCRIPT.match(new RegExp(`-- >>> ${m}([\\s\\S]*?)-- <<< ${m}`))![1].matchAll(/\('([0-9a-f-]{36})', '([0-9a-f-]{36})', '([0-9a-f-]{36})'\)/g)].map(x => x.slice(1, 4))
+    const ap = pares('LISTA_APROBADA'), li = pares('LISTA_LIBERADA')
+    assert.equal(ap.length, 17); assert.equal(new Set(ap.map(x => x[1] + x[2])).size, 17)
+    assert.equal(ap.filter(x => x[0] === CEC).length, 16); assert.equal(ap.filter(x => x[0] === FED).length, 1); assert.equal(ap.filter(x => x[0] === DEMO).length, 0)
+    assert.deepEqual(li, [[CEC, COPA, PRUEBA2]])
+    assert.equal(new Set([...ap, ...li].map(x => x[1] + x[2])).size, 18)
   })
 
-  test('E1 mundo con los IDs reales: la migración SIN modificar pasa, inserta exactamente las 18 y deja Copa Sport/Prueba y su movimiento intactos', async () => {
+  test('E1 mundo con los IDs reales: la migración SIN modificar pasa, inserta exactamente las 17, deja Copa Sport × Prueba 2 SIN fila y Copa Sport/Prueba y su movimiento intactos', async () => {
     const p = await mundo('ctl_exacto_1')
     try {
       assert.equal(await aplicar(p), null)
-      const t = (await p.query('select count(*) n from producto_stock')).rows[0].n; assert.equal(t, '21')   // 3 previas + 18
+      const t = (await p.query('select count(*) n from producto_stock')).rows[0].n; assert.equal(t, '20')   // 3 previas + 17
       const porEmp = (await p.query("select empresa_id, count(*) n from producto_stock where cantidad = 0 and controla and not (producto_id = $1 and sucursal_id = $2) and not (producto_id = $3 and sucursal_id = $4) group by 1 order by 1", [BOMB, PRUEBA2, COPA, PRUEBA])).rows
-      assert.deepEqual(porEmp.map(x => [x.empresa_id, x.n]).sort(), [[CEC, '17'], [FED, '1']].sort())
+      assert.deepEqual(porEmp.map(x => [x.empresa_id, x.n]).sort(), [[CEC, '16'], [FED, '1']].sort())
       assert.equal((await p.query('select cantidad from producto_stock where producto_id=$1 and sucursal_id=$2', [COPA, PRUEBA])).rows[0].cantidad, 5)
       assert.deepEqual((await p.query('select id, delta from stock_movimientos')).rows, [{ id: MOV_COPA, delta: '5' }])
       assert.equal((await p.query("select count(*) n from producto_stock where empresa_id=$1", [DEMO])).rows[0].n, '0')
+      assert.equal((await p.query('select count(*) n from producto_stock where producto_id=$1 and sucursal_id=$2', [COPA, PRUEBA2])).rows[0].n, '0')   // liberada: sin fila = vende libre
     } finally { await p.end() }
   })
 
@@ -77,7 +80,7 @@ describe('GUARDA: conjunto exacto de 18 pares (lista aprobada embebida en el SQL
     const p = await mundo('ctl_exacto_3')
     try {
       await p.query("insert into sucursales(empresa_id, nombre) values($1,'Nueva')", [CEC])
-      const m = await aplicar(p); assert.match(m!, /COMPAT_CONJUNTO_NO_COINCIDE: sobran filas no aprobadas/); await intacto(p)
+      const m = await aplicar(p); assert.match(m!, /COMPAT_CONJUNTO_NO_COINCIDE: sobran filas ni aprobadas ni liberadas/); await intacto(p)
     } finally { await p.end() }
   })
 
@@ -87,7 +90,7 @@ describe('GUARDA: conjunto exacto de 18 pares (lista aprobada embebida en el SQL
       try {
         if (emp === DEMO) await p.query("insert into sucursales(empresa_id, nombre) values($1,'D')", [DEMO])
         await p.query("insert into productos(empresa_id, nombre, controla_stock, modelo_stock) values($1,'Nuevo',true,'producto')", [emp])
-        const m = await aplicar(p); assert.match(m!, /COMPAT_CONJUNTO_NO_COINCIDE: sobran filas no aprobadas/)
+        const m = await aplicar(p); assert.match(m!, /COMPAT_CONJUNTO_NO_COINCIDE: sobran filas ni aprobadas ni liberadas/)
         assert.ok(m!.includes(emp)); await intacto(p)
       } finally { await p.end() }
     }
@@ -165,6 +168,41 @@ describe('GUARDA: conjunto exacto de 18 pares (lista aprobada embebida en el SQL
         create trigger t_filas after insert on producto_stock for each row execute function t_filas()`)
       const m = await aplicar(p); assert.match(m!, /VERIF: filas de productos con flag/)
       assert.equal(await col(p), 0)
+    } finally { await p.end() }
+  })
+
+  test('E12 LIBERADA: si Copa Sport × Prueba 2 ya tiene fila antes de migrar, falta una liberada: aborta', async () => {
+    const p = await mundo('ctl_exacto_12')
+    try {
+      await p.query('insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad) values($1,$2,$3,0)', [CEC, COPA, PRUEBA2])
+      const m = await aplicar(p); assert.match(m!, /faltan filas aprobadas o liberadas/); assert.ok(m!.includes(`${CEC}/${COPA}/${PRUEBA2}`)); assert.equal(await col(p), 0)
+    } finally { await p.end() }
+  })
+
+  test('E13 LIBERADA editada (otra sucursal) o vaciada: aborta, no se inserta ni se libera nada por otro camino', async () => {
+    for (const [i, alterado] of [[1, SCRIPT.replace(`('${CEC}', '${COPA}', '${PRUEBA2}');  -- cecchetto · Copa Sport · Prueba 2`, `('${CEC}', '${COPA}', '${THTTP[0]}');  -- cecchetto · Copa Sport · Prueba 2`)],
+                                  [2, SCRIPT.replace(/-- >>> LISTA_LIBERADA[\s\S]*?-- <<< LISTA_LIBERADA/, '')]] as const) {
+      const p = await mundo(`ctl_exacto_13${i}`)
+      try { assert.notEqual(alterado, SCRIPT); assert.match((await aplicar(p, alterado))!, /./); assert.equal(await col(p), 0) } finally { await p.end() }
+    }
+  })
+
+  test('E14 LIBERADA pasada a la lista de inserción (vuelve a 18 insertadas): aborta por conteo (esperadas 17)', async () => {
+    const p = await mundo('ctl_exacto_14')
+    try {
+      const s2 = SCRIPT.replace(`('${CEC}', '${COPA}', '${THTTP[0]}'),  -- cecchetto · Copa Sport`, `('${CEC}', '${COPA}', '${THTTP[0]}'),  -- cecchetto · Copa Sport\n  ('${CEC}', '${COPA}', '${PRUEBA2}'),`)
+      assert.notEqual(s2, SCRIPT); assert.match((await aplicar(p, s2))!, /COMPAT_CONJUNTO_NO_COINCIDE|duplicate key/); assert.equal(await col(p), 0)
+    } finally { await p.end() }
+  })
+
+  test('E15 verificación final de liberadas: si algo crea una fila en Copa Sport × Prueba 2 durante la migración, aborta', async () => {
+    const p = await mundo('ctl_exacto_15')
+    try {
+      await p.query(`create function t_lib() returns trigger language plpgsql as $$ begin
+          if new.producto_id = '${COPA}' and new.sucursal_id = '${THTTP[0]}' then
+            insert into producto_stock(empresa_id, producto_id, sucursal_id, cantidad) values ('${CEC}', '${COPA}', '${PRUEBA2}', 0); end if; return new; end $$;
+        create trigger t_lib after insert on producto_stock for each row execute function t_lib()`)
+      const m = await aplicar(p); assert.match(m!, /VERIF/); assert.equal(await col(p), 0)
     } finally { await p.end() }
   })
 })

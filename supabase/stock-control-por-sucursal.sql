@@ -9,13 +9,14 @@
 --
 -- QUÉ HACE (en este orden):
 --   0. Guarda: aborta si la migración ya se aplicó (no pisar configuración por sucursal).
---   0b. Conjunto EXACTO de compatibilidad aprobado (18 pares empresa/producto/sucursal: cecchetto 17, federal 1, demoburger 0): si el que
---      correspondería por regla no coincide en ambos sentidos, ABORTA antes de modificar nada.
+--   0b. Conjunto EXACTO de compatibilidad (18 pares empresa/producto/sucursal que da la regla hoy: cecchetto 17, federal 1, demoburger 0), partido en
+--      17 a INSERTAR (lista aprobada) + 1 LIBERADO (Copa Sport × Prueba 2: queda SIN fila, vende libre). Si el conjunto que da la regla no coincide
+--      en ambos sentidos con aprobada ∪ liberada, ABORTA antes de modificar nada.
 --   1. Respaldo de conteos (tabla TEMPORAL, no deja objetos en la base).
 --   2. ALTER producto_stock: columna controla boolean NOT NULL DEFAULT false (el default false = «una fila nueva no activa control»).
 --   3. Marca las filas existentes según el comportamiento global anterior: controla = (productos.controla_stock) SOLO modelo 'producto'.
---   4. Filas de compatibilidad: se insertan SOLO las 18 filas de la lista aprobada (cantidad 0 / controla=true, SIN movimientos), que son las que
---      la regla «producto controlado × sucursal sin fila» da hoy en cones-prod (preserva el «agotado» de hoy). No toca cantidades.
+--   4. Filas de compatibilidad: se insertan SOLO las 17 filas de la lista aprobada (cantidad 0 / controla=true, SIN movimientos): de las 18 que da la regla
+--      «producto controlado × sucursal sin fila» hoy en cones-prod se excluye la LIBERADA (Copa Sport × Prueba 2, decisión CTO 18/11: vende libre). No toca cantidades.
 --   5. Funciones: crear_pedido_stock (v1.8 viva → v1.9), ajustar_stock, crear_arqueo_stock, iniciar_conteo_stock,
 --      _calcular_ajuste_stock, devolver_stock_pedido, y (conversión rama → producto) _restaurar_producto_stock + volver_modelo_producto. Parten de las definiciones VIVAS leídas de cones-prod el 17/11
 --      (copias en supabase/versionado/*.vivo-2026-11-17.sql); cada cambio está marcado «v1.9».
@@ -51,8 +52,8 @@ do $$ begin
   end if;
 end $$;
 
--- 0b) CONJUNTO EXACTO DE COMPATIBILIDAD APROBADO por el CTO (relevamiento de cones-prod): 18 filas = cecchetto 17 + federal 1 + demoburger 0.
---     La migración solo puede insertar ESTAS filas. Si falta una, sobra una o cambia un identificador (producto, sucursal o empresa), ABORTA
+-- 0b) CONJUNTO EXACTO DE COMPATIBILIDAD (relevamiento de cones-prod): la regla da 18 pares = cecchetto 17 + federal 1 + demoburger 0; el CTO aprueba INSERTAR 17 y
+--     LIBERAR 1 (Copa Sport × Prueba 2: sin fila = vende libre, es el escenario funcional acordado). La migración solo puede insertar las filas de la lista aprobada. Si falta una, sobra una o cambia un identificador (producto, sucursal o empresa), ABORTA
 --     antes de modificar nada. No se amplía solo por productos o sucursales creados después del relevamiento.
 --     SHARE: congela productos y sucursales (sin altas ni cambios) mientras dura la transacción, para que lo verificado sea lo que se inserta.
 lock table public.productos, public.sucursales in share mode;
@@ -66,7 +67,6 @@ insert into _ctl_aprobado (empresa_id, producto_id, sucursal_id) values
   ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '34d3e753-ef8b-4519-97cd-9a633e004635'),  -- cecchetto · Copa Sport
   ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '445200ac-85b3-4423-b252-61a8c0134a5c'),  -- cecchetto · Copa Sport
   ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '6a9b48be-9991-40e2-aa18-6142602241f0'),  -- cecchetto · Copa Sport
-  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '76ab690b-7ae8-4b0b-bc68-de37cb9e9d8e'),  -- cecchetto · Copa Sport
   ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', 'd9093b39-2205-4b91-962f-018a6e647ed9'),  -- cecchetto · Copa Sport
   ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', 'e0276f5c-39e8-4e7a-9fa3-d2a04c400d68'),  -- cecchetto · Copa Sport
   ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', 'f1d9b8f8-695a-42a3-9a38-16597fe279c7'),  -- cecchetto · Copa Sport
@@ -80,6 +80,14 @@ insert into _ctl_aprobado (empresa_id, producto_id, sucursal_id) values
   ('cdd77401-6b81-474f-b96c-8faaca1476fd', '4f89235e-52b4-41be-9ef9-7a2f9e155b3b', 'f1d9b8f8-695a-42a3-9a38-16597fe279c7'),  -- cecchetto · Bomboncitos
   ('ce000000-0000-0000-0000-000000000001', '75389763-f394-43e2-8e0d-de2fba3fa892', 'ce000000-0000-0000-0000-000000000010');  -- federal · Balde 2 litros · Cecchetto Delivery
 -- <<< LISTA_APROBADA
+-- LIBERADA (decisión CTO 18/11): NO se inserta fila; el par queda sin fila = vende libre y no descuenta. Debe estar entre los 18 que da la regla.
+create temp table _ctl_liberado (
+  empresa_id uuid not null, producto_id uuid not null, sucursal_id uuid not null, primary key (producto_id, sucursal_id)
+) on commit drop;
+-- >>> LISTA_LIBERADA
+insert into _ctl_liberado (empresa_id, producto_id, sucursal_id) values
+  ('cdd77401-6b81-474f-b96c-8faaca1476fd', '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e', '76ab690b-7ae8-4b0b-bc68-de37cb9e9d8e');  -- cecchetto · Copa Sport · Prueba 2
+-- <<< LISTA_LIBERADA
 
 do $$
 declare v_falta text; v_sobra text; v_n integer;
@@ -90,11 +98,11 @@ begin
      where pr.controla_stock = true and pr.modelo_stock = 'producto'
        and not exists (select 1 from public.producto_stock ps where ps.producto_id = pr.id and ps.sucursal_id = s.id);
   select string_agg(a.empresa_id || '/' || a.producto_id || '/' || a.sucursal_id, '; ') into v_falta
-    from (select * from _ctl_aprobado except select * from _ctl_calculado) a;
+    from (select * from (select * from _ctl_aprobado union all select * from _ctl_liberado) u except select * from _ctl_calculado) a;
   select string_agg(c.empresa_id || '/' || c.producto_id || '/' || c.sucursal_id, '; ') into v_sobra
-    from (select * from _ctl_calculado except select * from _ctl_aprobado) c;
-  if v_falta is not null then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: faltan filas aprobadas (empresa/producto/sucursal): %', v_falta; end if;
-  if v_sobra is not null then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: sobran filas no aprobadas (empresa/producto/sucursal): %', v_sobra; end if;
+    from (select * from _ctl_calculado except select * from (select * from _ctl_aprobado union all select * from _ctl_liberado) u) c;
+  if v_falta is not null then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: faltan filas aprobadas o liberadas (empresa/producto/sucursal): %', v_falta; end if;
+  if v_sobra is not null then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: sobran filas ni aprobadas ni liberadas (empresa/producto/sucursal): %', v_sobra; end if;
 end $$;
 
 -- >>> CONTEOS_APROBADOS
@@ -102,13 +110,21 @@ do $$
 declare v_n integer;
 begin
   select count(*) into v_n from _ctl_aprobado;
-  if v_n <> 18 then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: la lista aprobada tiene % filas (esperadas 18)', v_n; end if;
-  -- por empresa: cecchetto 17, federal 1, demoburger 0 (cualquier otra empresa, 0)
+  if v_n <> 17 then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: la lista aprobada tiene % filas (esperadas 17)', v_n; end if;
+  select count(*) into v_n from _ctl_liberado;
+  if v_n <> 1 then raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: la lista liberada tiene % filas (esperada 1)', v_n; end if;
+  -- a insertar por empresa: cecchetto 16, federal 1, demoburger 0
+  if (select count(*) from _ctl_aprobado where empresa_id = 'cdd77401-6b81-474f-b96c-8faaca1476fd') <> 16
+     or (select count(*) from _ctl_aprobado where empresa_id = 'ce000000-0000-0000-0000-000000000001') <> 1
+     or (select count(*) from _ctl_aprobado where empresa_id = '3dffcc70-eff0-4966-885b-a67a0dc1078f') <> 0 then
+    raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: a insertar por empresa distinto de cecchetto 16 / federal 1 / demoburger 0';
+  end if;
+  -- lo que da la regla, por empresa: cecchetto 17 (16 + 1 liberada), federal 1, demoburger 0 (cualquier otra empresa, 0)
   if (select count(*) from _ctl_calculado where empresa_id = 'cdd77401-6b81-474f-b96c-8faaca1476fd') <> 17
      or (select count(*) from _ctl_calculado where empresa_id = 'ce000000-0000-0000-0000-000000000001') <> 1
      or (select count(*) from _ctl_calculado where empresa_id = '3dffcc70-eff0-4966-885b-a67a0dc1078f') <> 0
      or (select count(*) from _ctl_calculado) <> 18 then
-    raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: conteo por empresa distinto de cecchetto 17 / federal 1 / demoburger 0';
+    raise exception 'COMPAT_CONJUNTO_NO_COINCIDE: la regla da un conteo por empresa distinto de cecchetto 17 / federal 1 / demoburger 0';
   end if;
 end $$;
 -- <<< CONTEOS_APROBADOS
@@ -993,7 +1009,7 @@ declare
   n numeric;
 begin
   select count(*) into n from public.producto_stock;
-  if n <> (pre->>'ps_filas')::numeric + (pre->>'a_insertar')::numeric then raise exception 'VERIF: filas % <> % + %', n, pre->>'ps_filas', pre->>'a_insertar'; end if;
+  if n <> (pre->>'ps_filas')::numeric + (select count(*) from _ctl_aprobado) then raise exception 'VERIF: filas % <> % + %', n, pre->>'ps_filas', (select count(*) from _ctl_aprobado); end if;
   select coalesce(sum(cantidad), 0) into n from public.producto_stock;
   if n <> (pre->>'ps_suma_cantidad')::numeric then raise exception 'VERIF: la suma de cantidades cambió (% -> %)', pre->>'ps_suma_cantidad', n; end if;
   select count(*) into n from public.stock_movimientos;
@@ -1007,9 +1023,14 @@ begin
   if n <> (pre->>'prod_flag_rama')::numeric then raise exception 'VERIF: cambió el flag de productos por rama (% -> %)', pre->>'prod_flag_rama', n; end if;
   -- filas de productos 'producto' con flag: las previas + EXACTAMENTE las insertadas (toda fila insertada pertenece a un producto con flag)
   select count(*) into n from public.producto_stock ps join public.productos pr on pr.id = ps.producto_id where pr.controla_stock = true and pr.modelo_stock = 'producto';
-  if n <> (pre->>'ps_filas_con_flag')::numeric + (pre->>'a_insertar')::numeric then raise exception 'VERIF: filas de productos con flag % <> % + %', n, pre->>'ps_filas_con_flag', pre->>'a_insertar'; end if;
-  -- el conjunto insertado es EXACTAMENTE el aprobado: 18 filas controla=true, cantidad 0, sin movimientos, y el respaldo coincide con la lista
-  if (pre->>'a_insertar')::numeric <> (select count(*) from _ctl_aprobado) then raise exception 'VERIF: a_insertar no coincide con la lista aprobada'; end if;
+  if n <> (pre->>'ps_filas_con_flag')::numeric + (select count(*) from _ctl_aprobado) then raise exception 'VERIF: filas de productos con flag % <> % + %', n, pre->>'ps_filas_con_flag', (select count(*) from _ctl_aprobado); end if;
+  -- el conjunto insertado es EXACTAMENTE el aprobado: 17 filas controla=true, cantidad 0, sin movimientos; el respaldo (18 de la regla) = aprobadas + liberadas
+  if (pre->>'a_insertar')::numeric <> (select count(*) from _ctl_aprobado) + (select count(*) from _ctl_liberado) then raise exception 'VERIF: a_insertar no coincide con aprobadas + liberadas'; end if;
+  -- la LIBERADA no tiene fila ni movimientos: vende libre
+  select count(*) into n from _ctl_liberado l
+   where exists (select 1 from public.producto_stock ps where ps.producto_id = l.producto_id and ps.sucursal_id = l.sucursal_id)
+      or exists (select 1 from public.stock_movimientos m where m.producto_id = l.producto_id and m.sucursal_id = l.sucursal_id);
+  if n <> 0 then raise exception 'VERIF: % pares liberados con fila o movimientos (deben quedar sin fila = libres)', n; end if;
   select count(*) into n from _ctl_aprobado a join public.producto_stock ps on ps.empresa_id = a.empresa_id and ps.producto_id = a.producto_id and ps.sucursal_id = a.sucursal_id
    where ps.controla = true and ps.cantidad = 0 and ps.stock_minimo = 0
      and not exists (select 1 from public.stock_movimientos m where m.producto_id = a.producto_id and m.sucursal_id = a.sucursal_id);
@@ -1018,11 +1039,12 @@ begin
   select count(*) into n from public.producto_stock ps join public.productos pr on pr.id = ps.producto_id
    where pr.modelo_stock = 'producto' and ps.controla is distinct from pr.controla_stock;
   if n <> 0 then raise exception 'VERIF: % filas con controla distinto del comportamiento global anterior', n; end if;
-  -- todo producto ya controlado tiene fila controlada en CADA sucursal de su empresa (mismo «agotado» de hoy)
+  -- todo producto ya controlado tiene fila controlada en CADA sucursal de su empresa (mismo «agotado» de hoy), salvo los pares LIBERADOS
   select count(*) into n from public.productos pr join public.sucursales s on s.empresa_id = pr.empresa_id
    where pr.controla_stock = true and pr.modelo_stock = 'producto'
-     and not exists (select 1 from public.producto_stock ps where ps.producto_id = pr.id and ps.sucursal_id = s.id and ps.controla = true);
-  if n <> 0 then raise exception 'VERIF: % pares producto/sucursal controlados sin fila controla=true', n; end if;
+     and not exists (select 1 from public.producto_stock ps where ps.producto_id = pr.id and ps.sucursal_id = s.id and ps.controla = true)
+     and not exists (select 1 from _ctl_liberado l where l.producto_id = pr.id and l.sucursal_id = s.id);
+  if n <> 0 then raise exception 'VERIF: % pares producto/sucursal controlados sin fila controla=true (fuera de los liberados)', n; end if;
   -- Copa Sport / Prueba intacta
   select coalesce(sum(cantidad), 0) into n from public.producto_stock where producto_id = '3925d2d9-e800-4cd7-b615-e1ddc4e4dd5e' and sucursal_id = '6a2c2517-854f-43a6-b91a-451e4fc9fb7b';
   if n <> (pre->>'copa_sport_prueba')::numeric then raise exception 'VERIF: Copa Sport/Prueba cambió'; end if;
