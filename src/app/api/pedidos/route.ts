@@ -423,9 +423,11 @@ export async function POST(request: Request) {
   // ORDEN (CTO 17/11): es el ÚLTIMO efecto previo a crear_pedido_stock. Antes ya corrieron, sin tocar cuentas: validaciones, sabor agotado,
   // promos (vigencia / inválida / prorrateo) y el reclamo de operación (que resuelve EXISTENTE, DUPLICADO, EN_PROCESO, OPERACION_INVALIDA y
   // SIN_PROTECCION). El reclamo no depende de la cuenta: su huella usa sucursal, tipo, origen, número de mesa e ítems, no el id de la cuenta.
-  // Límite conocido: los rechazos de la propia RPC (SIN_STOCK, precios, error ambiguo) ocurren DESPUÉS de este paso porque `p_mesa_cuenta_id`
-  // es parámetro de crear_pedido_stock (que no se modifica). Ver informe al CTO.
+  // Los rechazos de la propia RPC (SIN_STOCK, precios, error ambiguo) ocurren DESPUÉS de este paso porque `p_mesa_cuenta_id` es parámetro de
+  // crear_pedido_stock (que no se modifica). Si el rechazo PRUEBA rollback, compensarCuentaMesa (abajo) elimina la cuenta nueva vacía (M13, GO CTO 18/11).
   let mesa_cuenta_id: string | null = null
+  // M13 (GO CTO 18/11): id de la cuenta que ESTA operación insertó (el que devolvió su propio INSERT). Es lo único que la compensación puede borrar.
+  let cuentaNuevaId: string | null = null
   if (origen === 'MESA') {
     const { data: cuentaAbierta } = await supabase.from('mesa_cuentas')
       .select('id').eq('sucursal_id', sucursal_id).eq('numero_mesa', Number(numero_mesa))
@@ -450,6 +452,33 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'No se pudo abrir la cuenta de la mesa' }, { status: 500 })
       }
       mesa_cuenta_id = nueva.id
+      cuentaNuevaId = nueva.id
+    }
+  }
+
+  // ── M13 · COMPENSACIÓN DE LA CUENTA DE MESA (GO CTO 18/11, ajuste final) ──
+  // Solo se invoca cuando crear_pedido_stock devolvió un error que PRUEBA rollback (errorProbadoSinPedido: P0001 con nombre de la lista demostrada o
+  // 40P01). Nunca ante timeout / corte / respuesta ambigua. Hace UNA sola cosa: borrar la cuenta que ESTA operación insertó, si sigue vacía.
+  //  1) No hay pedido: ninguno referencia la cuenta nueva ni lleva esta operacion_id. Si la lectura falla o aparece uno, NO se toca nada.
+  //  2) El DELETE lo protege la FK pedidos.mesa_cuenta_id → mesa_cuentas(id): si entre la lectura y el borrado apareció un pedido, la base lo rechaza.
+  //     Se considera borrada SOLO si el DELETE no dio error y devolvió exactamente una fila; cualquier otro resultado se registra y se detiene.
+  //  3) La cuenta ANTERIOR que esta operación haya cerrado NO se reabre ni se modifica (decisión CTO): queda cerrada y el próximo pedido abre una nueva.
+  // La respuesta al cliente es siempre la del rechazo original; un fallo acá nunca la cambia.
+  const compensarCuentaMesa = async (motivo: string) => {
+    if (!cuentaNuevaId) return
+    try {
+      const { data: conPedido, error: e1 } = await supabase.from('pedidos').select('id').eq('mesa_cuenta_id', cuentaNuevaId).limit(1)
+      if (e1 || (conPedido ?? []).length > 0) { console.error('[pedidos] M13: no se compensa (cuenta nueva con pedido o sin verificar)', cuentaNuevaId); return }
+      if (operacionReclamada) {
+        const { data: porOp, error: e2 } = await supabase.from('pedidos').select('id').eq('operacion_id', operacionReclamada).limit(1)
+        if (e2 || (porOp ?? []).length > 0) { console.error('[pedidos] M13: no se compensa (existe pedido de esta operación o sin verificar)', operacionReclamada); return }
+      }
+      const { data: borradas, error: eDel } = await supabase.from('mesa_cuentas').delete().eq('id', cuentaNuevaId).select('id')
+      if (eDel) { console.error('[pedidos] M13: DELETE de la cuenta nueva rechazado; se preserva el estado', cuentaNuevaId, eDel.message); return }
+      if (borradas?.length !== 1) { console.error('[pedidos] M13: DELETE de la cuenta nueva devolvió', borradas?.length ?? 'null', 'filas (se esperaba 1); incidencia registrada, sin más cambios', cuentaNuevaId); return }
+      console.log('[pedidos] M13: cuenta nueva vacía eliminada tras rechazo de la RPC (' + motivo + ')')
+    } catch (e) {
+      console.error('[pedidos] M13: fallo al compensar; se preserva el estado', e)
     }
   }
 
@@ -485,6 +514,10 @@ export async function POST(request: Request) {
   if (error || !pedido) {
     // Se libera la operación SOLO si el error PRUEBA que no se creó pedido (SQLSTATE devuelto por la base). Ante timeout,
     // error de transporte o respuesta ambigua NO se libera: el pedido pudo crearse y el reintento lo recupera por operacion_id.
+    // ORDEN (GO CTO 18/11): primero la compensación de la cuenta de mesa y recién DESPUÉS se libera la operación. Mientras se verifica y se elimina la
+    // cuenta nueva, la operación sigue EN_CURSO (un segundo envío de la misma operacion_id recibe EN_PROCESO y no avanza); liberarla al final permite el reintento.
+    // Ambas acciones comparten la MISMA condición (rollback DEMOSTRADO): ante un resultado ambiguo no se toca la cuenta ni se libera la operación.
+    if (error && errorProbadoSinPedido(error)) await compensarCuentaMesa(String(error.code ?? ''))
     if (operacionReclamada && error && errorProbadoSinPedido(error)) await liberarOperacion()
     // Rechazo limpio por falta de stock (RAISE de la RPC): 409 con el producto
     const msg = error?.message ?? ''
