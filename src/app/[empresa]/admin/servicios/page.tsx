@@ -586,8 +586,14 @@ export default function ServiciosPage() {
       {/* ═══ TAB MENSAJES ═══ */}
       {tab === 'mensajes' && (
       <ConeCard>
-        <h3 className="font-bold text-neutral-800 mb-1">Mensajes al cliente</h3>
-        <p className="text-xs text-neutral-400 mb-4">Lo que ve el cliente cuando el servicio está cerrado o en pausa. Se guardan con el mismo botón <b>Guardar</b> (tab Horarios y servicios).</p>
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <h3 className="font-bold text-neutral-800">Mensajes al cliente</h3>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-bold text-amber-600 mr-2 transition-opacity ${sucio ? 'opacity-100' : 'opacity-0'}`}>● Hay cambios sin guardar</span>
+            <BotonGuardar id="todo" onClick={guardarTodo} />
+          </div>
+        </div>
+        <p className="text-xs text-neutral-400 mb-4">Lo que ve el cliente cuando el servicio está cerrado o en pausa.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {negocio && (
             <div>
