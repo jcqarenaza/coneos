@@ -423,6 +423,137 @@ for cod, mk in (('SIN_STOCK', lambda: [item(w, 11)]), ('PRECIO_INVALIDO', lambda
     pidx = crear(w, [item(w)], o)['id']; completar(w, o, pidx)
 check('E3. rechazo → liberar_ → reclamar_ vuelve a dar NUEVA y la venta correcta con el MISMO operacion_id sale (2 pedidos, stock 8)', ok3 and npedidos(w) == 2 and stk(w) == 8, f'{npedidos(w)} {stk(w)}')
 
+# ── E-RAMA (GO CTO 18/11, cierre de discrepancia P0001): SUCURSAL_PENDIENTE_ACTIVACION y HOJA_NO_INICIALIZADA contra la crear_pedido_stock v1.9 REAL ──
+# Base propia con la MIGRACIÓN REAL (supabase/stock-control-por-sucursal.sql, v1.9 de las 8 funciones; solo se quitan los bloques de datos de cones-prod, igual que las pruebas TS)
+# + pedidos-repetidos.sql REAL (registro de operaciones: reclamar_/completar_/liberar_operacion_pedido). Nada de esto toca cones-prod. La base se descarta al terminar.
+import hashlib as _hl
+SHA_MIGRACION_AUTORIZADO = 'd9bd1180ee127f15ee459170131756bca610dd78e9269fd46a073245c4935dd5'   # migración aplicada en cones-prod (autorizada por el CTO)
+def build_v19(name):
+    global SHA_MIG_VERIFICADO
+    # la migración se lee y se verifica UNA sola vez, ANTES de conectarse a postgres y de crear/modificar cualquier base; esos mismos bytes son los que se ejecutan
+    mig_bytes = open(os.path.join(SUP, 'stock-control-por-sucursal.sql'), 'rb').read()
+    SHA_MIG_VERIFICADO = _hl.sha256(mig_bytes).hexdigest()
+    if SHA_MIG_VERIFICADO != SHA_MIGRACION_AUTORIZADO:   # la prueba vale SOLO para la migración aplicada en cones-prod: ninguna otra versión
+        raise SystemExit(f'E-RAMA ABORTADA: stock-control-por-sucursal.sql tiene sha256={SHA_MIG_VERIFICADO}, se esperaba {SHA_MIGRACION_AUTORIZADO}. No se continúa con otra versión.')
+    a = connect('postgres'); a.cursor().execute(f'drop database if exists {name} with (force)'); a.cursor().execute(f'create database {name}'); a.close()
+    c = connect(name).cursor()
+    c.execute(open(os.path.join(SUP, 'tests', 'stock-v2', '00-schema-reducido.sql'), encoding='utf-8').read())
+    c.execute("create table empresa_config (empresa_id uuid primary key, primary_color text)")
+    c.execute("alter default privileges for role postgres in schema public grant execute on functions to anon, authenticated, service_role")
+    c.execute("alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role")
+    c.execute(open(os.path.join(SUP, 'tests', 'stock-por-sucursal', '00-extras.sql'), encoding='utf-8').read())
+    mig = mig_bytes.decode('utf-8')
+    for m_ in ('LISTA_APROBADA', 'LISTA_LIBERADA', 'CONTEOS_APROBADOS'): mig = _re.sub(r'-- >>> ' + m_ + r'[\s\S]*?-- <<< ' + m_, '', mig)
+    c.execute(mig)
+    c.execute(open(os.path.join(SUP, 'pedidos-repetidos.sql'), encoding='utf-8').read())
+    return name, c
+dbv, cv = build_v19('rep_v19_rama')
+cv.execute("select count(*), max(pronargs), bool_and(prosrc like '%SUCURSAL_PENDIENTE_ACTIVACION%' and prosrc like '%HOJA_NO_INICIALIZADA%' and prosrc like '%v1.9%'), bool_and(prosrc !~* 'exception\\s+when') from pg_proc where pronamespace='public'::regnamespace and proname='crear_pedido_stock'")
+n_f, n_a, tiene_ambos, sin_handlers = cv.fetchone()
+sha_mig = SHA_MIG_VERIFICADO   # el hash ya verificado en build_v19 (no se vuelve a leer el archivo)
+print(f'INFO E-RAMA: migración real stock-control-por-sucursal.sql sha256={sha_mig}')
+check('E-RAMA-0. la base de prueba tiene UNA crear_pedido_stock de 16 parámetros que es la v1.9 REAL (contiene ambos RAISE) y NINGÚN handler `exception when` (un RAISE no se atrapa dentro de la función)', (n_f, n_a) == (1, 16) and tiene_ambos and sin_handlers, f'{n_f} {n_a} {tiene_ambos} {sin_handlers}')
+# sonda SOLO de la base de prueba: un trigger AFTER UPDATE en stock_rama emite un NOTICE (los NOTICE llegan al cliente aunque la transacción se revierta) → prueba que la escritura previa SÍ se ejecutó
+cv.execute("create function public._sonda_stock_rama() returns trigger language plpgsql as $$ begin raise notice 'SONDA stock_rama % : % -> %', new.presentacion_id, old.cantidad, new.cantidad; return new; end $$")
+cv.execute("create trigger zz_sonda after update on public.stock_rama for each row execute function public._sonda_stock_rama()")
+def mundo_rama():
+    q = connect(dbv).cursor(); w = {'db': dbv}
+    def one(sql, *a): q.execute(sql, a); return q.fetchone()[0]
+    w['emp'] = one("insert into empresas default values returning id")
+    w['suc'] = one("insert into sucursales(empresa_id, nombre) values(%s,'Activa') returning id", w['emp'])
+    w['suc2'] = one("insert into sucursales(empresa_id, nombre) values(%s,'Pendiente') returning id", w['emp'])
+    q.execute("insert into catalogo_version(sucursal_id, empresa_id) values(%s,%s),(%s,%s)", (w['suc'], w['emp'], w['suc2'], w['emp']))
+    q.execute("insert into empresa_config(empresa_id) values(%s)", (w['emp'],))
+    def prod(nombre, modelo, ctl, precio):
+        pid = one("insert into productos(empresa_id,nombre,controla_stock,modelo_stock) values(%s,%s,%s,%s) returning id", w['emp'], nombre, ctl, modelo)
+        return pid, one("insert into presentaciones(empresa_id,producto_id,nombre,precio,factor_stock) values(%s,%s,'Unidad',%s,1) returning id", w['emp'], pid, precio)
+    w['p_libre'], w['pres_libre'] = prod('Libre', 'producto', False, 700)
+    w['p_ctl'], w['pres_ctl'] = prod('Controlado', 'producto', True, 500)
+    w['p_r1'], w['pres_r1'] = prod('Rama uno', 'rama', True, 1000)
+    w['p_r2'], w['pres_r2'] = prod('Rama dos', 'rama', True, 1200)
+    for s in (w['suc'], w['suc2']): q.execute("insert into producto_stock(empresa_id,producto_id,sucursal_id,cantidad,controla) values(%s,%s,%s,5,true)", (w['emp'], w['p_ctl'], s))
+    for p_ in (w['p_r1'], w['p_r2']): q.execute("insert into stock_rama_habilitacion(producto_id,sucursal_id,estado) values(%s,%s,'activa')", (p_, w['suc']))   # la sucursal 'suc2' NO está habilitada
+    q.execute("insert into stock_rama(empresa_id,sucursal_id,presentacion_id,cantidad) values(%s,%s,%s,10)", (w['emp'], w['suc'], w['pres_r1']))   # r2 en 'suc': habilitada pero SIN hoja
+    w['pres'] = w['pres_libre']
+    return w
+def itm(pres, n, precio): return {'presentacion_id': str(pres), 'cantidad': n, 'precio_snap': precio, 'nombre_producto_snap': 'a', 'nombre_presentacion_snap': 'u', 'opciones': []}
+def foto_rama(w):
+    q = connect(dbv).cursor(); e = (w['emp'],); f = {}
+    for k, s in (('pedidos', "select count(*) from pedidos where empresa_id=%s"), ('items', "select count(*) from pedido_items i join pedidos p on p.id=i.pedido_id where p.empresa_id=%s"),
+                 ('opciones', "select count(*) from pedido_item_opciones o join pedido_items i on i.id=o.pedido_item_id join pedidos p on p.id=i.pedido_id where p.empresa_id=%s"),
+                 ('movimientos', "select count(*) from stock_movimientos where empresa_id=%s"), ('numeraciones', "select coalesce(string_agg(sucursal_id::text||'#'||numero_pedido, ',' order by sucursal_id, numero_pedido),'-') from pedidos where empresa_id=%s"),
+                 ('stock_producto', "select coalesce(jsonb_object_agg(sucursal_id::text, cantidad), '{}'::jsonb) from producto_stock where empresa_id=%s"),
+                 ('hojas', "select coalesce(jsonb_object_agg(sucursal_id::text||'/'||presentacion_id::text, cantidad), '{}'::jsonb) from stock_rama where empresa_id=%s"),
+                 ('operaciones', "select coalesce(string_agg(operacion_id::text||':'||estado||':'||(pedido_id is not null)::text, ',' order by operacion_id),'-') from pedido_operaciones where empresa_id=%s")):
+        q.execute(s, e); f[k] = q.fetchone()[0]
+    return f
+def llama_rama(w, items, op, suc):
+    cx = connect(dbv); cu = cx.cursor()
+    try:
+        cu.execute(*args_crear(w, items, op, suc)); return {'ok': True, 'r': cu.fetchone()[0], 'notices': list(cx.notices)}
+    except psycopg2.Error as ex:
+        return {'ok': False, 'code': ex.pgcode, 'msg': ex.diag.message_primary, 'notices': list(cx.notices)}
+def liberar(w, op): connect(dbv).cursor().execute("select liberar_operacion_pedido(%s,%s)", (w['emp'], op))
+def caso_rama(nombre, suc_key, carrito, sembrar, arreglar, esperado_sonda, esperado_hojas_final, num_final):
+    """Devuelve dict de verificaciones 1..8 del GO CTO para el error `nombre`. Cada caso usa su propia empresa (aislada); la base entera se descarta al final."""
+    w = mundo_rama(); suc = w[suc_key]; V = {}
+    sembrar(w)                                             # venta previa EXITOSA real (numeración y stock previos)
+    inicial = foto_rama(w)
+    op = uuid.uuid4(); hu = f'H-{nombre}'
+    r0 = reclamar(w, op, hu, tel='1500000099', suc=suc); en_curso = foto_rama(w)
+    a1 = llama_rama(w, carrito(w), op, suc); tras = foto_rama(w)
+    print(f'INFO {nombre} ANTES (con la operación reclamada EN_CURSO): {json.dumps(en_curso, ensure_ascii=False)}')
+    print(f'INFO {nombre} RECHAZO: code={a1.get("code")} message={a1.get("msg")!r} notices={[n.strip() for n in a1["notices"]]}')
+    print(f'INFO {nombre} DESPUÉS del rechazo: {json.dumps(tras, ensure_ascii=False)}')
+    V['1_code_P0001'] = (not a1['ok']) and a1['code'] == 'P0001'
+    V['2_mensaje_exacto'] = (not a1['ok']) and a1['msg'].split(':')[0] == nombre and a1['msg'].startswith(nombre + ':')
+    V['3_sin_pedido'] = tras['pedidos'] == en_curso['pedidos'] == inicial['pedidos'] and tras['items'] == en_curso['items'] and tras['opciones'] == en_curso['opciones']
+    V['4_sin_descuentos_parciales'] = tras['stock_producto'] == en_curso['stock_producto'] and tras['hojas'] == en_curso['hojas']
+    V['5_sin_movimientos_ni_auxiliares'] = tras['movimientos'] == en_curso['movimientos'] and tras['operaciones'] == en_curso['operaciones'] and ':EN_CURSO:false' in tras['operaciones']
+    V['6_numeracion_y_efectos_previos_revertidos'] = tras['numeraciones'] == en_curso['numeraciones']
+    V['6b_foto_completa_identica'] = tras == en_curso
+    V['sonda_escritura_previa'] = (len([n for n in a1['notices'] if 'SONDA' in n]) == esperado_sonda)
+    # 7: la MISMA operación se reclama de nuevo tras el rechazo (flujo de la ruta: liberar_ → reclamar_), vuelve a fallar igual y se vuelve a poder reclamar
+    liberar(w, op); libre = foto_rama(w)
+    V['7a_liberar_deja_el_estado_inicial'] = libre == inicial
+    r1 = reclamar(w, op, hu, tel='1500000099', suc=suc)
+    a2 = llama_rama(w, carrito(w), op, suc); liberar(w, op); r2 = reclamar(w, op, hu, tel='1500000099', suc=suc)
+    V['7b_reclama_NUEVA_y_reproduce_el_mismo_error'] = r0['estado'] == r1['estado'] == r2['estado'] == 'NUEVA' and (not a2['ok']) and a2['code'] == 'P0001' and a2['msg'] == a1['msg']
+    # 8: se corrige la causa (dato de prueba) y la MISMA operación completa la venta: pedido #n+1 sin saltos, descuentos completos
+    arreglar(w); a3 = llama_rama(w, carrito(w), op, suc)
+    if a3['ok']: completar(w, op, a3['r']['id'])
+    fin = foto_rama(w)
+    print(f'INFO {nombre} DESPUÉS del reintento exitoso (misma operación): resultado={a3.get("r")} {json.dumps(fin, ensure_ascii=False)}')
+    V['8_reintento_mismo_operacion_id_ok'] = a3['ok'] and a3['r']['numero_pedido'] == num_final and fin['pedidos'] == inicial['pedidos'] + 1 and f"#{num_final}" in fin['numeraciones'] and (fin['hojas'], fin['stock_producto']) == esperado_hojas_final(w) and f"{op}:" in fin['operaciones'] and ':true' in fin['operaciones']
+    return V, w, a1, inicial, fin
+# ── SUCURSAL_PENDIENTE_ACTIVACION: se lanza ANTES de cualquier escritura de stock (línea de validación de habilitación) ──
+def sembrar_pend(w):    # venta real previa en la sucursal pendiente de un producto libre → numeración #1 allí
+    r = llama_rama(w, [itm(w['pres_libre'], 1, 700)], None, w['suc2']); assert r['ok'], r
+def arreglar_pend(w):   # se habilita r1 en suc2 y se crea su hoja (10)
+    q = connect(dbv).cursor(); q.execute("insert into stock_rama_habilitacion(producto_id,sucursal_id,estado) values(%s,%s,'activa')", (w['p_r1'], w['suc2']))
+    q.execute("insert into stock_rama(empresa_id,sucursal_id,presentacion_id,cantidad) values(%s,%s,%s,10)", (w['emp'], w['suc2'], w['pres_r1']))
+def esp_pend(w): return ({f"{w['suc']}/{w['pres_r1']}": 10, f"{w['suc2']}/{w['pres_r1']}": 9}, {f"{w['suc']}": 5, f"{w['suc2']}": 4})
+Vp, wp, ap, ini_p, fin_p = caso_rama('SUCURSAL_PENDIENTE_ACTIVACION', 'suc2', lambda w: [itm(w['pres_ctl'], 1, 500), itm(w['pres_r1'], 1, 1000)], sembrar_pend, arreglar_pend, 0, esp_pend, 2)
+# ── HOJA_NO_INICIALIZADA: se lanza DENTRO del bucle de hojas, DESPUÉS de que la hoja de r1 ya fue descontada (escritura previa efectiva) ──
+def sembrar_hoja(w):    # venta real previa de r1 en la sucursal habilitada → numeración #1, hoja 10→9
+    r = llama_rama(w, [itm(w['pres_r1'], 1, 1000)], None, w['suc']); assert r['ok'], r
+def arreglar_hoja(w):   # se crea la hoja de r2 (5)
+    connect(dbv).cursor().execute("insert into stock_rama(empresa_id,sucursal_id,presentacion_id,cantidad) values(%s,%s,%s,5)", (w['emp'], w['suc'], w['pres_r2']))
+def esp_hoja(w): return ({f"{w['suc']}/{w['pres_r1']}": 7, f"{w['suc']}/{w['pres_r2']}": 4}, {f"{w['suc']}": 4, f"{w['suc2']}": 5})
+Vh, wh, ah, ini_h, fin_h = caso_rama('HOJA_NO_INICIALIZADA', 'suc', lambda w: [itm(w['pres_r1'], 2, 1000), itm(w['pres_r2'], 1, 1200), itm(w['pres_ctl'], 1, 500)], sembrar_hoja, arreglar_hoja, 1, esp_hoja, 2)
+ETIQ = {'1_code_P0001': 'SQLSTATE exactamente P0001', '2_mensaje_exacto': 'el mensaje empieza con el nombre exacto', '3_sin_pedido': 'no se crea pedido/ítems/opciones',
+        '4_sin_descuentos_parciales': 'ni descuentos parciales de producto ni de hoja', '5_sin_movimientos_ni_auxiliares': 'sin movimientos ni registros auxiliares (la operación sigue EN_CURSO, sin pedido)',
+        '6_numeracion_y_efectos_previos_revertidos': 'numeración sin cambios', '6b_foto_completa_identica': 'foto completa idéntica a la previa a la llamada',
+        '7a_liberar_deja_el_estado_inicial': 'tras liberar_operacion_pedido el estado es IDÉNTICO al inicial', '7b_reclama_NUEVA_y_reproduce_el_mismo_error': 'la misma operación se reclama de nuevo (NUEVA), reproduce el mismo error y se reclama otra vez',
+        '8_reintento_mismo_operacion_id_ok': 'corregida la causa, la MISMA operación crea el pedido siguiente sin saltos y con descuentos completos'}
+for nom, V in (('SUCURSAL_PENDIENTE_ACTIVACION', Vp), ('HOJA_NO_INICIALIZADA', Vh)):
+    for k, et in ETIQ.items(): check(f'E-RAMA {nom} [{k}] {et}', V[k])
+check('E-RAMA HOJA_NO_INICIALIZADA [sonda] la ESCRITURA PREVIA ocurrió de verdad (la hoja de r1 se descontó 9→7 dentro de la llamada) y aun así quedó revertida', Vh['sonda_escritura_previa'])
+check('E-RAMA SUCURSAL_PENDIENTE_ACTIVACION [sonda] se lanza antes de toda escritura de stock (0 UPDATE de hoja en la llamada)', Vp['sonda_escritura_previa'])
+OK_RAMA = {'SUCURSAL_PENDIENTE_ACTIVACION': all(Vp.values()), 'HOJA_NO_INICIALIZADA': all(Vh.values())}
+print(f'INFO E-RAMA veredicto por error (alimenta ERRORES_CREAR_CON_ROLLBACK_DEMOSTRADO): {OK_RAMA}')
+connect('postgres').cursor().execute('drop database if exists rep_v19_rama with (force)')   # el entorno vuelve a su estado inicial
+
 # ── 40P01: deadlock REAL con la RPC de creación como víctima ──
 dbd = build('rep_deadlock'); wd = world(dbd, stock=10); qd = connect(dbd).cursor()
 qd.execute("insert into productos(empresa_id,nombre,controla_stock) values(%s,'B',true) returning id", (wd['emp'],)); prod_b = qd.fetchone()[0]

@@ -65,14 +65,17 @@ export function calcularHuella(p: { sucursal_id: string; tipo_pedido?: string | 
 /**
  * Rechazos de crear_pedido_stock cuyo ROLLBACK está demostrado y que implican AUSENCIA de pedido: cada uno es un
  * `RAISE EXCEPTION ... USING errcode='P0001'` de la propia función, que aborta TODA la transacción (descuento, numeración,
- * pedido, ítems y libro). Esta lista debe coincidir EXACTAMENTE con los RAISE de crear-pedido-stock-v1.7-operacion.sql
- * (hay una prueba que lo verifica leyendo el archivo SQL) y cada código se prueba contra la base (prueba_sql.py, grupo E):
- * sin pedido, sin stock descontado, sin libro y con la operación reclamable de nuevo.
+ * pedido, ítems y libro). Esta lista debe coincidir EXACTAMENTE con los RAISE de la función viva versionada
+ * (supabase/versionado/crear_pedido_stock.vivo-2026-11-17.sql; hay una prueba que lo verifica leyendo el archivo SQL) y cada
+ * código se prueba contra la base (prueba_sql.py, grupo E): sin pedido, sin stock descontado, sin libro y con la operación
+ * reclamable de nuevo. SUCURSAL_PENDIENTE_ACTIVACION y HOJA_NO_INICIALIZADA (stock por rama) se prueban en el bloque E-RAMA
+ * contra la crear_pedido_stock v1.9 REAL (migración stock-control-por-sucursal.sql); HOJA_NO_INICIALIZADA, además, DESPUÉS de una
+ * escritura previa efectiva (descuento de otra hoja en la misma llamada), que también queda revertida.
  */
 export const ERRORES_CREAR_CON_ROLLBACK_DEMOSTRADO = [
   'SUCURSAL_INVALIDA', 'PRESENTACION_INVALIDA', 'PROMO_COMPONENTE_INVALIDO', 'PROMO_INVALIDA', 'PROMO_VENCIDA',
   'PROMO_SLOTS_INVALIDOS', 'PROMO_PRESENTACION_NO_PERMITIDA', 'PROMO_PRECIO_INVALIDO', 'OPCION_INVALIDA',
-  'PRECIO_INVALIDO', 'FACTOR_STOCK_INVALIDO', 'SIN_STOCK',
+  'PRECIO_INVALIDO', 'FACTOR_STOCK_INVALIDO', 'SIN_STOCK', 'SUCURSAL_PENDIENTE_ACTIVACION', 'HOJA_NO_INICIALIZADA',
 ] as const
 /** Además: deadlock_detected (40P01). PostgreSQL elige una víctima y ABORTA su transacción por completo antes de responder
  *  (probado con un deadlock real en prueba_sql.py). */

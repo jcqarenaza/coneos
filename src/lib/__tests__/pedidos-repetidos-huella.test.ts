@@ -81,10 +81,19 @@ describe('errorProbadoSinPedido: LISTA EXPLÍCITA de rollback demostrado (revisi
   test('conexión (08xxx), apagado/cancelación del servidor (57Pxx), estado desconocido (40003) y unicidad (23505: el pedido PUEDE existir): no se libera', () => {
     for (const code of ['08006', '08003', '57P01', '57P03', '40003', '23505']) assert.equal(errorProbadoSinPedido({ code, message: 'SIN_STOCK' }), false, code)
   })
-  test('SINCRONÍA con la base: la lista del código coincide EXACTAMENTE con los RAISE EXCEPTION de crear-pedido-stock-v1.7-operacion.sql (salvo PRECHECK)', () => {
-    const sql = readFileSync(join(process.cwd(), 'supabase/crear-pedido-stock-v1.7-operacion.sql'), 'utf8')
-    const enSql = new Set([...sql.matchAll(/raise exception '([A-Z_]+)/g)].map(m => m[1]).filter(x => x !== 'PRECHECK'))
+  test('SINCRONÍA con la base: la lista del código coincide EXACTAMENTE con los RAISE EXCEPTION de la función viva versionada (crear_pedido_stock.vivo-2026-11-17.sql), todos con errcode P0001', () => {
+    const sql = readFileSync(join(process.cwd(), 'supabase/versionado/crear_pedido_stock.vivo-2026-11-17.sql'), 'utf8')
+    // extracción inequívoca: UNA sola función y un solo par de delimitadores $function$ (si el archivo cambia de forma, la prueba falla en vez de leer otra cosa)
+    assert.equal([...sql.matchAll(/create\s+or\s+replace\s+function\s+public\.crear_pedido_stock\s*\(/gi)].length, 1)
+    assert.equal([...sql.matchAll(/\$function\$/g)].length, 2)
+    const cuerpo = sql.slice(sql.indexOf('$function$') + '$function$'.length, sql.lastIndexOf('$function$'))
+    // MIGRACION_YA_APLICADA y PRECHECK pertenecen a los scripts de migración, nunca a la función: siguen excluidos
+    const raises = [...cuerpo.matchAll(/raise\s+exception\s+'([A-Z_]+)[^;]*;/gi)].filter(m => m[1] !== 'PRECHECK' && m[1] !== 'MIGRACION_YA_APLICADA')
+    assert.equal(raises.length, [...cuerpo.matchAll(/raise\s+exception/gi)].length, 'todo RAISE de la función se reconoce (ninguno queda sin leer)')
+    for (const m of raises) assert.match(m[0], /using\s+errcode\s*=\s*'P0001'/i, `${m[1]} debe levantarse con errcode P0001`)
+    const enSql = new Set(raises.map(m => m[1]))
     assert.deepEqual([...enSql].sort(), [...ERRORES_CREAR_CON_ROLLBACK_DEMOSTRADO].sort())
+    for (const n of ['SUCURSAL_PENDIENTE_ACTIVACION', 'HOJA_NO_INICIALIZADA']) assert.ok(enSql.has(n), n)
   })
 })
 
