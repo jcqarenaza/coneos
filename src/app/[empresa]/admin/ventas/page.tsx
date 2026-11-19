@@ -10,7 +10,7 @@ import { ConePageHeader, ConeButton, ConeModal } from '@/components/admin/ConeCo
 import { Loader2, TrendingUp, ShoppingBag, BarChart3, CreditCard, ChevronDown, ChevronRight, XCircle } from 'lucide-react'
 
 interface Sucursal { id: string; nombre: string }
-interface PedidoItem { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; pedido_item_opciones?: { nombre_snap: string; emoji_snap: string | null }[] }
+interface PedidoItem { nombre_producto_snap: string; nombre_presentacion_snap: string; precio_snap: number; cantidad: number; combo_ref?: string | null; pedido_item_opciones?: { nombre_snap: string; emoji_snap: string | null }[] }
 interface PedidoVenta {
   id: string; numero_pedido: number; total: number; metodo_pago: string | null; estado: string
   created_at: string; fecha_pedido: string; sucursal_id: string; codigo_retiro: string
@@ -117,7 +117,7 @@ export default function VentasPage() {
       let q = supabase
         .from('pedidos')
         .select(`id, numero_pedido, total, metodo_pago, estado, created_at, fecha_pedido, sucursal_id, codigo_retiro, notas, motivo_cancelacion,
-        pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad,
+        pedido_items(nombre_producto_snap, nombre_presentacion_snap, precio_snap, cantidad, combo_ref,
           pedido_item_opciones(nombre_snap, emoji_snap))`)
         .eq('empresa_id', ctx.empresaId)
         .in('estado', estados)
@@ -285,15 +285,17 @@ export default function VentasPage() {
   const ticketPromedio = pedidosResumen.length > 0 ? totalFacturacion / pedidosResumen.length : 0
   // Helado por kilo: desglosar por presentación; gramos por presentación para el ranking de sabores
   const GRAMOS: Record<string, number> = { '1 Kg': 1000, '1/2 Kg': 500, '1/4 Kg': 250 }
-  const porProducto: Record<string, { nombre: string; cantidad: number; total: number; sabores: Record<string, { nombre: string; emoji: string | null; gramos: number; veces: number }> }> = {}
+  const porProducto: Record<string, { nombre: string; cantidad: number; total: number; promos: Set<string>; sabores: Record<string, { nombre: string; emoji: string | null; gramos: number; veces: number }> }> = {}
   const porSabor: Record<string, { nombre: string; emoji: string | null; gramos: number; veces: number }> = {}
   pedidosResumen.forEach(p => {
     p.pedido_items?.forEach(item => {
       const esHeladoKilo = GRAMOS[item.nombre_presentacion_snap] != null
       const key = esHeladoKilo ? `${item.nombre_producto_snap} ${item.nombre_presentacion_snap}` : item.nombre_producto_snap
-      if (!porProducto[key]) porProducto[key] = { nombre: key, cantidad: 0, total: 0, sabores: {} }
+      if (!porProducto[key]) porProducto[key] = { nombre: key, cantidad: 0, total: 0, promos: new Set<string>(), sabores: {} }
       porProducto[key].cantidad += item.cantidad
       porProducto[key].total += Number(item.precio_snap) * item.cantidad
+      // Una promo se guarda como UN ítem por componente (cantidad 1, mismo combo_ref): "unidades" cuenta componentes; las promos vendidas se cuentan por combo_ref distinto.
+      if (item.combo_ref) porProducto[key].promos.add(`${p.id}|${item.combo_ref}`)
       // Sabores: helado por kilo reparte gramos entre sabores; baldes/tortas cuentan por variedad elegida
       const ops = item.pedido_item_opciones ?? []
       if (ops.length > 0) {
@@ -471,7 +473,7 @@ export default function VentasPage() {
                           </div>
                           <div className="text-right">
                             <p className="text-neutral-800 text-sm font-bold">{formatPrecio(p.total)}</p>
-                            <p className="text-neutral-400 text-xs">{p.cantidad} unidades</p>
+                            <p className="text-neutral-400 text-xs">{p.promos.size > 0 ? `${p.promos.size} ${p.promos.size === 1 ? 'promo' : 'promos'} · ` : ''}{p.cantidad} unidades</p>
                           </div>
                         </button>
                         {abierto && sabs.length > 0 && (
