@@ -8,6 +8,8 @@ import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, Hist
 import NuevoPedido from './NuevoPedido'
 import RevisionDuplicado, { BadgeRevision } from './RevisionDuplicado'
 import type { RevisionVista } from '@/lib/pedidos/revision'
+import VisorComprobante from './VisorComprobante'
+import { normalizarTipoVisor, enlaceVencido, type TipoVisorCaptura } from '@/lib/comprobante-visor'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string; nombre: string; puede_cobrar: boolean; puede_preparar: boolean; sucursal_id: string | null } }
@@ -42,6 +44,8 @@ function tiempoRelativo(ts: string) {
 // Comprobante de transferencia. La URL es FIRMADA y vence (10 min): se pide al abrir el pedido y se vuelve a pedir si falla o vence.
 function ComprobanteCaptura({ dispositivoId, pedidoId, variante }: { dispositivoId: string; pedidoId: string; variante: 'panel' | 'tarjeta' }) {
   const [url, setUrl] = useState<string | null>(null)
+  const [tipo, setTipo] = useState<TipoVisorCaptura>('imagen')   // 'pdf' lo informa el servidor (captura_url); sin dato = imagen, como siempre
+  const firma = useRef<{ en: number; expiraSeg: unknown }>({ en: 0, expiraSeg: 600 })
   const [estado, setEstado] = useState<'cargando' | 'ok' | 'error'>('cargando')
   const [motivo, setMotivo] = useState('')
   const [intento, setIntento] = useState(0)
@@ -53,7 +57,8 @@ function ComprobanteCaptura({ dispositivoId, pedidoId, variante }: { dispositivo
         const d = await r.json().catch(() => null)
         if (!vigente) return
         if (!r.ok || !d?.url) { setMotivo(r.status === 404 ? 'El comprobante no está disponible desde este dispositivo (puede ser de otra sucursal).' : 'No se pudo cargar el comprobante.'); setEstado('error'); return }
-        setUrl(d.url as string); setEstado('ok')
+        firma.current = { en: Date.now(), expiraSeg: d.expira_en_seg }
+        setTipo(normalizarTipoVisor(d.tipo)); setUrl(d.url as string); setEstado('ok')
       } catch {
         if (!vigente) return
         setMotivo('Sin conexión: no se pudo cargar el comprobante.'); setEstado('error')
@@ -68,11 +73,10 @@ function ComprobanteCaptura({ dispositivoId, pedidoId, variante }: { dispositivo
       <p className="text-xs text-blue-500 font-semibold mb-1">📎 Comprobante de transferencia</p>
       {estado === 'cargando' && <p className="text-xs text-neutral-400 py-6 text-center">Cargando comprobante…</p>}
       {estado === 'ok' && url && (
-        <a href={url} target="_blank" rel="noopener noreferrer">
-          <img src={url} alt="Comprobante"
-            onError={() => { setMotivo('La imagen no se pudo mostrar (el enlace dura 10 minutos).'); setEstado('error') }}
-            className="w-full max-h-64 object-contain rounded-xl border border-blue-100 bg-white cursor-zoom-in" />
-        </a>
+        <VisorComprobante url={url} tipo={tipo}
+          onImagenError={() => { setMotivo('La imagen no se pudo mostrar (el enlace dura 10 minutos).'); setEstado('error') }}
+          // PDF: si la firma está por vencer o ya venció, en vez de abrir un enlace muerto se pide una firma nueva (queda el enlace nuevo para tocar).
+          onAbrirPdf={e => { if (enlaceVencido(firma.current.en, Date.now(), firma.current.expiraSeg)) { e.preventDefault(); reintentar() } }} />
       )}
       {estado === 'error' && (
         <div className="text-center py-3">

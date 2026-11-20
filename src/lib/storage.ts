@@ -10,6 +10,8 @@
 //   (quién llama) y las policies de Storage/RLS. Un empresaId ajeno produce una ruta bien formada que la policy rechaza.
 //   Para comprobantes, la firma con service_role (sin policies) depende de la validación estricta de pedido + empresa de
 //   `rutaCapturaDelPedido`; el llamador debe pasar la empresa de la SESIÓN, nunca un valor que venga del cliente.
+import { tipoVisorDeRuta, type TipoVisorCaptura } from './comprobante-visor'
+
 
 export type BucketPublico = 'productos' | 'logos'
 
@@ -147,12 +149,20 @@ export function rutaCapturaDelPedido(pedido: PedidoConCaptura, empresaEsperada: 
   return nueva.test(ruta) || vieja.test(ruta) ? ruta : null
 }
 
-/** SERVIDOR (service_role): URL firmada de UN comprobante, solo si la ruta es del pedido y de la empresa que consulta. */
-export async function firmarCaptura(supabase: ClienteStorage, pedido: PedidoConCaptura, empresaEsperada: string, ttl = TTL_URL_FIRMADA_SEG): Promise<string | null> {
+/**
+ * SERVIDOR (service_role): URL firmada de UN comprobante + cómo mostrarlo ('imagen' | 'pdf'), solo si la ruta es del pedido y de la empresa
+ * que consulta. El tipo sale de la ruta ya validada (nunca del cliente) y no cambia ningún permiso.
+ */
+export async function firmarCapturaConTipo(supabase: ClienteStorage, pedido: PedidoConCaptura, empresaEsperada: string, ttl = TTL_URL_FIRMADA_SEG): Promise<{ url: string; tipo: TipoVisorCaptura } | null> {
   const ruta = rutaCapturaDelPedido(pedido, empresaEsperada)
   if (!ruta) return null
   const { data, error } = await supabase.storage.from('capturas').createSignedUrl(ruta, ttl)
-  return error || !data ? null : data.signedUrl
+  return error || !data ? null : { url: data.signedUrl, tipo: tipoVisorDeRuta(ruta) }
+}
+
+/** SERVIDOR (service_role): URL firmada de UN comprobante, solo si la ruta es del pedido y de la empresa que consulta. */
+export async function firmarCaptura(supabase: ClienteStorage, pedido: PedidoConCaptura, empresaEsperada: string, ttl = TTL_URL_FIRMADA_SEG): Promise<string | null> {
+  return (await firmarCapturaConTipo(supabase, pedido, empresaEsperada, ttl))?.url ?? null
 }
 
 /** SERVIDOR: firma en lote (1 llamada). Devuelve Map<pedido.id, url|null>; los que no pasan la validación quedan en null. */
