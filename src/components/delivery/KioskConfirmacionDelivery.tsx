@@ -7,6 +7,7 @@ import { Loader2, CheckCircle, Copy, Check, Truck, Upload, X, ArrowLeft } from '
 import { armarFilas } from '@/lib/agruparCarrito'
 import AdvertenciaPedidoRepetido from '@/components/pedidos/AdvertenciaPedidoRepetido'
 import { operacionPara, firmaDelivery, type OperacionActual } from '@/lib/pedidos/operacion-cliente'
+import { ACCEPT_COMPROBANTE, validarCapturaCliente } from '@/lib/comprobante-cliente'
 import type { EmpresaConfig, DispositivoKiosk, ItemCarrito } from '@/app/[empresa]/delivery/[sucursal]/page'
 
 interface Props {
@@ -134,6 +135,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
   const [copiado, setCopiado] = useState(false)
   const [captura, setCaptura] = useState<File | null>(null)
   const [capturaPreview, setCapturaPreview] = useState<string | null>(null)
+  const [errorCaptura, setErrorCaptura] = useState<string | null>(null)   // archivo rechazado en el navegador (p. ej. un PDF)
   const [subiendoCaptura, setSubiendoCaptura] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Retorno MP: nombre/dirección/tel y hora vienen del pedido guardado (el celu los perdió en la app de MP)
@@ -159,7 +161,11 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
       .then(r => r.json()).then(data => { setPagosSucursal(data) })
   }, [dispositivo, pagosIniciales])
 
-  function handleCaptura(file: File) {
+  async function handleCaptura(file: File) {
+    // Solo imágenes (JPG, PNG, WebP): un PDF u otro archivo se rechaza acá con un mensaje, y el servidor lo vuelve a validar.
+    const v = await validarCapturaCliente(file)
+    if (v.ok === false) { setCaptura(null); setCapturaPreview(null); setErrorCaptura(v.mensaje); return }
+    setErrorCaptura(null)
     setCaptura(file)
     const reader = new FileReader()
     reader.onload = e => setCapturaPreview(e.target?.result as string)
@@ -541,7 +547,7 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
           {capturaPreview ? (
             <div className="relative rounded-xl overflow-hidden">
               <img src={capturaPreview} alt="Comprobante" className="w-full max-h-52 object-contain bg-neutral-50" />
-              <button onClick={() => { setCaptura(null); setCapturaPreview(null) }}
+              <button onClick={() => { setCaptura(null); setCapturaPreview(null); setErrorCaptura(null) }}
                 className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow active:scale-90">
                 <X className="h-4 w-4" />
               </button>
@@ -553,8 +559,9 @@ export default function KioskConfirmacionDelivery({ config, dispositivo, carrito
               <span className="text-sm font-medium">Subir captura de pantalla</span>
             </button>
           )}
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleCaptura(f); e.target.value = '' }} />
+          <input ref={fileInputRef} type="file" accept={ACCEPT_COMPROBANTE} className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) void handleCaptura(f); e.target.value = '' }} />
+          {errorCaptura && <p className="text-xs font-semibold text-red-600 mt-2" role="alert">{errorCaptura}</p>}
         </div>
 
         {errorPedido && (

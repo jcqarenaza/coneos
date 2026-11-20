@@ -8,8 +8,7 @@ import { Plus, ShoppingBag, Loader2, RefreshCw, CheckCircle, Bike, Printer, Hist
 import NuevoPedido from './NuevoPedido'
 import RevisionDuplicado, { BadgeRevision } from './RevisionDuplicado'
 import type { RevisionVista } from '@/lib/pedidos/revision'
-import VisorComprobante from './VisorComprobante'
-import { normalizarTipoVisor, enlaceVencido, type TipoVisorCaptura } from '@/lib/comprobante-visor'
+import { normalizarTipoCaptura, TEXTO_PDF_ARCHIVADO } from '@/lib/comprobante-caja'
 
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string; nombre: string; puede_cobrar: boolean; puede_preparar: boolean; sucursal_id: string | null } }
@@ -44,9 +43,7 @@ function tiempoRelativo(ts: string) {
 // Comprobante de transferencia. La URL es FIRMADA y vence (10 min): se pide al abrir el pedido y se vuelve a pedir si falla o vence.
 function ComprobanteCaptura({ dispositivoId, pedidoId, variante }: { dispositivoId: string; pedidoId: string; variante: 'panel' | 'tarjeta' }) {
   const [url, setUrl] = useState<string | null>(null)
-  const [tipo, setTipo] = useState<TipoVisorCaptura>('imagen')   // 'pdf' lo informa el servidor (captura_url); sin dato = imagen, como siempre
-  const firma = useRef<{ en: number; expiraSeg: unknown }>({ en: 0, expiraSeg: 600 })
-  const [estado, setEstado] = useState<'cargando' | 'ok' | 'error'>('cargando')
+  const [estado, setEstado] = useState<'cargando' | 'ok' | 'archivado' | 'error'>('cargando')
   const [motivo, setMotivo] = useState('')
   const [intento, setIntento] = useState(0)
   useEffect(() => {
@@ -56,9 +53,10 @@ function ComprobanteCaptura({ dispositivoId, pedidoId, variante }: { dispositivo
         const r = await fetch('/api/operacion/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dispositivo_id: dispositivoId, accion: 'captura_url', pedido_id: pedidoId }) })
         const d = await r.json().catch(() => null)
         if (!vigente) return
+        // PDF histórico (único caso): se informa y listo. Sin URL, sin visor, sin enlace ni descarga.
+        if (r.ok && normalizarTipoCaptura(d?.tipo) === 'pdf_archivado') { setUrl(null); setEstado('archivado'); return }
         if (!r.ok || !d?.url) { setMotivo(r.status === 404 ? 'El comprobante no está disponible desde este dispositivo (puede ser de otra sucursal).' : 'No se pudo cargar el comprobante.'); setEstado('error'); return }
-        firma.current = { en: Date.now(), expiraSeg: d.expira_en_seg }
-        setTipo(normalizarTipoVisor(d.tipo)); setUrl(d.url as string); setEstado('ok')
+        setUrl(d.url as string); setEstado('ok')
       } catch {
         if (!vigente) return
         setMotivo('Sin conexión: no se pudo cargar el comprobante.'); setEstado('error')
@@ -72,11 +70,13 @@ function ComprobanteCaptura({ dispositivoId, pedidoId, variante }: { dispositivo
     <div className={caja}>
       <p className="text-xs text-blue-500 font-semibold mb-1">📎 Comprobante de transferencia</p>
       {estado === 'cargando' && <p className="text-xs text-neutral-400 py-6 text-center">Cargando comprobante…</p>}
+      {estado === 'archivado' && <p className="text-xs text-neutral-500 py-3 text-center">{TEXTO_PDF_ARCHIVADO}</p>}
       {estado === 'ok' && url && (
-        <VisorComprobante url={url} tipo={tipo}
-          onImagenError={() => { setMotivo('La imagen no se pudo mostrar (el enlace dura 10 minutos).'); setEstado('error') }}
-          // PDF: si la firma está por vencer o ya venció, en vez de abrir un enlace muerto se pide una firma nueva (queda el enlace nuevo para tocar).
-          onAbrirPdf={e => { if (enlaceVencido(firma.current.en, Date.now(), firma.current.expiraSeg)) { e.preventDefault(); reintentar() } }} />
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          <img src={url} alt="Comprobante"
+            onError={() => { setMotivo('La imagen no se pudo mostrar (el enlace dura 10 minutos).'); setEstado('error') }}
+            className="w-full max-h-64 object-contain rounded-xl border border-blue-100 bg-white cursor-zoom-in" />
+        </a>
       )}
       {estado === 'error' && (
         <div className="text-center py-3">

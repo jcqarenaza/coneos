@@ -10,8 +10,8 @@
 //   (quién llama) y las policies de Storage/RLS. Un empresaId ajeno produce una ruta bien formada que la policy rechaza.
 //   Para comprobantes, la firma con service_role (sin policies) depende de la validación estricta de pedido + empresa de
 //   `rutaCapturaDelPedido`; el llamador debe pasar la empresa de la SESIÓN, nunca un valor que venga del cliente.
-import { tipoVisorDeRuta, type TipoVisorCaptura } from './comprobante-visor'
 
+import { tipoCapturaDeRuta, type TipoCapturaCaja } from './comprobante-caja'
 
 export type BucketPublico = 'productos' | 'logos'
 
@@ -150,19 +150,25 @@ export function rutaCapturaDelPedido(pedido: PedidoConCaptura, empresaEsperada: 
 }
 
 /**
- * SERVIDOR (service_role): URL firmada de UN comprobante + cómo mostrarlo ('imagen' | 'pdf'), solo si la ruta es del pedido y de la empresa
- * que consulta. El tipo sale de la ruta ya validada (nunca del cliente) y no cambia ningún permiso.
+ * SERVIDOR (service_role): qué mostrar de UN comprobante, solo si la ruta es del pedido y de la empresa que consulta.
+ *   · imagen        → URL firmada (10 min);
+ *   · pdf_archivado → NO se firma nada: el PDF histórico se conserva pero no se muestra, no se enlaza y no se descarga;
+ *   · null          → no disponible (ruta ajena, inválida o error al firmar).
+ * El tipo sale de la ruta ya validada (nunca del cliente) y no cambia ningún permiso.
  */
-export async function firmarCapturaConTipo(supabase: ClienteStorage, pedido: PedidoConCaptura, empresaEsperada: string, ttl = TTL_URL_FIRMADA_SEG): Promise<{ url: string; tipo: TipoVisorCaptura } | null> {
+export async function consultarCaptura(supabase: ClienteStorage, pedido: PedidoConCaptura, empresaEsperada: string, ttl = TTL_URL_FIRMADA_SEG):
+  Promise<{ tipo: 'imagen'; url: string } | { tipo: 'pdf_archivado' } | null> {
   const ruta = rutaCapturaDelPedido(pedido, empresaEsperada)
   if (!ruta) return null
+  if (tipoCapturaDeRuta(ruta) === 'pdf_archivado') return { tipo: 'pdf_archivado' }
   const { data, error } = await supabase.storage.from('capturas').createSignedUrl(ruta, ttl)
-  return error || !data ? null : { url: data.signedUrl, tipo: tipoVisorDeRuta(ruta) }
+  return error || !data ? null : { tipo: 'imagen', url: data.signedUrl }
 }
 
-/** SERVIDOR (service_role): URL firmada de UN comprobante, solo si la ruta es del pedido y de la empresa que consulta. */
+/** SERVIDOR (service_role): URL firmada de UN comprobante imagen, solo si la ruta es del pedido y de la empresa que consulta (nunca de un PDF). */
 export async function firmarCaptura(supabase: ClienteStorage, pedido: PedidoConCaptura, empresaEsperada: string, ttl = TTL_URL_FIRMADA_SEG): Promise<string | null> {
-  return (await firmarCapturaConTipo(supabase, pedido, empresaEsperada, ttl))?.url ?? null
+  const c = await consultarCaptura(supabase, pedido, empresaEsperada, ttl)
+  return c && c.tipo === 'imagen' ? c.url : null
 }
 
 /** SERVIDOR: firma en lote (1 llamada). Devuelve Map<pedido.id, url|null>; los que no pasan la validación quedan en null. */
@@ -176,7 +182,7 @@ export async function firmarCapturasDePedidos(
   const porRuta = new Map<string, string[]>()
   for (const p of pedidos) {
     const ruta = rutaCapturaDelPedido(p, empresaEsperada)
-    if (!ruta) { salida.set(p.id, null); continue }
+    if (!ruta || tipoCapturaDeRuta(ruta) === 'pdf_archivado') { salida.set(p.id, null); continue }   // un PDF histórico nunca se firma
     porRuta.set(ruta, [...(porRuta.get(ruta) ?? []), p.id])
   }
   if (porRuta.size === 0) return salida
@@ -200,7 +206,7 @@ export function resumirCaptura<T extends { id: string; captura_transferencia_url
 
 // ── Comprobantes: escritor (A2) ──
 export const MAX_BYTES_COMPROBANTE = 10 * 1024 * 1024
-/** Únicos formatos admitidos y la extensión que se guarda para cada uno. PDF queda fuera hasta que la caja tenga visor (decisión CTO 09/11). */
+/** Únicos formatos admitidos y la extensión que se guarda para cada uno. PDF NO se admite: los comprobantes son imágenes (decisión CTO 20/11). */
 export const TIPOS_COMPROBANTE = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' } as const
 export type TipoComprobante = keyof typeof TIPOS_COMPROBANTE
 

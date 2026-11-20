@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   rutaSubida, rutaCaptura, extensionSegura, esUuid, rutaDesdeValorCaptura, rutaCapturaDelPedido, firmarCaptura, firmarCapturasDePedidos,
   subirImagen, validarArchivoImagen, StorageRutaError, resumirCaptura,
-  detectarTipoComprobante, validarArchivoComprobante, MAX_BYTES_COMPROBANTE,
+  detectarTipoComprobante, validarArchivoComprobante, MAX_BYTES_COMPROBANTE, consultarCaptura,
 } from '../storage'
 
 const E = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -199,7 +199,7 @@ test('detectarTipoComprobante: reconoce JPEG, PNG y WebP por contenido; rechaza 
   assert.equal(detectarTipoComprobante(b(0xff, 0xd8, 0xff, 0xe1, 0)), 'image/jpeg')
   assert.equal(detectarTipoComprobante(b(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0)), 'image/png')
   assert.equal(detectarTipoComprobante(new Uint8Array([...Buffer.from('RIFF'), 9, 9, 9, 9, ...Buffer.from('WEBPVP8 ')])), 'image/webp')
-  assert.equal(detectarTipoComprobante(new Uint8Array(Buffer.from('%PDF-1.4'))), null)   // PDF no admitido: la caja no tiene visor
+  assert.equal(detectarTipoComprobante(new Uint8Array(Buffer.from('%PDF-1.4'))), null)   // PDF no admitido: los comprobantes son imágenes (decisión CTO 20/11)
   assert.equal(detectarTipoComprobante(new Uint8Array([...Buffer.from('RIFF'), 9, 9, 9, 9, ...Buffer.from('WAVEfmt ')])), null)   // RIFF que no es WebP
   assert.equal(detectarTipoComprobante(new Uint8Array(Buffer.from('GIF89a'))), null)
   assert.equal(detectarTipoComprobante(new Uint8Array(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'))), null)
@@ -220,4 +220,58 @@ test('validarArchivoComprobante: tamaño, tipo declarado y extensión del nombre
   assert.equal((validarArchivoComprobante({ name: 'a.jpg', type: 'image/jpeg', size: MAX_BYTES_COMPROBANTE + 1 }, jpg) as { codigo: string }).codigo, 'GRANDE')
   assert.equal((validarArchivoComprobante({ name: 'a.jpg', type: 'image/jpeg', size: 0 }, new Uint8Array()) as { codigo: string }).codigo, 'VACIO')
   assert.equal((validarArchivoComprobante({ name: 'a.jpg', type: 'image/jpeg', size: 3 }, new Uint8Array([1, 2, 3])) as { codigo: string }).codigo, 'FORMATO')
+})
+
+test('validarArchivoComprobante: el PDF se rechaza SIEMPRE (nombre, tipo declarado o disfrazado), las imágenes siguen pasando', () => {
+  const pdf = new Uint8Array(Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(100, 7)]))
+  const jpg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2])
+  const webp = new Uint8Array([...Buffer.from('RIFF'), 9, 9, 9, 9, ...Buffer.from('WEBPVP8 ')])
+  const v = (name: string, type: string, b: Uint8Array) => validarArchivoComprobante({ name, type, size: b.length }, b)
+  // PDF real, con cualquier nombre / tipo declarado: FORMATO (se mira el contenido, no lo que diga el cliente)
+  for (const [n, t] of [['c.pdf', 'application/pdf'], ['c.pdf', ''], ['c.pdf', 'application/octet-stream'], ['c.jpg', 'image/jpeg'], ['c.png', 'image/png'], ['c', '']] as const) {
+    const r = v(n, t, pdf)
+    assert.equal(r.ok, false, `${n} ${t}`)
+    assert.equal((r as { codigo: string }).codigo, 'FORMATO', `${n} ${t}`)
+  }
+  // Imágenes: siguen aceptándose
+  assert.deepEqual(v('a.jpg', 'image/jpeg', jpg), { ok: true, tipo: 'image/jpeg' })
+  assert.deepEqual(v('a.png', 'image/png', png), { ok: true, tipo: 'image/png' })
+  assert.deepEqual(v('a.webp', 'image/webp', webp), { ok: true, tipo: 'image/webp' })
+})
+
+// ── PDF histórico: se conserva pero nunca se firma (decisión CTO 20/11) ──
+function clienteFirmas() {
+  const una: string[] = [], lote: string[][] = []
+  const c = { storage: { from: () => ({
+    createSignedUrl: async (r: string) => { una.push(r); return { data: { signedUrl: `https://f/${r}?t=1` }, error: null } },
+    createSignedUrls: async (rs: string[]) => { lote.push(rs); return { data: rs.map(r => ({ path: r, signedUrl: `https://f/${r}?t=1`, error: null })), error: null } },
+  }) } } as never
+  return { c, una, lote }
+}
+test('consultarCaptura: imagen → URL firmada; PDF (ruta vieja, nueva o URL pública) → pdf_archivado SIN firmar; ruta ajena → null', async () => {
+  const { c, una } = clienteFirmas()
+  const img = await consultarCaptura(c, { id: P, empresa_id: E, captura_transferencia_url: `${E}/pedidos/${P}.jpg` }, E)
+  assert.deepEqual(img, { tipo: 'imagen', url: `https://f/${E}/pedidos/${P}.jpg?t=1` })
+  assert.equal(una.length, 1)
+  for (const v of [`pedidos/${P}.pdf`, `${E}/pedidos/${P}.PDF`, `https://x.supabase.co/storage/v1/object/public/capturas/pedidos/${P}.pdf`]) {
+    const r = await consultarCaptura(c, { id: P, empresa_id: E, captura_transferencia_url: v }, E)
+    assert.deepEqual(r, { tipo: 'pdf_archivado' }, v)
+  }
+  assert.equal(una.length, 1)                                                     // los PDF no generaron ninguna firma nueva
+  assert.equal(await consultarCaptura(c, { id: P, empresa_id: E, captura_transferencia_url: `${E}/pedidos/${U}.pdf` }, E), null)   // PDF de OTRO pedido
+  assert.equal(await consultarCaptura(c, { id: P, empresa_id: E, captura_transferencia_url: `${E}/pedidos/${P}.pdf` }, 'bbbbbbbb-0000-0000-0000-000000000002'), null)   // otra empresa
+})
+test('firmarCaptura y firmarCapturasDePedidos nunca firman un PDF; resumirCaptura lo informa como existente', async () => {
+  const { c, una, lote } = clienteFirmas()
+  const P2 = '30000000-0000-0000-0000-000000000002'
+  assert.equal(await firmarCaptura(c, { id: P, empresa_id: E, captura_transferencia_url: `pedidos/${P}.pdf` }, E), null)
+  assert.equal(una.length, 0)
+  const m = await firmarCapturasDePedidos(c, E, [
+    { id: P, empresa_id: E, captura_transferencia_url: `pedidos/${P}.pdf` },
+    { id: P2, empresa_id: E, captura_transferencia_url: `${E}/pedidos/${P2}.png` },
+  ])
+  assert.equal(m.get(P), null); assert.equal(m.get(P2), `https://f/${E}/pedidos/${P2}.png?t=1`)
+  assert.deepEqual(lote, [[`${E}/pedidos/${P2}.png`]])                           // en el lote viaja solo la imagen
+  assert.equal(resumirCaptura({ id: P, captura_transferencia_url: `pedidos/${P}.pdf` }, E).tiene_captura, true)
 })

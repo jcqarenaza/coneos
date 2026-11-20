@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { esUuid, firmarCapturaConTipo, resumirCaptura, TTL_URL_FIRMADA_SEG } from '@/lib/storage'
+import { esUuid, consultarCaptura, resumirCaptura, TTL_URL_FIRMADA_SEG } from '@/lib/storage'
 import { revisionesParaCaja, itemsComparables, resolverRevision, marcarReembolsoGestionado, pedidosRetenidos, CODIGO_RETENIDO, MENSAJE_RETENIDO, type Db } from '@/lib/pedidos/revision'
 
 // Datos de las pantallas de OPERACIÓN (caja/preparación/display), server-side.
@@ -118,10 +118,11 @@ export async function POST(request: Request) {
     const { data: ped } = await supabase.from('pedidos')
       .select('id, empresa_id, captura_transferencia_url')
       .eq('id', pid).eq('empresa_id', empresaId).eq('sucursal_id', sucursalId).maybeSingle()
-    const firma = ped ? await firmarCapturaConTipo(supabase, ped, empresaId) : null
-    if (!firma) return NextResponse.json({ error: 'Comprobante no disponible' }, { status: 404 })
-    // `tipo` ('imagen' | 'pdf') lo deduce el servidor de la ruta ya validada: solo le dice al visor cómo mostrar la URL firmada.
-    return NextResponse.json({ url: firma.url, expira_en_seg: TTL_URL_FIRMADA_SEG, tipo: firma.tipo })
+    const c = ped ? await consultarCaptura(supabase, ped, empresaId) : null
+    if (!c) return NextResponse.json({ error: 'Comprobante no disponible' }, { status: 404 })
+    // `tipo` lo deduce el servidor de la ruta ya validada. PDF histórico: sin URL (no se firma, no hay enlace ni descarga).
+    if (c.tipo === 'pdf_archivado') return NextResponse.json({ tipo: 'pdf_archivado' })
+    return NextResponse.json({ url: c.url, expira_en_seg: TTL_URL_FIRMADA_SEG, tipo: 'imagen' })
   }
 
   if (accion === 'preparacion') {

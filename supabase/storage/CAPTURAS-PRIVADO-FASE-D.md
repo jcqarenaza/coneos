@@ -46,7 +46,7 @@ acdd050ee702093c23e814da1c7265514f3d7d7ddf40224ed9ea09694a1c0b73  capturas-priva
 
 Antes de ejecutar: `sha256sum` de cada archivo y comparar. Orden: 00 → 01 → 02, un archivo por vez. **Las tres últimas columnas del resultado final** (`huella_otros_buckets`, `huella_otras_11_policies`, `objetos_total`) deben ser IGUALES en 00, 01 y 02: así se comprueba que no cambió nada más. Si 01 falla, no hay que revertir: la transacción no se aplicó.
 
-Precondiciones: `main` con A1 y A2 (ya está) y el código PDF de esta fase desplegado. Nada exige la Fase C.
+Precondiciones: `main` con A1 y A2 (ya está). Nada exige la Fase C. Sin soporte PDF: los comprobantes son imágenes (decisión CTO 20/11, ver §10).
 
 ## 4. Controles y por qué impiden ejecutar sobre un estado distinto del auditado
 
@@ -56,7 +56,7 @@ Precondiciones: `main` con A1 y A2 (ya está) y el código PDF de esta fase desp
 | Aplica la misma verificación **dentro** de la transacción, tras tomar los bloqueos | que algo cambie entre el precheck y el aplicar, o que alguien salte el precheck | El precheck no es lo único que protege; el estado verificado es el que se modifica |
 | Bloqueo `ACCESS EXCLUSIVE` sobre `storage.objects` y `SHARE ROW EXCLUSIVE` sobre `storage.buckets`, `lock_timeout` 5 s | otra sesión modificando policies o buckets | Nadie puede alterar policies entre la verificación y el cambio. Si no se consigue el bloqueo en 5 s, aborta sin cambios. Efecto: las consultas a Storage esperan unos milisegundos (el `DROP POLICY` pide ese mismo bloqueo igual) |
 | RLS activo en `storage.objects` | RLS desactivado | Sin RLS las policies auditadas no serían la barrera |
-| Bucket `capturas`: público, STANDARD, 10 MB, MIME jpeg/png/webp/pdf | cualquier atributo distinto | Es el estado que se auditó; otro estado no se conoce |
+| Bucket `capturas`: público, STANDARD, 10 MB, MIME jpeg/png/webp/pdf (la lista MIME del bucket NO se toca: el SQL no la cambia aunque la aplicación ya no sube PDF) | cualquier atributo distinto | Es el estado que se auditó; otro estado no se conoce |
 | `assets`, `logos`, `productos` existen y son públicos | ausentes o privados | Mismo motivo; además el cambio no debe afectarlos |
 | Estado final exacto (11 policies, `capturas` privado con atributos intactos) y huella de lo que no se toca | cualquier efecto colateral (trigger, otra policy, otro bucket, objetos) | Rollback automático de toda la transacción |
 | Doble aplicación | segunda corrida: "capturas ya NO es público" | Aborta explícitamente y no cambia nada |
@@ -79,7 +79,7 @@ Ejecutar `capturas-privado-REVERSION-NO-EJECUTAR.sql` (misma estructura: bloqueo
 
 ## 7. Verificación posterior (solo con autorización de aplicar)
 
-- **URL firmada funciona:** en /cecchetto o /federal, abrir un pedido con comprobante en Caja; se ve la imagen o aparece "Abrir comprobante (PDF)". Sin crear pedidos.
+- **URL firmada funciona:** en /cecchetto o /federal, abrir un pedido con comprobante en Caja; se ve la imagen del comprobante (URL firmada). Sin crear pedidos.
 - **URL pública deja de funcionar:** `GET /storage/v1/object/public/capturas/<ruta existente>` esperado 4xx, no 200. Registrar status y headers (`cf-cache-status`, `age`). No usar objetos en cuarentena.
 
 ## 8. CDN y cache residual
@@ -94,15 +94,26 @@ Hipótesis a confirmar con evidencia (no verificado en producción):
 
 No se copian ni mueven objetos ni se modifica `pedidos.captura_transferencia_url`. A1 deriva la ruta (`pedidos/<id>.<ext>` o `<empresa_id>/pedidos/<id>.<ext>`), valida empresa/sucursal y firma. La Fase C queda como mejora de orden, no como requisito. Los 81 objetos en cuarentena no se enumeran ni tocan.
 
-## 10. PDF (código incluido)
+## 10. PDF: fuera de alcance (decisión CTO 20/11)
 
-`captura_url` devuelve `{ url, expira_en_seg: 600, tipo: 'imagen' | 'pdf' }`; el tipo lo deduce el servidor de la ruta ya validada. `ComprobanteCaptura` mantiene el visor de imagen; para PDF muestra el enlace "Abrir comprobante (PDF)" que abre la URL firmada en pestaña nueva y renueva la firma si está por vencer. Sin permisos nuevos ni exposición de la URL original; JPEG/PNG/WebP sin cambios.
+ConeOS trabaja con comprobantes en **imagen** (JPG, JPEG, PNG, WebP). No hay visor PDF, ni PDF.js, ni paginado, ni enlaces externos.
+- **API:** `POST /api/pedidos/comprobante` rechaza el PDF (415 `FORMATO`) mirando el contenido real del archivo, sin importar nombre ni tipo declarado.
+- **Navegador (delivery/takeaway):** el selector ofrece solo `image/jpeg, image/png, image/webp` y `validarCapturaCliente` (misma detección por contenido) rechaza un PDF con un mensaje antes de subirlo.
+- **Vista Caja:** imagen directa con URL firmada de 10 minutos (renovable con "Reintentar"), igual que antes de esta fase.
+- **Respuesta de Caja (`captura_url`):** incluye `tipo`, derivado por el SERVIDOR de la ruta ya validada (nunca del cliente): `{ url, expira_en_seg: 600, tipo: 'imagen' }` para imágenes y `{ tipo: 'pdf_archivado' }` (sin URL) para una ruta `.pdf`.
+
+### Caso histórico: un PDF existente en `capturas` (decisión CTO 20/11: indicador + texto, nada más)
+Auditoría de solo lectura (20/11): **un** objeto PDF, `pedidos/d913e6f9-3581-4e50-a228-5be616de8d97.pdf` (112.356 bytes, 04/10/2026), asociado al pedido **#39** (`d913e6f9-…`, DELIVERED, DELIVERY) de la empresa `federal`, sucursal `federal`. El pedido guarda la URL pública completa en `captura_transferencia_url`; ningún otro pedido ni objeto es PDF.
+- **Qué muestra Vista Caja:** «Comprobante PDF archivado; no disponible para visualización». Solo texto: no se renderiza como imagen, no hay enlace, visor ni descarga.
+- **Cómo:** `consultarCaptura` (storage.ts) valida pedido + empresa + ruta y, si la ruta termina en `.pdf`, responde `pdf_archivado` **antes** de pedir ninguna firma a Storage. `firmarCaptura` y `firmarCapturasDePedidos` tampoco firman nunca un PDF. `tiene_captura` sigue en `true` (el pedido tiene comprobante) y el alcance por empresa y sucursal no cambia.
+- **Qué NO se hace:** no se descarga, convierte, mueve ni borra el objeto; no se modifica el pedido; sin SQL ni cambios en Storage. Con el bucket privado el objeto queda protegido y solo se accede con `service_role` (panel de Supabase) o con una URL firmada que genere un administrador a pedido.
+- **Si algún día se necesita verlo:** convertirlo a imagen fuera de la aplicación, como acción manual con autorización explícita, conservando el original.
 
 ## 11. Pruebas
 
 | Suite | Resultado |
 |---|---|
-| comprobante-visor, captura-url-ruta, storage, comprobante-subida | 70/70 |
+| comprobante-caja, comprobante-cliente, storage, captura-url-ruta, comprobante-subida (sin PDF: se rechaza en navegador y API; PDF histórico = «archivado», sin firma; imágenes siguen) | 68/68 |
 | capturas-privado-sql (Postgres 16 local) | 99/99 |
 
 La suite SQL cubre: el esquema de prueba reproduce el texto exacto del listado real; las 12 policies exactas; 28 desvíos (adicional abierta / para anon / para authenticated / ALL / sin nombrar capturas / restrictiva, renombrada, USING / WITH CHECK / rol / permissive / comando alterados, ausente, RLS apagado, atributos y buckets distintos) contra **precheck y aplicar**; 10 estados posteriores desviados contra **postcheck y reversión**; doble aplicación; bloqueo con `lock_timeout`; 4 pruebas de atomicidad en aplicar y 1 en reversión; ciclo aplicar → revertir → aplicar; huellas iguales entre scripts; pruebas estáticas (solo los cambios autorizados, orden bloqueo → verificación → cambio, precheck/postcheck sin escritura). Se verificó con una mutación deliberada (quitar el WITH CHECK de la comparación y el bloqueo) que los tests la detectan.
