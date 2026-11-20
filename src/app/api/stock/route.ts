@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { UUID_RE, validarItems, validarMotivo, soloContados, estadoStock, traducirErrorAjuste } from '@/lib/stock/ajuste'
+import { alertasStock } from '@/lib/stock/alertas'
 import { validarMinimo, unidadesVendibles, validarCantidadInicial } from '@/lib/stock/habilitar'
 
 // ============================================================
@@ -81,6 +82,14 @@ export async function POST(request: Request) {
 
   if (accion === 'sucursales') {
     return NextResponse.json({ sucursales: sucursales.map(s => ({ id: s.id, nombre: s.nombre })), puede_habilitar: empresaCompleta })
+  }
+
+  // Alertas del dashboard: agotados y bajos de TODAS las sucursales a las que este administrador tiene acceso (misma regla que el catálogo).
+  if (accion === 'alertas') {
+    const empresaId = sucursales[0].empresa_id
+    const nombreSuc = new Map(sucursales.map(s => [s.id, s.nombre]))
+    const lista = await alertasStock(supabase, empresaId, sucursales.map(s => s.id))
+    return NextResponse.json({ alertas: lista.sort((x, y) => x.cantidad - y.cantidad).map(r => ({ producto: r.producto, sucursal: nombreSuc.get(r.sucursal_id) ?? '—', cantidad: r.cantidad, stock_minimo: r.stock_minimo })) })
   }
 
   const sucursalId = body.sucursal_id

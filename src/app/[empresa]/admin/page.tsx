@@ -87,20 +87,13 @@ export default function AdminDashboard() {
       setStats({ totalHoy, totalAyer, cantidadHoy: hoyOk.length, sucursales: sucursales ?? 0, productos: productos ?? 0, operadores: operadores ?? 0 })
       setPedidosActivos(sinRevision(activos ?? [], mapaRev).slice(0, 8))   // se leen 40 y se recortan a 8 DESPUÉS de excluir, para no quedar corto
 
-      // Stock en alerta (cantidad <= mínimo; incluye agotados). Solo filas de
-      // producto_stock = solo productos con control activado; sin control, la
-      // card ni aparece. Lectura bajo RLS del admin, patrón de la casa.
-      const { data: st } = await supabase.from('producto_stock')
-        .select('cantidad, stock_minimo, productos(nombre), sucursales(nombre)')
-        .eq('empresa_id', empresaId)
-      const alertas = (st ?? [])
-        .filter(r => Number(r.cantidad) <= Number(r.stock_minimo))
-        .map(r => ({
-          producto: (Array.isArray(r.productos) ? r.productos[0] : r.productos)?.nombre ?? '—',
-          sucursal: (Array.isArray(r.sucursales) ? r.sucursales[0] : r.sucursales)?.nombre ?? '—',
-          cantidad: Number(r.cantidad), stock_minimo: Number(r.stock_minimo),
-        }))
-        .sort((a, b) => a.cantidad - b.cantidad)
+      // Stock en alerta: misma regla que el catálogo (solo filas con control activo + productos de rama sin saldo).
+      // Se resuelve en el servidor (/api/stock, alcance por rol): stock_rama no es legible desde el panel. Si falla, no se muestra la card.
+      let alertas: { producto: string; sucursal: string; cantidad: number; stock_minimo: number }[] = []
+      try {
+        const rs = await fetch('/api/stock', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ accion: 'alertas' }) })
+        if (rs.ok) alertas = ((await rs.json()) as { alertas?: typeof alertas }).alertas ?? []
+      } catch { /* sin alertas: la card no aparece */ }
       setStockAlertas(alertas)
       setLoading(false)
     }

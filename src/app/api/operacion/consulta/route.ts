@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { alertasStock } from '@/lib/stock/alertas'
 import { esUuid, firmarCaptura, resumirCaptura, TTL_URL_FIRMADA_SEG } from '@/lib/storage'
 import { revisionesParaCaja, itemsComparables, resolverRevision, marcarReembolsoGestionado, pedidosRetenidos, CODIGO_RETENIDO, MENSAJE_RETENIDO, type Db } from '@/lib/pedidos/revision'
 
@@ -50,15 +51,10 @@ export async function POST(request: Request) {
       .eq('activo', true).eq('rol', 'cadete').order('nombre')
     // Alertas de stock de la sucursal del dispositivo (viaja con el polling de
     // caja, costo ínfimo): agotados y bajos para el aviso del header.
-    const { data: st } = await supabase.from('producto_stock')
-      .select('cantidad, stock_minimo, productos(nombre)')
-      .eq('sucursal_id', disp.sucursal_id)
-    const enAlerta = (st ?? [])
-      .filter(r => Number(r.cantidad) <= Number(r.stock_minimo))
-      .map(r => ({ nombre: (Array.isArray(r.productos) ? r.productos[0] : r.productos)?.nombre ?? '—', cantidad: Number(r.cantidad) }))
-      .sort((a, b) => a.cantidad - b.cantidad).slice(0, 12)
-    const stockAgotados = enAlerta.filter(r => r.cantidad === 0).length
-    const stockBajos = enAlerta.filter(r => r.cantidad > 0).length
+    const alertas = (await alertasStock(supabase, empresaId, [sucursalId])).sort((x, y) => x.cantidad - y.cantidad)
+    const stockAgotados = alertas.filter(r => r.cantidad === 0).length
+    const stockBajos = alertas.filter(r => r.cantidad > 0).length
+    const enAlerta = alertas.slice(0, 12).map(r => ({ nombre: r.producto, cantidad: r.cantidad }))
     const { data: sucCfg } = await supabase.from('sucursales')
       .select('comanda_auto, ticket_auto').eq('id', disp.sucursal_id).maybeSingle()
     // REPARTO V1: llave del módulo para que la caja muestre (o no) el mapa
