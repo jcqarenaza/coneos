@@ -558,17 +558,17 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                       className="text-neutral-400 text-sm hover:text-neutral-600 transition-colors">← Volver</button>}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 mb-4">
-                {[...opcionesVisibles].sort((a, b) => (b.es_novedad === true ? 1 : 0) - (a.es_novedad === true ? 1 : 0)).map(op => {
+                {[...opcionesVisibles].sort((a, b) => (a.agotado === true ? 1 : 0) - (b.agotado === true ? 1 : 0) || (b.es_novedad === true ? 1 : 0) - (a.es_novedad === true ? 1 : 0)).map(op => {
                   const sel = opcionesSeleccionadas.find(o => o.id === op.id)
                   const maxAlcanzado = opcionesSeleccionadas.length >= presentacionActiva.opciones_max
                   return (
                     <button key={op.id} onClick={() => toggleOpcion(op)} disabled={(!sel && maxAlcanzado) || (op.agotado === true && !sel)}
-                      className={`flex items-center gap-2 p-3 rounded-xl border transition-all text-left ${sel ? 'border-neutral-800 bg-neutral-50' : 'border-neutral-200 bg-white hover:border-neutral-300'} disabled:opacity-30 active:scale-98`}>
+                      className={`flex items-center gap-2 p-3 rounded-xl border transition-all text-left ${sel ? 'border-neutral-800 bg-neutral-50' : 'border-neutral-200 bg-white hover:border-neutral-300'} ${op.agotado === true && !sel ? 'disabled:opacity-100 [&_img]:blur-[2px] [&_img]:opacity-60 [&_.text-xl]:blur-[2px] [&_.text-xl]:opacity-60' : 'disabled:opacity-30'} active:scale-98`}>
                       {op.imagen_url
                         ? <img src={op.imagen_url} alt={op.nombre} className="w-8 h-8 object-cover rounded-lg flex-shrink-0" />
                         : <span className="text-xl">{op.emoji || '🍦'}</span>
                       }
-                      <span className="text-neutral-700 text-sm font-semibold">{op.nombre}{op.agotado === true && <span className="ml-1.5 text-[9px] font-black text-white bg-neutral-500 px-1.5 py-0.5 rounded-full align-middle">AGOTADO</span>}{op.es_novedad === true && <span className="ml-1.5 text-[9px] font-black text-white bg-neutral-800 px-1.5 py-0.5 rounded-full align-middle">NUEVO</span>}</span>
+                      <span className="text-neutral-700 text-sm font-semibold">{op.nombre}{op.agotado === true && <span className="ml-1.5 text-[9px] font-black text-white bg-red-500 px-1.5 py-0.5 rounded-full align-middle">AGOTADO</span>}{op.es_novedad === true && <span className="ml-1.5 text-[9px] font-black text-white bg-neutral-800 px-1.5 py-0.5 rounded-full align-middle">NUEVO</span>}</span>
                     </button>
                   )
                 })}
