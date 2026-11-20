@@ -588,10 +588,10 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
           <div className="max-w-2xl mx-auto pt-4">
             <h2 className="text-xl font-bold mb-5" style={{ color: config.primary_color }}>{categoriaActiva.nombre}</h2>
             <div className="space-y-4">
-              {productosFiltrados.map(prod => {
+              {[...productosFiltrados].sort((x, y) => Number(!!x.agotado) - Number(!!y.agotado)).map(prod => {
                 const pres = presentaciones.filter(p => p.producto_id === prod.id)
                 return (
-                  <div key={prod.id} id={`prod-${prod.id}`} className={`bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden ${prod.agotado ? 'opacity-60 grayscale' : ''}`}>
+                  <div key={prod.id} id={`prod-${prod.id}`} className={`bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden ${prod.agotado ? '[&_img]:blur-[2px] [&_img]:opacity-60' : ''}`}>
                     <div className="flex gap-4 p-4 items-center">
                       {(() => {
                         const algunaTieneImagen = pres.some(p => p.imagen_url)
@@ -607,7 +607,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                       })()}
                       <div className="flex-1">
                         <p className="font-bold text-neutral-800 text-lg">{prod.nombre}
-                          {prod.agotado && <span className="ml-2 align-middle text-[11px] font-bold uppercase tracking-wide bg-neutral-200 text-neutral-500 rounded-full px-2.5 py-0.5">Agotado</span>}
+                          {prod.agotado && <span className="ml-2 align-middle text-[11px] font-bold uppercase tracking-wide bg-red-500 text-white rounded-full px-2.5 py-0.5">Agotado</span>}
                         </p>
                         {prod.descripcion && <p className="text-neutral-400 text-sm mt-0.5">{prod.descripcion}</p>}
                       </div>
@@ -630,7 +630,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                             </div>
                             </div>
                             {prod.agotado ? (
-                              <span className="text-sm font-bold text-neutral-400">Agotado</span>
+                              <span className="text-sm font-bold text-red-500">Agotado</span>
                             ) : (
                             <div className="flex items-center gap-3">
                               <button onClick={() => setCant(prod.id, p.id, cant - 1)} className="w-10 h-10 flex items-center justify-center rounded-xl border-2 border-neutral-200 bg-white active:bg-neutral-50 transition-colors">
@@ -718,7 +718,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
             {/* Grid sabores — con imagen si existe */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {[...opcionesFiltradas].sort((a, b) => (b.es_novedad === true ? 1 : 0) - (a.es_novedad === true ? 1 : 0) || a.nombre.localeCompare(b.nombre, 'es')).map(op => {
+              {[...opcionesFiltradas].sort((a, b) => (a.agotado === true ? 1 : 0) - (b.agotado === true ? 1 : 0) || (b.es_novedad === true ? 1 : 0) - (a.es_novedad === true ? 1 : 0) || a.nombre.localeCompare(b.nombre, 'es')).map(op => {
                 const sel = opcionesSeleccionadas.find(o => o.id === op.id)
                 const saboresSeleccionados = opcionesSeleccionadas.filter(o => { const g = grupos.find(gr => gr.id === o.grupo_id); return !g?.nombre.toLowerCase().includes('accesorio') })
                 const maxAlcanzado = !esAccesorio(op) && saboresSeleccionados.length >= actualCola.presentacion.opciones_max
@@ -726,7 +726,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
 
                 return (
                   <button key={op.id} onClick={() => toggleOpcion(op)} disabled={(!sel && maxAlcanzado) || (op.agotado === true && !sel)}
-                    className={`relative flex flex-col rounded-2xl border-2 bg-white transition-all active:scale-95 overflow-hidden ${sel ? 'shadow-md' : 'border-neutral-100 hover:border-neutral-200'} disabled:opacity-30`}
+                    className={`relative flex flex-col rounded-2xl border-2 bg-white transition-all active:scale-95 overflow-hidden ${sel ? 'shadow-md' : 'border-neutral-100 hover:border-neutral-200'} ${op.agotado === true && !sel ? 'disabled:opacity-100 [&_img]:blur-[2px] [&_img]:opacity-60 [&_.text-3xl]:blur-[2px] [&_.text-3xl]:opacity-60' : 'disabled:opacity-30'}`}
                     style={sel ? { borderColor: config.primary_color } : {}}>
 
                     {/* Visual adaptativo: foto = tile completo (heladería con fotos);
@@ -747,7 +747,7 @@ export default function KioskCatalogo({ dispositivo, config, carrito, categoriaI
                       <span className="absolute top-2 left-2 text-[10px] font-black text-white px-2 py-0.5 rounded-full shadow-md" style={{ backgroundColor: config.primary_color }}>NUEVO</span>
                     )}
                     {op.agotado === true && (
-                      <span className="absolute top-2 left-2 text-[10px] font-black text-white bg-neutral-700 px-2 py-0.5 rounded-full shadow-md">AGOTADO</span>
+                      <span className="absolute top-2 left-2 text-[10px] font-black text-white bg-red-500 px-2 py-0.5 rounded-full shadow-md">AGOTADO</span>
                     )}
                     {/* Check overlay */}
                     {sel && (
