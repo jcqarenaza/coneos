@@ -8,7 +8,7 @@ import { armarFilas, sumarAlCarrito } from '@/lib/agruparCarrito'
 interface Dispositivo { id: string; empresa_id: string; sucursal_id: string }
 interface SesionOperador { session_id: string; operador: { id: string } }
 interface Categoria { id: string; nombre: string }
-interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string; visible_delivery?: boolean }
+interface Producto { id: string; nombre: string; imagen_url: string | null; categoria_id: string; visible_delivery?: boolean; agotado?: boolean }
 interface Presentacion { id: string; nombre: string; precio: number; permite_opciones: boolean; opciones_min: number; opciones_max: number; producto_id: string; imagen_url: string | null }
 interface Grupo { id: string; nombre: string }
 interface Opcion { id: string; nombre: string; emoji: string | null; color: string | null; imagen_url: string | null; grupo_id: string; precio_adicional: number; es_novedad?: boolean; agotado?: boolean }
@@ -513,7 +513,7 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
             )
           })() : !presentacionActiva ? (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-              {productosFiltrados.map(prod => {
+              {[...productosFiltrados].sort((x, y) => Number(!!x.agotado) - Number(!!y.agotado)).map(prod => {
                 const pres = presentaciones.filter(p => p.producto_id === prod.id)
                 return pres.map(p => {
                   const img = p.imagen_url || prod.imagen_url
@@ -523,20 +523,20 @@ export default function NuevoPedido({ dispositivo, sesion, onPedidoCreado }: Pro
                   // pisado por partir de un archivo base viejo — error declarado)
                   return img ? (
                     <button key={p.id} onClick={() => seleccionarPresentacion(p, prod)}
-                      className="flex items-center gap-2.5 p-3 bg-white rounded-xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98">
+                      className={`flex items-center gap-2.5 p-3 bg-white rounded-xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98 ${prod.agotado ? '[&_img]:blur-[2px] [&_img]:opacity-60 [&_.text-xl]:blur-[2px] [&_.text-xl]:opacity-60' : ''}`}>
                       <img src={img} alt={prod.nombre} className="w-12 h-12 object-cover rounded-lg flex-shrink-0 bg-neutral-50" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-neutral-800 font-bold text-sm leading-tight truncate">{prod.nombre}</p>
+                        <p className="text-neutral-800 font-bold text-sm leading-tight truncate">{prod.nombre}{prod.agotado && <span className="ml-1.5 text-[9px] font-black text-white bg-red-500 px-1.5 py-0.5 rounded-full align-middle">AGOTADO</span>}</p>
                         <p className="text-neutral-400 text-xs truncate">{p.nombre}</p>
                         <p className="text-neutral-700 font-black text-sm mt-0.5">{formatPrecio(p.precio)}</p>
                       </div>
                     </button>
                   ) : (
                     <button key={p.id} onClick={() => seleccionarPresentacion(p, prod)}
-                      className="flex items-center gap-2.5 p-3 bg-white rounded-xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98">
+                      className={`flex items-center gap-2.5 p-3 bg-white rounded-xl border border-neutral-100 hover:border-neutral-200 hover:shadow-sm transition-all text-left active:scale-98 ${prod.agotado ? '[&_img]:blur-[2px] [&_img]:opacity-60 [&_.text-xl]:blur-[2px] [&_.text-xl]:opacity-60' : ''}`}>
                       <span className="w-10 h-10 rounded-lg bg-neutral-50 flex items-center justify-center text-xl flex-shrink-0">🍦</span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-neutral-800 font-bold text-sm leading-tight truncate">{prod.nombre}</p>
+                        <p className="text-neutral-800 font-bold text-sm leading-tight truncate">{prod.nombre}{prod.agotado && <span className="ml-1.5 text-[9px] font-black text-white bg-red-500 px-1.5 py-0.5 rounded-full align-middle">AGOTADO</span>}</p>
                         <p className="text-neutral-400 text-xs truncate">{p.nombre}</p>
                         <p className="text-neutral-700 font-black text-sm mt-0.5">{formatPrecio(p.precio)}</p>
                       </div>
