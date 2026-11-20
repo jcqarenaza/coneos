@@ -29,31 +29,37 @@ const base = (): Record<string, Row[]> => ({
     { empresa_id: E, sucursal_id: S, cantidad: 9, stock_minimo: 5, controla: true, productos: { nombre: 'Sano' } },
   ],
   productos: [{ id: 'p1', nombre: 'Bomboncitos', empresa_id: E, activo: true, deleted_at: null, controla_stock: true, modelo_stock: 'rama' }],
-  presentaciones: [{ id: 'a', producto_id: 'p1', empresa_id: E, activo: true }, { id: 'b', producto_id: 'p1', empresa_id: E, activo: true }],
+  presentaciones: [{ id: 'a', producto_id: 'p1', empresa_id: E, activo: true, nombre: 'Pistacho' }, { id: 'b', producto_id: 'p1', empresa_id: E, activo: true, nombre: 'Chocolate' }],
   stock_rama: [{ empresa_id: E, sucursal_id: S, presentacion_id: 'a', cantidad: '0.000' }, { empresa_id: E, sucursal_id: S, presentacion_id: 'b', cantidad: '0.000' }],
   stock_rama_habilitacion: [{ empresa_id: E, sucursal_id: S, producto_id: 'p1', estado: 'activa' }],
 })
 
 test('cuenta Balde (controlado, 0), el bajo y la rama sin saldo; ignora filas sin control y sanas', async () => {
   const r = await alertasStock(fake(base()), E, [S])
-  assert.deepEqual(r.map(x => x.producto).sort(), ['Bajo', 'Balde 2 litros', 'Bomboncitos'])
-  assert.equal(r.filter(x => x.cantidad === 0).length, 2)
+  assert.deepEqual(r.map(x => x.producto).sort(), ['Bajo', 'Balde 2 litros', 'Bomboncitos · Chocolate', 'Bomboncitos · Pistacho'])
+  assert.equal(r.filter(x => x.cantidad === 0).length, 3)
   assert.equal(r.filter(x => x.cantidad > 0).length, 1)
 })
-test('rama con una presentación con saldo >= 1 NO es agotado', async () => {
+test('rama: solo se listan las presentaciones sin saldo (las con saldo >= 1 no)', async () => {
   const t = base(); t.stock_rama[0].cantidad = '2.000'
-  const r = await alertasStock(fake(t), E, [S])
-  assert.ok(!r.some(x => x.producto === 'Bomboncitos'))
+  const r = (await alertasStock(fake(t), E, [S])).map(x => x.producto)
+  assert.ok(!r.includes('Bomboncitos · Pistacho'))
+  assert.ok(r.includes('Bomboncitos · Chocolate'))
+})
+test('rama: presentación sin hoja de stock cuenta como sin saldo', async () => {
+  const t = base(); t.stock_rama = [t.stock_rama[0]]
+  const r = (await alertasStock(fake(t), E, [S])).map(x => x.producto)
+  assert.ok(r.includes('Bomboncitos · Chocolate'))
 })
 test('rama sin habilitación activa en la sucursal no alerta', async () => {
   const t = base(); t.stock_rama_habilitacion = [{ empresa_id: E, sucursal_id: S2, producto_id: 'p1', estado: 'activa' }]
   const r = await alertasStock(fake(t), E, [S])
-  assert.ok(!r.some(x => x.producto === 'Bomboncitos'))
+  assert.ok(!r.some(x => x.producto.startsWith('Bomboncitos')))
 })
 test('varias sucursales: cada alerta trae su sucursal_id', async () => {
   const t = base(); t.stock_rama_habilitacion.push({ empresa_id: E, sucursal_id: S2, producto_id: 'p1', estado: 'activa' })
   const r = await alertasStock(fake(t), E, [S, S2])
-  assert.deepEqual(r.filter(x => x.producto === 'Bomboncitos').map(x => x.sucursal_id).sort(), [S, S2])
+  assert.deepEqual(r.filter(x => x.producto === 'Bomboncitos · Pistacho').map(x => x.sucursal_id).sort(), [S, S2])
 })
 test('otra empresa no se mezcla', async () => {
   const r = await alertasStock(fake(base()), 'otra', [S])
